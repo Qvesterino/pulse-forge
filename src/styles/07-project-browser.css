@@ -856,7 +856,7 @@
 
 .sample-view-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   background: var(--bg);
@@ -897,6 +897,32 @@
   background: var(--bg);
   border: 1px solid var(--border-soft);
   border-radius: 4px;
+}
+
+.sample-shared-filters {
+  padding: 5px;
+}
+
+.inspector-source-browser {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  color: var(--text-faint);
+  background: var(--bg-raise);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  font: 9px var(--mono);
+}
+
+.inspector-source-browser > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .loop-filter {

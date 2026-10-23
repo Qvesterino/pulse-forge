@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PresetBrowser } from "../../src/ui/PresetBrowser";
@@ -25,6 +25,7 @@ describe("PresetBrowser audition workflow", () => {
 
     await user.click(previewButton);
 
+    await waitFor(() => expect(services.engine.previewInstrumentPreset).toHaveBeenCalledWith(track.id, preset));
     expect(services.engine.previewInstrumentPreset).toHaveBeenCalledWith(track.id, preset);
     expect(services.store.execute).not.toHaveBeenCalled();
     expect(services.library.recordPreset).not.toHaveBeenCalled();
@@ -52,6 +53,7 @@ describe("PresetBrowser audition workflow", () => {
     const { services } = renderWithContext(<PresetBrowser track={track} />, { services: mockServices(doc) });
     const previewButton = await screen.findByRole("button", { name: `Preview ${preset.name}` });
     await user.click(previewButton);
+    await waitFor(() => expect(previewButton).toHaveAttribute("aria-pressed", "true"));
     await user.keyboard("{Escape}");
 
     expect(services.engine.stopPreview).toHaveBeenCalledTimes(1);
@@ -84,4 +86,31 @@ describe("PresetBrowser audition workflow", () => {
     expect(screen.getByRole("button", { name: `Apply ${preset.name}` })).toBeInTheDocument();
     expect(services.store.execute).not.toHaveBeenCalled();
   });
+
+  it("auditions through the selected track at the next bar without editing or changing undo history", async () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("instrument fixture missing");
+    const preset = FACTORY_PRESETS.find((candidate) => candidate.instrument === track.instrument);
+    if (!preset) throw new Error("preset fixture missing");
+    const services = mockServices(doc);
+    vi.spyOn(services.transport, "playing", "get").mockReturnValue(true);
+    const undoDepth = (services.store as any).undoStackLength;
+    const originalDoc = services.store.getDoc();
+
+    renderWithContext(<PresetBrowser track={track} />, { services });
+    fireEvent.click(await screen.findByRole("button", { name: `Preview ${preset.name}` }));
+
+    await waitFor(() => expect(services.setInstrumentPresetAuditionProject).toHaveBeenCalled());
+    const auditionDoc = vi.mocked(services.setInstrumentPresetAuditionProject).mock.calls[0]?.[0];
+    expect(auditionDoc?.tracks.find((candidate) => candidate.id === track.id)).toMatchObject({ presetId: preset.id });
+    expect(services.scheduler.subscribeTickBoundary).toHaveBeenCalledWith(1920, expect.any(Function));
+    expect(services.engine.previewInstrumentPreset).not.toHaveBeenCalled();
+    expect(services.store.execute).not.toHaveBeenCalled();
+    expect(services.store.getDoc()).toBe(originalDoc);
+    expect((services.store as any).undoStackLength).toBe(undoDepth);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(services.setInstrumentPresetAuditionProject).toHaveBeenLastCalledWith(null));
+  }, 10000);
 });

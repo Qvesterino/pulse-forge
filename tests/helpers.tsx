@@ -309,9 +309,17 @@ export function mockServices(doc?: ProjectDocument): Services {
       isRunning: false,
       pendingPatternId: null,
       subscribe: vi.fn(() => () => {}),
+      subscribeTickBoundary: vi.fn(
+        (tick: number, listener: (boundary: { tick: number; audioTime: number }) => void) => {
+          listener({ tick, audioTime: 0 });
+          return () => {};
+        },
+      ),
+      subscribeLoopBoundaries: vi.fn(() => () => {}),
       stats: { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 },
     } as any,
     setLiveTakeAuditionProject: vi.fn(),
+    setInstrumentPresetAuditionProject: vi.fn(),
     repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
     bank: (() => {
       const m = new Map();

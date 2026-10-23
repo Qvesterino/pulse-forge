@@ -16,7 +16,7 @@
  * exception), session-cached pipeline, nothing in the audio callback.
  */
 
-import type { SemanticManifest, SemanticRequest, SemanticResponse } from "./semantic-types";
+import { semanticBatchTexts, type SemanticManifest, type SemanticRequest, type SemanticResponse } from "./semantic-types";
 
 type Transformers = typeof import("@huggingface/transformers");
 type Extractor = Awaited<ReturnType<Transformers["pipeline"]>>;
@@ -161,9 +161,13 @@ async function handle(request: SemanticRequest): Promise<SemanticResponse> {
     }
   }
   try {
-    const texts = request.texts.filter((text) => typeof text === "string" && text.trim().length > 0);
-    if (texts.length === 0) throw new Error("no texts to embed");
+    // The batch to embed is EXACTLY the batch that was asked for: N texts in,
+    // N vectors out. Filtering the request's texts answered a DIFFERENT
+    // question than the one that was asked — and the caller could not tell.
+    const texts = semanticBatchTexts(request.texts);
+    if (!texts) throw new Error("texts must be a non-empty array of strings");
     const { vectors, rowCount } = await embed(texts);
+    if (rowCount !== texts.length) throw new Error(`embedded ${rowCount} rows for ${texts.length} texts`);
     return { type: "embed", requestId: request.requestId, ok: true, vectors, rowCount };
   } catch (error) {
     return {
@@ -175,12 +179,32 @@ async function handle(request: SemanticRequest): Promise<SemanticResponse> {
   }
 }
 
-self.onmessage = async (event: MessageEvent<SemanticRequest>) => {
+/**
+ * The worker boundary: `event.data` is a raw structured clone from another
+ * thread, so its shape is never trusted (AGENTS.md → defensive parsing;
+ * `src/intent/model-worker.ts` is the reference shape). Only the ENVELOPE is
+ * checked here — a broken body is answered by `handle()` with a correlated
+ * error instead of being dropped.
+ */
+function isSemanticRequest(value: unknown): value is SemanticRequest {
+  if (value == null || typeof value !== "object") return false;
+  const request = value as { type?: unknown; requestId?: unknown };
+  if (typeof request.requestId !== "number" || !Number.isInteger(request.requestId)) return false;
+  return request.type === "load" || request.type === "warmup" || request.type === "embed";
+}
+
+self.onmessage = async (event: MessageEvent<unknown>) => {
+  // Unshaped garbage is dropped SILENTLY: there is no requestId to answer
+  // with. The old code used the payload INSIDE its catch block, so a null
+  // payload threw there too — the answer was never posted and the caller
+  // waited out its whole timeout (60 s on a cold model).
+  if (!isSemanticRequest(event.data)) return;
   const request = event.data;
   try {
     const response = await handle(request);
     (self as unknown as Worker).postMessage(response);
   } catch (error) {
+    // `request` is validated, so this block can always answer.
     const response: SemanticResponse = {
       type: "embed",
       requestId: request.requestId,

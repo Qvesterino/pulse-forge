@@ -435,6 +435,12 @@ export function App({
   const transientJumpRef = useRef(0);
   const transientJumpAbortRef = useRef<AbortController | null>(null);
   const selectedTrackId = selection.trackIds[0] ?? doc.tracks[0]?.id ?? "";
+  const [browserViewRequest, setBrowserViewRequest] = useState<{ view: "sounds" | "loops" | "presets"; id: number }>({
+    view: "sounds",
+    id: 0,
+  });
+  const requestBrowserView = (view: "sounds" | "loops" | "presets") =>
+    setBrowserViewRequest((current) => ({ view, id: current.id + 1 }));
   const [selectedPadId, setSelectedPadId] = useState(
     doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
   );
@@ -1800,7 +1806,12 @@ export function App({
                 {/* Left sounds strip (V4) — always one glance away; the
                     selection (pad → instrument) is its assign target. */}
                 <ErrorBoundary panel="browser-strip">
-                  <BrowserStrip track={track} selectedPadId={padId} songStarter={songStarter} />
+                  <BrowserStrip
+                    track={track}
+                    selectedPadId={padId}
+                    songStarter={songStarter}
+                    viewRequest={browserViewRequest}
+                  />
                 </ErrorBoundary>
                 <div className="workspace-main">
                   {track.kind === "drum" ? (
@@ -1856,6 +1867,8 @@ export function App({
                       track={track}
                       selectedPadId={padId}
                       onOpenPlugin={openDevicesPanel}
+                      onOpenSoundBrowser={() => requestBrowserView("sounds")}
+                      onOpenPresetBrowser={() => requestBrowserView("presets")}
                       onCollapse={() => setInspectorCollapsed(true)}
                     />
                   </ErrorBoundary>

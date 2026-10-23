@@ -83,23 +83,25 @@ export function renderWarpPreserveAsync(
       const data = event.data;
       if (data && Array.isArray(data.channels) && data.channels.every((c) => c instanceof Float32Array)) {
         finish(data.channels as Float32Array[]);
-      } else {
-        try {
-          finish(runSync());
-        } catch (error) {
-          fail(error);
-        }
+        return;
       }
+      // The worker reported its OWN failure and told us why. That reason must
+      // not be dropped — and the expensive core must not be re-run on the main
+      // thread after the worker already failed on that very input: this
+      // client's contract is that a failed worker REJECTS ("running the
+      // identical core on the main thread would freeze the UI permanently").
+      // The synchronous fallback stays where it belongs — for the cases where
+      // there is no usable worker at all.
+      const reason =
+        typeof data?.error === "string" && data.error.length > 0 ? data.error : "worker reported a failure";
+      fail(new Error(`warp render worker failed: ${reason}`));
     };
     // Audit 12 D1: a throw inside runSync() must REJECT (settling the
     // promise) rather than escaping the handler and leaving the promise
     // pending forever — callers claim their cache key until settlement.
-    worker.onerror = () => {
-      try {
-        finish(runSync());
-      } catch (error) {
-        fail(error);
-      }
+    worker.onerror = (event: ErrorEvent) => {
+      const reason = typeof event?.message === "string" && event.message.length > 0 ? event.message : "worker error";
+      fail(new Error(`warp render worker failed: ${reason}`));
     };
     timer = setTimeout(
       () => fail(new Error("Warp render worker timed out; this clip falls back to repitch")),

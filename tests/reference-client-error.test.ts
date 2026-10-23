@@ -5,20 +5,29 @@ import { analyzeReferenceAsync, transcribeTrackAsync } from "../src/reference/re
  * A WORKER THAT REPORTS ITS OWN FAILURE MUST SETTLE THE CALLER.
  *
  * The reference worker catches everything it can and posts the reason back
- * (REFERENCE_ERROR / TRANSCRIBE_ERROR). The client only listened for
- * REFERENCE_RESULT / TRANSCRIBE_RESULT, so the error message was DROPPED: the
- * promise stayed pending until the 120 s timeout fired, and only then did the
- * client run the synchronous fallback — two minutes of silence followed by a
- * main-thread freeze, for a failure the worker had already explained.
+ * (REFERENCE_ERROR for the analysis lane, TRANSCRIBE_ERROR for the
+ * transcription lane). The client only listened for REFERENCE_RESULT /
+ * TRANSCRIBE_RESULT, so the error message was DROPPED: the promise stayed
+ * pending until the 120 s timeout fired, and only then did the client run the
+ * synchronous fallback — two minutes of silence followed by a main-thread
+ * freeze, for a failure the worker had already explained.
  *
  * The test drives the real client with a fake worker that reports the error.
  * The assertion is about the WAIT: the call must settle now, not in two
  * minutes.
+ *
+ * The job id is ECHOED, because the real worker echoes it and the client
+ * checks it. The wire format itself is pinned by
+ * `tests/reference-job-correlation.test.ts`, which drives the REAL worker and
+ * reads what it actually posts — this test alone could not catch a worker
+ * that reported the wrong error type.
  */
 
 class ScriptedWorker {
   static last: ScriptedWorker | null = null;
   private readonly listeners = new Map<string, ((event: unknown) => void)[]>();
+  /** What the client posted — the worker echoes the job id of its request. */
+  readonly posted: unknown[] = [];
   terminated = false;
 
   constructor(private readonly script: (worker: ScriptedWorker) => void) {
@@ -41,8 +50,8 @@ class ScriptedWorker {
     );
   }
 
-  postMessage(): void {
-    /* the client sends; the fake has nothing to do with the payload */
+  postMessage(message: unknown): void {
+    this.posted.push(message);
   }
 
   terminate(): void {
@@ -51,6 +60,11 @@ class ScriptedWorker {
 
   emitMessage(data: unknown): void {
     for (const fn of this.listeners.get("message") ?? []) fn({ data });
+  }
+
+  /** The job id the client sent — the worker answers with the same one. */
+  get jobId(): number {
+    return (this.posted[0] as { jobId: number }).jobId;
   }
 }
 
@@ -71,7 +85,7 @@ describe("the reference client settles on the worker's own error", () => {
       "Worker",
       class extends ScriptedWorker {
         constructor() {
-          super((worker) => worker.emitMessage({ type: "REFERENCE_ERROR", jobId: 1, message: "boom" }));
+          super((worker) => worker.emitMessage({ type: "REFERENCE_ERROR", jobId: worker.jobId, message: "boom" }));
         }
       },
     );
@@ -94,7 +108,7 @@ describe("the reference client settles on the worker's own error", () => {
       "Worker",
       class extends ScriptedWorker {
         constructor() {
-          super((worker) => worker.emitMessage({ type: "TRANSCRIBE_ERROR", jobId: 2, message: "boom" }));
+          super((worker) => worker.emitMessage({ type: "TRANSCRIBE_ERROR", jobId: worker.jobId, message: "boom" }));
         }
       },
     );
@@ -112,7 +126,7 @@ describe("the reference client settles on the worker's own error", () => {
       "Worker",
       class extends ScriptedWorker {
         constructor() {
-          super((worker) => worker.emitMessage({ type: "REFERENCE_ERROR", jobId: 3, message: "boom" }));
+          super((worker) => worker.emitMessage({ type: "REFERENCE_ERROR", jobId: worker.jobId, message: "boom" }));
         }
       },
     );

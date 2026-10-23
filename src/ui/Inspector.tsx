@@ -9,7 +9,6 @@ import {
   setTrackParams,
   setGenerativeTrackConfig,
   setInstrumentParam,
-  setInstrumentSample,
 } from "../commands/commands";
 import {
   PPQ,
@@ -19,14 +18,12 @@ import {
   type SampleLayer,
   type Track,
 } from "../project-model/types";
-import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { PAD_MOD_RATE_HZ_MAX, ticksPerBar } from "../project-model/schema";
 import type { GenerativeVariation } from "../generative/resample";
 import { GENERATIVE_MACRO_NAMES } from "../generative/types";
 import { createUnavailableGenerativeProvider } from "../generative/registry";
-import { autoMapVelocityLayers } from "../samples/autoMap";
 import { runSfzInstrumentImport } from "../sample-library/sfz-import-run";
 import { decodeAudioData } from "../services/audio-decode";
 import { setVelocityLayersCommand } from "../commands/layerCommands";
@@ -38,19 +35,10 @@ import {
   asDrumSynthType,
   mergeSynth,
 } from "./drumSynthVoices";
-import { SampleBrowser } from "./SampleBrowser";
 import { WavetablePreview } from "./WavetablePreview";
 import { ModMatrixRow, isModMatrixParam } from "./ModMatrixRow";
-// Both load on demand: PresetBrowser drags the ~45 KB factory-preset table
-// into its chunk (only needed once an instrument track is selected), SliceLab
-// only when the SLICE LAB toggle opens. Keeps them out of the entry budget.
-const PresetBrowser = lazy(() => import("./PresetBrowser").then((m) => ({ default: m.PresetBrowser })));
+// SliceLab loads only when the SLICE LAB toggle opens.
 const SliceLab = lazy(() => import("./SliceLab").then((m) => ({ default: m.SliceLab })));
-
-// Pitch-anchored one-shots (Tonal + the Bass pack) are sampler/keys material;
-// unpitched percussion feeds the drum-pad picker.
-const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal" || a.category === "Bass");
-const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal" && a.category !== "Bass");
 
 function InspectorPanelHeader({ kicker, title, actions }: { kicker: string; title: string; actions?: ReactNode }) {
   return (
@@ -103,11 +91,15 @@ export function Inspector({
   track,
   selectedPadId,
   onOpenPlugin,
+  onOpenSoundBrowser,
+  onOpenPresetBrowser,
   onCollapse,
 }: {
   track: Track;
   selectedPadId: string;
   onOpenPlugin?: () => void;
+  onOpenSoundBrowser?: () => void;
+  onOpenPresetBrowser?: () => void;
   onCollapse?: () => void;
 }) {
   const services = useServices();
@@ -220,8 +212,18 @@ export function Inspector({
           kicker={def.name.toUpperCase()}
           title={track.name}
           actions={
-            (onOpenPlugin || collapseToggle) && (
+            (onOpenPlugin || onOpenPresetBrowser || collapseToggle) && (
               <>
+                {onOpenPresetBrowser && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={onOpenPresetBrowser}
+                    title="Open instrument presets in the Sounds browser"
+                  >
+                    PRESETS
+                  </button>
+                )}
                 {onOpenPlugin && (
                   <button
                     type="button"
@@ -253,30 +255,15 @@ export function Inspector({
           ))}
         </div>
 
-        <Suspense fallback={<h2 className="panel-title">PRESETS — loading…</h2>}>
-          <PresetBrowser track={track} />
-        </Suspense>
-
         {sampleLabel && (
           <>
             <h3 className="inspector-subtitle">{sampleLabel}</h3>
-            <SampleBrowser
-              assets={TONAL_ASSETS}
-              currentId={track.sampleId}
-              onSelect={(assetId) => services.store.execute(setInstrumentSample(doc, track.id, assetId))}
-              showDropZone
-              onBatchImport={
-                track.instrument === "sampler"
-                  ? (imported) => {
-                      // Multi-file drop on a sampler track: file names carry
-                      // the mapping (kick_C2.wav, stab F#4.wav, -1/-2 RR) —
-                      // spread across the keyboard automatically.
-                      const layers = autoMapVelocityLayers(imported.map((a) => ({ sampleId: a.id, name: a.fileName })));
-                      if (layers.length > 1) setPendingSamplerMapping(layers);
-                    }
-                  : undefined
-              }
-            />
+            <div className="inspector-source-browser">
+              <span>{track.sampleId ? `Current source: ${track.sampleId}` : "No sample source assigned"}</span>
+              <button type="button" className="btn btn-small" onClick={onOpenSoundBrowser}>
+                BROWSE SOUNDS
+              </button>
+            </div>
             {track.instrument === "sampler" && (
               <div className="inspector-sfz-import">
                 <input
@@ -923,12 +910,12 @@ export function Inspector({
       {!isSynth ? (
         <>
           <h3 className="inspector-subtitle">SAMPLE</h3>
-          <SampleBrowser
-            assets={DRUM_ASSETS}
-            currentId={pad.assetId}
-            onSelect={(assetId) => services.store.execute(setPadParams(doc, pad.id, { assetId }))}
-            showDropZone
-          />
+          <div className="inspector-source-browser">
+            <span>{pad.assetId ?? "No sample source assigned"}</span>
+            <button type="button" className="btn btn-small" onClick={onOpenSoundBrowser}>
+              BROWSE SOUNDS
+            </button>
+          </div>
         </>
       ) : (
         <div className="pad-synth-controls">

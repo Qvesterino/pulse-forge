@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useServices } from "./context";
 import { addAudioClip, fittedLoopPlacement, setInstrumentSample, setPadParams } from "../commands/commands";
 import { loopPreviewPlaybackRate } from "../audio-engine/loopTempo";
@@ -36,13 +36,26 @@ export function BrowserStrip({
   track,
   selectedPadId,
   songStarter = null,
+  viewRequest,
 }: {
   track: Track;
   selectedPadId: string;
   songStarter?: SongStarterHandoff | null;
+  viewRequest?: { view: "sounds" | "loops" | "presets"; id: number };
 }) {
   const services = useServices();
   const [open, setOpen] = useState(() => Boolean(songStarter) || loadStripOpen());
+  const [browserView, setBrowserView] = useState<"sounds" | "loops" | "presets">(() =>
+    songStarter ? "loops" : "sounds",
+  );
+  const handledViewRequest = useRef(0);
+
+  useEffect(() => {
+    if (!viewRequest || viewRequest.id === 0 || viewRequest.id === handledViewRequest.current) return;
+    handledViewRequest.current = viewRequest.id;
+    setOpen(true);
+    setBrowserView(viewRequest.view);
+  }, [viewRequest]);
 
   useEffect(() => {
     try {
@@ -179,6 +192,9 @@ export function BrowserStrip({
             onPreviewLoop={previewLoop}
             onAddLoop={arrangementTarget ? addLoopToArrangement : undefined}
             loopStarter={songStarter}
+            view={browserView}
+            onViewChange={setBrowserView}
+            targetTrack={track}
           />
         </Suspense>
       </div>

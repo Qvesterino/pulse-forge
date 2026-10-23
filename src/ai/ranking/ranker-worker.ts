@@ -118,12 +118,33 @@ async function handle(request: RankerRequest): Promise<RankerResponse> {
   return { type: "dispose", requestId: request.requestId, ok: true };
 }
 
-self.onmessage = async (event: MessageEvent<RankerRequest>) => {
+/**
+ * The worker boundary: `event.data` is a raw structured clone from another
+ * thread, so its shape is never trusted (AGENTS.md → defensive parsing;
+ * `src/intent/model-worker.ts` is the reference shape for a request/response
+ * worker). Only the ENVELOPE is checked here — the body is validated by
+ * `handle()`, which answers a broken body with a correlated error instead of
+ * dropping it.
+ */
+function isRankerRequest(value: unknown): value is RankerRequest {
+  if (value == null || typeof value !== "object") return false;
+  const request = value as { type?: unknown; requestId?: unknown };
+  if (typeof request.requestId !== "number" || !Number.isInteger(request.requestId)) return false;
+  return request.type === "load" || request.type === "score" || request.type === "dispose";
+}
+
+self.onmessage = async (event: MessageEvent<unknown>) => {
+  // Unshaped garbage is dropped SILENTLY: there is no requestId to answer
+  // with. The old code used the payload INSIDE its catch block, so a null
+  // payload threw there too — the answer was never posted and the caller
+  // waited out its whole timeout.
+  if (!isRankerRequest(event.data)) return;
   const request = event.data;
   try {
     const response = await handle(request);
     (self as unknown as Worker).postMessage(response);
   } catch (error) {
+    // `request` is validated, so this block can always answer.
     const response: RankerResponse = {
       type: request.type,
       requestId: request.requestId,

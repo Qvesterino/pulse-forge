@@ -42,3 +42,22 @@ export interface SemanticEmbedResponse {
 }
 
 export type SemanticResponse = SemanticLoadResponse | SemanticEmbedResponse;
+
+/**
+ * The texts a batch request must embed — the request's OWN texts, in order.
+ *
+ * Returns null when the request is not a usable batch: not an array, empty,
+ * or holding something that is not a string.
+ *
+ * N texts in, N vectors out. The worker used to FILTER the request's texts
+ * before embedding them, so a request for three texts (one of them empty)
+ * came back as two vectors. The client could not tell — it returned whatever
+ * the worker said — and the caller used the short answer as if it were
+ * complete, which silently cost the whole reference-informed conditioning
+ * (`buildReferenceEmbedding` checks the length and gives up).
+ */
+export function semanticBatchTexts(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  if (!value.every((text) => typeof text === "string")) return null;
+  return value as string[];
+}

@@ -146,11 +146,37 @@ function request(request: PriorRequest, timeoutMs: number): Promise<Extract<Prio
   return new Promise((resolve) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
+    const cleanup = () => {
+      clearTimeout(timer);
+      active.removeEventListener("message", onMessage);
+      active.removeEventListener("error", onError);
+      active.removeEventListener("messageerror", onMessageError);
+    };
+    /**
+     * A worker that DIED must settle the caller NOW, not after the timeout.
+     * The client used to listen for answers only, so a dead worker produced
+     * no event at all: the call sat on its timeout (500 ms for a run, 3 s for
+     * a load) and the failure was reported as "timeout" — the model's fault,
+     * not the worker's. A worker failure also counts toward the circuit
+     * breaker, so a worker that stays dead is not respawned for every
+     * request of the rest of the session.
+     */
+    const fail = (error: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      workerFailures += 1;
+      if (workerFailures >= MAX_FAILURES) {
+        active.terminate();
+        if (worker === active) worker = null;
+        workerDisabled = true;
+      }
+      resolve({ ...request, ok: false, error } as Extract<PriorResponse, { requestId: number }>);
+    };
     const onMessage = (event: MessageEvent<PriorResponse>) => {
       if (event.data?.requestId !== request.requestId || settled) return;
       settled = true;
-      active.removeEventListener("message", onMessage);
-      clearTimeout(timer);
+      cleanup();
       if (event.data.ok === false) {
         workerFailures += 1;
       } else {
@@ -158,20 +184,17 @@ function request(request: PriorRequest, timeoutMs: number): Promise<Extract<Prio
       }
       resolve(event.data);
     };
-    timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      active.removeEventListener("message", onMessage);
-      workerFailures += 1;
-      if (workerFailures >= MAX_FAILURES) {
-        worker?.terminate();
-        worker = null;
-        workerDisabled = true;
-      }
-      resolve({ ...request, ok: false, error: "timeout" } as Extract<PriorResponse, { requestId: number }>);
-    }, timeoutMs);
+    const onError = () => fail("worker-error");
+    const onMessageError = () => fail("message-error");
+    timer = setTimeout(() => fail("timeout"), timeoutMs);
     active.addEventListener("message", onMessage);
-    active.postMessage(request);
+    active.addEventListener("error", onError);
+    active.addEventListener("messageerror", onMessageError);
+    try {
+      active.postMessage(request);
+    } catch {
+      fail("post-message-error");
+    }
   });
 }
 

@@ -79,12 +79,32 @@ async function handle(request: AudioRequest): Promise<AudioResponse> {
   }
 }
 
-self.onmessage = async (event: MessageEvent<AudioRequest>) => {
+/**
+ * The worker boundary: `event.data` is a raw structured clone from another
+ * thread, so its shape is never trusted (AGENTS.md → defensive parsing;
+ * `src/intent/model-worker.ts` is the reference shape). Only the ENVELOPE is
+ * checked here — a broken body is answered by `handle()` with a correlated
+ * error instead of being dropped.
+ */
+function isAudioRequest(value: unknown): value is AudioRequest {
+  if (value == null || typeof value !== "object") return false;
+  const request = value as { type?: unknown; requestId?: unknown };
+  if (typeof request.requestId !== "number" || !Number.isInteger(request.requestId)) return false;
+  return request.type === "load" || request.type === "classify";
+}
+
+self.onmessage = async (event: MessageEvent<unknown>) => {
+  // Unshaped garbage is dropped SILENTLY: there is no requestId to answer
+  // with. The old code used the payload INSIDE its catch block, so a null
+  // payload threw there too — the answer was never posted and the caller
+  // waited out its whole timeout (20 s for a classification).
+  if (!isAudioRequest(event.data)) return;
   const request = event.data;
   try {
     const response = await handle(request);
     (self as unknown as Worker).postMessage(response);
   } catch (error) {
+    // `request` is validated, so this block can always answer.
     const response: AudioResponse = {
       type: "classify",
       requestId: request.requestId,

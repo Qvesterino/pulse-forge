@@ -48,6 +48,33 @@ describe("SampleBrowser", () => {
     expect(afterCount).toBeLessThanOrEqual(beforeCount);
   });
 
+  it("shares search and mood/genre filters across sounds, loops, and lazy presets", async () => {
+    const services = mockServices();
+    const doc = services.store.getDoc();
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("instrument fixture missing");
+    vi.mocked(services.userSamples.list).mockResolvedValue([loopA]);
+    renderWithContext(
+      <SampleBrowser assets={FACTORY_ASSETS} currentId={null} onSelect={vi.fn()} targetTrack={track} />,
+      { services },
+    );
+
+    await screen.findByRole("option", { name: "House" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by genre" }), { target: { value: "House" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by mood" }), { target: { value: "Deep" } });
+    fireEvent.click(await screen.findByRole("button", { name: /LOOPS 1/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search loops" }), { target: { value: "shared-query" } });
+    fireEvent.click(screen.getByRole("button", { name: "PRESETS" }));
+    expect(await screen.findByRole("textbox", { name: "Search presets" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter by genre" })).toHaveValue("House");
+    expect(screen.getByRole("combobox", { name: "Filter by mood" })).toHaveValue("Deep");
+
+    fireEvent.click(screen.getByRole("button", { name: "SOUNDS" }));
+    expect(screen.getByRole("textbox", { name: "Search samples" })).toHaveValue("shared-query");
+    expect(screen.getByRole("combobox", { name: "Filter by genre" })).toHaveValue("House");
+    expect(screen.getByRole("combobox", { name: "Filter by mood" })).toHaveValue("Deep");
+  });
+
   it("matches separate sound traits across the name, character, and category", () => {
     renderWithContext(<SampleBrowser assets={FACTORY_ASSETS} currentId={null} onSelect={vi.fn()} />);
     fireEvent.change(screen.getByRole("textbox", { name: "Search samples" }), {
@@ -184,6 +211,7 @@ describe("SampleBrowser", () => {
     const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
     const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm, ticksPerBar(doc));
     expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loopA.id, targetBpm / loopA.bpm!, true);
+    expect(services.library.recordAsset).toHaveBeenCalledWith(loopA.id);
   });
 
   it("saves user loop tags and previews the loop through the tempo-aware callback", async () => {
@@ -206,10 +234,10 @@ describe("SampleBrowser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit loop tags for House Drums" }));
     fireEvent.click(screen.getByLabelText("Include in loop browser"));
     fireEvent.change(screen.getByLabelText("Loop tempo BPM"), { target: { value: "123.4" } });
-    fireEvent.change(screen.getByLabelText("Genre"), { target: { value: "Ambient" } });
-    fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "Warm" } });
-    fireEvent.change(screen.getByLabelText("Instrument"), { target: { value: "Pad" } });
-    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "C" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Genre" }), { target: { value: "Ambient" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Mood" }), { target: { value: "Warm" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Instrument" }), { target: { value: "Pad" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Key" }), { target: { value: "C" } });
     fireEvent.click(screen.getByRole("button", { name: "SAVE TAGS" }));
 
     await waitFor(() => expect(services.userSamples.save).toHaveBeenCalled());
@@ -232,6 +260,8 @@ describe("SampleBrowser", () => {
     vi.mocked(services.userSamples.list).mockResolvedValue([loopA]);
     renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={vi.fn()} />, { services });
 
+    await screen.findByRole("button", { name: /LOOPS 1/ });
+    fireEvent.click(screen.getByRole("button", { name: /LOOPS 1/ }));
     await screen.findByRole("button", { name: "Edit loop tags for House Drums" });
     fireEvent.click(screen.getByRole("button", { name: "Edit loop tags for House Drums" }));
     fireEvent.change(screen.getByLabelText("Loop tempo BPM"), { target: { value: "241" } });

@@ -9,6 +9,7 @@
     "fxeq-worklet.js": "5a06b7f37c05bbe5a35adbc8a4c99a4e5230428d53511b78e551511cbae0aa1d",
     "generative-player-worklet.js": "e6b9c29e46bfe293b3562734ce0d8f424f50b5bc483261d167c569e1bf812de0",
     "kopa-worklet.js": "1e05376285023bb6368eb44fb2482598689878815fa42ccd81cc1fe652041ced",
+    "ladic-worklet.js": "007d6932a58b55ed2063b675f615931d1bc6c1bd1411ab92615d27148927da06",
     "morph-dynamics-worklet.js": "c8ffa26d9a2bbe687aa426924acd5b0b89d0c3a20a49d2a02f38083313616477",
     "ozvena-worklet.js": "bd4ec8b4ed1069480efd4906aca2fcc83c13f67aa66b0e0ac61346d84bfb04bb",
     "parity-capture-worklet.js": "07b1c280d74b03ba009d1e325414ab48f9cfefee2e19e36a93959225c5cd249b",

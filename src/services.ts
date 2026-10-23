@@ -131,6 +131,8 @@ export interface Services {
     project: ProjectDocument | null,
     resumedAudioClipOffsets?: ReadonlyMap<string, number>,
   ): void;
+  /** Install or clear a temporary preset sound on the live instrument track. */
+  setInstrumentPresetAuditionProject(project: ProjectDocument | null): void;
   repo: IProjectRepository;
   bank: SampleBank;
   library: ILibraryRepository;
@@ -731,6 +733,16 @@ export async function openProject(
     },
   });
   let liveTakeAuditionActive = false;
+  let instrumentPresetAuditionActive = false;
+  const setInstrumentPresetAuditionProject = (project: ProjectDocument | null): void => {
+    if (project && !transport.playing) throw new Error("Preset playback audition requires active transport playback");
+    if (project && liveTakeAuditionActive) throw new Error("Finish the live take audition before previewing a preset");
+    if (!project && !instrumentPresetAuditionActive) return;
+
+    instrumentPresetAuditionActive = project !== null;
+    scheduler.setPlaybackProjectOverride(project ? { project } : null);
+    engine.setProject(project ?? store.doc);
+  };
   const setLiveTakeAuditionProject = (
     project: ProjectDocument | null,
     resumedAudioClipOffsets?: ReadonlyMap<string, number>,
@@ -742,6 +754,8 @@ export async function openProject(
       throw new Error("Turn off the transport loop to audition a take lane live");
     }
     if (!project && !liveTakeAuditionActive) return;
+
+    if (project && instrumentPresetAuditionActive) setInstrumentPresetAuditionProject(null);
 
     midiOutput.cancelPending();
     engine.panic();
@@ -804,6 +818,7 @@ export async function openProject(
       patternRecorder.onTransportInterrupted();
     },
     () => {
+      setInstrumentPresetAuditionProject(null);
       setLiveTakeAuditionProject(null);
       capture.pauseLivePads();
       capture.markPause();
@@ -860,7 +875,10 @@ export async function openProject(
           generativeRuntimeRef?.stopAll().catch((err) => console.warn("[generative] remote stopAll failed:", err));
         }
         applyTransportState(transport, state, Date.now() / 1000);
-        if (!state.playing) setLiveTakeAuditionProject(null);
+        if (!state.playing) {
+          setInstrumentPresetAuditionProject(null);
+          setLiveTakeAuditionProject(null);
+        }
         if (shouldStartScheduler) {
           scheduler.start();
           generativeRuntimeRef?.startAll().catch((err) => console.warn("[generative] remote startAll failed:", err));
@@ -1229,6 +1247,10 @@ export async function openProject(
       engine.panic();
       engine.automationReset();
     }
+    if (instrumentPresetAuditionActive) {
+      instrumentPresetAuditionActive = false;
+      scheduler.setPlaybackProjectOverride(null);
+    }
     engine.setProject(doc);
     if (transport.playing) {
       // LIVE-EDITING SYNC: the scheduler re-plans from the new doc at its
@@ -1314,6 +1336,7 @@ export async function openProject(
     closed = true;
     styleObserver.flush();
     styleObserver.dispose();
+    setInstrumentPresetAuditionProject(null);
     setLiveTakeAuditionProject(null);
     noteRepeat.stopAll();
     ghost.stop();
@@ -1390,6 +1413,7 @@ export async function openProject(
     transport,
     scheduler,
     setLiveTakeAuditionProject,
+    setInstrumentPresetAuditionProject,
     sharedTransportReapply,
     bandmate,
     repo,

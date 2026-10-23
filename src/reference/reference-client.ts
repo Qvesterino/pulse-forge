@@ -15,6 +15,17 @@ const WORKER_MIN_SAMPLES = 22050 * 2; // 2 seconds at 22.05 kHz
 const REFERENCE_WORKER_TIMEOUT_MS = 120_000;
 
 /**
+ * Job ids must be UNIQUE, not merely present.
+ *
+ * The id used to be `Date.now() & 0xffff` — the low 16 bits of the clock.
+ * That WRAPS every 65 536 ms, so two analyses a minute apart could carry the
+ * same id. A monotonic counter cannot repeat, so a job id now identifies one
+ * job for the whole session.
+ */
+let nextJobId = 1;
+const newJobId = (): number => nextJobId++;
+
+/**
  * Run the deterministic reference analyzer without blocking the UI on long
  * buffers. The AudioBuffer channel data is copied before transfer so the
  * project's audio-bank ownership is preserved. If a browser cannot
@@ -54,6 +65,7 @@ export function analyzeReferenceAsync(
     let settled = false;
     let removeAbortListener: () => void = () => undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const jobId = newJobId();
     const finish = (payload: AnalyzeReferenceOutput) => {
       if (settled) return;
       settled = true;
@@ -66,8 +78,12 @@ export function analyzeReferenceAsync(
       resolve(payload);
     };
     const onWorkerMessage = (event: MessageEvent<unknown>) => {
-      const msg = event.data as { type?: unknown; payload?: AnalyzeReferenceOutput } | null;
+      const msg = event.data as { type?: unknown; jobId?: unknown; payload?: AnalyzeReferenceOutput } | null;
       if (!msg) return;
+      // Every worker answer carries the id of the job it belongs to. An
+      // answer for ANOTHER job is not ours — accepting it would settle this
+      // call with a foreign result.
+      if (msg.jobId !== jobId) return;
       // The worker reports its OWN failures as REFERENCE_ERROR (it catches
       // everything and posts the reason). The client used to ignore that
       // message, so a failed analysis waited the full 120 s timeout and only
@@ -85,8 +101,8 @@ export function analyzeReferenceAsync(
     };
     const onWorkerError = () => finish(analyzeReference({ ...rest, onStage }));
     const onProgress = (event: MessageEvent<unknown>) => {
-      const msg = event.data as { type?: unknown; stage?: ReferenceStage } | null;
-      if (msg?.type === "PROGRESS_STAGE" && onStage && msg.stage) onStage(msg.stage);
+      const msg = event.data as { type?: unknown; jobId?: unknown; stage?: ReferenceStage } | null;
+      if (msg?.type === "PROGRESS_STAGE" && msg.jobId === jobId && onStage && msg.stage) onStage(msg.stage);
     };
     worker.addEventListener("message", onProgress);
     worker.addEventListener("message", onWorkerMessage);
@@ -114,7 +130,7 @@ export function analyzeReferenceAsync(
       worker.postMessage(
         {
           type: "ANALYZE_REFERENCE",
-          jobId: Date.now() & 0xffff,
+          jobId,
           mono: copy,
           channels,
           metadata: rest.metadata,
@@ -193,6 +209,7 @@ export function transcribeTrackAsync(
     let settled = false;
     let removeAbortListener: () => void = () => undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const jobId = newJobId();
     const finish = (payload: UnsunoTranscription): void => {
       if (settled) return;
       settled = true;
@@ -205,8 +222,10 @@ export function transcribeTrackAsync(
       resolve(payload);
     };
     const onMessage = (event: MessageEvent<unknown>): void => {
-      const msg = event.data as { type?: unknown; payload?: UnsunoTranscription } | null;
+      const msg = event.data as { type?: unknown; jobId?: unknown; payload?: UnsunoTranscription } | null;
       if (!msg) return;
+      // An answer for another job is not ours (see the analysis lane).
+      if (msg.jobId !== jobId) return;
       // Same contract as the analysis lane: the worker posts TRANSCRIBE_ERROR
       // when it fails on its own, and that must settle the promise now rather
       // than after the 120 s timeout.
@@ -237,7 +256,7 @@ export function transcribeTrackAsync(
       worker.postMessage(
         {
           type: "TRANSCRIBE_TRACK",
-          jobId: Date.now() & 0xffff,
+          jobId,
           mono: copy,
           sampleRate,
           sections: options.sections,

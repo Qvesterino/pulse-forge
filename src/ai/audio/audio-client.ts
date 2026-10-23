@@ -50,28 +50,52 @@ function request(request: AudioRequest, timeoutMs: number): Promise<AudioRespons
   if (!active) return Promise.resolve({ ...request, ok: false, error: "worker-unavailable" } as AudioResponse);
   return new Promise((resolve) => {
     let settled = false;
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const cleanup = () => {
+      clearTimeout(timer);
+      active.removeEventListener("message", onMessage);
+      active.removeEventListener("error", onError);
+      active.removeEventListener("messageerror", onMessageError);
+    };
+    /**
+     * A worker that DIED must settle the caller NOW, not after the timeout.
+     * The client used to listen for answers only, so a dead worker produced
+     * no event at all: the classification sat on its 20 s timeout and the
+     * failure was reported as "timeout" — the model's fault, not the
+     * worker's. A worker failure also counts toward the circuit breaker, so
+     * a worker that stays dead is not respawned for every request of the
+     * rest of the session.
+     */
+    const fail = (error: string) => {
       if (settled) return;
       settled = true;
-      active.removeEventListener("message", onMessage);
+      cleanup();
       workerFailures += 1;
       if (workerFailures >= MAX_FAILURES) {
-        worker?.terminate();
-        worker = null;
+        active.terminate();
+        if (worker === active) worker = null;
         workerDisabled = true;
       }
-      resolve({ ...request, ok: false, error: "timeout" } as AudioResponse);
-    }, timeoutMs);
+      resolve({ ...request, ok: false, error } as AudioResponse);
+    };
     const onMessage = (event: MessageEvent<AudioResponse>) => {
       if (event.data?.requestId !== request.requestId || settled) return;
       settled = true;
-      clearTimeout(timer);
-      active.removeEventListener("message", onMessage);
+      cleanup();
       workerFailures = event.data.ok ? 0 : workerFailures + 1;
       resolve(event.data);
     };
+    const onError = () => fail("worker-error");
+    const onMessageError = () => fail("message-error");
+    timer = setTimeout(() => fail("timeout"), timeoutMs);
     active.addEventListener("message", onMessage);
-    active.postMessage(request);
+    active.addEventListener("error", onError);
+    active.addEventListener("messageerror", onMessageError);
+    try {
+      active.postMessage(request);
+    } catch {
+      fail("post-message-error");
+    }
   });
 }
 

@@ -53,8 +53,14 @@ export async function ensurePianoPackLoaded(
   docSampleIds: Iterable<string | null | undefined> = [],
 ): Promise<void> {
   const referenced = new Set<string>();
-  for (const layer of PIANO_PACK_LAYERS) if (layer.sampleId) referenced.add(layer.sampleId);
-  for (const id of docSampleIds) if (id && isPianoPackSample(id)) referenced.add(id);
+  const requested = [...docSampleIds];
+  // Project and preset previews should fetch only zones they can play. Keep
+  // the no-argument call as the explicit full-pack warm used by diagnostics.
+  if (requested.length === 0) {
+    for (const layer of PIANO_PACK_LAYERS) if (layer.sampleId) referenced.add(layer.sampleId);
+  } else {
+    for (const id of requested) if (id && isPianoPackSample(id)) referenced.add(id);
+  }
 
   const pending = [...referenced].filter((id) => !fetched.has(id) && !bank.has(id));
   if (pending.length === 0) return;

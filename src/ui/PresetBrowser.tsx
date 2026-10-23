@@ -1,31 +1,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
-import { ensurePianoPackLoaded, isPianoPackSample } from "../presets/piano-pack";
 import { factoryPresets, isFactoryPresetsWarm, warmFactoryPresets } from "../presets/factory-loader";
 import { PRESET_ENERGIES, PRESET_USE_CASES, getPresetMetadata } from "../presets/catalog";
-import { PRESET_GENRES, PRESET_MOODS } from "../presets/types";
-import type { InstrumentPreset, PresetEnergy, PresetGenre, PresetMood, PresetUseCase } from "../presets/types";
+import type { InstrumentPreset, PresetEnergy, PresetUseCase } from "../presets/types";
 import { rankSimilarPresets } from "../presets/similar";
-import type { InstrumentTrack } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
+import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
+import { projectSoundContext, rankByProjectSoundFit, type ProjectSoundContext } from "../sample-library/projectFit";
 import { uid } from "../shared/ids";
 
-type GenreFilter = PresetGenre | "all";
-type MoodFilter = PresetMood | "all";
 type UseCaseFilter = PresetUseCase | "all";
 type EnergyFilter = PresetEnergy | "all";
 type ScopeFilter = "all" | "fav" | "recent" | "similar";
 
-export function PresetBrowser({ track }: { track: InstrumentTrack }) {
+export function PresetBrowser({
+  track,
+  query = "",
+  genre = "all",
+  mood = "all",
+  projectContext,
+  preloadPresetSamples,
+}: {
+  track: InstrumentTrack;
+  query?: string;
+  genre?: string;
+  mood?: string;
+  projectContext?: ProjectSoundContext;
+  preloadPresetSamples?: (preset: InstrumentPreset) => Promise<void>;
+}) {
   const services = useServices();
   const doc = services.store.getDoc();
+  const fitContext = projectContext ?? projectSoundContext(doc, services.transport.bpm);
+  const loadPresetSamples = preloadPresetSamples ?? (() => Promise.resolve());
   const library = useLibrary();
-  const [genre, setGenre] = useState<GenreFilter>("all");
-  const [mood, setMood] = useState<MoodFilter>("all");
   const [useCase, setUseCase] = useState<UseCaseFilter>("all");
   const [energy, setEnergy] = useState<EnergyFilter>("all");
   const [scope, setScope] = useState<ScopeFilter>("all");
-  const [query, setQuery] = useState("");
   // Filters live behind one toggle — search-first keeps the browser scannable;
   // the toggle shows how many filters are shaping the list when collapsed.
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -34,30 +45,80 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const [saveName, setSaveName] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [previewingPresetId, setPreviewingPresetId] = useState<string | null>(null);
+  const [liveAuditionPendingId, setLiveAuditionPendingId] = useState<string | null>(null);
+  const [liveAuditionActiveId, setLiveAuditionActiveId] = useState<string | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boundaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unsubscribeBoundary = useRef<(() => void) | null>(null);
+  const unsubscribeLoopBoundary = useRef<(() => void) | null>(null);
+  const auditionRequest = useRef(0);
+  const liveAuditionMode = useRef(false);
+  const liveRuntimeActive = useRef(false);
+  const isolatedPreviewActive = useRef(false);
+
+  const stopPresetAudition = useCallback(() => {
+    const shouldStopAudio =
+      previewTimer.current !== null ||
+      boundaryTimer.current !== null ||
+      unsubscribeBoundary.current !== null ||
+      unsubscribeLoopBoundary.current !== null ||
+      liveRuntimeActive.current ||
+      isolatedPreviewActive.current;
+    auditionRequest.current += 1;
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    if (boundaryTimer.current) clearTimeout(boundaryTimer.current);
+    previewTimer.current = null;
+    boundaryTimer.current = null;
+    unsubscribeBoundary.current?.();
+    unsubscribeBoundary.current = null;
+    unsubscribeLoopBoundary.current?.();
+    unsubscribeLoopBoundary.current = null;
+    if (shouldStopAudio) services.engine.stopPreview();
+    if (liveRuntimeActive.current) services.setInstrumentPresetAuditionProject(null);
+    liveRuntimeActive.current = false;
+    isolatedPreviewActive.current = false;
+    setPreviewingPresetId(null);
+    setLiveAuditionPendingId(null);
+    setLiveAuditionActiveId(null);
+    liveAuditionMode.current = false;
+  }, [services]);
 
   useEffect(() => {
     setPreviewingPresetId(null);
-    // A preview must never outlive the browser/track that started it. This is
-    // intentionally a cleanup-only effect so opening the browser does not
-    // stop an unrelated preview before the user interacts with it.
-    return () => {
-      if (previewTimer.current) clearTimeout(previewTimer.current);
-      services.engine.stopPreview();
-    };
-  }, [services, track.id]);
+    return () => stopPresetAudition();
+  }, [stopPresetAudition, track.id]);
+
+  useEffect(() => {
+    const unsubscribe = services.transport.subscribePlaying((playing) => {
+      if (!playing && liveAuditionMode.current && (liveAuditionPendingId || liveAuditionActiveId)) {
+        stopPresetAudition();
+      } else if (playing && previewingPresetId) {
+        services.engine.stopPreview();
+        setPreviewingPresetId(null);
+      }
+    });
+    return unsubscribe;
+  }, [services, liveAuditionPendingId, liveAuditionActiveId, previewingPresetId, stopPresetAudition]);
+
+  const observedDoc = useRef<ProjectDocument>(doc);
+  useEffect(() => {
+    observedDoc.current = services.store.getDoc();
+    return services.store.subscribe(() => {
+      const nextDoc = services.store.getDoc();
+      if (nextDoc === observedDoc.current) return;
+      observedDoc.current = nextDoc;
+      stopPresetAudition();
+    });
+  }, [services, stopPresetAudition]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !previewingPresetId) return;
-      if (previewTimer.current) clearTimeout(previewTimer.current);
-      previewTimer.current = null;
-      services.engine.stopPreview();
-      setPreviewingPresetId(null);
+      if (event.key !== "Escape" || !(previewingPresetId || liveAuditionPendingId || liveAuditionActiveId)) return;
+      stopPresetAudition();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [previewingPresetId, services]);
+  }, [previewingPresetId, liveAuditionPendingId, liveAuditionActiveId, stopPresetAudition]);
 
   // Quota/private-browsing failures must surface in the UI instead of dying
   // as unhandled rejections behind a `void`ed promise.
@@ -104,17 +165,22 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
 
   const base = all.filter((preset) => {
     const metadata = getPresetMetadata(preset);
-    if (genre !== "all" && preset.genre !== genre) return false;
-    if (mood !== "all" && !preset.mood.includes(mood)) return false;
+    if (
+      genre !== "all" &&
+      ![preset.genre, ...preset.tags].some((value) => value && value.toLocaleLowerCase() === genre.toLocaleLowerCase())
+    )
+      return false;
+    if (mood !== "all" && !preset.mood.some((value) => value.toLocaleLowerCase() === mood.toLocaleLowerCase()))
+      return false;
     if (useCase !== "all" && metadata.useCase !== useCase) return false;
     if (energy !== "all" && metadata.energy !== energy) return false;
     if (scope === "fav" && !library.favoritePresets.includes(preset.id)) return false;
     if (scope === "recent" && !library.recentPresets.includes(preset.id)) return false;
     if (query.trim().length > 0) {
-      const q = query.trim().toLowerCase();
+      const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
       const haystack =
         `${preset.name} ${preset.tags.join(" ")} ${preset.genre ?? ""} ${preset.mood.join(" ")} ${metadata.useCase} ${metadata.energy} ${metadata.source}`.toLowerCase();
-      if (!haystack.includes(q)) return false;
+      if (!terms.every((term) => haystack.includes(term))) return false;
     }
     return true;
   });
@@ -122,39 +188,153 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   // to the current patch; a similarity chip is rendered next to each row.
   const ranked = scope === "similar" ? rankSimilarPresets(base, track, 24) : null;
   const similarityOf = new Map(ranked?.map((r) => [r.preset.id, r.similarity]) ?? []);
-  const filtered = ranked ? ranked.map((r) => r.preset) : base;
+  const fitOrdered = rankByProjectSoundFit(
+    ranked ? ranked.map((result) => result.preset) : base,
+    (preset) => {
+      const metadata = getPresetMetadata(preset);
+      return {
+        genres: [preset.genre ?? "", ...preset.tags],
+        moods: preset.mood,
+        bpmRange: metadata.bpmRange,
+      };
+    },
+    fitContext,
+  );
+  const filtered = fitOrdered;
 
   const current = all.find((p) => p.id === track.presetId) ?? null;
-  const activeFilterCount =
-    (useCase !== "all" ? 1 : 0) + (energy !== "all" ? 1 : 0) + (genre !== "all" ? 1 : 0) + (mood !== "all" ? 1 : 0);
+  const activeFilterCount = (useCase !== "all" ? 1 : 0) + (energy !== "all" ? 1 : 0);
 
-  const apply = (preset: InstrumentPreset) => {
-    if (previewTimer.current) clearTimeout(previewTimer.current);
-    previewTimer.current = null;
-    services.engine.stopPreview();
-    setPreviewingPresetId(null);
-    // Pack presets (real piano): fetch the samples BEFORE the command —
-    // an apply with unloaded zones would leave the sampler silent.
-    const packLoad =
-      (preset.velocityLayers?.some((l) => isPianoPackSample(l.sampleId)) ?? false)
-        ? ensurePianoPackLoaded(services.bank, [...new Set(preset.velocityLayers?.map((l) => l.sampleId ?? "") ?? [])])
-        : Promise.resolve();
-    void packLoad;
-    services.store.execute(applyInstrumentPreset(doc, track.id, preset));
-    void guard(async () => {
-      await packLoad;
-      await services.library.recordPreset(preset.id);
-    });
+  const apply = async (preset: InstrumentPreset) => {
+    stopPresetAudition();
+    const request = auditionRequest.current;
+    const sourceDoc = services.store.getDoc();
+    try {
+      await loadPresetSamples(preset);
+      if (request !== auditionRequest.current || sourceDoc !== services.store.getDoc()) return;
+      services.store.execute(applyInstrumentPreset(sourceDoc, track.id, preset));
+      void guard(async () => {
+        await services.library.recordPreset(preset.id);
+      });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Could not load preset samples");
+    }
   };
 
-  const preview = (preset: InstrumentPreset) => {
-    if (previewTimer.current) clearTimeout(previewTimer.current);
-    services.engine.previewInstrumentPreset(track.id, preset);
-    setPreviewingPresetId(preset.id);
-    previewTimer.current = setTimeout(() => {
-      previewTimer.current = null;
-      setPreviewingPresetId((active) => (active === preset.id ? null : active));
-    }, 1_500);
+  const activateLiveAudition = (
+    preset: InstrumentPreset,
+    project: ProjectDocument,
+    request: number,
+    audioTime: number,
+  ) => {
+    const delayMs = Math.max(0, (audioTime - services.engine.currentTime) * 1000);
+    boundaryTimer.current = setTimeout(() => {
+      boundaryTimer.current = null;
+      if (request !== auditionRequest.current || !services.transport.playing) return;
+      try {
+        services.setInstrumentPresetAuditionProject(project);
+        liveAuditionMode.current = true;
+        liveRuntimeActive.current = true;
+        setLiveAuditionPendingId(null);
+        setLiveAuditionActiveId(preset.id);
+      } catch (error) {
+        stopPresetAudition();
+        setSaveError(error instanceof Error ? error.message : "Could not start preset audition");
+      }
+    }, delayMs);
+  };
+
+  const scheduleAtNextBar = (preset: InstrumentPreset, project: ProjectDocument, request: number) => {
+    const currentDoc = services.store.getDoc();
+    const barTicks = ticksPerBar(currentDoc);
+    const currentTick = Math.max(0, services.transport.position);
+    const nextBarTick = (Math.floor(currentTick / barTicks) + 1) * barTicks;
+    const scheduleLoopWrap =
+      services.transport.loopEnabled && services.transport.loopEnd > 0 && nextBarTick >= services.transport.loopEnd;
+
+    if (scheduleLoopWrap) {
+      const listen = () => {
+        let unsubscribe: (() => void) | null = null;
+        let removeWhenSubscribed = false;
+        const detach = () => {
+          if (unsubscribe) unsubscribe();
+          else removeWhenSubscribed = true;
+          if (unsubscribe && unsubscribeLoopBoundary.current === unsubscribe) unsubscribeLoopBoundary.current = null;
+        };
+        const handle = services.scheduler.subscribeLoopBoundaries((boundary) => {
+          if (request !== auditionRequest.current) return;
+          if (boundary.cancelled) {
+            detach();
+            if (services.transport.playing) listen();
+            return;
+          }
+          detach();
+          activateLiveAudition(preset, project, request, boundary.audioTime);
+        });
+        unsubscribe = handle;
+        if (removeWhenSubscribed) handle();
+        else unsubscribeLoopBoundary.current = handle;
+      };
+      listen();
+      return;
+    }
+
+    const listen = (tick: number) => {
+      let unsubscribe: (() => void) | null = null;
+      let removeWhenSubscribed = false;
+      const detach = () => {
+        if (unsubscribe) unsubscribe();
+        else removeWhenSubscribed = true;
+        if (unsubscribe && unsubscribeBoundary.current === unsubscribe) unsubscribeBoundary.current = null;
+      };
+      const handle = services.scheduler.subscribeTickBoundary(tick, (boundary) => {
+        if (request !== auditionRequest.current) return;
+        if (boundary.cancelled) {
+          detach();
+          if (services.transport.playing) {
+            const now = Math.max(0, services.transport.position);
+            listen((Math.floor(now / barTicks) + 1) * barTicks);
+          }
+          return;
+        }
+        detach();
+        activateLiveAudition(preset, project, request, boundary.audioTime);
+      });
+      unsubscribe = handle;
+      if (removeWhenSubscribed) handle();
+      else unsubscribeBoundary.current = handle;
+    };
+    listen(nextBarTick);
+  };
+
+  const preview = async (preset: InstrumentPreset) => {
+    stopPresetAudition();
+    const request = auditionRequest.current;
+    const sourceDoc = services.store.getDoc();
+    setSaveError(null);
+    liveAuditionMode.current = services.transport.playing;
+    setLiveAuditionPendingId(preset.id);
+    try {
+      await loadPresetSamples(preset);
+      if (request !== auditionRequest.current || sourceDoc !== services.store.getDoc()) return;
+      if (services.transport.playing) {
+        const project = applyInstrumentPreset(sourceDoc, track.id, preset).execute(sourceDoc);
+        scheduleAtNextBar(preset, project, request);
+      } else {
+        setLiveAuditionPendingId(null);
+        services.engine.previewInstrumentPreset(track.id, preset);
+        isolatedPreviewActive.current = true;
+        setPreviewingPresetId(preset.id);
+        previewTimer.current = setTimeout(() => {
+          previewTimer.current = null;
+          isolatedPreviewActive.current = false;
+          setPreviewingPresetId((active) => (active === preset.id ? null : active));
+        }, 1_500);
+      }
+    } catch (error) {
+      stopPresetAudition();
+      setSaveError(error instanceof Error ? error.message : "Could not load preset samples");
+    }
   };
 
   const saveCurrent = async () => {
@@ -229,18 +409,11 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
       )}
 
       <div className="preset-toolbar">
-        <input
-          className="preset-search"
-          value={query}
-          placeholder="Search presets…"
-          aria-label="Search presets"
-          onChange={(event) => setQuery(event.target.value)}
-        />
         <button
           type="button"
           className={`btn btn-small preset-filter-toggle${filtersOpen || activeFilterCount > 0 ? " active" : ""}`}
           aria-expanded={filtersOpen}
-          title="Filter by role, energy, genre and mood"
+          title="Filter by role and energy"
           onClick={() => setFiltersOpen((open) => !open)}
         >
           FILTERS{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
@@ -307,39 +480,6 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
               </button>
             ))}
           </div>
-
-          <div className="preset-chips">
-            <button
-              type="button"
-              className={`preset-chip${genre === "all" ? " active" : ""}`}
-              onClick={() => setGenre("all")}
-            >
-              ALL
-            </button>
-            {PRESET_GENRES.map((g) => (
-              <button
-                key={g}
-                type="button"
-                className={`preset-chip${genre === g ? " active" : ""}`}
-                onClick={() => setGenre(g)}
-              >
-                {g.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          <div className="preset-chips">
-            {PRESET_MOODS.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`preset-chip${mood === m ? " active" : ""}`}
-                onClick={() => setMood(mood === m ? "all" : m)}
-              >
-                {m.toUpperCase()}
-              </button>
-            ))}
-          </div>
         </>
       )}
 
@@ -347,6 +487,9 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
         {filtered.length === 0 && <div className="preset-empty">No presets match.</div>}
         {filtered.map((preset) => {
           const metadata = getPresetMetadata(preset);
+          const isPreviewing = previewingPresetId === preset.id;
+          const isLiveAuditioning = liveAuditionPendingId === preset.id || liveAuditionActiveId === preset.id;
+          const isAuditioning = isPreviewing || isLiveAuditioning;
           return (
             <div
               key={preset.id}
@@ -355,28 +498,33 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
             >
               <button
                 type="button"
-                className={`preset-preview${previewingPresetId === preset.id ? " active" : ""}`}
-                aria-label={previewingPresetId === preset.id ? `Stop preview ${preset.name}` : `Preview ${preset.name}`}
-                aria-pressed={previewingPresetId === preset.id}
-                title={previewingPresetId === preset.id ? "Stop preview" : "Preview preset"}
+                className={`preset-preview${isAuditioning ? " active" : ""}`}
+                aria-label={isAuditioning ? `Stop preview ${preset.name}` : `Preview ${preset.name}`}
+                aria-pressed={isAuditioning}
+                title={
+                  liveAuditionPendingId === preset.id
+                    ? "Loading samples and waiting for the next bar"
+                    : liveAuditionActiveId === preset.id
+                      ? "Auditioning through the track effects"
+                      : isPreviewing
+                        ? "Stop preview"
+                        : "Preview preset"
+                }
                 onClick={() => {
-                  if (previewingPresetId === preset.id) {
-                    if (previewTimer.current) clearTimeout(previewTimer.current);
-                    previewTimer.current = null;
-                    services.engine.stopPreview();
-                    setPreviewingPresetId(null);
+                  if (isAuditioning) {
+                    stopPresetAudition();
                   } else {
-                    preview(preset);
+                    void preview(preset);
                   }
                 }}
               >
-                {previewingPresetId === preset.id ? "■" : "▶"}
+                {isAuditioning ? "■" : "▶"}
               </button>
               <button
                 type="button"
                 className="preset-name"
                 aria-label={`Apply ${preset.name}`}
-                onClick={() => apply(preset)}
+                onClick={() => void apply(preset)}
                 title={`Apply ${preset.name}`}
               >
                 {preset.name}

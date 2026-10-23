@@ -165,6 +165,11 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[] | null
     }
     modelLoaded = true;
     const { vectors, rowCount } = response;
+    // N texts in, N vectors out. The worker used to filter the batch, so it
+    // could answer with FEWER rows than the texts it was given — and this
+    // client passed that short answer on as if it were complete. The caller
+    // then used it (and lost the whole reference conditioning without a word).
+    if (rowCount !== texts.length) return null;
     const dim = vectors.length / rowCount;
     if (!Number.isInteger(dim) || dim === 0) return null;
     const out: Float32Array[] = [];

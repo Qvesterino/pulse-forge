@@ -311,6 +311,148 @@ stale version, so `listIncompatible` later misclassified it.
 
 ---
 
+### 1.2b The worker-boundary wave (C11–C15)
+
+Daniel named the worker-robustness gaps of §2.3 as the next scope item, so they were
+re-audited as findings rather than left as prose. Five defects, all on the worker ↔ main-thread
+boundary, all of them confirmed by driving the real code.
+
+#### C11 — The four AI workers did not validate `event.data`, and used it inside their catch block
+
+**Boundary:** worker ↔ main thread · **The two sides:** `src/ai/{ranking,audio,symbolic,semantic}`
+workers ↔ their clients
+
+**The drift.** All four took the payload as-is and used it **inside the catch block**:
+
+```ts
+const request = event.data;
+try { … } catch (error) {
+  const response = { type: request.type, requestId: request.requestId, ok: false, error };
+}
+```
+
+Two defects live in that shape:
+
+1. `event.data === null` → `handle(null)` throws, and then the **catch block throws too**
+   (reading `.type` of null). The response is never posted, so the caller waits out its whole
+   timeout — 400 ms (ranker score), 500 ms (prior run), 3 s (both loads), 20 s (audio
+   classify). The worker is not killed by the throw; it is **deafened**: it never answers, and
+   the failure is mis-attributed to the model.
+2. `handle()` treats every type it does not know as **"dispose"**. An unknown message type
+   therefore **released the loaded model** — the prior worker releases *every* kind's session —
+   and the next request answered "model not loaded". The lane then degraded to the heuristic
+   fallback with no word.
+
+The repository's own rule (AGENTS.md → defensive parsing) says every worker `onmessage` validates
+`event.data`; `src/intent/model-worker.ts` is the reference shape. A sweep of **every** worker
+in the repo (19 files) confirmed these four were the only ones missing it — `onset-detector`,
+`warp-render`, `pitch-tracker`, `ir-generator`, `ultinaAnalysisWorker`, `model-worker`,
+`stt-worker`, `reference.worker`, `vocal/analyzer-worker` and the four mastering workers all
+validate.
+
+**Fixed by** an envelope validator per worker, mirroring `model-worker.ts` — §3.9.
+
+#### C12 — Three AI clients registered no worker `error` listener
+
+**Boundary:** worker ↔ main thread · **The two sides:** `ranker-client.ts`, `prior-client.ts`,
+`audio-client.ts` ↔ their workers
+
+**The drift.** The clients listened for answers and nothing else. A worker that died — crashed
+on a module import, killed under memory pressure, or deafened by C11 — produced **no event at
+all**, so the call sat on its timeout and the answer said `"timeout"`: the model's fault, not
+the worker's.
+
+The second half was worse: a timeout counted as a failure, but a worker **error** did not (there
+was no listener to count it), so the **circuit breaker never opened on a worker that was dead
+for the whole session**. Every later request paid the full timeout again — twenty seconds per
+audio classification.
+
+The semantic client already had the right shape (`error` + `messageerror` listeners, a `fail()`
+that settles the promise, a failure that counts toward the breaker). These three now follow it.
+
+**Fixed by** the semantic client's pattern — §3.10.
+
+#### C13 — The semantic worker answered a filtered batch, and the client passed the short answer on
+
+**Boundary:** worker ↔ main thread · **The two sides:** `semantic-worker.ts` ↔
+`semantic-client.ts` ↔ `buildReferenceEmbedding`
+
+**The drift.** The worker filtered its batch before embedding:
+
+```ts
+const texts = request.texts.filter((text) => typeof text === "string" && text.trim().length > 0);
+```
+
+so a request for three texts (one of them empty) came back as **two** vectors. The client did
+not notice — it returned whatever the worker said — and the caller used the short answer as if
+it were complete.
+
+The consumer *did* notice: `buildReferenceEmbedding` checks `vectors.length !== texts.length`
+and returns null. But that is a **silent loss of the whole reference-informed conditioning**
+(labels + feature poles), not a report. The user gets a beat with no reference conditioning and
+no explanation.
+
+The contract is simple: **N texts in, N vectors out, in order.** A request that cannot be
+answered that way is a failure, not a shorter answer.
+
+**Fixed by** embedding the batch that was asked for, and asserting the count on both sides —
+§3.11.
+
+#### C14 — The reference worker posted the ANALYSIS error type in the TRANSCRIPTION lane
+
+**Boundary:** worker ↔ main thread · **The two sides:** `reference.worker.ts` ↔
+`reference-client.ts`
+
+**The drift.** The worker catches a transcription failure and posts `{ type: "REFERENCE_ERROR" }`
+— the analysis lane's type. The transcription client listens for `TRANSCRIBE_ERROR`, **a type
+the protocol union did not even declare**. So the worker's own explanation was ignored by the
+lane it was meant for, and the call waited the **full 120 s timeout** before it degraded.
+
+This one is also a finding about the **previous wave's own guard**: C2's regression test
+asserted against a hand-written `{ type: "TRANSCRIBE_ERROR" }` message — a shape the worker
+never produced — so it guarded the contract instead of the behaviour. The new test drives the
+**real worker** and reads what it actually posts.
+
+**Fixed by** giving the transcription lane its own error type — §3.12.
+
+#### C15 — The reference `jobId` was never compared, and it wrapped every 65 seconds
+
+**Boundary:** worker ↔ main thread · **The two sides:** `reference-client.ts` ↔
+`reference.worker.ts`
+
+**The drift.** Every worker answer carries the `jobId` of the request it belongs to, and the
+client compared **none** of them: the analysis lane accepted a result for any job, and the
+progress handler mirrored stages for any job. Worse, the id itself was `Date.now() & 0xffff` —
+the low 16 bits of the clock — which **wraps every 65 536 ms**, so two analyses a minute apart
+could carry the same id and even a comparison would have been ambiguous.
+
+**Honest scope note.** With one worker per call, a foreign answer was **not reachable today** —
+so this is a half-open contract rather than a reachable failure. It is fixed because the
+protocol carries a field that nothing honoured, and because the id could repeat.
+
+**Fixed by** a monotonic job id that is compared on every message — §3.12.
+
+#### C16 — The warp client's error path dropped the worker's reason and re-ran the expensive core on the main thread
+
+**Boundary:** worker ↔ main thread · **The two sides:** `warp-render.ts` ↔
+`warp-render-client.ts`
+
+**The drift.** The worker catches everything it can and posts the reason back (`{ error }`). The
+client read `event.data.channels` and, when that was absent, ran the **synchronous fallback** —
+and never looked at `event.data.error`. So:
+
+1. the worker's reason was **dropped** — the caller could not tell a failed worker from a worker
+   that never answered;
+2. the expensive phase vocoder was **re-run on the main thread** after the worker had already
+   failed on that very input. That is exactly what the client's own contract forbids ("this one
+   REJECTS on timeout instead of running the sync fallback … running the identical core on the
+   main thread would freeze the UI permanently") — the error path quietly did the thing the
+   timeout path refuses to do.
+
+**Fixed by** rejecting with the worker's own reason — §3.13.
+
+---
+
 ### 1.3 The pattern behind the findings
 
 Four of the ten findings (C1, C3, C4, C5) are the same shape: **one rule, two copies, and
@@ -345,18 +487,23 @@ Found, not fixed — each is masked today but each is a drift waiting for a call
 | Two domain crossings are not in `SCALE_BRIDGES` (`limiter.lookaheadMs`, `skrutka.lfoRate`)                           | `src/effects/registry.ts`                           | they are not tempo-scaled, so nothing detects the omission                                        |
 | Eight copies of the dB→linear conversion live in eight modules                                                       | `src/`                                              | no single owner; identical today, free to drift                                                   |
 
-### 2.3 Worker-robustness gaps on the worker boundary
+### 2.3 Worker-robustness gaps on the worker boundary — RESOLVED in the worker-boundary wave
 
-| Finding                                                                          | Where                                                                   | Consequence                                                                                                                                                        |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Four workers do not validate `event.data` before using it                        | `src/ai/**` workers                                                     | a null payload makes the catch block throw and the worker dies — against the repository's own stated invariant ("every worker `onmessage` validates `event.data`") |
-| Three clients register no worker `error` listener                                | ranker / prior / audio clients                                          | a worker that dies stalls the caller for the full timeout, and the failure is mis-attributed to the model rather than to the worker                                |
-| The semantic worker filters the batch but the client does not assert the length  | `src/ai/semantic`                                                       | a short answer is used as if it were complete                                                                                                                      |
-| The warp-render error string is dropped; the reference `jobId` is never compared | `src/audio-workers/warp-render.ts`, `src/reference/reference-client.ts` | a stale answer can be accepted; `jobId` is `Date.now() & 0xffff` and wraps every ~65 s                                                                             |
+This section listed four gaps that were real and deliberately left unchanged. Daniel named them
+as the next scope item, so they were **fixed** and re-documented as findings:
 
-These are all real, and all were left unchanged: each needs its own failing-test-first
-cycle, and the wave did not have the budget to do them honestly. They are listed here so
-they are not lost.
+| Finding (as it was listed here)                                       | Now                                                                                |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Four workers do not validate `event.data` before using it             | **C11** — fixed (§3.9). The sweep also proved they were the only four of 19        |
+| Three clients register no worker `error` listener                      | **C12** — fixed (§3.10)                                                            |
+| The semantic worker filters the batch but the client does not assert it | **C13** — fixed (§3.11)                                                            |
+| The warp-render error string is dropped; the reference `jobId` is never compared | **C16** and **C15** — fixed (§3.13, §3.12)                            |
+
+The worker-boundary wave added two findings the section had not seen: **C14** (the reference
+worker's transcription lane posted the analysis lane's error type — a defect the previous wave's
+own guard could not see) and **C15** (the `jobId` was never compared and wrapped every 65 s).
+
+The other sections of this chapter are unchanged.
 
 ### 2.4 The AI bridge's volume ceiling exceeds the mixer's
 

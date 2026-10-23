@@ -98,7 +98,10 @@ describe("reference worker lifecycle", () => {
     const promise = analyzeReferenceAsync({ mono: pcm(), metadata: metadata() });
     const worker = FakeWorker.instances[0]!;
 
-    worker.emit("message", { data: { type: "REFERENCE_RESULT", payload: sentinel } });
+    // The worker echoes the job id of the request it answers — the client
+    // checks it, so a reply for another job is not accepted.
+    const { jobId } = worker.posted[0] as { jobId: number };
+    worker.emit("message", { data: { type: "REFERENCE_RESULT", jobId, payload: sentinel } });
     await expect(promise).resolves.toBe(sentinel);
 
     await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);

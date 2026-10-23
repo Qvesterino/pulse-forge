@@ -39,6 +39,7 @@ export interface TranscribeWorkerRequest {
 export type ReferenceWorkerResponse =
   | { type: "PROGRESS_STAGE"; jobId: number; stage: ReferenceStage }
   | { type: "TRANSCRIBE_RESULT"; jobId: number; payload: ReturnType<typeof transcribeTrack> }
+  | { type: "TRANSCRIBE_ERROR"; jobId: number; message: string }
   | { type: "REFERENCE_RESULT"; jobId: number; payload: ReturnType<typeof analyzeReference> }
   | { type: "REFERENCE_ERROR"; jobId: number; message: string };
 
@@ -72,8 +73,13 @@ if (dedicated) {
           payload,
         } satisfies ReferenceWorkerResponse);
       } catch (error) {
+        // The transcription lane reports with the TRANSCRIPTION error type.
+        // It used to post the ANALYSIS type (REFERENCE_ERROR), which the
+        // transcription client does not listen for — so the worker's own
+        // explanation was ignored by the lane it was meant for, and the call
+        // waited out the full 120 s timeout before it degraded.
         dedicated.postMessage({
-          type: "REFERENCE_ERROR",
+          type: "TRANSCRIBE_ERROR",
           jobId: data.jobId,
           message: error instanceof Error ? error.message : "Unknown transcription failure.",
         } satisfies ReferenceWorkerResponse);

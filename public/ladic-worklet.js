@@ -157,6 +157,10 @@
           }
           break;
         case 1:
+          if (!gate) {
+            op.stage = 3;
+            break;
+          }
           op.env += (sus - op.env) / Math.max(1, dec * sr * 0.25);
           if (op.env <= sus + 1e-3 || op.env >= 1) {
             op.env = sus;
