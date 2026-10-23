@@ -56,6 +56,7 @@ import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
+import { detectCorrections, boundCorrections, type AssistProposedParam } from "./master-assistant-corrections";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
 import { stemMasteringPlan, stemRoleOf, type StemRole } from "./stem-mastering";
 import { iterateTowardTarget, isConverged, type IterateMeasurement } from "./master-iterate";
@@ -10732,6 +10733,19 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
     // REFERENCE MASTERING: when the caller supplies a reference measurement,
     // the plan moves toward the measured DIFFERENCE (F2 §2.2 — the
     // reference's absolute shape is never the target).
+    // LEARNING LOOP: detect corrections from the PREVIOUS assist proposal.
+    // Any param where the current doc value ≠ the previously proposed value
+    // means the user (or a later op) corrected it — that delta is training data.
+    const prevProposals = masterCorrectionProposals.get(ids.join(","));
+    if (prevProposals && prevProposals.length > 0) {
+      const corrections = detectCorrections(prevProposals, doc);
+      if (corrections.length > 0) {
+        for (const c of corrections) {
+          lines.push(`correction: ${c.device}.${c.paramId} proposed ${c.proposedValue.toFixed(2)} → actual ${c.actualValue.toFixed(2)}`);
+        }
+      }
+      masterCorrectionProposals.delete(ids.join(","));
+    }
     const referenceRaw = record.reference;
     const referenceRequested = referenceRaw !== undefined && referenceRaw !== null;
     const referenceIn =
@@ -10854,6 +10868,20 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       };
     }
     ctx.execute(snapshot("mcpMasterAssist", "MCP: master assistant plan", doc, next));
+    // LEARNING LOOP: capture the proposed values for correction detection
+    // on the NEXT assist call. If the user changes a param in between,
+    // the delta becomes a training data point at the next op:assist.
+    const proposals: AssistProposedParam[] = [];
+    for (const step of plan) {
+      for (const trackId of ids) {
+        const track = next.tracks.find((t) => t.id === trackId);
+        const instance = track?.effects.find((fx) => fx.type === step.device);
+        if (instance && track) {
+          proposals.push({ trackId: track.id, device: step.device, paramId: step.param, proposedValue: step.value });
+        }
+      }
+    }
+    if (proposals.length > 0) masterCorrectionProposals.set(ids.join(","), boundCorrections(proposals));
     return {
       text: `master assistant applied ${appliedCount} setting change(s), one undo step:\n${lines.join("\n")}\nmeasure again (kyx_loudness) and fine-land with op:trim`,
       mutated: true,

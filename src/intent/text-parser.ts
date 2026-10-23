@@ -370,10 +370,12 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // A groove only ever plays its own metre, so a lane that lives in 7/8 or
   // 5/8 is a request for that metre: "seven eight house" asks for a
   // seven-eight bar, not a four-four one with an odd name on it.
-  [/\bseven ?eight\b/, "seven8"],
-  [/\bfive ?eight\b/, "five8"],
+  // The MORE SPECIFIC phrase comes first — "balkan seven eight" is the
+  // Balkan lane, not the plain one.
   [/\bbalkan ?seven ?eight\b/, "balkan78"],
   [/\bbalkan ?five ?eight\b/, "balkan58"],
+  [/\bseven ?eight\b/, "seven8"],
+  [/\bfive ?eight\b/, "five8"],
   // ── Chiptune school tree — BEFORE every generic entry (a chip ask must
   // not be stolen by "pop" / "game" / "hard"). ─────────────────────────────
   [/\bnintendo\b|\bnes era\b|\boverworld\b|\bplatformer\b/, "nintendo"],

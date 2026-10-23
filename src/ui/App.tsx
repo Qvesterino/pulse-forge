@@ -917,6 +917,41 @@ export function App({
           for (const c of clipsToDelete) {
             newDoc = deleteArrangementClip(newDoc, c.id).execute(newDoc);
           }
+          // Tick-addressed clips wholly inside the range (ADR 0044/0045):
+          // deleted like any other content; straddling clips stay (they
+          // extend beyond the range the user pointed at); locked clips are
+          // skipped — the Delete sweep never fights an explicit lock.
+          const tickLane = <T extends { id: string; locked?: boolean }>(lane: T[] | undefined): T[] | undefined =>
+            lane?.filter((clip) => {
+              if (clip.locked) return true;
+              return !(clip.startTick >= from && clip.startTick + (clip as { lengthTicks: number }).lengthTicks <= to);
+            });
+          const nextMidiClips = tickLane(newDoc.arrangement.midiClips);
+          const nextAutomationClips = tickLane(newDoc.arrangement.automationClips);
+          if (
+            nextMidiClips !== newDoc.arrangement.midiClips ||
+            nextAutomationClips !== newDoc.arrangement.automationClips
+          ) {
+            const removedMidiIds = new Set(
+              (newDoc.arrangement.midiClips ?? []).filter((c) => !nextMidiClips?.includes(c)).map((c) => c.id),
+            );
+            const removedAutomationIds = new Set(
+              (newDoc.arrangement.automationClips ?? [])
+                .filter((c) => !nextAutomationClips?.includes(c))
+                .map((c) => c.id),
+            );
+            newDoc = {
+              ...newDoc,
+              arrangement: {
+                ...newDoc.arrangement,
+                midiClips: nextMidiClips,
+                automationClips: nextAutomationClips,
+              },
+              markers:
+                unlinkMarkersOfClips(newDoc.markers, new Set([...removedMidiIds, ...removedAutomationIds])) ??
+                newDoc.markers,
+            };
+          }
           // Notes and steps in active pattern within timeRange
           const pattern = newDoc.patterns.find((p) => p.id === newDoc.activePatternId);
           if (pattern) {

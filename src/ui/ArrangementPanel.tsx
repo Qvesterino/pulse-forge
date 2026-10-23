@@ -3101,12 +3101,23 @@ export function ArrangementPanel() {
             ? { ...c, startBar: Math.max(0, quantizeAudioBar(c.startBar + flooredDelta, ticksPerBar(beforeDoc))) }
             : c,
         );
+        // Tick-addressed lanes ride the same delta in TICKS: midi/automation
+        // clips are bar-quantized here (the drag is whole-bar), which keeps
+        // them tick-exact — the command twin applies the identical math.
+        const barUnit = ticksPerBar(beforeDoc);
+        const deltaTicks = Math.round(flooredDelta * barUnit);
+        const rippleTickLane = <T extends { startTick: number }>(lane: readonly T[] | undefined): T[] | undefined =>
+          (lane ?? []).map((c) =>
+            c.startTick >= minStart * barUnit ? { ...c, startTick: Math.max(0, c.startTick + deltaTicks) } : c,
+          );
         const nextDoc: ProjectDocument = {
           ...beforeDoc,
           arrangement: {
             ...beforeDoc.arrangement,
             clips,
             audioClips: rippleAudio,
+            midiClips: rippleTickLane(beforeDoc.arrangement.midiClips),
+            automationClips: rippleTickLane(beforeDoc.arrangement.automationClips),
             transitions: transitionsForClips(beforeDoc, clips),
           },
         };

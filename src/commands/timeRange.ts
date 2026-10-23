@@ -9,9 +9,11 @@
  */
 import type { Command } from "./types";
 import type {
+  ArrangementAutomationClip,
   ArrangementClip,
   AudioClip,
   DrumTrack,
+  MidiClip,
   NoteEvent,
   Pattern,
   ProjectDocument,
@@ -32,6 +34,8 @@ import { snapshot } from "./core";
 import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
 import { addAudioClip } from "./audioClips";
 import { splitAudioClipAtTickWithMinimumFragment } from "./clipEditing";
+import { splitAutomationClipAtTick } from "./automationClips";
+import { splitMidiClipAtTick } from "./midiClips";
 import {
   automationLaneOf,
   audioLaneOf,
@@ -213,7 +217,9 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
     const { from: f, to: t } = tickClipSpan(clip);
     if (f >= from && t <= to) return "copy";
     if ((f < from && t > from) || (f < to && t > to)) {
-      throw new Error(`Cannot duplicate a time range when a ${kind} clip crosses its boundary; adjust the range first.`);
+      throw new Error(
+        `Cannot duplicate a time range when a ${kind} clip crosses its boundary; adjust the range first.`,
+      );
     }
     return f >= to ? "shift" : "keep";
   };
@@ -221,10 +227,7 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   const nextMidiClips = midiClips.flatMap((clip) => {
     switch (tickClipPolicy(clip, "MIDI")) {
       case "copy":
-        return [
-          { ...clip, id: uid("midiClip"), startTick: clip.startTick + delta },
-          clip,
-        ];
+        return [{ ...clip, id: uid("midiClip"), startTick: clip.startTick + delta }, clip];
       case "shift":
         return [{ ...clip, startTick: clip.startTick + delta }];
       default:
@@ -614,6 +617,90 @@ function splitAudioClipsForConsolidationRange(
   return { project, removedClipIds };
 }
 
+/**
+ * W1-adjacent correctness pass: MIDI + arrangement automation clips are
+ * baked into the consolidated print (the render plays them), so their
+ * in-range spans must NOT survive next to it (double playback). Straddlers
+ * split at the exact boundaries (the split commands carry the phase math);
+ * wholly-inside spans are removed; MUTED spans are KEPT — a muted clip is
+ * not in the print, and deleting content the user never heard is loss, not
+ * consolidation (a deliberate deviation from the audio lane above, which
+ * removes muted fragments too). Locked clips refuse deletion/splitting at
+ * the command layer — surfaced here as a clear throw instead of a mystery.
+ */
+function splitTickClipsForConsolidationRange(
+  doc: ProjectDocument,
+  fromTick: number,
+  toTick: number,
+): {
+  project: ProjectDocument;
+  removedClipIds: Set<string>;
+} {
+  let project = doc;
+  const removedClipIds = new Set<string>();
+
+  const overlap = (f: number, t: number) => f < toTick && t > fromTick;
+
+  const splitOnce = (kind: "midi" | "automation", clipId: string, tick: number): string[] => {
+    const priorIds = new Set(
+      kind === "midi"
+        ? midiLaneOf(project.arrangement).map((c) => c.id)
+        : automationLaneOf(project.arrangement).map((c) => c.id),
+    );
+    project =
+      kind === "midi"
+        ? splitMidiClipAtTick(project, clipId, tick).execute(project)
+        : splitAutomationClipAtTick(project, clipId, tick).execute(project);
+    const lane = kind === "midi" ? midiLaneOf(project.arrangement) : automationLaneOf(project.arrangement);
+    return lane.map((c) => c.id).filter((id) => !priorIds.has(id));
+  };
+
+  for (const kind of ["midi", "automation"] as const) {
+    const lane = kind === "midi" ? midiLaneOf(project.arrangement) : automationLaneOf(project.arrangement);
+    for (const clip of lane) {
+      if (clip.locked) {
+        if (overlap(tickClipSpan(clip).from, tickClipSpan(clip).to)) {
+          throw new Error(
+            `Unlock ${kind === "midi" ? "MIDI" : "automation"} clip ${clip.id} before consolidating its range.`,
+          );
+        }
+        continue;
+      }
+      if (clip.muted) continue; // muted content is not in the print — keep
+      const { from: f, to: t } = tickClipSpan(clip);
+      if (!overlap(f, t)) continue;
+
+      let rangeClipId = clip.id;
+      let rangeFrom = f;
+      let rangeTo = t;
+      if (f < fromTick) {
+        const newIds = splitOnce(kind, rangeClipId, fromTick);
+        const laneNow = kind === "midi" ? midiLaneOf(project.arrangement) : automationLaneOf(project.arrangement);
+        const fragment = laneNow.find((c) => newIds.includes(c.id) && Math.abs(tickClipSpan(c).from - fromTick) < 1e-6);
+        if (!fragment) throw new Error(`Could not preserve the left ${kind} fragment for clip ${clip.id}.`);
+        rangeClipId = fragment.id;
+        rangeFrom = fromTick;
+      }
+      if (rangeTo > toTick) {
+        const newIds = splitOnce(kind, rangeClipId, toTick);
+        const laneNow = kind === "midi" ? midiLaneOf(project.arrangement) : automationLaneOf(project.arrangement);
+        const fragment = laneNow.find(
+          (c) =>
+            newIds.includes(c.id) &&
+            tickClipSpan(c).from >= fromTick - 1e-6 &&
+            tickClipSpan(c).to <= toTick + 1e-6 &&
+            tickClipSpan(c).to > fromTick,
+        );
+        if (!fragment) throw new Error(`Could not isolate the selected ${kind} range for clip ${clip.id}.`);
+        rangeClipId = fragment.id;
+        rangeTo = toTick;
+      }
+      if (rangeFrom >= fromTick - 1e-6 && rangeTo <= toTick + 1e-6) removedClipIds.add(rangeClipId);
+    }
+  }
+  return { project, removedClipIds };
+}
+
 export function consolidateTimeRangeToAudio(
   doc: ProjectDocument,
   fromTick: number,
@@ -652,8 +739,11 @@ export function consolidateTimeRangeToAudio(
   const sourceAudio = audioLaneOf(doc.arrangement).filter((clip) => overlaps(clip.startBar, clip.lengthBars));
 
   const splitAudio = splitAudioClipsForConsolidationRange(doc, sourceAudio, from, to, sourceDurationsByBufferId);
+  // W1: midi/automation clips ride the same consolidation — in-range spans
+  // are baked into the print and removed; muted spans survive; locked throw.
+  const tickSplit = splitTickClipsForConsolidationRange(splitAudio.project, from, to);
 
-  const groupCount = splitAudio.project.tracks.filter((track) => track.kind === "group").length;
+  const groupCount = tickSplit.project.tracks.filter((track) => track.kind === "group").length;
   const printTrack = {
     ...createGroupTrackModel(`Consolidated ${groupCount + 1}`),
     gain: 1,
@@ -664,8 +754,8 @@ export function consolidateTimeRangeToAudio(
     sends: {},
   };
   const withPrintTrack: ProjectDocument = {
-    ...splitAudio.project,
-    tracks: [...splitAudio.project.tracks, printTrack],
+    ...tickSplit.project,
+    tracks: [...tickSplit.project.tracks, printTrack],
   };
   const withPrintClip = addAudioClip(withPrintTrack, printTrack.id, bufferId, fromBar, renderedLengthBars, {
     gain: 1,
@@ -754,6 +844,12 @@ export function consolidateTimeRangeToAudio(
   const nextAudioClips = audioLaneOf(withPrintClip.arrangement)
     .filter((clip) => !splitAudio.removedClipIds.has(clip.id))
     .sort((a, b) => a.startBar - b.startBar);
+  // W1: in-range midi/automation spans are baked into the print and removed;
+  // muted spans survive the pass (they are not in the print).
+  const nextMidiClips = midiLaneOf(withPrintClip.arrangement).filter((clip) => !tickSplit.removedClipIds.has(clip.id));
+  const nextAutomationClips = automationLaneOf(withPrintClip.arrangement).filter(
+    (clip) => !tickSplit.removedClipIds.has(clip.id),
+  );
   const liveTakeGroupIds = new Set(nextAudioClips.flatMap((clip) => (clip.takeGroupId ? [clip.takeGroupId] : [])));
   const takeGroups = doc.arrangement.takeGroups?.filter((group) => liveTakeGroupIds.has(group.id));
   const transitions = sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips);
@@ -766,6 +862,8 @@ export function consolidateTimeRangeToAudio(
       ...withPrintClip.arrangement,
       clips: nextClips,
       audioClips: nextAudioClips,
+      midiClips: nextMidiClips,
+      automationClips: nextAutomationClips,
       ...(takeGroups ? { takeGroups } : {}),
       ...(transitions ? { transitions } : { transitions: undefined }),
     },

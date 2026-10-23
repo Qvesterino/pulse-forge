@@ -130,3 +130,18 @@ export function withAutomationClips(doc: ProjectDocument, clips: ArrangementAuto
     arrangement: { ...doc.arrangement, automationClips: [...clips].sort((a, b) => a.startTick - b.startTick) },
   };
 }
+
+/** Ripple-shift a tick-addressed lane (MIDI or arrangement automation):
+ * clips starting at/after the threshold tick move by deltaTicks (clamped
+ * ≥ 0); a clip STRADDLING the threshold stays put — the layering contract
+ * (ADR 0025). Mirror of the audio lane's rippleShiftAudioClips. */
+export function rippleShiftTickClips<T extends { startTick: number }>(
+  clips: readonly T[] | undefined,
+  thresholdTick: number,
+  deltaTicks: number,
+): T[] | undefined {
+  if (!clips || clips.length === 0) return undefined;
+  return clips.map((c) =>
+    c.startTick >= thresholdTick ? { ...c, startTick: Math.max(0, c.startTick + deltaTicks) } : c,
+  );
+}

@@ -41,6 +41,7 @@ import { IRREGULAR_GROOVES } from "../src/ai/grooves/irregular";
 import { aiMeterFor, groupStarts } from "../src/ai/meter";
 import { projectRowToMeter } from "../src/ai/groove-view";
 import { inferPadRole } from "../src/ai/pad-roles";
+import { parseIntentText } from "../src/intent/text-parser";
 import type { TimeSignature } from "../src/project-model/types";
 
 const FOUR_FOUR: TimeSignature = { numerator: 4, denominator: 4 };
@@ -133,7 +134,9 @@ describe("ADR 0057 Stage 2j — the library HAS irregular material", () => {
       const sig = groove.timeSignature;
       expect(sig, `${groove.id} declares its metre`).toBeDefined();
       expect(GROUPINGS[`${sig!.numerator}/${sig!.denominator}`], `${groove.id} metre is declared`).toBeDefined();
-      expect(groove.timeSignature?.numerator % 3, `${groove.id} is an irregular metre`).not.toBe(0);
+      // And it is not the default metre: a 4/4 groove does not belong to the
+      // irregular half (the GROUPINGS map above is the odd metres only).
+      expect(sig!.numerator === 4 && sig!.denominator === 4, `${groove.id} is not 4/4`).toBe(false);
     }
   });
 
@@ -259,6 +262,34 @@ describe("ADR 0057 Stage 2j — a groove only plays its own metre", () => {
     expect(resolveGrooveSeeded("house", undefined, "measure", null, null, aiMeterFor(FOUR_FOUR)).timeSignature).toBe(
       undefined,
     );
+  });
+});
+
+describe("ADR 0057 Stage 2j — the lanes are reachable by TEXT", () => {
+  it("naming the lane names the metre with it", () => {
+    const seven = parseIntentText("seven eight house beat").input;
+    expect(seven.style).toBe("seven8");
+    expect(seven.timeSignature).toEqual({ numerator: 7, denominator: 8 });
+
+    const five = parseIntentText("five eight house beat").input;
+    expect(five.style).toBe("five8");
+    expect(five.timeSignature).toEqual({ numerator: 5, denominator: 8 });
+
+    const balkan = parseIntentText("balkan seven eight eurodance beat").input;
+    expect(balkan.style).toBe("balkan78");
+    expect(balkan.timeSignature).toEqual({ numerator: 7, denominator: 8 });
+  });
+
+  it("the lane's metre does not override an explicit metre phrase", () => {
+    const explicit = parseIntentText("seven eight house beat in 5/4").input;
+    expect(explicit.timeSignature).toEqual({ numerator: 5, denominator: 4 });
+  });
+
+  it("the metre phrase alone reaches the irregular library", () => {
+    // "in 7/8" is the other way in: no lane, but the metre — and the metre is
+    // what makes the irregular grooves candidates.
+    const parsed = parseIntentText("make me a house beat in 7/8").input;
+    expect(parsed.timeSignature).toEqual({ numerator: 7, denominator: 8 });
   });
 });
 

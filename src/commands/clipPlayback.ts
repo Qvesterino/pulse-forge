@@ -10,6 +10,7 @@
 import type { Command } from "./types";
 import type { AudioClip, IntensityPoint, ProjectDocument } from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_BARS, ticksPerBar } from "../project-model/schema";
+import { rippleShiftTickClips } from "../project-model/timeline";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { assertClipEditable } from "./clipGroups";
@@ -160,6 +161,16 @@ export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, 
       ...doc.arrangement,
       clips,
       audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, clip.startBar + clip.lengthBars, delta),
+      midiClips: rippleShiftTickClips(
+        doc.arrangement.midiClips,
+        (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
+        delta * ticksPerBar(doc),
+      ),
+      automationClips: rippleShiftTickClips(
+        doc.arrangement.automationClips,
+        (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
+        delta * ticksPerBar(doc),
+      ),
       transitions: transitionsForClips(doc, clips),
     },
   };
@@ -194,6 +205,16 @@ export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string
       ...doc.arrangement,
       clips,
       audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, oldEnd, deltaBars),
+      midiClips: rippleShiftTickClips(
+        doc.arrangement.midiClips,
+        oldEnd * ticksPerBar(doc),
+        deltaBars * ticksPerBar(doc),
+      ),
+      automationClips: rippleShiftTickClips(
+        doc.arrangement.automationClips,
+        oldEnd * ticksPerBar(doc),
+        deltaBars * ticksPerBar(doc),
+      ),
       transitions: transitionsForClips(doc, clips),
     },
   };
@@ -233,6 +254,16 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
       ...doc.arrangement,
       clips,
       audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, oldEnd, -clip.lengthBars),
+      midiClips: rippleShiftTickClips(
+        doc.arrangement.midiClips,
+        oldEnd * ticksPerBar(doc),
+        -clip.lengthBars * ticksPerBar(doc),
+      ),
+      automationClips: rippleShiftTickClips(
+        doc.arrangement.automationClips,
+        oldEnd * ticksPerBar(doc),
+        -clip.lengthBars * ticksPerBar(doc),
+      ),
       transitions: transitionsForClips(doc, clips),
     },
   };

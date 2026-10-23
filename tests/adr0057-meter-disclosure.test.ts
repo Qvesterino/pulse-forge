@@ -366,6 +366,8 @@ const METER_NON_SURFACES: Record<string, string> = {
     "builds the intent's timeSignature OP — the project is changed by the intent path, which discloses",
   "src/intent/normalize.ts": "normalises the REQUEST's metre",
   "src/ai/meter.ts": "the AI layer's metre truth — a helper over a TimeSignature, not over a project",
+  "src/ai/grooves/irregular.ts":
+    "the grooves' OWN metre — a groove declares the metre it was WRITTEN in; no project is changed here",
   "src/assist/pipeline.ts": "normalises a TimeSignature value for the assist layer",
   "src/collab/YDocAdapter.ts": "mirrors the shared document's metre — it does not choose one",
   "src/integrations/audiotool-nexus/tempo.ts": "the Audiotool SDK's export config — it does not change the project",
