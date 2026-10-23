@@ -1074,7 +1074,15 @@ const TARGETED_KNOB_DELTA: Partial<Record<EffectType, number>> = {
  */
 export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): ReturnType<typeof snapshot> {
   const knob = EFFECT_KNOB[intent.effectType];
-  if (!knob) {
+  // The knob is needed only where the knob is the thing that MOVES: a
+  // "more"/"less" ask turns it, an absolute "set" places it. "remove" takes
+  // the instance OUT and a semantic move carries its own absolute params -
+  // neither needs a knob. Requiring one up front made the type-level remove
+  // unreachable for the 43 effect types that have no primary knob (eq,
+  // saturation, ...), and the UI's intent bar swallowed the thrown error, so
+  // the user was left with nothing happening at all.
+  const turnsKnob = intent.direction !== "remove" && !intent.move;
+  if (turnsKnob && !knob) {
     throw new Error(`no knob mapped for effect "${intent.effectType}" — intent understood, effect unsupported`);
   }
   const scale = intent.degree ? calibrateKnobScale(intent.degree.value) : AMOUNT_SCALE[intent.amount];
@@ -1127,6 +1135,10 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
       }
       continue;
     }
+    // Only a knob-turning ask reaches this line (the remove branch and the
+    // semantic-move branch both continued above), so the knob is defined
+    // here - this narrows the type and keeps the guard local.
+    if (!knob) continue;
     const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
     if (!knobDef) continue;
     if (intent.direction === "set") {

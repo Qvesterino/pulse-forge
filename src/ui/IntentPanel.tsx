@@ -4608,10 +4608,18 @@ export function IntentPanel() {
       } else if (route.kind === "effectIntent") {
         // D1 v2a: targeted effect × target × direction
         stopAudition();
-        const command = applyEffectIntent(doc, route.intent);
-        services.store.execute(command);
-        const readback = effectReadback(doc, services.store.getDoc(), route.intent);
-        setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
+        // The applier THROWS on an unsupported ask (no knob mapped, no target,
+        // nothing changed). Without this catch the error escaped the click
+        // handler: no status, no error message, NOTHING happened on screen -
+        // a silent no-op the user could not read as a failure.
+        try {
+          const command = applyEffectIntent(doc, route.intent);
+          services.store.execute(command);
+          const readback = effectReadback(doc, services.store.getDoc(), route.intent);
+          setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } else if (route.kind === "sendIntent") {
         // "more reverb send on the lead" — send level per the matching return
         stopAudition();
