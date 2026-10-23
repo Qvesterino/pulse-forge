@@ -96,8 +96,13 @@ Standing rules recorded by this amendment:
    the print → not deletable by a consolidation). The audio lane's existing
    remove-muted behavior is a documented latent inconsistency, unchanged.
 3. **A fifth clip kind must extend the lane seams and every structural
-   operation** — the seam module is the checklist. (A declarative
-   clip-kind registry remains the future shape if a fifth kind lands.)
+   operation** — the seam module is the checklist. The two tick-addressed
+   kinds are now dispatched through a shared `TickLaneSpec` registry
+   (commands/timeRange.ts + `rippleShiftTickLanes` in
+   commands/clipPlayback.ts): a policy change lands in one place. A
+   declarative registry spanning ALL kinds (incl. scene/audio) stays the
+   future shape — scene and audio lanes are deliberately NOT unified
+   (their natures differ, see the Context above).
 4. `consolidateTimeRange` (the legacy musical-only variant) is documented
    as NOT consuming midi/automation clips — a known limitation, not a
    sanctioned behavior.
