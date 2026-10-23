@@ -12,7 +12,10 @@ import {
  * the AI's suggestion. Privacy: only param ids and numbers, no prompts.
  */
 
-function track(id: string, effects: Array<{ id: string; type: string; params: Record<string, number> }>) {
+function track(
+  id: string,
+  effects: Array<{ id: string; type: string; params: Record<string, number>; outputTrimDb?: number }>,
+) {
   return { id, name: id, effects };
 }
 
