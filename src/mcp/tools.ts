@@ -10741,7 +10741,9 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       const corrections = detectCorrections(prevProposals, doc);
       if (corrections.length > 0) {
         for (const c of corrections) {
-          lines.push(`correction: ${c.device}.${c.paramId} proposed ${c.proposedValue.toFixed(2)} → actual ${c.actualValue.toFixed(2)}`);
+          lines.push(
+            `correction: ${c.device}.${c.paramId} proposed ${c.proposedValue.toFixed(2)} → actual ${c.actualValue.toFixed(2)}`,
+          );
         }
       }
       masterCorrectionProposals.delete(ids.join(","));

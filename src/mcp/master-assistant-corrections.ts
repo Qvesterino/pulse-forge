@@ -37,7 +37,12 @@ export interface MasteringCorrectionEvent {
 /** Compare proposed params against the doc's actual values → corrections. */
 export function detectCorrections(
   proposed: AssistProposedParam[],
-  doc: { tracks: Array<{ id: string; effects: Array<{ id: string; type: string; params: Record<string, number>; outputTrimDb?: number }> }> },
+  doc: {
+    tracks: Array<{
+      id: string;
+      effects: Array<{ id: string; type: string; params: Record<string, number>; outputTrimDb?: number }>;
+    }>;
+  },
 ): MasteringCorrectionEvent[] {
   const corrections: MasteringCorrectionEvent[] = [];
   const now = Date.now();
