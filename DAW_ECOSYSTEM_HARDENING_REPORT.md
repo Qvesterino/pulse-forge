@@ -35,9 +35,9 @@ Three findings shaped this session's verdict:
    mutating and reports `PARTIAL_FAILURE` when the read-back disagrees
    (`src/mcp/tools.ts:9491-9520`). That is the hard part, and it is right.
 
-2. **The invariants are pinned, and the pins have teeth.** `docs/AGENT-MAP.md` §3 holds **76
+2. **The invariants are pinned, and the pins have teeth.** `docs/AGENT-MAP.md` §3 holds **77
    documented invariants**, each with the guard that protects it, and `tests/agent-map.test.ts`
-   keeps the map honest. 1193 spec files back it. The plugin-runtime containment invariant, which
+   keeps the map honest. 1203 spec files back it. The plugin-runtime containment invariant, which
    used to be checked at only 3 of its 14 call sites, is now checked at **14/14** — every one
    revert-proven by removing its guard.
 
@@ -267,7 +267,8 @@ it is in flight (§6).
 
 ### Automated (vitest / jsdom)
 
-- **1193 spec files** in `tests/`; the last complete suite run measured **13 193 → 13 376 tests**
+- **1203 spec files** in `tests/`; the last complete suite run measured **13 193 tests**
+  (13 174 passed, 19 failed across 9 files)
   over ~2014 s under heavy parallel load.
 - **This session's new coverage** (3 files, 7 cases, each revert-proven):
 
