@@ -9,11 +9,9 @@
  */
 import type { Command } from "./types";
 import type {
-  ArrangementAutomationClip,
   ArrangementClip,
   AudioClip,
   DrumTrack,
-  MidiClip,
   NoteEvent,
   Pattern,
   ProjectDocument,

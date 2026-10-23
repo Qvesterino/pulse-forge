@@ -70,3 +70,36 @@ export function detectCorrections(
 export function boundCorrections(events: MasteringCorrectionEvent[], cap = 256): MasteringCorrectionEvent[] {
   return events.length > cap ? events.slice(events.length - cap) : events;
 }
+
+/**
+ * THE LEARNING LOOP'S MEMORY — the params the LAST assist proposal asked
+ * for, keyed by the assisted track set.
+ *
+ * The next assist compares them against the document: a param whose value
+ * the user changed is a correction, and the delta is training data.
+ *
+ * Bounded on purpose. The signal is the LAST proposal per track set, so the
+ * oldest entries are the least useful ones; a long session that assisted
+ * many different track sets must not grow this without limit.
+ */
+const MAX_TRACK_SETS = 32;
+const MAX_PROPOSALS_PER_SET = 256;
+
+export const masterCorrectionProposals = new Map<string, AssistProposedParam[]>();
+
+/**
+ * Remember a proposal set for a track set, dropping the oldest one past the
+ * bound. Re-remembering a track set REPLACES its entry (the newest proposal
+ * is the one the next call compares against) and keeps it at the newest end.
+ */
+export function rememberProposals(key: string, proposals: AssistProposedParam[]): void {
+  const bounded =
+    proposals.length > MAX_PROPOSALS_PER_SET ? proposals.slice(proposals.length - MAX_PROPOSALS_PER_SET) : proposals;
+  masterCorrectionProposals.delete(key);
+  masterCorrectionProposals.set(key, bounded);
+  while (masterCorrectionProposals.size > MAX_TRACK_SETS) {
+    const oldest = masterCorrectionProposals.keys().next();
+    if (oldest.done) break;
+    masterCorrectionProposals.delete(oldest.value);
+  }
+}

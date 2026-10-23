@@ -75,6 +75,7 @@ import {
   ungroupClips,
 } from "../commands/commands";
 import type { ClipClipboard } from "../commands/commands";
+import { unlinkMarkersOfClips } from "../commands/docOps";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
@@ -921,10 +922,12 @@ export function App({
           // deleted like any other content; straddling clips stay (they
           // extend beyond the range the user pointed at); locked clips are
           // skipped — the Delete sweep never fights an explicit lock.
-          const tickLane = <T extends { id: string; locked?: boolean }>(lane: T[] | undefined): T[] | undefined =>
+          const tickLane = <T extends { id: string; locked?: boolean; startTick: number; lengthTicks: number }>(
+            lane: T[] | undefined,
+          ): T[] | undefined =>
             lane?.filter((clip) => {
               if (clip.locked) return true;
-              return !(clip.startTick >= from && clip.startTick + (clip as { lengthTicks: number }).lengthTicks <= to);
+              return !(clip.startTick >= from && clip.startTick + clip.lengthTicks <= to);
             });
           const nextMidiClips = tickLane(newDoc.arrangement.midiClips);
           const nextAutomationClips = tickLane(newDoc.arrangement.automationClips);
