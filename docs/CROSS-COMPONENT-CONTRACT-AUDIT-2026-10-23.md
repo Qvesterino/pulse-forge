@@ -553,20 +553,21 @@ The fixes were then restored and the suites re-run green.
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | New + extended suites                                 | **8 files, 50 tests passed** (plus 3 more for C10 → 9 files, 53 tests)                                  |
 | New + related existing suites                         | **35 of 37 files green, 369 passed** — the 2 failures are 5 s **timeouts** in foreign mixer files (5.2) |
-| `npx tsc --noEmit`                                    | **exit 2 — one error, in a concurrent session's in-flight file** (see below)                            |
+| `npx tsc --noEmit`                                    | **exit 0** on the final pushed tree (see below)                                                         |
 | `npx prettier --check` (every file this wave touched) | **"All matched files use Prettier code style!"**                                                        |
-| `npm run build`                                       | **fails — not on this wave's code** (see below)                                                         |
+| `npm run build`                                       | **fails on the budget step — not on this wave's code** (see below)                                      |
 | `node-gc`                                             | **ABANDONED: none**                                                                                     |
 
 **The build.** `npm run build` runs `tsc --noEmit && vite build && … && check-bundle-size.mjs`.
-Two things are red on the tree, and neither is this wave's:
+While this wave ran, **two** things were red on the tree and neither was this wave's. On the
+**final pushed tree only one is left**, the budget:
 
-1. the `tsc` step fails **only in a concurrent session's in-flight test file**
-   (the name moves as that session works — it was `tests/scene-clip-edit-matrix.test.ts`,
-   then `tests/mcp-tools.test.ts`, and at the last measurement
-   `tests/master-assistant-corrections.test.ts`; all of them theirs, none of them touched
-   by this wave). Every file this wave touched typechecks: the typecheck reports the
-   files that carry errors, and it lists **one** path, and it is not one of them;
+1. the `tsc` step was **red while this wave ran**, and the only error was in a
+   concurrent session's in-flight test file (the name moves as that session works — it
+   was `tests/scene-clip-edit-matrix.test.ts`, then `tests/mcp-tools.test.ts`, and at
+   the last measurement `tests/master-assistant-corrections.test.ts`; all of them
+   theirs, none of them touched by this wave). Its owner fixed it in `74dacc7d`, and
+   the **final pushed tree typechecks clean (`tsc` exit 0)**;
 2. the budget step reports **DAW JS 5563 KB against a 5560 KB budget** — 3 KB over.
 
 The budget overage was **measured for attribution**: the same tree was built with this
