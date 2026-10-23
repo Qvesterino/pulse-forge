@@ -32,9 +32,11 @@ import {
 } from "./mix";
 import { degreeToEffectAmount, parseDegree, type Degree, type DegreeLevel } from "./degree";
 import { calibrationFamily, physicalStep, type CalibrationFamily } from "./semantics/calibration";
+import { parseQuantity } from "./semantics/quantity";
 import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 import { PARAM_ROLES, directionForRole, type ParamRole } from "./semantics/param-registry";
+import { trackOrdinalFromText } from "./semantics/target-registry";
 
 export type { ParamRole };
 
@@ -57,8 +59,14 @@ export interface ParamIntent {
   role: ParamRole;
   paramId: string;
   targets: MixTarget[];
-  /** "set" = absolute raw value; "more"/"less" = relative in the param's own domain. */
-  mode: "set" | "more" | "less";
+  /** Explicit resolved tracks ("do the same on track three"). */
+  trackIds?: string[];
+  /** 0-based "track two" when the parser saw an ordinal but had no document. */
+  trackOrdinal?: number;
+  /** "set" = absolute raw value; "more"/"less" = relative in the param's own domain; "scale" = multiply the current value. */
+  mode: "set" | "more" | "less" | "scale";
+  /** Multiplier for mode "scale" ("half the decay" = 0.5, "twice" = 2). */
+  factor?: number;
   /** Absolute raw param value (mode "set") AFTER clamping — what will land. */
   value?: number;
   /**
@@ -250,10 +258,17 @@ export function declinedParamIntentClarification(
 }
 
 export function parseParamIntent(text: string): ParamIntent | null {
+  const intent = parseParamIntentCore(text);
+  if (!intent) return null;
+  const ordinal = trackOrdinalFromText(text);
+  return ordinal != null ? { ...intent, trackOrdinal: ordinal } : intent;
+}
+
+function parseParamIntentCore(text: string): ParamIntent | null {
   const ask = resolveParamAsk(text);
   if (!ask) return null;
   const { lower, role, effectType, paramId, targets } = ask;
-  if (targets.size === 0) return null;
+  if (targets.size === 0 && trackOrdinalFromText(text) == null) return null;
   const param = paramDefOf(effectType, paramId);
   if (!param) return null;
 
@@ -270,7 +285,71 @@ export function parseParamIntent(text: string): ParamIntent | null {
   const bareQ =
     role === "q" ? /\b(?:q|sharpness|rezonancia)\b\s*(?:na|to|at|=)?\s*(-?\d+(?:[.,]\d+)?)\b/.exec(lower) : null;
   const setCue = /\b(?:set|nastav|daj)\b/.test(lower);
-  if (setCue || unitValue || bareDb || bareQ) {
+  const quantity = parseQuantity(lower);
+  const directionVerb =
+    /\b(?:by|o|lower|raise|reduce|boost|increase|decrease|down|up|higher|less|more|longer|shorter|faster|slower|brighter|darker|wetter|drier|wider|narrower|vyssie|nizsie|viac|menej)\b/.test(
+      lower,
+    );
+  const relativeDb = quantity?.kind === "db" && !quantity.absolute && !setCue && directionVerb;
+  const relativePercent = quantity?.kind === "percent" && !quantity.absolute && !setCue && directionVerb;
+
+  // SCALE first: "half the decay" is a multiplication of the CURRENT value,
+  // not a range fraction. It is legal only when the producer did not say
+  // "set" (a set with half is malformed and falls through to decline).
+  if (quantity?.kind === "factor" && !setCue) {
+    detected.push(`×${quantity.value}`);
+    return {
+      effectType,
+      role,
+      paramId,
+      targets: [...targets],
+      mode: "scale",
+      factor: quantity.value,
+      amount: "medium",
+      detected,
+    };
+  }
+
+  // EXPLICIT dB movement ("lower the threshold by 2 dB"). This must run before
+  // the unit-set branch: "by 2 dB" contains a valid unit and used to be read
+  // as an ABSOLUTE set to 2 dB.
+  if (relativeDb && quantity?.kind === "db") {
+    const value = quantity.value;
+    const mode = value < 0 ? "less" : directionForRole(role, lower);
+    const range = param.max - param.min;
+    if (!(range > 0)) return null;
+    const pct = Math.min(100, (Math.abs(value) / range) * 100);
+    detected.push(`${value > 0 ? "+" : ""}${value} dB relative`);
+    return {
+      effectType,
+      role,
+      paramId,
+      targets: [...targets],
+      mode,
+      percent: pct,
+      amount: "medium",
+      detected,
+    };
+  }
+
+  // EXPLICIT percent movement ("by 20 %") is relative, unlike a bare "20%"
+  // which the set branch owns.
+  if (relativePercent && quantity?.kind === "percent") {
+    const mode = quantity.value < 0 ? "less" : directionForRole(role, lower);
+    detected.push(`${quantity.value > 0 ? "+" : ""}${quantity.value}% relative`);
+    return {
+      effectType,
+      role,
+      paramId,
+      targets: [...targets],
+      mode,
+      percent: Math.min(100, Math.abs(quantity.value)),
+      amount: "medium",
+      detected,
+    };
+  }
+
+  if ((setCue || unitValue || bareDb || bareQ) && !relativeDb && !relativePercent) {
     if (unitValue && unitValue.unit !== "pct") {
       const value = toParamUnit(unitValue.value, unitValue.unit, param);
       if (!Number.isFinite(value)) return null;
@@ -496,6 +575,25 @@ export function paramMovePreview(intent: ParamIntent, current: number): ParamMov
       next: clampEffectParam(intent.effectType, intent.paramId, proposed),
     };
   }
+  // SCALE — multiply the CURRENT value ("half the decay", "twice the cutoff").
+  if (intent.mode === "scale") {
+    const factor = intent.factor ?? 1;
+    const proposed = current * factor;
+    const next = clampEffectParam(intent.effectType, intent.paramId, proposed);
+    const fraction = Math.abs(fractionOf(param, next) - fractionOf(param, current));
+    return {
+      effectType: intent.effectType,
+      paramId: intent.paramId,
+      mode: "scale",
+      domain,
+      family,
+      fraction,
+      deltaLabel: `×${Math.round(factor * 1000) / 1000}`,
+      current,
+      proposed,
+      next,
+    };
+  }
   // An explicit percent is a RANGE fraction; it stays the caller's unit.
   if (intent.percent != null) {
     const fraction = intent.percent / 100;
@@ -553,7 +651,7 @@ export function paramValueFraction(effectType: EffectType, paramId: string, valu
  * are stated because they change what actually lands.
  */
 export interface ParamPlanLine {
-  target: MixTarget;
+  target: MixTarget | string;
   /** The resolved track name (the label the producer sees), or the family. */
   trackName: string;
   effectType: EffectType;
@@ -573,6 +671,44 @@ export interface ParamPlanLine {
   label: string;
 }
 
+interface ParamTargetEntry {
+  target: MixTarget | string;
+  trackName: string;
+  trackId: string | null;
+}
+
+/** Family first-id rows + explicit/ordinal tracks, deduplicated. */
+function paramTargetEntries(
+  doc: Parameters<typeof applyMixIntent>[0],
+  intent: ParamIntent,
+): ParamTargetEntry[] {
+  const entries: ParamTargetEntry[] = [];
+  const covered = new Set<string>();
+  for (const target of intent.targets) {
+    const ids = trackIdsForMixTarget(doc, target);
+    const trackId = ids[0] ?? null;
+    if (trackId) covered.add(trackId);
+    entries.push({
+      target,
+      trackName: trackId ? (doc.tracks.find((track) => track.id === trackId)?.name ?? target) : target,
+      trackId,
+    });
+  }
+  const explicit = new Set<string>(intent.trackIds ?? []);
+  if (intent.trackOrdinal != null) {
+    const track = doc.tracks.filter((candidate) => candidate.kind !== "group")[intent.trackOrdinal];
+    if (track) explicit.add(track.id);
+  }
+  for (const trackId of explicit) {
+    if (covered.has(trackId)) continue;
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track) continue;
+    covered.add(trackId);
+    entries.push({ target: track.name, trackName: track.name, trackId });
+  }
+  return entries;
+}
+
 export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIntent>[0]): ParamPlanLine[] {
   const param = paramDefOf(intent.effectType, intent.paramId);
   if (!param) return [];
@@ -580,12 +716,11 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
   const fmt = (value: number): string =>
     param.format?.(value) ?? (param.unit ? `${value.toFixed(param.max <= 1 ? 2 : 1)} ${param.unit}` : value.toFixed(2));
   const lines: ParamPlanLine[] = [];
-  for (const target of intent.targets) {
-    const ids = trackIdsForMixTarget(doc, target);
-    if (ids.length === 0) {
+  for (const entry of paramTargetEntries(doc, intent)) {
+    if (entry.trackId == null) {
       lines.push({
-        target,
-        trackName: target,
+        target: entry.target,
+        trackName: entry.trackName,
         effectType: intent.effectType,
         paramId: intent.paramId,
         domain,
@@ -597,13 +732,13 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
         next: 0,
         clamped: false,
         adding: false,
-        label: `${target}: no matching track`,
+        label: `${entry.target}: no matching track`,
       });
       continue;
     }
-    const trackId = ids[0] as string;
+    const trackId = entry.trackId;
     const track = doc.tracks.find((candidate) => candidate.id === trackId);
-    const trackName = track?.name ?? target;
+    const trackName = entry.trackName;
     const adding = !(track && "effects" in track && track.effects.some((effect) => effect.type === intent.effectType));
     const current = currentParamValue(doc, trackId, intent.effectType, intent.paramId);
     const preview = paramMovePreview(intent, current);
@@ -619,7 +754,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
       `${preview.deltaLabel}${preview.family === "normalized" ? "" : ` (${preview.family})`}` +
       `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}`;
     lines.push({
-      target,
+      target: entry.target,
       trackName,
       effectType: intent.effectType,
       paramId: intent.paramId,
@@ -648,19 +783,40 @@ export function paramPlanLines(intent: ParamIntent, doc: Parameters<typeof apply
  */
 export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], intent: ParamIntent): Command {
   const decisions: MixDecision[] = [];
+  const groups: Array<{ target: MixTarget; trackIds?: string[]; label?: string; currentTrackId?: string }> = [];
   for (const target of intent.targets) {
+    const ids = trackIdsForMixTarget(doc, target);
+    groups.push({ target, currentTrackId: ids[0] });
+  }
+  const explicit = new Set<string>(intent.trackIds ?? []);
+  if (intent.trackOrdinal != null) {
+    const track = doc.tracks.filter((candidate) => candidate.kind !== "group")[intent.trackOrdinal];
+    if (track) explicit.add(track.id);
+  }
+  for (const trackId of explicit) {
+    // A family already covers this track; do not apply the same value twice.
+    if (intent.targets.some((target) => trackIdsForMixTarget(doc, target).includes(trackId))) continue;
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track) continue;
+    groups.push({ target: "drums", trackIds: [trackId], label: track.name, currentTrackId: trackId });
+  }
+  for (const group of groups) {
     // One decision per target: resolve the CURRENT value on that target's
     // first matching instance so a relative ask moves from reality.
-    const trackIds = trackIdsForMixTarget(doc, target);
-    const current =
-      trackIds.length > 0
-        ? currentParamValue(doc, trackIds[0] as string, intent.effectType, intent.paramId)
-        : (defaultParamsOf(intent.effectType)[intent.paramId] ?? 0);
+    const current = group.currentTrackId
+      ? currentParamValue(doc, group.currentTrackId, intent.effectType, intent.paramId)
+      : (defaultParamsOf(intent.effectType)[intent.paramId] ?? 0);
     const preview = paramMovePreview(intent, current);
     const clamped = preview
       ? preview.next
       : clampEffectParam(intent.effectType, intent.paramId, intent.value ?? current);
-    decisions.push({ target, effectType: intent.effectType, params: { [intent.paramId]: clamped } });
+    decisions.push({
+      target: group.target,
+      trackIds: group.trackIds,
+      label: group.label,
+      effectType: intent.effectType,
+      params: { [intent.paramId]: clamped },
+    });
   }
   return applyMixIntent(doc, {
     decisions,
@@ -676,11 +832,11 @@ export function paramReadback(
 ): string {
   const param = paramDefOf(intent.effectType, intent.paramId);
   const entries: string[] = [];
-  for (const target of intent.targets) {
-    const ids = trackIdsForMixTarget(before, target);
-    if (ids.length === 0) continue;
-    const beforeTrack = before.tracks.find((candidate) => candidate.id === ids[0]);
-    const afterTrack = after.tracks.find((candidate) => candidate.id === ids[0]);
+  for (const entry of paramTargetEntries(before, intent)) {
+    if (!entry.trackId) continue;
+    const trackId = entry.trackId;
+    const beforeTrack = before.tracks.find((candidate) => candidate.id === trackId);
+    const afterTrack = after.tracks.find((candidate) => candidate.id === trackId);
     if (!beforeTrack || !afterTrack || !("effects" in beforeTrack) || !("effects" in afterTrack)) continue;
     const beforeInstance = beforeTrack.effects.find((effect) => effect.type === intent.effectType);
     const afterInstance = afterTrack.effects.find((effect) => effect.type === intent.effectType);
@@ -693,8 +849,12 @@ export function paramReadback(
         : param?.unit
           ? `${param.max <= 1 ? value.toFixed(2) : value.toFixed(1)} ${param.unit}`
           : value.toFixed(2);
-    entries.push(`${target} ${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`);
+    entries.push(`${entry.trackName} ${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`);
   }
   if (entries.length === 0) return "";
   return entries.slice(0, 3).join(", ") + (entries.length > 3 ? ` +${entries.length - 3}` : "");
 }
+
+
+
+

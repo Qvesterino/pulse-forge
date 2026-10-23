@@ -645,3 +645,40 @@ describe("intent plan — dry-run before execution", () => {
     });
   });
 });
+
+describe("quantity wiring — movement vs destination vs scale", () => {
+  it("relative dB is a movement, not an absolute set", () => {
+    const intent = mustParse("lower the compressor threshold by 2 db on the drums");
+    expect(intent.mode).toBe("less");
+    expect(intent.percent).toBeCloseTo((2 / 60) * 100, 6);
+    const preview = paramMovePreview(intent, -18)!;
+    expect(preview.next).toBeCloseTo(-20, 6);
+  });
+
+  it("relative percent is a movement, not a destination", () => {
+    const intent = mustParse("by 10 % more saturation mix on the 808");
+    expect(intent.mode).toBe("more");
+    expect(intent.percent).toBe(10);
+    const preview = paramMovePreview(intent, 0.4)!;
+    expect(preview.next).toBeCloseTo(0.5, 6);
+  });
+
+  it("half/twice scale the current value", () => {
+    const half = mustParse("half the reverb decay on the 808");
+    expect(half.mode).toBe("scale");
+    expect(half.factor).toBe(0.5);
+    expect(paramMovePreview(half, 1.8)!.next).toBeCloseTo(0.9, 6);
+
+    const twice = mustParse("twice the reverb decay on the 808");
+    expect(twice.mode).toBe("scale");
+    expect(twice.factor).toBe(2);
+    expect(paramMovePreview(twice, 1.8)!.next).toBeCloseTo(3.6, 6);
+  });
+
+  it("an explicit set still wins", () => {
+    const set = mustParse("set the compressor threshold to -20 db on the drums");
+    expect(set.mode).toBe("set");
+    expect(set.value).toBe(-20);
+  });
+});
+

@@ -122,33 +122,32 @@ export function addToGroup(doc: ProjectDocument, trackId: string, groupId: strin
   if (!group) throw new Error(`Group ${groupId} not found`);
   const prevGroupId = "groupId" in track ? track.groupId : undefined;
   const hadGroupId = prevGroupId !== undefined;
-  // Joining a SOLOED group must inherit the solo: the engine keeps children
-  // of a soloed group audible via the group gain, while the scheduler gates
-  // pattern content on the track's OWN solo — without inheritance the track
-  // previews live but its playback content stays silent.
-  const inheritSolo = group.solo === true && track.solo !== true;
-  const prevSolo = track.solo;
+  // The GROUP owns the group's solo; a member's own state is never rewritten
+  // (docs/MIXER-VERIFICATION-2026-09-30.md: "group mute silences its members
+  // via soloAudibility without rewriting member state"). The audibility rule
+  // itself lives in src/project-model/solo-audibility.ts and already knows
+  // that a member of a soloed group is audible.
+  //
+  // This command used to write `solo: true` onto the member ("inherit the
+  // solo"), because the drum scheduler carried its OWN, group-unaware copy of
+  // the audibility rule. That write was never released: setGroupSolo only
+  // clears the group's own flag, so un-soloing the group left the member
+  // soloed — and a soloed member mutes every unsoloed track in the project.
+  // Joining a soloed group therefore silenced the whole project.
   return {
     type: "addToGroup",
     label: `Add ${track.name} to group`,
     execute: (d) => ({
       ...d,
-      tracks: d.tracks.map((t) =>
-        t.id === trackId && t.kind !== "group" ? { ...t, groupId, ...(inheritSolo ? { solo: true } : {}) } : t,
-      ),
+      tracks: d.tracks.map((t) => (t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t)),
     }),
     undo: (d) => ({
       ...d,
       tracks: d.tracks.map((t) => {
         if (t.id !== trackId || t.kind === "group") return t;
-        let restored = t;
-        if (hadGroupId) restored = { ...restored, groupId: prevGroupId };
-        else {
-          const { groupId: _, ...rest } = restored as any;
-          restored = rest;
-        }
-        if (inheritSolo) restored = { ...restored, solo: prevSolo };
-        return restored;
+        if (hadGroupId) return { ...t, groupId: prevGroupId };
+        const { groupId: _dropped, ...rest } = t as any;
+        return rest;
       }),
     }),
   };

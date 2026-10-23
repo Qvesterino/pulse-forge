@@ -2,6 +2,7 @@ import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import { MUSICAL_KEYS } from "../project-model/types";
 import { parseIntentText } from "./text-parser";
 import { meterPhraseIn } from "./meter-phrase";
+import { parseQuantity } from "./semantics/quantity";
 
 /**
  * Exact Intents (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md §4.1, §19):
@@ -394,6 +395,23 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   if (gainAbs) {
     const target = firstTarget(gainAbs[1]);
     if (target) ops.push({ kind: "gainDbAbsolute", target, absDb: Number(gainAbs[2]) });
+  }
+
+  // QUANTITY fallback: the shared parser owns destination-vs-movement. It
+  // catches explicit dB phrasing the gain regexes do not ("bass up 3 db",
+  // "bass down 3 db") without re-parsing the cases they already own.
+  if (!gainDb && !gainAbs) {
+    const quantity = parseQuantity(lower);
+    const target = firstTarget(lower);
+    if (quantity?.kind === "db" && target) {
+      if (quantity.absolute) {
+        ops.push({ kind: "gainDbAbsolute", target, absDb: quantity.value });
+      } else {
+        const lowerVerb = /\b(?:lower|reduce|drop|cut|zniz|ztichn|stis|ztlm|tichs|down|dole)\b/.test(lower);
+        const delta = quantity.value < 0 ? quantity.value : (lowerVerb ? -1 : 1) * quantity.value;
+        ops.push({ kind: "gainDb", target, deltaDb: delta });
+      }
+    }
   }
 
   // Time signature: "time signature 3/4", "set time signature to 6/8",

@@ -1,6 +1,7 @@
 import type { DrumPad, DrumTrack, Pattern, ProjectDocument, StepMeta } from "./types";
 import { STEP_TICKS, grooveOf } from "./types";
 import { hashString, mulberry32 } from "../shared/rng";
+import { soloAudibility } from "./solo-audibility";
 
 /**
  * Shared groove engine: turns the step grid of a pattern into concrete,
@@ -131,7 +132,18 @@ export function drumHitsInWindow(
 
   const { swing, humanizeTiming, humanizeVelocity } = grooveOf(doc);
   const tracks = doc.tracks.filter((t): t is DrumTrack => t.kind === "drum");
-  const anyTrackSolo = doc.tracks.some((t) => t.solo);
+
+  // The audibility rule is the mixer's rule (soloAudibility), read once here
+  // so the scheduled hits and the audible mix agree. It used to be a second,
+  // group-UNaware copy ("any solo and this track is not soloed → drop its
+  // hits"), which disagreed with the mixer for group members: a member of a
+  // soloed group is audible to the mixer, and a member of a MUTED group is
+  // inaudible to it, while this copy decided both cases the other way round.
+  // The hot path matters (the scheduler calls this every 25 ms window), so the
+  // per-track verdict is resolved once, not per grid step.
+  const audibility = soloAudibility(doc);
+  const audibleByTrack = new Map<string, boolean>();
+  for (const track of tracks) audibleByTrack.set(track.id, audibility.audible(track.id));
 
   // Iterate one extra grid step on each side so groove-shifted hits that
   // cross a window edge land in exactly one window (the [from, to) filter
@@ -154,7 +166,7 @@ export function drumHitsInWindow(
     const pass = Math.floor(rel / patternTicks);
 
     for (const track of tracks) {
-      if (track.mute || (anyTrackSolo && !track.solo)) continue;
+      if (!(audibleByTrack.get(track.id) ?? false)) continue;
       const anyPadSolo = anyPadSoloByTrack.get(track.id) ?? false;
       for (const pad of track.pads) {
         const velocity = pattern.rows[pad.id]?.[stepIndex] ?? 0;

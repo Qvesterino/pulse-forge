@@ -67,7 +67,18 @@ export function analyzeReferenceAsync(
     };
     const onWorkerMessage = (event: MessageEvent<unknown>) => {
       const msg = event.data as { type?: unknown; payload?: AnalyzeReferenceOutput } | null;
-      if (!msg || msg.type !== "REFERENCE_RESULT" || !msg.payload) return;
+      if (!msg) return;
+      // The worker reports its OWN failures as REFERENCE_ERROR (it catches
+      // everything and posts the reason). The client used to ignore that
+      // message, so a failed analysis waited the full 120 s timeout and only
+      // then ran the synchronous fallback — two minutes of silence followed by
+      // a main-thread freeze. An error the worker already told us about must
+      // settle the promise NOW, exactly like the `error` event does.
+      if (msg.type === "REFERENCE_ERROR") {
+        finish(analyzeReference({ ...rest, onStage }));
+        return;
+      }
+      if (msg.type !== "REFERENCE_RESULT" || !msg.payload) return;
       // Mirror progress stages to the caller so the UI sees the same
       // transitions whether we ran in a worker or on the main thread.
       finish(msg.payload);
@@ -195,7 +206,15 @@ export function transcribeTrackAsync(
     };
     const onMessage = (event: MessageEvent<unknown>): void => {
       const msg = event.data as { type?: unknown; payload?: UnsunoTranscription } | null;
-      if (!msg || msg.type !== "TRANSCRIBE_RESULT" || !msg.payload) return;
+      if (!msg) return;
+      // Same contract as the analysis lane: the worker posts TRANSCRIBE_ERROR
+      // when it fails on its own, and that must settle the promise now rather
+      // than after the 120 s timeout.
+      if (msg.type === "TRANSCRIBE_ERROR") {
+        finish(run());
+        return;
+      }
+      if (msg.type !== "TRANSCRIBE_RESULT" || !msg.payload) return;
       finish(msg.payload);
     };
     const onError = (): void => finish(run());

@@ -23,7 +23,8 @@ import { clearAdjustments, rememberAdjustment } from "./adjustment-ledger";
 import { trackIdsForTarget, type FaderIntent } from "./conversation";
 import type { DegreeLevel } from "./degree";
 import { EFFECT_KNOB, type EffectIntent } from "./mix";
-import { paramValueFraction, trackIdsForMixTarget, type ParamIntent } from "./param-intent";
+import { paramValueFraction, type ParamIntent } from "./param-intent";
+import { targetTrackIds } from "./semantics/target-resolution";
 
 /** Undo/redo and any non-recordable mutation invalidate the remembered move. */
 export function clearAdjustmentLedger(): void {
@@ -147,18 +148,16 @@ function changedEffectKnob(
   const knob = EFFECT_KNOB[intent.effectType];
   const def = knob ? EFFECT_META[intent.effectType]?.params.find((param) => param.id === knob) : null;
   if (!knob || !def) return null;
-  for (const target of intent.targets) {
-    for (const trackId of trackIdsForMixTarget(before, target)) {
-      const oldFx = before.tracks
-        .find((track) => track.id === trackId)
-        ?.effects.find((effect) => effect.type === intent.effectType);
-      const newFx = after.tracks
-        .find((track) => track.id === trackId)
-        ?.effects.find((effect) => effect.type === intent.effectType);
-      const from = oldFx?.params[knob] ?? def.default;
-      const to = newFx?.params[knob];
-      if (to != null && to !== from) return { before: from, after: to, range: def.max - def.min };
-    }
+  for (const trackId of targetTrackIds(before, intent.targets, intent.trackIds, intent.trackOrdinal)) {
+    const oldFx = before.tracks
+      .find((track) => track.id === trackId)
+      ?.effects.find((effect) => effect.type === intent.effectType);
+    const newFx = after.tracks
+      .find((track) => track.id === trackId)
+      ?.effects.find((effect) => effect.type === intent.effectType);
+    const from = oldFx?.params[knob] ?? def.default;
+    const to = newFx?.params[knob];
+    if (to != null && to !== from) return { before: from, after: to, range: def.max - def.min };
   }
   return null;
 }
@@ -175,27 +174,37 @@ function changedParamFraction(
 ): ParamFractionChange | null {
   const def = EFFECT_META[intent.effectType]?.params.find((param) => param.id === intent.paramId);
   if (!def) return null;
-  for (const target of intent.targets) {
-    for (const trackId of trackIdsForMixTarget(before, target)) {
-      const oldFx = before.tracks
-        .find((track) => track.id === trackId)
-        ?.effects.find((effect) => effect.type === intent.effectType);
-      const newFx = after.tracks
-        .find((track) => track.id === trackId)
-        ?.effects.find((effect) => effect.type === intent.effectType);
-      // The effect may have been ADDED by this command; the default value is
-      // the real baseline the relative move started from.
-      const from = oldFx?.params[intent.paramId] ?? def.default;
-      const to = newFx?.params[intent.paramId];
-      if (from === undefined || to === undefined || from === to) continue;
-      const beforeFraction = paramValueFraction(intent.effectType, intent.paramId, from);
-      const afterFraction = paramValueFraction(intent.effectType, intent.paramId, to);
-      if (beforeFraction != null && afterFraction != null) {
-        return { beforeFraction, afterFraction };
-      }
+  for (const trackId of targetTrackIds(before, intent.targets, intent.trackIds, intent.trackOrdinal)) {
+    const oldFx = before.tracks
+      .find((track) => track.id === trackId)
+      ?.effects.find((effect) => effect.type === intent.effectType);
+    const newFx = after.tracks
+      .find((track) => track.id === trackId)
+      ?.effects.find((effect) => effect.type === intent.effectType);
+    // The effect may have been ADDED by this command; the default value is
+    // the real baseline the relative move started from.
+    const from = oldFx?.params[intent.paramId] ?? def.default;
+    const to = newFx?.params[intent.paramId];
+    if (from === undefined || to === undefined || from === to) continue;
+    const beforeFraction = paramValueFraction(intent.effectType, intent.paramId, from);
+    const afterFraction = paramValueFraction(intent.effectType, intent.paramId, to);
+    if (beforeFraction != null && afterFraction != null) {
+      return { beforeFraction, afterFraction };
     }
   }
   return null;
+}
+
+function explicitTrackIds(
+  doc: ProjectDocument,
+  intent: { trackIds?: readonly string[]; trackOrdinal?: number },
+): string[] {
+  const ids = new Set<string>(intent.trackIds ?? []);
+  if (intent.trackOrdinal != null) {
+    const track = doc.tracks.filter((candidate) => candidate.kind !== "group")[intent.trackOrdinal];
+    if (track) ids.add(track.id);
+  }
+  return [...ids];
 }
 
 /** Record the measured relative effect move. Absolute/remove moves clear. */
@@ -225,6 +234,7 @@ export function recordEffectAdjustment(
     effectType: intent.effectType,
     direction: intent.direction,
     targets: [...intent.targets],
+    trackIds: explicitTrackIds(before, intent),
     stepFraction,
     degreeLevel: intent.degree?.level ?? AMOUNT_LEVEL[intent.amount],
   });
@@ -237,7 +247,7 @@ export function recordParamAdjustment(
   before: ProjectDocument,
   after: ProjectDocument,
 ): void {
-  if (intent.mode === "set") {
+  if (intent.mode === "set" || intent.mode === "scale") {
     clearAdjustmentLedger();
     return;
   }
@@ -259,7 +269,10 @@ export function recordParamAdjustment(
     paramId: intent.paramId,
     mode: intent.mode,
     targets: [...intent.targets],
+    trackIds: explicitTrackIds(before, intent),
     fraction,
     degreeLevel: intent.degree?.level ?? AMOUNT_LEVEL[intent.amount],
   });
 }
+
+

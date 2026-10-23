@@ -279,3 +279,18 @@ describe("applyExactIntentCommand", () => {
     expect(after).toEqual([72, 76]);
   });
 });
+
+describe("quantity fallback — explicit dB without the gain regex verbs", () => {
+  it("reads a bare explicit dB movement with a target", () => {
+    expect(parseExactIntent("bass up 3 db")!.ops).toContainEqual({
+      kind: "gainDb",
+      target: "bass",
+      deltaDb: 3,
+    });
+    expect(parseExactIntent("bass down 3 db")!.ops).toContainEqual({
+      kind: "gainDb",
+      target: "bass",
+      deltaDb: -3,
+    });
+  });
+});

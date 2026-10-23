@@ -298,6 +298,31 @@ export function coerceDrumsManifest(value: unknown): DrumsPriorManifest | null {
   return { ...(manifest as Omit<DrumsPriorManifest, "kind">), kind: "drums" };
 }
 
+/**
+ * The same legacy shim for the MELODIC v1 manifest.
+ *
+ * The melodic v1 manifest on disk (public/models/symbolic-melodic-v1.manifest.json)
+ * predates the `kind` field exactly like the drums v1 one — the trainer only
+ * started writing `kind` with v2 ("v2 carries its kind explicitly so the
+ * runtime guard can route it", scripts/train-symbolic-melodic.py). The drums
+ * side got a shim; the melodic side did not, so the runtime guard
+ * (isMelodicPriorManifest, which REQUIRES kind === "melodic") rejected the
+ * manifest the product ships, `loadManifest("melodic")` returned null, and the
+ * melodic prior silently degraded to the template melody — on exactly the
+ * path that runs when the semantic model is unavailable.
+ *
+ * Same trade-off as the drums shim, deliberately: accept a MISSING kind, but
+ * reject a manifest that names a different kind explicitly. Every other field
+ * still has to validate.
+ */
+export function coerceMelodicManifest(value: unknown): MelodicPriorManifest | null {
+  if (!value || typeof value !== "object") return null;
+  const manifest = value as Record<string, unknown>;
+  if (manifest.kind !== undefined && manifest.kind !== "melodic") return null;
+  if (!isMelodicPriorManifest({ ...manifest, kind: "melodic" })) return null;
+  return { ...(manifest as Omit<MelodicPriorManifest, "kind">), kind: "melodic" };
+}
+
 export function isMelodicV3PriorManifest(value: unknown): value is MelodicV3PriorManifest {
   if (!value || typeof value !== "object") return false;
   const manifest = value as Record<string, unknown>;

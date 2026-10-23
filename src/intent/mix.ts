@@ -21,7 +21,8 @@ import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
-import { MIX_TARGET_WORDS, ROLE_TARGETS } from "./semantics/target-registry";
+import { MIX_TARGET_WORDS, ROLE_TARGETS, trackOrdinalFromText } from "./semantics/target-registry";
+import { targetTrackIds } from "./semantics/target-resolution";
 
 /**
  * INTENT → MIX CHAIN (INTENT_ENGINE.md D1) — the intent shapes not just the
@@ -41,6 +42,10 @@ export type MixTarget = "drums" | "bass" | "chords" | "lead" | "vocal";
 
 export interface MixDecision {
   target: MixTarget;
+  /** Explicit track ids; when present they override the family resolution. */
+  trackIds?: string[];
+  /** Human label for an explicit-track decision ("Chords"). */
+  label?: string;
   effectType: EffectType;
   /** Partial params — merged over the effect's defaults, clamped on apply. */
   params: Record<string, number>;
@@ -542,7 +547,7 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
   const rides: Array<{ trackId: string; fxId: string; baseAmount: number }> = [];
 
   for (const decision of profile.decisions) {
-    const trackIds = trackIdsForTarget(doc, decision.target);
+    const trackIds = decision.trackIds ?? trackIdsForTarget(doc, decision.target);
     for (const trackId of trackIds) {
       let fx = cursor.tracks
         .find((track) => track.id === trackId)
@@ -553,7 +558,7 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
           .find((track) => track.id === trackId)
           ?.effects.find((effect) => effect.type === decision.effectType);
         if (!fx) continue;
-        labelParts.push(`+${decision.effectType}→${decision.target}`);
+        labelParts.push(`+${decision.effectType}→${decision.label ?? decision.target}`);
         updates += 1;
       }
       for (const [paramId, value] of Object.entries(decision.params)) {
@@ -685,6 +690,10 @@ export function removeMixEffect(
 export interface EffectIntent {
   effectType: EffectType;
   targets: MixTarget[];
+  /** Explicit resolved tracks ("do the same on track three"). */
+  trackIds?: string[];
+  /** 0-based "track two" when the parser saw an ordinal but had no document. */
+  trackOrdinal?: number;
   /**
    * "more"/"less" turn the primary knob RELATIVE; "remove" takes the
    * instance out; "set" is ABSOLUTE — percent IS the knob's target as a
@@ -911,6 +920,13 @@ const SET_VALUE = /\b(?:to|na)\s*(\d{1,3})\s*(?:%|percent\w*|procent\w*)/;
 
 /** Parse a TARGETED effect request. Null when no effect×sentence is present. */
 export function parseEffectIntent(text: string): EffectIntent | null {
+  const intent = parseEffectIntentCore(text);
+  if (!intent) return null;
+  const ordinal = trackOrdinalFromText(text);
+  return ordinal != null ? { ...intent, trackOrdinal: ordinal } : intent;
+}
+
+function parseEffectIntentCore(text: string): EffectIntent | null {
   // A description ("the pads have too much reverb") is a complaint, not an
   // instruction to add more reverb.
   if (isDescriptiveStatement(text)) return null;
@@ -969,7 +985,7 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   }
   // No target word/role ⇒ NOT a targeted effect intent — generic "more
   // reverb" belongs to the mix profile, not a track-scoped change.
-  if (targets.size === 0) return null;
+  if (targets.size === 0 && trackOrdinalFromText(text) == null) return null;
 
   // A semantic MOVE is absolute — it replaces the knob path entirely.
   if (moveMatch) {
@@ -1062,7 +1078,7 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
     throw new Error(`no knob mapped for effect "${intent.effectType}" — intent understood, effect unsupported`);
   }
   const scale = intent.degree ? calibrateKnobScale(intent.degree.value) : AMOUNT_SCALE[intent.amount];
-  const trackIds = intent.targets.flatMap((target) => trackIdsForTarget(doc, target));
+  const trackIds = targetTrackIds(doc, intent.targets, intent.trackIds, intent.trackOrdinal);
   if (trackIds.length === 0) {
     throw new Error(`no tracks match the target (${intent.targets.join(", ")})`);
   }
@@ -1167,28 +1183,26 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
   if (readbackIds.length === 0) return "";
   const fmt = (value: number): number => Math.round(value * 100) / 100;
   const entries: string[] = [];
-  for (const target of intent.targets) {
-    for (const trackId of trackIdsForTarget(after, target)) {
-      const track = after.tracks.find((candidate) => candidate.id === trackId);
-      if (!track) continue;
-      if (intent.direction === "remove") {
-        if (!track.effects.some((fx) => fx.type === intent.effectType)) {
-          entries.push(`−${intent.effectType} on ${track.name}`);
-        }
-        continue;
+  for (const trackId of targetTrackIds(after, intent.targets, intent.trackIds, intent.trackOrdinal)) {
+    const track = after.tracks.find((candidate) => candidate.id === trackId);
+    if (!track) continue;
+    if (intent.direction === "remove") {
+      if (!track.effects.some((fx) => fx.type === intent.effectType)) {
+        entries.push(`−${intent.effectType} on ${track.name}`);
       }
-      const fx = track.effects.find((effect) => effect.type === intent.effectType);
-      if (!fx) continue;
-      const beforeFx = before.tracks
-        .find((candidate) => candidate.id === trackId)
-        ?.effects.find((effect) => effect.type === intent.effectType);
-      const pairs = readbackIds.map((paramId) => {
-        const def = EFFECT_META[intent.effectType].params.find((param) => param.id === paramId);
-        const prev = beforeFx?.params[paramId] ?? def?.default ?? 0;
-        return `${paramId} ${fmt(prev)}→${fmt(fx.params[paramId] ?? def?.default ?? 0)}`;
-      });
-      if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name}`);
+      continue;
     }
+    const fx = track.effects.find((effect) => effect.type === intent.effectType);
+    if (!fx) continue;
+    const beforeFx = before.tracks
+      .find((candidate) => candidate.id === trackId)
+      ?.effects.find((effect) => effect.type === intent.effectType);
+    const pairs = readbackIds.map((paramId) => {
+      const def = EFFECT_META[intent.effectType].params.find((param) => param.id === paramId);
+      const prev = beforeFx?.params[paramId] ?? def?.default ?? 0;
+      return `${paramId} ${fmt(prev)}→${fmt(fx.params[paramId] ?? def?.default ?? 0)}`;
+    });
+    if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name}`);
   }
   if (entries.length > 3) return `${entries.slice(0, 3).join(", ")} +${entries.length - 3}`;
   return entries.join(", ");
@@ -1382,3 +1396,6 @@ export function bypassReadback(after: ProjectDocument, intent: BypassIntent): st
   }
   return entries.slice(0, 4).join(", ");
 }
+
+
+

@@ -99,3 +99,57 @@ export const MIX_TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTargetId]> = F
 export const FADER_PADS: ReadonlyArray<readonly [RegExp, PadFamilyId]> = PADS;
 
 export const ROLE_TARGETS: Readonly<Record<string, readonly MixTargetId[]>> = SCENE_ROLES;
+
+/** 1-based "track two" / "track 2" / "second track" → 0-based index. */
+const NUMBER_WORDS: Readonly<Record<string, number>> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+};
+
+const ORDINAL_WORDS: Readonly<Record<string, number>> = {
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+  sixth: 6,
+  seventh: 7,
+  eighth: 8,
+  ninth: 9,
+  tenth: 10,
+};
+
+export function trackOrdinalFromText(text: string): number | null {
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+  const direct = /\b(?:track|channel|stopa|stope|stopy)\s*#?\s*(\d{1,2}|[a-z]+)\b/.exec(lower);
+  if (direct) {
+    const raw = direct[1] ?? "";
+    const value = /^\d+$/.test(raw) ? Number(raw) : NUMBER_WORDS[raw];
+    if (value != null && value >= 1) return value - 1;
+  }
+  const named = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:track|channel)\b/.exec(
+    lower,
+  );
+  if (named) {
+    const value = ORDINAL_WORDS[named[1] ?? ""];
+    if (value != null) return value - 1;
+  }
+  return null;
+}

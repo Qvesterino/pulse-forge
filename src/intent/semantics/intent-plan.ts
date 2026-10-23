@@ -27,6 +27,7 @@ import { EFFECT_META } from "../../effects/definitions";
 import type { ParamDef } from "../../effects/types";
 import { trackIdsForTarget } from "../conversation";
 import { EFFECT_KNOB } from "../mix";
+import { targetTrackIds } from "./target-resolution";
 
 export type PlanDomain = "linear" | "log" | "db" | "normalized" | "boolean" | "none";
 
@@ -227,8 +228,7 @@ function effectSteps(
 ): PlanStep[] {
   const steps: PlanStep[] = [];
   const knob = EFFECT_KNOB[intent.effectType];
-  for (const target of intent.targets) {
-    for (const trackId of trackIdsForTarget(before, target)) {
+  for (const trackId of targetTrackIds(before, intent.targets, intent.trackIds, intent.trackOrdinal)) {
       const oldTrack = before.tracks.find((track) => track.id === trackId);
       const newTrack = after.tracks.find((track) => track.id === trackId);
       if (!oldTrack || !newTrack) continue;
@@ -285,7 +285,6 @@ function effectSteps(
         }
       }
     }
-  }
   return steps;
 }
 
@@ -545,3 +544,4 @@ export function formatPlan(plan: IntentPlan): string {
   if (plan.steps.length === 0) return plan.warnings[0] ?? plan.summary;
   return plan.steps.map(formatStep).join("  ·  ");
 }
+

@@ -72,6 +72,8 @@ export interface EffectRecord {
   effectType: EffectType;
   direction: "more" | "less";
   targets: readonly MixTarget[];
+  /** Explicit/original track ids (ordinal targeting) when the ask used one. */
+  trackIds?: readonly string[];
   /** Measured |after − before| / knob range on the primary knob. */
   stepFraction: number;
   /** The semantic rung the original ask named (or the amount-class default). */
@@ -86,6 +88,8 @@ export interface ParamRecord {
   paramId: string;
   mode: "more" | "less";
   targets: readonly MixTarget[];
+  /** Explicit/original track ids (ordinal targeting) when the ask used one. */
+  trackIds?: readonly string[];
   /** Measured |after − before| as a fraction of the param range, in its domain. */
   fraction: number;
   degreeLevel: DegreeLevel;
@@ -113,3 +117,4 @@ export function lastAdjustment(docId?: string): AdjustmentRecord | null {
 export function clearAdjustments(): void {
   last = null;
 }
+

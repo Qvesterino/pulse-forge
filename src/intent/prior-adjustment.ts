@@ -33,6 +33,7 @@ import {
 import { TARGET_WORDS, type EffectIntent, type MixTarget } from "./mix";
 import { trackIdsForMixTarget, type ParamIntent } from "./param-intent";
 import { isPriorDeltaReference } from "./reference-delta";
+import { trackOrdinalFromText } from "./semantics/target-registry";
 
 export type PriorResolution =
   | { kind: "fader"; intent: FaderIntent }
@@ -65,57 +66,6 @@ function scaleOf(text: string): Scale | null {
   return null;
 }
 
-const NUMBER_WORDS: Record<string, number> = {
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-  ten: 10,
-  eleven: 11,
-  twelve: 12,
-  thirteen: 13,
-  fourteen: 14,
-  fifteen: 15,
-  sixteen: 16,
-};
-
-const ORDINAL_WORDS: Record<string, number> = {
-  first: 1,
-  second: 2,
-  third: 3,
-  fourth: 4,
-  fifth: 5,
-  sixth: 6,
-  seventh: 7,
-  eighth: 8,
-  ninth: 9,
-  tenth: 10,
-};
-
-/** 1-based "track two" / "track 2" / "second track" → 0-based index. */
-function ordinalTrackIndex(text: string): number | null {
-  const lower = normalized(text);
-  const direct = /\b(?:track|channel|stopa|stope|stopy)\s*#?\s*(\d{1,2}|[a-z]+)\b/.exec(lower);
-  if (direct) {
-    const raw = direct[1] ?? "";
-    const value = /^\d+$/.test(raw) ? Number(raw) : NUMBER_WORDS[raw];
-    if (value != null && value >= 1) return value - 1;
-  }
-  const named = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:track|channel)\b/.exec(
-    lower,
-  );
-  if (named) {
-    const value = ORDINAL_WORDS[named[1] ?? ""];
-    if (value != null) return value - 1;
-  }
-  return null;
-}
-
 interface FaderTargets {
   targets: FaderTarget[];
   pads: FaderPadFamily[];
@@ -128,7 +78,7 @@ function resolveFaderTargets(text: string, doc: ProjectDocument, entry: FaderRec
   if (found.targets.length > 0 || found.pads.length > 0) {
     return { ...found, trackIds: [], returnIds: [] };
   }
-  const index = ordinalTrackIndex(text);
+  const index = trackOrdinalFromText(text);
   if (index != null) {
     const tracks = doc.tracks.filter((track) => track.kind !== "group");
     const track = tracks[index];
@@ -160,17 +110,30 @@ function mixTargetsIn(text: string): MixTarget[] {
   return [...targets];
 }
 
-function resolveMixTargets(text: string, entry: EffectRecord | ParamRecord): MixTarget[] | null {
-  const named = mixTargetsIn(text);
-  if (named.length > 0) return named;
-  // An ordinal track has no family id; do not guess that "track two" is the
-  // bass family. The caller gets a focused target clarification instead.
-  if (ordinalTrackIndex(text) != null) return null;
-  return [...entry.targets];
+interface MixTargetChoice {
+  targets: MixTarget[];
+  trackIds: string[];
 }
 
-function mixTargetsExist(doc: ProjectDocument, targets: readonly MixTarget[]): boolean {
-  return targets.some((target) => trackIdsForMixTarget(doc, target).length > 0);
+function resolveMixTargets(
+  text: string,
+  doc: ProjectDocument,
+  entry: EffectRecord | ParamRecord,
+): MixTargetChoice | null {
+  const named = mixTargetsIn(text);
+  if (named.length > 0) return { targets: named, trackIds: [] };
+  const ordinal = trackOrdinalFromText(text);
+  if (ordinal != null) {
+    const track = doc.tracks.filter((candidate) => candidate.kind !== "group")[ordinal];
+    if (!track) return null;
+    return { targets: [], trackIds: [track.id] };
+  }
+  return { targets: [...entry.targets], trackIds: [...(entry.trackIds ?? [])] };
+}
+
+function mixTargetsExist(doc: ProjectDocument, choice: MixTargetChoice): boolean {
+  if (choice.trackIds.some((id) => doc.tracks.some((track) => track.id === id))) return true;
+  return choice.targets.some((target) => trackIdsForMixTarget(doc, target).length > 0);
 }
 
 /**
@@ -223,57 +186,44 @@ function resolveFader(text: string, doc: ProjectDocument, entry: FaderRecord, sc
 }
 
 function resolveEffect(text: string, doc: ProjectDocument, entry: EffectRecord, scale: Scale): PriorResolution {
-  const targets = resolveMixTargets(text, entry);
-  if (!targets || !mixTargetsExist(doc, targets)) {
+  const choice = resolveMixTargets(text, doc, entry);
+  if (!choice || !mixTargetsExist(doc, choice)) {
     return { kind: "clarify", reason: "prior-adjustment-target" };
   }
   const amount = degreeToEffectAmount(entry.degreeLevel);
   const detected = [`prior ${scale.kind}`, `${entry.effectType} ${entry.direction}`];
+  const base = {
+    effectType: entry.effectType,
+    targets: choice.targets,
+    trackIds: choice.trackIds,
+    direction: entry.direction,
+    amount,
+    detected,
+  };
   if (scale.kind === "half") {
     if (!(entry.stepFraction > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
     return {
       kind: "effect",
-      intent: {
-        effectType: entry.effectType,
-        targets,
-        direction: entry.direction,
-        amount,
-        percent: Math.max(0, Math.min(100, entry.stepFraction * 50)),
-        detected,
-      },
+      intent: { ...base, percent: Math.max(0, Math.min(100, entry.stepFraction * 50)) },
     };
   }
   if (scale.kind === "rungs") {
     const level = rungLevel(entry.degreeLevel, scale.count);
     return {
       kind: "effect",
-      intent: {
-        effectType: entry.effectType,
-        targets,
-        direction: entry.direction,
-        degree: degreeForLevel(level),
-        amount: degreeToEffectAmount(level),
-        detected,
-      },
+      intent: { ...base, degree: degreeForLevel(level), amount: degreeToEffectAmount(level) },
     };
   }
   if (!(entry.stepFraction > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
   return {
     kind: "effect",
-    intent: {
-      effectType: entry.effectType,
-      targets,
-      direction: entry.direction,
-      amount,
-      percent: Math.max(0, Math.min(100, entry.stepFraction * 100)),
-      detected,
-    },
+    intent: { ...base, percent: Math.max(0, Math.min(100, entry.stepFraction * 100)) },
   };
 }
 
 function resolveParam(text: string, doc: ProjectDocument, entry: ParamRecord, scale: Scale): PriorResolution {
-  const targets = resolveMixTargets(text, entry);
-  if (!targets || !mixTargetsExist(doc, targets)) {
+  const choice = resolveMixTargets(text, doc, entry);
+  if (!choice || !mixTargetsExist(doc, choice)) {
     return { kind: "clarify", reason: "prior-adjustment-target" };
   }
   const amount = degreeToEffectAmount(entry.degreeLevel);
@@ -282,7 +232,8 @@ function resolveParam(text: string, doc: ProjectDocument, entry: ParamRecord, sc
     effectType: entry.effectType,
     role: entry.role,
     paramId: entry.paramId,
-    targets,
+    targets: choice.targets,
+    trackIds: choice.trackIds,
     mode: entry.mode,
     amount,
     detected,
@@ -329,3 +280,4 @@ export function resolvePriorAdjustment(text: string, doc: ProjectDocument): Prio
       return resolveParam(text, doc, entry, scale);
   }
 }
+
