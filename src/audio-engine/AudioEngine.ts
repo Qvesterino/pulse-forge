@@ -49,7 +49,7 @@ import { targetOwner } from "../project-model/targets";
 import { DeviceLookup } from "./deviceLookup";
 import { MasterChain } from "./masterChain";
 import type { MasterStage } from "./masterChain";
-import { isLiveAudioContext } from "./liveContext";
+import { isLiveAudioContext, isOfflineAudioContext } from "./liveContext";
 import type { MasterMeterSnapshot, TrackMeterSnapshot } from "./metering-types";
 import type { Frame, ChannelLevels } from "./metering";
 
@@ -1836,6 +1836,27 @@ export class AudioEngine {
     this.groupNodes.delete(id);
   }
 
+  /**
+   * Write a MIXER-STRIP control (fader, pan, send level, instrument norm gain).
+   *
+   * In a LIVE context the write glides — a fader move must not click. In an
+   * OFFLINE render it must NOT glide. The offline graph is built at the render
+   * origin (t = 0) and the first event lands immediately, so a 10 ms
+   * smoothing leaves the head of the export at the NODE's default value: a
+   * muted track leaks at unity for ~30 ms, a 0.5 fader starts +6 dB hot, a
+   * hard-panned track starts centred. That is a defect frozen into the file,
+   * and it is the SAME class the master chain (masterChain.writeControl) and
+   * the effect registry (withOfflineEffectParams) already fixed by writing
+   * exactly in the offline branch.
+   *
+   * The live path is untouched: `isOfflineAudioContext` is false for a live
+   * AudioContext, so a live edit still glides.
+   */
+  private writeStripControl(param: AudioParam, value: number, when: number, smoothingSeconds: number): void {
+    if (isOfflineAudioContext(this.ctx)) param.setValueAtTime(value, when);
+    else param.setTargetAtTime(value, when, smoothingSeconds);
+  }
+
   private syncProject(doc: ProjectDocument): void {
     const ctx = this.ctx;
     const insertInput = this.masterChain.insertInput;
@@ -1900,7 +1921,7 @@ export class AudioEngine {
       } else {
         this.syncFxParams(ret.effects, nodes.fx);
       }
-      nodes.gain.gain.setTargetAtTime(clampFaderGain(ret.gain), ctx.currentTime, 0.01);
+      this.writeStripControl(nodes.gain.gain, clampFaderGain(ret.gain), ctx.currentTime, 0.01);
     }
 
     // Create/update group nodes
@@ -1960,9 +1981,9 @@ export class AudioEngine {
       }
       this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
-      nodes.panner.pan.setTargetAtTime(clampPanValue(track.pan), now, 0.01);
+      this.writeStripControl(nodes.panner.pan, clampPanValue(track.pan), now, 0.01);
       // Group audible when it — or any of its members — is soloed.
-      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
+      this.writeStripControl(nodes.gain.gain, solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
     }
 
     for (const track of doc.tracks) {
@@ -2054,9 +2075,9 @@ export class AudioEngine {
         }
         // Still allow live gain/pan adjustments
         const now = ctx.currentTime;
-        nodes.panner.pan.setTargetAtTime(clampPanValue(track.pan), now, 0.01);
+        this.writeStripControl(nodes.panner.pan, clampPanValue(track.pan), now, 0.01);
         // Member audible when it — or the group it feeds — is soloed.
-        nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
+        this.writeStripControl(nodes.gain.gain, solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
         continue; // Skip FX/instrument sync for frozen tracks
       }
 
@@ -2082,8 +2103,8 @@ export class AudioEngine {
       }
       this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
-      nodes.panner.pan.setTargetAtTime(clampPanValue(track.pan), now, 0.01);
-      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
+      this.writeStripControl(nodes.panner.pan, clampPanValue(track.pan), now, 0.01);
+      this.writeStripControl(nodes.gain.gain, solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
     }
 
     // All source nodes now exist, including tracks that appear after their
@@ -2368,7 +2389,7 @@ export class AudioEngine {
         nodes.sendDelays.set(returnId, sendDelay);
         nodes.modMacroPan.connect(sendGain);
       }
-      sendGain.gain.setTargetAtTime(clampSendLevel(sends[returnId] ?? 0), ctx.currentTime, 0.01);
+      this.writeStripControl(sendGain.gain, clampSendLevel(sends[returnId] ?? 0), ctx.currentTime, 0.01);
     }
   }
 
@@ -2411,7 +2432,7 @@ export class AudioEngine {
     const targetNormDb = presetNormalizationGainDb(track.presetId);
     if (state.normGainDb !== targetNormDb) {
       state.normGainDb = targetNormDb;
-      state.normGain.gain.setTargetAtTime(dbToLinear(targetNormDb), ctx.currentTime, 0.01);
+      this.writeStripControl(state.normGain.gain, dbToLinear(targetNormDb), ctx.currentTime, 0.01);
     }
     if (state.sampleId !== track.sampleId) {
       this.callRuntime(() => state.runtime.setSample?.(track.sampleId));
