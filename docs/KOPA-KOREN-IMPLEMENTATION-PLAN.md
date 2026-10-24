@@ -225,7 +225,8 @@ script + vlastný budget riadok (vzor TSAR, `scripts/build-tsar-worklet.mjs` +
     „auto role preset" pre basovú stopu KOREŇ neponúkne.
 14. `src/ui/effectEditorRegistry.ts` — `primaryParamIds: ["drive", "focusHz", "subAnchor", "mix"]`
     (first-view kontrola).
-15. `src/intent/mix.ts` — `EFFECT_KNOB.bassHarmonic = "drive"` + `EFFECT_WORDS` regex
+15. `src/effects/definitions.ts` — `primaryKnob: "drive"` na efekte `bassHarmonic` (primárny knob
+    je deklarácia na efekte, mapa sa odvádza — ADR 0061) + `src/intent/effect-words.ts` alias
     (`/\bbass.?harmon|\bkoren/` → `bassHarmonic`) pre intent parser (SK/EN).
 16. `tests/param-range-coherence.test.ts` (`EFFECT_PROC_PAIRS`) a
     `tests/plugin-functional-audit.test.ts` (`WORKLET_CASES`) — pridať záznam
@@ -445,7 +446,7 @@ KOPA worklet reálne zmeraný a zapísaný (nie odhad).
    * **KOPA factory presety (Fáza 2) sú podmienka** — bez nich suggestion list drums rodiny
      nemá čo ponúkať; poradie commitov to reflektuje.
 2. **MCP surface:** `kyx_catalog` (`src/mcp/tools.ts:4742`) enumeruje `INSTRUMENT_DEFS` →
-   KOPA sa objaví automaticky; skontrolovať, že `EFFECT_KNOB` má `bassHarmonic` a že
+   KOPA sa objaví automaticky; skontrolovať, že `EFFECT_PRIMARY_KNOB` má `bassHarmonic` a že
    `kyx_effect` tool funguje (test `tests/mcp-tools.test.ts`).
 3. **MCP mirrors:** po akomkoľvek zásahu do tool surface `npm run gen:mcp-mirrors` + commit
    (mirror test to vynúti).

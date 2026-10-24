@@ -19,13 +19,12 @@
  */
 import type { EffectType } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
-import { EFFECT_META, clampEffectParam, defaultParamsOf } from "../effects/definitions";
+import { EFFECT_META, EFFECT_PRIMARY_KNOB, clampEffectParam, defaultParamsOf } from "../effects/definitions";
 import type { Command } from "../commands/types";
 import {
   effectWordIn,
   applyMixIntent,
   TARGET_WORDS,
-  EFFECT_KNOB,
   type DeclinedIntentClarification,
   type MixDecision,
   type MixTarget,
@@ -208,7 +207,7 @@ function resolveParamAsk(text: string): ParamAsk | null {
     // the effect's own primary knob (reverb.mix, saturation.drive…), the
     // effectIntent layer already addresses it with identical semantics —
     // stealing those asks would only churn the pinned routes.
-    if (EFFECT_KNOB[candidateEffect] === (PARAM_ROLES[key].params[candidateEffect] as string)) continue;
+    if (EFFECT_PRIMARY_KNOB[candidateEffect] === (PARAM_ROLES[key].params[candidateEffect] as string)) continue;
     role = key;
     effectType = candidateEffect;
     break;
@@ -464,7 +463,7 @@ export function paramIntentFromModel(
   const effectType = effect as EffectType;
   if (!def || !def.params[effectType]) return null;
   const paramId = def.params[effectType] as string;
-  if (EFFECT_KNOB[effectType] === paramId) return null; // primary ⇒ effect layer
+  if (EFFECT_PRIMARY_KNOB[effectType] === paramId) return null; // primary ⇒ effect layer
   const param = paramDefOf(effectType, paramId);
   if (!param) return null;
   const validTargets = targets.filter((target): target is MixTarget =>

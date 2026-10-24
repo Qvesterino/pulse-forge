@@ -23,10 +23,9 @@ import type { ProjectDocument } from "../../project-model/types";
 import type { RoutedIntent } from "../route";
 import { buildIntentCommand } from "../command-for-route";
 import { paramPlan } from "../param-intent";
-import { EFFECT_META } from "../../effects/definitions";
+import { EFFECT_META, EFFECT_PRIMARY_KNOB } from "../../effects/definitions";
 import type { ParamDef } from "../../effects/types";
 import { trackIdsForTarget } from "../conversation";
-import { EFFECT_KNOB } from "../mix";
 import { targetTrackIds } from "./target-resolution";
 
 export type PlanDomain = "linear" | "log" | "db" | "normalized" | "boolean" | "none";
@@ -227,7 +226,7 @@ function effectSteps(
   intent: Extract<RoutedIntent, { kind: "effectIntent" }>["intent"],
 ): PlanStep[] {
   const steps: PlanStep[] = [];
-  const knob = EFFECT_KNOB[intent.effectType];
+  const knob = EFFECT_PRIMARY_KNOB[intent.effectType];
   for (const trackId of targetTrackIds(before, intent.targets, intent.trackIds, intent.trackOrdinal)) {
     const oldTrack = before.tracks.find((track) => track.id === trackId);
     const newTrack = after.tracks.find((track) => track.id === trackId);

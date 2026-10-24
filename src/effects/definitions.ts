@@ -3044,6 +3044,26 @@ export interface EffectDefinitionMeta {
   name: string;
   category: "tone" | "dynamics" | "character" | "space" | "movement";
   params: ParamDef[];
+  /**
+   * THE PRIMARY KNOB — the knob a "more/less X" ask turns. It is declared
+   * HERE because the registry is the one owner of what an effect is; the
+   * intent layer used to keep its own effect→knob table, and the MCP catalog
+   * read THAT table — so the agent was told one thing while the intent layer
+   * did another.
+   *
+   * The knob is the effect's CHARACTER control where it has one (saturation's
+   * drive, GROW's drive, TWIST's dispersion, REZONANS's formant, the pump's
+   * amount) and the wet/dry mix where it does not — "more reverb" means more
+   * reverb, not more of a knob the producer already set.
+   *
+   * ABSENT means "this effect has no single knob that means more of it": the
+   * ask is understood and then declined, which is the honest answer for
+   * `eq`/`msEq` (every knob is a musical quantity), `haasWidener` (the width
+   * role owns `width`), `utility` (a toolbox), `prud` (no fractional knob)
+   * and the namespaced flagships `ultina`, `ozvena`, `morphdynamics` (their
+   * knobs live behind dotted ids).
+   */
+  primaryKnob?: string;
 }
 
 /** type/name/category/params for every effect type — no runtime attached. */
@@ -3051,58 +3071,191 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   eq: { type: "eq", name: "EQ", category: "tone", params: eqParams },
   msEq: { type: "msEq", name: "M/S EQ", category: "tone", params: msEqParams },
   haasWidener: { type: "haasWidener", name: "Haas Widener", category: "movement", params: haasWidenerParams },
-  multiband: { type: "multiband", name: "Multiband", category: "tone", params: multibandParams },
-  compressor: { type: "compressor", name: "Compressor", category: "dynamics", params: compressorParams },
-  saturation: { type: "saturation", name: "Saturation", category: "character", params: saturationParams },
-  tapeSat: { type: "tapeSat", name: "Tape Sat", category: "character", params: tapeSatParams },
-  wowFlutter: { type: "wowFlutter", name: "Wow & Flutter", category: "character", params: wowFlutterParams },
-  clipper: { type: "clipper", name: "Clipper", category: "character", params: clipperParams },
-  reverb: { type: "reverb", name: "Reverb", category: "space", params: reverbParams },
-  delay: { type: "delay", name: "Delay", category: "space", params: delayParams },
-  pump: { type: "pump", name: "Pump", category: "movement", params: pumpParams },
-  distortion: { type: "distortion", name: "Distortion", category: "character", params: distortionParams },
-  bitcrusher: { type: "bitcrusher", name: "Bitcrusher", category: "character", params: bitcrusherParams },
-  chorus: { type: "chorus", name: "Chorus", category: "movement", params: chorusParams },
-  phaser: { type: "phaser", name: "Phaser", category: "movement", params: phaserParams },
-  sidechain: { type: "sidechain", name: "Sidechain", category: "dynamics", params: sidechainParams },
-  transient: { type: "transient", name: "Transient Shaper", category: "dynamics", params: transientParams },
-  gate: { type: "gate", name: "Gate", category: "dynamics", params: gateParams },
-  shimmer: { type: "shimmer", name: "Shimmer", category: "character", params: shimmerParams },
-  fxeq: { type: "fxeq", name: "PRISM", category: "character", params: fxeqParams },
+  multiband: { type: "multiband", name: "Multiband", category: "tone", params: multibandParams, primaryKnob: "mix" },
+  compressor: {
+    type: "compressor",
+    name: "Compressor",
+    category: "dynamics",
+    params: compressorParams,
+    primaryKnob: "ratio",
+  },
+  saturation: {
+    type: "saturation",
+    name: "Saturation",
+    category: "character",
+    params: saturationParams,
+    primaryKnob: "drive",
+  },
+  tapeSat: { type: "tapeSat", name: "Tape Sat", category: "character", params: tapeSatParams, primaryKnob: "drive" },
+  wowFlutter: {
+    type: "wowFlutter",
+    name: "Wow & Flutter",
+    category: "character",
+    params: wowFlutterParams,
+    primaryKnob: "mix",
+  },
+  clipper: { type: "clipper", name: "Clipper", category: "character", params: clipperParams, primaryKnob: "drive" },
+  reverb: { type: "reverb", name: "Reverb", category: "space", params: reverbParams, primaryKnob: "mix" },
+  delay: { type: "delay", name: "Delay", category: "space", params: delayParams, primaryKnob: "mix" },
+  pump: { type: "pump", name: "Pump", category: "movement", params: pumpParams, primaryKnob: "amount" },
+  distortion: {
+    type: "distortion",
+    name: "Distortion",
+    category: "character",
+    params: distortionParams,
+    primaryKnob: "drive",
+  },
+  bitcrusher: {
+    type: "bitcrusher",
+    name: "Bitcrusher",
+    category: "character",
+    params: bitcrusherParams,
+    primaryKnob: "mix",
+  },
+  chorus: { type: "chorus", name: "Chorus", category: "movement", params: chorusParams, primaryKnob: "mix" },
+  phaser: { type: "phaser", name: "Phaser", category: "movement", params: phaserParams, primaryKnob: "mix" },
+  sidechain: {
+    type: "sidechain",
+    name: "Sidechain",
+    category: "dynamics",
+    params: sidechainParams,
+    primaryKnob: "amount",
+  },
+  transient: {
+    type: "transient",
+    name: "Transient Shaper",
+    category: "dynamics",
+    params: transientParams,
+    primaryKnob: "sensitivity",
+  },
+  gate: { type: "gate", name: "Gate", category: "dynamics", params: gateParams, primaryKnob: "mix" },
+  shimmer: { type: "shimmer", name: "Shimmer", category: "character", params: shimmerParams, primaryKnob: "amount" },
+  fxeq: { type: "fxeq", name: "PRISM", category: "character", params: fxeqParams, primaryKnob: "mix" },
   ultina: { type: "ultina", name: "VLYX", category: "dynamics", params: ultinaParams },
   ozvena: { type: "ozvena", name: "DRIFT", category: "space", params: ozvenaParams },
   morphdynamics: { type: "morphdynamics", name: "MORPH", category: "dynamics", params: morphdynamicsParams },
-  rezonans: { type: "rezonans", name: "REZONANS", category: "character", params: rezonansParams },
-  drumBuss: { type: "drumBuss", name: "Drum Buss", category: "character", params: drumBussParams },
-  bassBuss: { type: "bassBuss", name: "Bass Buss", category: "character", params: bassBussParams },
+  rezonans: {
+    type: "rezonans",
+    name: "REZONANS",
+    category: "character",
+    params: rezonansParams,
+    primaryKnob: "formant",
+  },
+  drumBuss: {
+    type: "drumBuss",
+    name: "Drum Buss",
+    category: "character",
+    params: drumBussParams,
+    primaryKnob: "boomAmount",
+  },
+  bassBuss: {
+    type: "bassBuss",
+    name: "Bass Buss",
+    category: "character",
+    params: bassBussParams,
+    primaryKnob: "subEnhance",
+  },
   utility: { type: "utility", name: "Utility", category: "tone", params: utilityParams },
-  limiter: { type: "limiter", name: "Limiter", category: "dynamics", params: limiterParams },
-  stepGate: { type: "stepGate", name: "Step Gate", category: "movement", params: stepGateParams },
-  svFilter: { type: "svFilter", name: "SV Filter", category: "tone", params: svFilterParams },
-  flanger: { type: "flanger", name: "Flanger", category: "movement", params: flangerParams },
-  tremolo: { type: "tremolo", name: "Tremolo", category: "movement", params: tremoloParams },
-  autowah: { type: "autowah", name: "Autowah", category: "movement", params: autowahParams },
-  stutter: { type: "stutter", name: "Stutter", category: "movement", params: stutterParams },
-  comb: { type: "comb", name: "Comb", category: "movement", params: combParams },
-  vowel: { type: "vowel", name: "Vowel", category: "movement", params: vowelParams },
-  duckDelay: { type: "duckDelay", name: "Duck Delay", category: "space", params: duckDelayParams },
-  ringMod: { type: "ringMod", name: "Ring Mod", category: "movement", params: ringModParams },
-  tapeStop: { type: "tapeStop", name: "Tape Stop", category: "movement", params: tapeStopParams },
-  freqShifter: { type: "freqShifter", name: "Freq Shift", category: "movement", params: freqShifterParams },
-  multiTapDelay: { type: "multiTapDelay", name: "Multi-Tap", category: "space", params: multiTapDelayParams },
-  pitchShift: { type: "pitchShift", name: "Pitch Shift", category: "character", params: pitchShiftParams },
-  pitchCorrect: { type: "pitchCorrect", name: "Pitch Correct", category: "character", params: pitchCorrectParams },
-  zenit: { type: "zenit", name: "ZENIT", category: "dynamics", params: zenitParams },
-  apeks: { type: "apeks", name: "APEX", category: "dynamics", params: apeksParams },
-  sirka: { type: "sirka", name: "SPAN", category: "movement", params: sirkaParams },
+  limiter: { type: "limiter", name: "Limiter", category: "dynamics", params: limiterParams, primaryKnob: "mix" },
+  stepGate: { type: "stepGate", name: "Step Gate", category: "movement", params: stepGateParams, primaryKnob: "depth" },
+  svFilter: { type: "svFilter", name: "SV Filter", category: "tone", params: svFilterParams, primaryKnob: "mix" },
+  flanger: { type: "flanger", name: "Flanger", category: "movement", params: flangerParams, primaryKnob: "mix" },
+  tremolo: { type: "tremolo", name: "Tremolo", category: "movement", params: tremoloParams, primaryKnob: "mix" },
+  autowah: { type: "autowah", name: "Autowah", category: "movement", params: autowahParams, primaryKnob: "drive" },
+  stutter: { type: "stutter", name: "Stutter", category: "movement", params: stutterParams, primaryKnob: "mix" },
+  comb: { type: "comb", name: "Comb", category: "movement", params: combParams, primaryKnob: "mix" },
+  vowel: { type: "vowel", name: "Vowel", category: "movement", params: vowelParams, primaryKnob: "mix" },
+  duckDelay: {
+    type: "duckDelay",
+    name: "Duck Delay",
+    category: "space",
+    params: duckDelayParams,
+    primaryKnob: "duckAmount",
+  },
+  ringMod: { type: "ringMod", name: "Ring Mod", category: "movement", params: ringModParams, primaryKnob: "mix" },
+  tapeStop: { type: "tapeStop", name: "Tape Stop", category: "movement", params: tapeStopParams, primaryKnob: "mix" },
+  freqShifter: {
+    type: "freqShifter",
+    name: "Freq Shift",
+    category: "movement",
+    params: freqShifterParams,
+    primaryKnob: "mix",
+  },
+  multiTapDelay: {
+    type: "multiTapDelay",
+    name: "Multi-Tap",
+    category: "space",
+    params: multiTapDelayParams,
+    primaryKnob: "mix",
+  },
+  pitchShift: {
+    type: "pitchShift",
+    name: "Pitch Shift",
+    category: "character",
+    params: pitchShiftParams,
+    primaryKnob: "mix",
+  },
+  pitchCorrect: {
+    type: "pitchCorrect",
+    name: "Pitch Correct",
+    category: "character",
+    params: pitchCorrectParams,
+    primaryKnob: "amount",
+  },
+  zenit: { type: "zenit", name: "ZENIT", category: "dynamics", params: zenitParams, primaryKnob: "drive" },
+  apeks: { type: "apeks", name: "APEX", category: "dynamics", params: apeksParams, primaryKnob: "drive" },
+  sirka: { type: "sirka", name: "SPAN", category: "movement", params: sirkaParams, primaryKnob: "mix" },
   prud: { type: "prud", name: "TIDE", category: "tone", params: prudParams },
-  vinyl: { type: "vinyl", name: "Vinyl Suite", category: "character", params: vinylParams },
-  beatMangler: { type: "beatMangler", name: "Beat Mangler", category: "movement", params: beatManglerParams },
-  vocoder: { type: "vocoder", name: "Vocoder", category: "character", params: vocoderParams },
-  reverseSwell: { type: "reverseSwell", name: "Reverse Swell", category: "movement", params: reverseSwellParams },
-  granularFreeze: { type: "granularFreeze", name: "Granular Freeze", category: "space", params: granularFreezeParams },
-  kaskada: { type: "kaskada", name: "RIFT", category: "space", params: kaskadaParams },
-  bassHarmonic: { type: "bassHarmonic", name: "GROW", category: "character", params: bassHarmonicParams },
-  skrutka: { type: "skrutka", name: "TWIST", category: "character", params: skrutkaParams },
-  portal: { type: "portal", name: "PORTAL", category: "space", params: portalParams },
+  vinyl: { type: "vinyl", name: "Vinyl Suite", category: "character", params: vinylParams, primaryKnob: "amount" },
+  beatMangler: {
+    type: "beatMangler",
+    name: "Beat Mangler",
+    category: "movement",
+    params: beatManglerParams,
+    primaryKnob: "mix",
+  },
+  vocoder: { type: "vocoder", name: "Vocoder", category: "character", params: vocoderParams, primaryKnob: "mix" },
+  reverseSwell: {
+    type: "reverseSwell",
+    name: "Reverse Swell",
+    category: "movement",
+    params: reverseSwellParams,
+    primaryKnob: "mix",
+  },
+  granularFreeze: {
+    type: "granularFreeze",
+    name: "Granular Freeze",
+    category: "space",
+    params: granularFreezeParams,
+    primaryKnob: "mix",
+  },
+  kaskada: { type: "kaskada", name: "RIFT", category: "space", params: kaskadaParams, primaryKnob: "mix" },
+  bassHarmonic: {
+    type: "bassHarmonic",
+    name: "GROW",
+    category: "character",
+    params: bassHarmonicParams,
+    primaryKnob: "drive",
+  },
+  skrutka: { type: "skrutka", name: "TWIST", category: "character", params: skrutkaParams, primaryKnob: "dispersion" },
+  portal: { type: "portal", name: "PORTAL", category: "space", params: portalParams, primaryKnob: "mix" },
 };
+
+/**
+ * THE EFFECT → PRIMARY KNOB MAP, derived from the registry.
+ *
+ * This used to be a SECOND hand-written table in the intent layer
+ * (`EFFECT_KNOB` in `src/intent/mix.ts`) — exactly the kind of second copy of
+ * the truth the registry exists to prevent. It named 15 of the 57 effects, so
+ * 42 registered effects had no knob at all and every "more X" ask on them was
+ * declined with "no knob mapped"; and the MCP catalog read that same table,
+ * so the agent was told about a knob the intent layer would not use.
+ *
+ * One owner, one answer: the declaration lives on the effect, the map is
+ * derived from it, and the intent layer and the catalog both read THIS.
+ */
+export const EFFECT_PRIMARY_KNOB: Partial<Record<EffectType, string>> = Object.fromEntries(
+  Object.entries(EFFECT_META)
+    .filter(([, meta]) => meta.primaryKnob != null)
+    .map(([type, meta]) => [type, meta.primaryKnob as string]),
+);

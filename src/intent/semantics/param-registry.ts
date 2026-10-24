@@ -25,9 +25,8 @@
  * named-knob ask.
  */
 import type { EffectType } from "../../project-model/types";
-import { EFFECT_META } from "../../effects/definitions";
+import { EFFECT_META, EFFECT_PRIMARY_KNOB } from "../../effects/definitions";
 import type { ParamDef } from "../../effects/types";
-import { EFFECT_KNOB } from "../mix";
 
 export type ParamRole =
   "mix" | "time" | "tone" | "drive" | "width" | "threshold" | "attack" | "release" | "cutoff" | "q";
@@ -489,7 +488,7 @@ export function buildCapabilityMatrix(): CapabilityRow[] {
     for (const capability of spec.capabilities) {
       const def = paramDefOf(capability.effectType, capability.paramId);
       if (!def) continue;
-      const primary = EFFECT_KNOB[capability.effectType] === capability.paramId;
+      const primary = EFFECT_PRIMARY_KNOB[capability.effectType] === capability.paramId;
       rows.push({
         role: spec.role,
         effectType: capability.effectType,

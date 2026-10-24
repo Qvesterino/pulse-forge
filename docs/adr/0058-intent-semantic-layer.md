@@ -37,10 +37,12 @@ metric and evidence status. The parser's `PARAM_ROLES` table, the capability
 matrix and the corpus examples are **derived** from it. The `ParamDef` remains
 the owner of bounds/taper/unit; the matrix reads it and does not duplicate it.
 
-`primary: EFFECT_KNOB[effect] === paramId` marks knobs the effect layer already
+`primary: EFFECT_PRIMARY_KNOB[effect] === paramId` marks knobs the effect layer already
 owns (“more reverb” = `reverb.mix`); the param parser deliberately skips them,
 and the matrix reports `exposedBy: "effect"` rather than pretending the param
-layer handles everything.
+layer handles everything. (ADR 0061 moved that map out of `src/intent/mix.ts`
+into the registry — `EffectDefinitionMeta.primaryKnob` — so the intent layer,
+the param registry and the MCP catalog read one answer instead of two.)
 
 ### 2. One mutation boundary, exhaustive by type
 

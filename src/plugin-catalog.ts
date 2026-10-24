@@ -1,8 +1,7 @@
 import type { EffectType, InstrumentKind, ProjectDocument } from "./project-model/types";
-import { EFFECT_META } from "./effects/definitions";
+import { EFFECT_META, EFFECT_PRIMARY_KNOB } from "./effects/definitions";
 import type { ParamDef } from "./effects/types";
 import { INSTRUMENT_META, INSTRUMENT_ORDER } from "./instruments/definitions";
-import { EFFECT_KNOB } from "./intent/mix";
 import { buildCapabilityMatrix } from "./intent/semantics/param-registry";
 import { targetTrackIds } from "./intent/semantics/target-resolution";
 import { MIX_TARGET_IDS, type MixTargetId } from "./intent/semantics/target-registry";
@@ -94,7 +93,7 @@ export function getEffectCatalogEntry(type: string): EffectCatalogEntry | null {
   const meta = EFFECT_META[type as EffectType];
   const parameters = meta.params.map(pluginCatalogParameter);
   const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]));
-  const primaryKnob = EFFECT_KNOB[meta.type] ?? null;
+  const primaryKnob = EFFECT_PRIMARY_KNOB[meta.type] ?? null;
   const primaryRole = primaryKnob
     ? (EFFECT_CAPABILITY_MATRIX.find(
         (row) => row.effectType === type && row.paramId === primaryKnob && row.exposedBy === "effect",

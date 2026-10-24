@@ -8,7 +8,7 @@ import {
   setTrackSend,
   snapshot,
 } from "../commands/commands";
-import { clampEffectParam, EFFECT_META } from "../effects/definitions";
+import { clampEffectParam, EFFECT_META, EFFECT_PRIMARY_KNOB } from "../effects/definitions";
 import { roleOfTrack } from "../effects/role-presets";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
@@ -732,31 +732,6 @@ export interface EffectMove {
   focusByTarget?: Partial<Record<"drums" | "bass" | "chords" | "lead", number>>;
 }
 
-/** Primary knob per effect — the one a "more/less X" request turns. */
-export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
-  delay: "mix",
-  reverb: "mix",
-  saturation: "drive",
-  distortion: "drive",
-  chorus: "mix",
-  flanger: "mix",
-  phaser: "mix",
-  tremolo: "mix",
-  bitcrusher: "mix",
-  compressor: "ratio",
-  pump: "amount",
-  // Sidechain is the registry's own name for the ducking effect, so the word
-  // "sidechain" resolves to it (R-01). Its AMOUNT is the knob that decides how
-  // deep the duck goes — the same shape as pump's, and the only reason a
-  // "more sidechain" ask can be honoured at all.
-  sidechain: "amount",
-  bassHarmonic: "drive",
-  skrutka: "dispersion",
-  // REZONANS: a "more/less" request turns the formant — the control that
-  // actually changes the voice's character, not the wet/dry mix.
-  rezonans: "formant",
-};
-
 /** Scene role → the tracks its instrumentation plays (song-builder map). */
 export { ROLE_TARGETS };
 export const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = MIX_TARGET_WORDS;
@@ -914,7 +889,7 @@ export { effectWordIn };
  * Only simple lowercase ids can match as words ("lowShelfGain" never is).
  */
 function namesForeignKnob(lower: string, effectType: EffectType): boolean {
-  const knob = EFFECT_KNOB[effectType];
+  const knob = EFFECT_PRIMARY_KNOB[effectType];
   return EFFECT_META[effectType].params.some((param: { id: string }) => {
     if (param.id === knob || !/^[a-z][a-z0-9]*$/.test(param.id) || param.id.length < 3) return false;
     return new RegExp(`\\b${param.id}\\b`).test(lower);
@@ -1078,7 +1053,7 @@ const TARGETED_KNOB_DELTA: Partial<Record<EffectType, number>> = {
  * "remove". Effects whose knob the intent does not know are skipped.
  */
 export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): ReturnType<typeof snapshot> {
-  const knob = EFFECT_KNOB[intent.effectType];
+  const knob = EFFECT_PRIMARY_KNOB[intent.effectType];
   // The knob is needed only where the knob is the thing that MOVES: a
   // "more"/"less" ask turns it, an absolute "set" places it. "remove" takes
   // the instance OUT and a semantic move carries its own absolute params -
@@ -1191,7 +1166,7 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
  * alone proves nothing. Removals report the instance gone.
  */
 export function effectReadback(before: ProjectDocument, after: ProjectDocument, intent: EffectIntent): string {
-  const knob = EFFECT_KNOB[intent.effectType];
+  const knob = EFFECT_PRIMARY_KNOB[intent.effectType];
   const readbackIds = intent.move
     ? [...Object.keys(intent.move.params), ...(intent.move.focusByTarget ? ["focusHz"] : [])]
     : knob
@@ -1248,7 +1223,7 @@ export function declinedEffectClarification(text: string): DeclinedIntentClarifi
   const lower = deaccentLower(text);
   const effectType = effectWordIn(lower);
   if (!effectType || !DIRECTION_WORD.test(lower)) return null;
-  const knob = EFFECT_KNOB[effectType] ?? "mix";
+  const knob = EFFECT_PRIMARY_KNOB[effectType] ?? "mix";
   if (namesForeignKnob(lower, effectType)) {
     return {
       reason: `efekt „${effectType}" má parameter, ktorý intent neovláda — motor vie nastaviť primárny knob „${knob}"`,

@@ -24,7 +24,8 @@ import { SCALE_INTERVALS, formatKey, type ScaleType } from "../../src/project-mo
 import type { MusicalKey } from "../../src/project-model/types";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
 import { QUALITY_BALANCED, QUALITY_ECONOMY, REZ_PARAM } from "../../src/effects/rezonans-core/contracts/parameters.js";
-import { EFFECT_KNOB, effectWordIn } from "../../src/intent/mix";
+import { EFFECT_PRIMARY_KNOB } from "../../src/effects/definitions";
+import { effectWordIn } from "../../src/intent/mix";
 
 const SCALE_TYPES = Object.keys(SCALE_INTERVALS) as ScaleType[];
 const QUALITIES = Object.keys(CHORD_INTERVALS) as ChordQuality[];
@@ -334,6 +335,6 @@ describe("REZONANS — the intent aliases reach the right device", () => {
     // would silently send every bass-harmonic request to the wrong device.
     expect(effectWordIn(" viac harmoniky na bass ")).toBe("bassHarmonic");
     expect(effectWordIn(" bass harmonic generator ")).toBe("bassHarmonic");
-    expect(EFFECT_KNOB.rezonans).toBe("formant");
+    expect(EFFECT_PRIMARY_KNOB.rezonans).toBe("formant");
   });
 });

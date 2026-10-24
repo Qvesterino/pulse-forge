@@ -18,11 +18,11 @@
  * appliers and the store's one undo step.
  */
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
-import { EFFECT_META } from "../effects/definitions";
+import { EFFECT_META, EFFECT_PRIMARY_KNOB } from "../effects/definitions";
 import { clearAdjustments, rememberAdjustment } from "./adjustment-ledger";
 import { trackIdsForTarget, type FaderIntent } from "./conversation";
 import type { DegreeLevel } from "./degree";
-import { EFFECT_KNOB, type EffectIntent } from "./mix";
+import { type EffectIntent } from "./mix";
 import { paramValueFraction, type ParamIntent } from "./param-intent";
 import { targetTrackIds } from "./semantics/target-resolution";
 
@@ -145,7 +145,7 @@ function changedEffectKnob(
   after: ProjectDocument,
   intent: EffectIntent,
 ): EffectKnobChange | null {
-  const knob = EFFECT_KNOB[intent.effectType];
+  const knob = EFFECT_PRIMARY_KNOB[intent.effectType];
   const def = knob ? EFFECT_META[intent.effectType]?.params.find((param) => param.id === knob) : null;
   if (!knob || !def) return null;
   for (const trackId of targetTrackIds(before, intent.targets, intent.trackIds, intent.trackOrdinal)) {
