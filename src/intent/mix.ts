@@ -745,6 +745,11 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
   bitcrusher: "mix",
   compressor: "ratio",
   pump: "amount",
+  // Sidechain is the registry's own name for the ducking effect, so the word
+  // "sidechain" resolves to it (R-01). Its AMOUNT is the knob that decides how
+  // deep the duck goes — the same shape as pump's, and the only reason a
+  // "more sidechain" ask can be honoured at all.
+  sidechain: "amount",
   bassHarmonic: "drive",
   skrutka: "dispersion",
   // REZONANS: a "more/less" request turns the formant — the control that

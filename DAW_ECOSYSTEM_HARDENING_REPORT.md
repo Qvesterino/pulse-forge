@@ -199,12 +199,76 @@ with the track.
 **not** restored), GREEN with it. **Regression surface:** `referential-integrity`,
 `undo-redo-integrity`, `project-invariants`, `state-persistence-adversarial` — all green.
 
-### 4.4 — Outstanding findings (verified in code, not yet fixed)
+### 4.4 — P1 · The effect word table must be DERIVED from the registry · **FIXED** (R-01)
+
+**The defect, measured.** The Intent Engine's word table was a fourth vocabulary next to the
+registry, and it was allowed to disagree with all of them. Measured against `EFFECT_META` on the
+pre-fix code: the 57 registered effects own **91 canonical names** (each effect's id, its
+camel-split id and its display name) — and **72 of the 91 (79 %) did not resolve to their own
+effect**:
+
+- **9 hijacked names resolved to a DIFFERENT effect**, across 8 effects: `distortion` → saturation,
+  `sv filter` → eq, `ms eq` → eq, `m s eq` → eq, `sidechain` → pump, `ozvena` → reverb,
+  `step gate` → gate, `duck delay` → delay, `multi tap delay` → delay.
+- **63 names resolved to nothing at all**, across 40 effects — the names the UI shows were
+  unspeakable: "grow", "drift", "zenit", "apex", "span", "tide", "prism", "vlyx", "morph", "rift",
+  "twist", "vinyl suite", "beat mangler", "granular freeze", "reverse swell", "duck delay",
+  "ring mod", "tape stop", "tape sat", "wow flutter", "freq shift", "pitch shift", "pitch correct",
+  "multi tap", "transient shaper", "drum buss", "bass buss", "utility", "autowah", "stutter",
+  "comb", "vowel", "clipper", "shimmer", "multiband", "haas widener".
+
+The original F-01/F-02 named two of them. The real inventory is **72**.
+
+**The fix.** `src/intent/effect-words.ts` no longer hand-maintains an effect vocabulary:
+
+- The **canonical layer is derived from `EFFECT_META`** — every effect's id, its camel-split id and
+  its display name are words for that effect and for no other. A new effect is speakable the moment
+  it is registered; nothing has to be remembered in a second place.
+- The **hand-written table survives only as the ALIAS layer** — the linguistic synonyms no registry
+  can know ("reverbu", "dozvuk", "kompres", "koren", "fazer"). The aliases that hijacked a canonical
+  name (`\bdistort` → saturation, `\bsidechain` → pump, `\bozven` → reverb) now point at the
+  registry's own effect.
+- The **match rule is specificity, not row order**: the LONGEST matched text wins, and a canonical
+  name beats an alias on a tie. This kills F-02 mechanically — "sv filter" (9 chars) beats "filter"
+  (6) on its own — instead of by hand-ordering two rows. The old lookup took the FIRST match, so the
+  ORDER of the rows decided the meaning; the table can no longer be mis-ordered by accident.
+- Canonical rules match WHOLE words, never bare prefixes: "comb" must not match "combined", "grow"
+  must not swallow "growth".
+
+**Collateral.** `sidechain` is the registry's own name for the ducking effect, so the word now
+reaches it — and that effect had no primary knob, so "add sidechain on the bass" would have failed
+with "no knob mapped". `EFFECT_KNOB.sidechain = "amount"` (the ducking depth, the same shape as
+pump's) keeps the ask working. "sidechain pump" still reaches `pump`: it is longer than the
+canonical word, so it wins the specificity contest on its own.
+
+**Falsification.** `tests/effect-word-identity.test.ts` (66 cases: one per registered effect, the
+specificity contest, the alias layer, and the intent layer's own routing) was run against the OLD
+implementation first: **43 cases went red** — the hijacked names, the 40 effects whose names
+resolved to nothing, and the "sv filter" case. With the derivation in place: **66/66 green**. The
+apply-level cases read the RACK back, not the parse: "add distortion on the drums" puts a
+`distortion` on the track and no `saturation`.
+
+**Regression surface.** 2 127 tests across the intent, MCP, param and creative-task surfaces:
+**2 119 green**, 8 red. **None of the 8 is this change's**, and that was proved rather than assumed
+— the same four files were re-run with the old implementation restored and failed identically:
+
+| Red                                                                                                   | Proven cause                                                                                             |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `creative-task-contract` (SFT manifest pin), `intent-model-schema` (`hlas` not queued in the trainer) | a parallel session changed `src/project-model/types.ts` and added the HĽAS instrument without re-pinning |
+| `intent-model-artifact`, `intent-router-corpus`                                                       | pre-existing on `main` (reproduced with this change reverted)                                            |
+| `mcp-core`, `mcp-mirror-sync` ×2                                                                      | the MCP tool defs and their two generated mirrors drifted apart in commit `4a09104d`                     |
+| `mcp-tools` (`kyx_mix_idea`)                                                                          | a 5 s budget against 1 025 ms of work — **passes in isolation, 147/147**                                 |
+
+**Boot path.** The registry import is free: `src/effects/definitions.ts` is already inside the
+studio boot closure through `src/project-model/schema.ts`. Measured on the source graph before and
+after the change: **457 modules, identical digest** — the closure did not move. In the built
+bundle, in the same tree, old implementation vs new: boot path **2 122 → 2 123 KB** (+1 KB of
+derivation code, budget 2 200), DAW JS unchanged at 5 609 KB.
+
+### 4.5 — Outstanding findings (verified in code, not yet fixed)
 
 | ID       | Sev    | Finding                                                                                                                                                                                                                                                                                                                                                                                | Where                                                                              |
 | -------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **F-01** | **P1** | `distortion` resolves to **`saturation`** in the Intent word table, while `distortion` is a real registered effect the MCP tool inserts. The same phrase produces two different effects depending on the surface.                                                                                                                                                                      | `src/intent/effect-words.ts:24` vs `src/mcp/tools.ts:4621`                         |
-| **F-02** | **P1** | `sv filter` resolves to **`eq`**: the generic `\bfilter` rule precedes the specific `\bsv filter\b` rule and the lookup takes the first match. The intent's own param layer then forces `svFilter` — the intent layer disagrees with itself.                                                                                                                                           | `src/intent/effect-words.ts:38,45,50-52` vs `src/intent/param-intent.ts:197-205`   |
 | **F-05** | **P2** | The AI bridge clamps track gain to **0..4** while the command layer clamps 0..1.5, the UI displays 0..1.5 and MCP caps at 1.5. The bridge bypasses `setTrackParams`, so a document can hold a gain no other surface can set or show.                                                                                                                                                   | `src/ai/bridge/executor.ts:606,1004` vs `src/commands/master.ts:70,95`             |
 | **F-06** | **P2** | `kyx_intent` asserts _"applied, one undo step in KYX"_ but its read-back chain covers only production/effectIntent/preset — the **`paramIntent`** branch gets **no verification at all**.                                                                                                                                                                                              | `src/mcp/tools.ts:11722-11730`                                                     |
 | **F-07** | **P2** | Two surfaces disagree on the same operation: deleting the **active take's** clip silently promotes an alternate take through the UI path, while the MCP path refuses. Removing an effect from a **return bus** is a silent no-op, while `addEffectToTracks` _can_ add effects to a bus.                                                                                                | `src/mcp/tools.ts:8670` vs `src/commands/audioClips.ts`; `src/commands/effects.ts` |
@@ -218,7 +282,7 @@ with the track.
 | **F-15** | **P2** | **The browser verifier drives a UI that no longer exists.** The plugin-workflow check calls `selectOption("fxeq")` on `.devices-add-effect`, a `<select>` that is not in the React code any more — the effect add control is now the button `.fx-add-trigger`. The check can never pass again, so its red is uninformative **and the real plugin workflow it protects is unverified.** | `scripts/verify-browser.mjs:781` vs `src/ui/EffectRack.tsx:353,577`                |
 | **F-16** | **P2** | **The app-boot check budgets 5 s for a lazily-imported panel.** `PresetBrowser` is `React.lazy`-loaded, so the check waits 5 s for a chunk that still has to download and mount. The panel exists; the budget does not cover the lazy boundary.                                                                                                                                        | `scripts/verify-browser.mjs:438`, `src/ui/SampleBrowser.tsx:30`                    |
 
-### 4.5 — Findings that were checked and found **clean** (recorded so they are not re-litigated)
+### 4.6 — Findings that were checked and found **clean** (recorded so they are not re-litigated)
 
 - **No dB↔linear formula drift.** All eight amplitude conversions are `10^(dB/20)`; `10·log10`
   appears only in power/LUFS/energy-share domains, where it is correct. `10·log10(ratio*10)` in
@@ -348,18 +412,18 @@ worse than no check: it teaches the team to ignore a red. That is why these thre
 Ranked by impact × likelihood × detectability, weighted toward audio corruption, data loss,
 silent mismatches and false AI success.
 
-| #        | Recommendation                                                                                                                                                         | Sev | Why it is ranked here                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **R-01** | **Derive the intent effect word table from the capability matrix** instead of maintaining it as a fourth vocabulary                                                    | P1  | Kills F-01 and F-02 at the root. Today "distortion" and "sv filter" mean different effects depending on the surface, and the intent layer disagrees with itself. One owner, one answer.                                                                                                                                                                                                               |
-| **R-02** | **Give `kyx_intent`'s `paramIntent` branch the same read-back** the other branches have, and extract one shared `verifiedMutation` helper across the 38 tools          | P1  | F-06/F-10: an AI action is currently _reported as applied_ without its state being verified. This is the "false AI success" class the system cannot afford.                                                                                                                                                                                                                                           |
-| **R-03** | **Make "cross-references held by other entities" mechanically enforced**: a guard that fails when `normalizeProject` prunes anything the command's delta did not carry | P1  | The same class has now bitten twice (sidechain/MIDI, take lanes/Live Sets). A mechanical rule ends the class; a per-case fix does not.                                                                                                                                                                                                                                                                |
-| **R-04** | **Unify the track-gain domain**: route the AI bridge through `setTrackParams` so one clamp owns it                                                                     | P2  | F-05: a document can currently hold a gain no other surface can set or display.                                                                                                                                                                                                                                                                                                                       |
-| **R-05** | **Make the intent bar's failure surface uniform**: one helper every branch uses, so no branch can be a silent no-op                                                    | P2  | The effect branch was a silent no-op (fixed here); the same shape can recur in any new branch.                                                                                                                                                                                                                                                                                                        |
-| **R-06** | **Either teach `kyx_plugin_param` the deep params** (`eq.band3.gainDb`) **or make its description honest**                                                             | P2  | F-08: the tool's contract and its capability disagree; the AI reasons from the description.                                                                                                                                                                                                                                                                                                           |
-| **R-07** | **Make the model context's offered roles exactly the model's own enum**                                                                                                | P2  | F-09: the context marks an action supported that the model cannot express — a silent dead end for the AI.                                                                                                                                                                                                                                                                                             |
-| **R-08** | **Filter `deprecated` params out of the MCP catalog** and de-duplicate the eq alias table                                                                              | P3  | F-11: two alias truths that agree today and would not be caught when they stop agreeing.                                                                                                                                                                                                                                                                                                              |
-| **R-09** | **One conversion owner for dB→linear**, with the eight call sites delegating to it, and extend the range sweep to ultina/ozvena/morphdynamics                          | P3  | F-13: the copies agree today; a single owner plus a sweep makes that structural instead of lucky.                                                                                                                                                                                                                                                                                                     |
-| **R-10** | **Repair the browser verifier's drift and pay the DAW JS budget back** (the tightening trigger has fired)                                                              | P2  | F-14, F-15, F-16 plus the budget note: two of the verifier's stable reds no longer measure the product (a selector the UI dropped, a 5 s budget against a lazy chunk), so the checks that were supposed to protect the plugin workflow are unverified. The budget ceiling was raised with a measured justification, and the note now states that the next growth must offset rather than raise again. |
+| #        | Recommendation                                                                                                                                                         | Sev   | Why it is ranked here                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **R-01** | **~~Derive the intent effect word table from the capability matrix~~** instead of maintaining it as a fourth vocabulary — **DONE (§4.4)**                              | ✅ P1 | Shipped. The table is derived from `EFFECT_META`; the longest match wins and a canonical name beats an alias on a tie. Measured: **72 of the 91 registry names (79 %) used to resolve to the wrong effect or to nothing** — the report's F-01/F-02 named two of them. The word table can no longer drift from the registry, because it is not a second copy of it.                                    |
+| **R-02** | **Give `kyx_intent`'s `paramIntent` branch the same read-back** the other branches have, and extract one shared `verifiedMutation` helper across the 38 tools          | P1    | F-06/F-10: an AI action is currently _reported as applied_ without its state being verified. This is the "false AI success" class the system cannot afford.                                                                                                                                                                                                                                           |
+| **R-03** | **Make "cross-references held by other entities" mechanically enforced**: a guard that fails when `normalizeProject` prunes anything the command's delta did not carry | P1    | The same class has now bitten twice (sidechain/MIDI, take lanes/Live Sets). A mechanical rule ends the class; a per-case fix does not.                                                                                                                                                                                                                                                                |
+| **R-04** | **Unify the track-gain domain**: route the AI bridge through `setTrackParams` so one clamp owns it                                                                     | P2    | F-05: a document can currently hold a gain no other surface can set or display.                                                                                                                                                                                                                                                                                                                       |
+| **R-05** | **Make the intent bar's failure surface uniform**: one helper every branch uses, so no branch can be a silent no-op                                                    | P2    | The effect branch was a silent no-op (fixed here); the same shape can recur in any new branch.                                                                                                                                                                                                                                                                                                        |
+| **R-06** | **Either teach `kyx_plugin_param` the deep params** (`eq.band3.gainDb`) **or make its description honest**                                                             | P2    | F-08: the tool's contract and its capability disagree; the AI reasons from the description.                                                                                                                                                                                                                                                                                                           |
+| **R-07** | **Make the model context's offered roles exactly the model's own enum**                                                                                                | P2    | F-09: the context marks an action supported that the model cannot express — a silent dead end for the AI.                                                                                                                                                                                                                                                                                             |
+| **R-08** | **Filter `deprecated` params out of the MCP catalog** and de-duplicate the eq alias table                                                                              | P3    | F-11: two alias truths that agree today and would not be caught when they stop agreeing.                                                                                                                                                                                                                                                                                                              |
+| **R-09** | **One conversion owner for dB→linear**, with the eight call sites delegating to it, and extend the range sweep to ultina/ozvena/morphdynamics                          | P3    | F-13: the copies agree today; a single owner plus a sweep makes that structural instead of lucky.                                                                                                                                                                                                                                                                                                     |
+| **R-10** | **Repair the browser verifier's drift and pay the DAW JS budget back** (the tightening trigger has fired)                                                              | P2    | F-14, F-15, F-16 plus the budget note: two of the verifier's stable reds no longer measure the product (a selector the UI dropped, a 5 s budget against a lazy chunk), so the checks that were supposed to protect the plugin workflow are unverified. The budget ceiling was raised with a measured justification, and the note now states that the next growth must offset rather than raise again. |
 
 ---
 
@@ -376,8 +440,11 @@ Non-blocking, ordered by leverage. None of these is required for the fixes above
    `kyx_plugin_param`; it is hand-rolled per tool. A shared helper would make "the tool reports
    the state it produced" a property of the framework rather than of each tool.
 3. **Derive the intent vocabularies from one capability matrix.** The model vocab, the knob map,
-   the word table and the capability matrix are four views of the same facts; R-01 is the first
-   cut of merging them.
+   the word table and the capability matrix are four views of the same facts; R-01 (the word table)
+   is now merged and shipped — the registry IS the table. The knob map, the model vocab and the
+   capability matrix still have separate owners, and `EFFECT_KNOB` is the one that bites next: 43 of
+   the 57 effects still have no primary knob, so a "more X" ask on them declines with "no knob
+   mapped" even though the ask was understood.
 4. **Let the engine own the plugin lifecycle contract.** The containment invariant is now pinned
    at all 14 call sites, but each site still has its own `callRuntime` guard — a single
    "runtime lifecycle" abstraction (register → project → tear down) would make the next call site
@@ -398,12 +465,17 @@ Non-blocking, ordered by leverage. None of these is required for the fixes above
 - The plugin-runtime containment invariant at **14/14** call sites, each revert-proven
 - The three new specs, each falsified before its fix and green after
 - The regression surfaces named in §4
+- **The effect word table derived from the registry (§4.4)**: 66/66 guard cases green, falsified at
+  43 red on the old implementation; boot path +1 KB (2 122 → 2 123 KB), boot closure unchanged at
+  457 modules
 
 **Not green, or not verified — stated plainly**
 
-1. **Two P1 surface drifts are still open** (F-01, F-02). Until they are closed, the Intent Engine
-   and the MCP server can disagree about _which effect_ a request means. That is the single
-   biggest gap to "one system, multiple control surfaces".
+1. **The two P1 surface drifts are closed** (F-01, F-02 — see §4.4). The effect word table is derived
+   from the registry, so the Intent Engine and the MCP server can no longer disagree about _which
+   effect_ a request means: one owner, one answer. The correction is bigger than the report first
+   stated — **72 of the registry's 91 canonical names** were broken, not two — and the guard
+   (`tests/effect-word-identity.test.ts`) now pins every registered effect's own name to itself.
 2. **An AI action can still be reported without verification** (F-06). The MCP plugin-param path
    is honest; the `kyx_intent` param branch is not.
 3. **The full suite was not re-run to zero-red on the final tip.** The last complete run was on an
@@ -439,10 +511,9 @@ now has an honest map of its gaps, a ranked list, and three of its members fixed
 Five tightly scoped tasks, in order. Each is independently shippable and independently
 falsifiable.
 
-1. **Derive the effect word table from the capability matrix** (R-01). Touch
-   `src/intent/effect-words.ts` and the capability registry only. Add one spec per affected word
-   (`distortion`, `sv filter`) asserting that the Intent Engine, the MCP tool and the registry
-   name the same effect. _Risk: low. The registry is the source; nothing else moves._
+1. ~~**Derive the effect word table from the capability matrix** (R-01).~~ **DONE — §4.4.** The
+   table is derived from `EFFECT_META`; the guard is `tests/effect-word-identity.test.ts` (66 cases,
+   falsified: 43 red before the fix). _The registry is the source; nothing else moved._
 2. **Give `kyx_intent`'s `paramIntent` branch a read-back** and extract the shared
    `verifiedMutation` helper (R-02). Assert that a param intent reports the value that actually
    landed, and that a no-op reports no-op rather than "one undo step". _Risk: low — the pattern
@@ -461,13 +532,14 @@ falsifiable.
    "410/428 under load" with a clean three-engine number. _Risk: low — the first two are test
    infrastructure, and the third is measurement only._
 
-**One register row left on the table, deliberately.** The three truths fixed in §4 belong in the
-invariant register (`docs/AGENT-MAP.md` §3) next to their guards — that register is where the next
-agent learns them. The file was being edited by a parallel session at the time of writing, so the
-rows are left for its owner rather than clobbered. The three guards are:
+**The register rows are now in.** The truths fixed in §4 belong in the invariant register
+(`docs/AGENT-MAP.md` §3) next to their guards — that register is where the next agent learns them.
+They were left for the file's owner while a parallel session was editing it; they are committed
+now, together with the fourth truth this session added:
 
 | Invariant                                                                                                                                                 | Guard                                               |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | A type-level effect remove needs no primary knob — the knob is required only where the knob is the thing that moves                                       | `tests/effect-intent-remove-without-knob.test.ts`   |
 | A relative dB ask is only ever applied to a dB knob; the absolute and the relative path refuse the same asks                                              | `tests/param-intent-relative-db-unit-guard.test.ts` |
 | Cross-references held by other entities (take lanes, Live Set routing, drum step metadata) are removed INSIDE the command, so the undo delta carries them | `tests/delete-track-undo-cross-references.test.ts`  |
+| The effect word table is DERIVED from the registry; the longest match wins and a canonical name beats an alias on a tie                                   | `tests/effect-word-identity.test.ts`                |
