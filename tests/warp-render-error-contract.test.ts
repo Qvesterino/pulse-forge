@@ -116,7 +116,13 @@ describe("the warp render client honours a failed worker", () => {
     expect(FakeWorker.instances[0]?.terminated, "a failed worker must be terminated").toBe(true);
   });
 
-  it("rejects with the crash reason when the worker dies", async () => {
+  it("a worker that dies WITHOUT delivering a render falls back to the main thread", async () => {
+    // In the warp worker the render lives inside a try/catch, so a failure ON
+    // THE INPUT is always reported as a message ({error}) and never as an
+    // error event. An error event therefore means the worker never delivered a
+    // render at all — its module failed to load, or the delivery threw. The
+    // input was never rendered, so the main thread may still do the work: the
+    // fallback is a RECOVERY here, not a repeat.
     vi.stubGlobal(
       "Worker",
       class extends FakeWorker {
@@ -127,9 +133,34 @@ describe("the warp render client honours a failed worker", () => {
     );
     const { renderWarpPreserveAsync } = await import("../src/audio-workers/warp-render-client");
 
-    const pending = renderWarpPreserveAsync([tone(WORKER_MIN_SAMPLES)], 44100, intervals, WORKER_MIN_SAMPLES);
+    const rendered = await renderWarpPreserveAsync([tone(WORKER_MIN_SAMPLES)], 44100, intervals, WORKER_MIN_SAMPLES);
+    expect(rendered, "the clip must not lose its warped render to a worker that never rendered it").toHaveLength(1);
+    expect(rendered[0]?.length).toBe(WORKER_MIN_SAMPLES);
+  });
+
+  it("rejects with BOTH reasons when the worker dies and the fallback dies too", async () => {
+    vi.stubGlobal(
+      "Worker",
+      class extends FakeWorker {
+        constructor() {
+          super({ answer: undefined, crash: "worker script failed to load" });
+        }
+      },
+    );
+    const { renderWarpPreserveAsync } = await import("../src/audio-workers/warp-render-client");
+
+    // A malformed interval list: the fallback throws when it builds the rate
+    // envelope, so both the worker's death and the fallback's own error have
+    // to be in the rejection — neither reason may be dropped.
+    const pending = renderWarpPreserveAsync(
+      [tone(WORKER_MIN_SAMPLES)],
+      44100,
+      null as unknown as typeof intervals,
+      WORKER_MIN_SAMPLES,
+    );
 
     await expect(pending).rejects.toThrow(/worker script failed to load/);
+    await expect(pending).rejects.toThrow(/fallback failed too/);
   });
 });
 

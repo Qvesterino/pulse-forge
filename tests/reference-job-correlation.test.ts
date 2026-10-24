@@ -36,6 +36,22 @@ vi.mock("../src/reference/transcribe", async (importOriginal) => {
   };
 });
 
+/**
+ * The analysis lane, driven for real: it must announce a stage and then fail,
+ * so the test can read EVERY answer the worker sends and check that each one
+ * carries the job it belongs to. A job id that only some answers carry is
+ * not a correlation — it is decoration.
+ */
+vi.mock("../src/reference/analysis/analyzeReference", () => ({
+  analyzeReference: vi.fn((args: { metadata?: { name?: string }; onStage?: (stage: string) => void }) => {
+    if (args.metadata?.name === "boom.wav") {
+      args.onStage?.("analyzing");
+      throw new Error("analysis exploded");
+    }
+    return { tempo: { bpm: 120 } };
+  }),
+}));
+
 const settled = <T>(promise: Promise<T>, ms: number): Promise<"settled" | "still-pending"> =>
   Promise.race([
     promise.then(() => "settled" as const),
@@ -127,6 +143,40 @@ describe("the reference worker posts the error type of its own lane", () => {
     expect(answer?.jobId).toBe(11);
     expect(answer?.message).toBe("transcription exploded");
   });
+
+  it("EVERY answer it sends carries the job it belongs to", async () => {
+    const posted: unknown[] = [];
+    vi.stubGlobal("postMessage", (message: unknown) => {
+      posted.push(message);
+    });
+    vi.resetModules();
+    await import("../src/reference/workers/reference.worker");
+
+    const handler = (self as unknown as { onmessage?: (event: MessageEvent) => unknown }).onmessage;
+    await Promise.resolve(
+      handler?.({
+        data: {
+          type: "ANALYZE_REFERENCE",
+          jobId: 42,
+          mono: new Float32Array(1024),
+          metadata: { name: "boom.wav", sampleRate: 44100 },
+        },
+      } as unknown as MessageEvent),
+    );
+
+    expect(posted.length, "the worker must answer the stage and the failure").toBeGreaterThan(1);
+    for (const message of posted) {
+      expect(
+        (message as { jobId?: unknown }).jobId,
+        `every answer must carry the job it belongs to (${(message as { type?: unknown }).type})`,
+      ).toBe(42);
+    }
+    const types = posted.map((message) => (message as { type?: unknown }).type);
+    expect(types, "the stage must be announced with the job id too").toContain("PROGRESS_STAGE");
+    expect(types, `the failure must be reported with the job id too (saw ${types.map(String).join(", ")})`).toContain(
+      "REFERENCE_ERROR",
+    );
+  });
 });
 
 describe("the reference client only accepts answers for its own job", () => {
@@ -156,6 +206,41 @@ describe("the reference client only accepts answers for its own job", () => {
     // The job's own answer settles it.
     worker.emitMessage({ type: "REFERENCE_RESULT", jobId, payload: { bpm: 120 } });
     expect(await settled(pending, 3000)).toBe("settled");
+  });
+
+  it("each analysis gets its own worker and its own job id", async () => {
+    // The client's job-id check is only load-bearing if the answer could ever
+    // belong to another job. Today it cannot — the worker is spawned per call
+    // — and THAT is the assumption the check rests on. This spec pins it: if
+    // the worker is ever pooled, the check starts to matter, and the spec
+    // that would notice is this one.
+    vi.stubGlobal("Worker", ScriptedWorker as unknown as typeof Worker);
+    const { analyzeReferenceAsync } = await import("../src/reference/reference-client");
+
+    const first = analyzeReferenceAsync({
+      mono: mono(),
+      metadata: { name: "a.wav", size: 44100, duration: 1, sampleRate: 44100, channels: 1 },
+    });
+    const second = analyzeReferenceAsync({
+      mono: mono(),
+      metadata: { name: "b.wav", size: 44100, duration: 1, sampleRate: 44100, channels: 1 },
+    });
+
+    await vi.waitFor(() => expect(ScriptedWorker.instances).toHaveLength(2));
+    const jobIds = ScriptedWorker.instances.map((worker) => (worker.posted[0] as { jobId: number }).jobId);
+    expect(new Set(jobIds).size, "two analyses must not share a job id").toBe(2);
+
+    // The first worker's answer cannot reach the second analysis — it has its
+    // own worker, and its own job id.
+    ScriptedWorker.instances[0]!.emitMessage({
+      type: "REFERENCE_RESULT",
+      jobId: jobIds[1],
+      payload: { bpm: 999 },
+    });
+    expect(await settled(second, 300), "an answer from another job must not settle this one").toBe("still-pending");
+
+    void first;
+    void second;
   });
 
   it("uses a job id that does not wrap every 65 seconds", async () => {

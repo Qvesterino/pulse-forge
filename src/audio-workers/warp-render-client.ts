@@ -22,6 +22,19 @@ const WORKER_TIMEOUT_MS = 120_000;
  * module-worker environment (or for short renders, or on abort/error) the
  * same pure core runs synchronously — deterministic either way, so a warmed
  * live cache and the offline render are sample-exact.
+ *
+ * THE FALLBACK RULE. The synchronous core may run on the main thread only when
+ * the worker never rendered the input: there is no worker at all, the render
+ * is too short to be worth one, the payload could not be posted, or the worker
+ * DIED without delivering a render (its module failed to load, or the delivery
+ * threw). Once the worker has run the input and reported that it failed, the
+ * identical core would fail identically on the main thread — that is not a
+ * recovery, it is the same work twice with a frozen UI in between — so the
+ * call REJECTS with the worker's own reason and the clip degrades to repitch.
+ *
+ * The two failure classes are distinguishable without a race: in the worker
+ * the render lives inside a try/catch, so a failure ON THE INPUT is always
+ * reported as a message ({error}) and never as an error event.
  */
 export function renderWarpPreserveAsync(
   channels: Float32Array[],
@@ -85,23 +98,37 @@ export function renderWarpPreserveAsync(
         finish(data.channels as Float32Array[]);
         return;
       }
-      // The worker reported its OWN failure and told us why. That reason must
-      // not be dropped — and the expensive core must not be re-run on the main
-      // thread after the worker already failed on that very input: this
-      // client's contract is that a failed worker REJECTS ("running the
-      // identical core on the main thread would freeze the UI permanently").
-      // The synchronous fallback stays where it belongs — for the cases where
-      // there is no usable worker at all.
+      // The worker RAN on this input and reported that it failed (the phase
+      // vocoder threw). The identical core on the main thread would throw the
+      // identical way, so the fallback is not a recovery here — it is the same
+      // work twice with a frozen UI in between. The worker's reason is the
+      // diagnosis, so it rides out with the rejection.
       const reason =
         typeof data?.error === "string" && data.error.length > 0 ? data.error : "worker reported a failure";
       fail(new Error(`warp render worker failed: ${reason}`));
     };
-    // Audit 12 D1: a throw inside runSync() must REJECT (settling the
-    // promise) rather than escaping the handler and leaving the promise
-    // pending forever — callers claim their cache key until settlement.
+    /**
+     * The worker DIED without delivering a render.
+     *
+     * In the warp worker the render lives inside a try/catch, so a failure ON
+     * THE INPUT is always reported as a message ({error}) and never as an
+     * error event. An error event therefore means the worker never delivered a
+     * render at all: its module failed to load, or the delivery of the result
+     * (or of the failure report) threw. In both cases the worker never
+     * rendered this input — so the main thread may still do the work, and the
+     * fallback is a RECOVERY rather than a repeat of a failure.
+     *
+     * If the fallback fails as well, the rejection carries BOTH reasons: the
+     * worker's death and the main thread's own error. Nothing is dropped.
+     */
     worker.onerror = (event: ErrorEvent) => {
       const reason = typeof event?.message === "string" && event.message.length > 0 ? event.message : "worker error";
-      fail(new Error(`warp render worker failed: ${reason}`));
+      try {
+        finish(runSync());
+      } catch (error) {
+        const syncReason = error instanceof Error ? error.message : String(error);
+        fail(new Error(`warp render worker failed: ${reason}; the main-thread fallback failed too: ${syncReason}`));
+      }
     };
     timer = setTimeout(
       () => fail(new Error("Warp render worker timed out; this clip falls back to repitch")),

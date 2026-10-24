@@ -56,6 +56,12 @@ export function analyzeReferenceAsync(
   return new Promise<AnalyzeReferenceOutput>((resolve) => {
     let worker: Worker;
     try {
+      // ONE WORKER PER JOB. That is the assumption the job-id check rests on:
+      // with a worker per call, an answer for another job cannot reach this
+      // listener at all. The check is what keeps the protocol correct if the
+      // worker is ever pooled — and the assumption itself is pinned by
+      // `tests/reference-job-correlation.test.ts`, so pooling it would turn
+      // that spec red instead of silently changing the contract.
       worker = new Worker(new URL("./workers/reference.worker.ts", import.meta.url), { type: "module" });
     } catch {
       resolve(analyzeReference({ ...rest, onStage }));

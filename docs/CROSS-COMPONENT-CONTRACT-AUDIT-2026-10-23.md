@@ -669,7 +669,7 @@ The job id is a monotonic counter instead of `Date.now() & 0xffff` (which wrappe
 65 536 ms), and **every** worker message is checked against it: a result of another job does
 not settle the call, and a progress stage of another job is not mirrored to the caller.
 
-### 3.13 C16 — a failed warp worker rejects with its own reason
+### 3.13 C16 — two failure classes, two different answers
 
 `src/audio-workers/warp-render-client.ts`
 
@@ -682,6 +682,53 @@ short to be worth a worker, a payload that could not be posted.
 started it now degrades that clip to repitch instead of rendering on the main thread. That is
 the documented degradation of this client, and it is the same trade the timeout path already
 made.
+
+### 3.14 C16 closed — the two failure classes deserve two different answers
+
+`src/audio-workers/warp-render-client.ts`
+
+§3.13 answered every worker failure the same way, and the closure pass showed that the two
+failures are **not** the same failure:
+
+| What happened                   | What it means                                         | The right answer                                                                                                                                                                               |
+| ------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the worker posted `{error}`     | the worker **ran on this input** and the input failed | **reject** with the worker's reason — the identical core on the main thread throws the identical way, so the fallback is not a recovery, it is the same work twice with a frozen UI in between |
+| the worker **died** (`onerror`) | the worker **never delivered a render**               | **fall back to the main thread** — the input was never rendered, so the fallback is a recovery, not a repeat                                                                                   |
+
+The distinction is **race-free**: in the warp worker the render lives inside a try/catch, so
+a failure ON THE INPUT is always reported as a _message_ and never as an _error event_. An
+error event therefore means the worker never delivered a render at all — its module failed to
+load, or the delivery of the result (or of the failure report) threw.
+
+So the rule the client now follows is one line:
+
+> **The main-thread fallback is allowed exactly when the worker never rendered the input.**
+
+When the fallback fails as well, the rejection carries **both** reasons — the worker's death
+and the main thread's own error. Nothing is dropped.
+
+**What this closes.** The behaviour change §3.13 introduced is now narrowed to the case where
+the main thread could not have helped anyway: a worker that died for an _environmental_
+reason (its module failed to load) recovers the render on the main thread, exactly as before;
+only a failure _of the input itself_ rejects.
+
+### 3.15 C15 closed — the assumption the check rests on is now pinned
+
+`src/reference/reference-client.ts` · `tests/reference-job-correlation.test.ts`
+
+C15's check is only as strong as the assumption behind it: with **one worker per job**, a
+foreign answer cannot reach the listener at all, so the check cannot fail today. That
+assumption was prose. It is now a spec:
+
+- **every** answer the worker sends carries the job it belongs to — the stage, the result and
+  the failure alike. A job id that only some answers carry is not a correlation, it is
+  decoration;
+- **each analysis gets its own worker and its own job id**, and one analysis's answer cannot
+  settle another's call.
+
+So the question "can a foreign answer settle a call?" now has a **guarded** answer — no, and
+three separate specs turn red if that ever changes. The client says the same thing at the
+place where the worker is created, so the next reader does not have to rediscover it.
 
 ---
 
@@ -709,6 +756,13 @@ made.
 | `tests/warp-render-error-contract.test.ts` (new)      | A worker that reported a failure makes the client **reject with the worker's own reason**, and the expensive core is not re-run on the main thread; the deterministic fallback (no worker, short render) still resolves.                                                                                                                                                     |
 | `tests/reference-job-correlation.test.ts` (new)       | The **real** reference worker posts `TRANSCRIBE_ERROR` for a transcription failure — the type the transcription client listens for; the client ignores a result or progress stage that belongs to **another job**; and the job id does not repeat after 65 536 ms.                                                                                                           |
 | `tests/reference-client-error.test.ts` (extended)     | The scripted worker now **echoes the job id** it was given, because the client checks it.                                                                                                                                                                                                                                                                                    |
+
+### The C15 / C16 closure pass
+
+| File                                                  | What it pins                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/warp-render-error-contract.test.ts` (extended) | The two failure classes get **two different answers**: a worker that RAN on the input and reported a failure **rejects** (the main thread would fail identically, so the fallback would be the same work twice), while a worker that **died without delivering a render** falls back to the main thread — the clip keeps its warped render. When the fallback fails too, the rejection carries **both** reasons. |
+| `tests/reference-job-correlation.test.ts` (extended)  | **Every** answer the worker sends carries the job it belongs to (the stage, the result and the failure alike), and **each analysis gets its own worker and its own job id** — the assumption the job-id check rests on, now a spec instead of prose.                                                                                                                                                             |
 
 ---
 
@@ -745,6 +799,19 @@ confirmed RED before the fix, with its own message:
 | C16 | `promise resolved "[ Float32Array[ 0, …(88201) ] ]" instead of rejecting` (3 assertions)                                                                                                                                                                            |
 
 **26 red assertions across 5 files → 0.**
+
+**The closure pass (C15 + C16).** Two more assertions, genuinely RED before the fix:
+
+| Fix | The failure the un-fixed code produced                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C16 | `warp render worker failed: worker script failed to load` — the death of a worker that **never rendered the input** rejected the call, and the clip lost its warped render · `expected [Function] to throw error matching /fallback failed too/ but got 'warp render worker failed: worker scr…'` — the fallback's own reason was dropped                                                                                                                                                                                                                                                                                                                   |
+| C15 | a **pin**, not a falsification: the product code already satisfies "every answer carries the job id". The spec went red for a different reason — my mock path was wrong (`../src/analysis/analyzeReference` instead of `../src/reference/analysis/analyzeReference`), so the **real** analyzer ran and returned a result instead of failing. The spec named what it saw — `the failure must be reported with the job id too (saw PROGRESS_STAGE, REFERENCE_RESULT)` — which is what turned a silent mistake into a visible one. **A guard that names what it saw is worth its weight; one that only says "expected X to be Y" leaves the reader guessing.** |
+
+The C16 closure spec also had to be rewritten once: the first version made the main-thread
+fallback fail with an output length of 2³⁰ samples. V8 **commits** that allocation happily
+(4 GiB, measured), so the phase vocoder started grinding over a billion samples and the spec
+hung — the very hazard the contract is about. The spec now uses a malformed interval list,
+which makes the fallback throw at once.
 
 ### 5.2 The related existing suites
 
@@ -888,11 +955,10 @@ product decision and needs its own measured justification
 
 ## 6. Remaining risks
 
-1. **The worker-robustness gaps of §2.3 are now FIXED** (C11–C16, §3.9–§3.13) — but one
-   behaviour change rides along with C16 and is stated here rather than buried: a warp worker
-   that crashes now degrades that clip to **repitch** instead of rendering the phase vocoder on
-   the main thread. That is the documented degradation of that client and the same trade its
-   timeout path already made, but it is a change in what the user hears when the worker dies.
+1. ~~**The worker-robustness gaps of §2.3 are now FIXED**~~ (C11–C16, §3.9–§3.13) — and the
+   one behaviour change that rode along with C16 has since been **narrowed** (§3.14): a warp
+   worker that dies for an _environmental_ reason recovers the render on the main thread
+   again; only a failure _of the input itself_ rejects and degrades that clip to repitch.
 2. **The plugin-host latent inconsistencies in §2.2** — the two worklet defaults, the two
    missing scale bridges, the eight copies of the dB conversion. Masked today; each is
    a drift waiting for the next caller.
@@ -926,11 +992,13 @@ product decision and needs its own measured justification
    another session's timeout budget. **Whoever owns those files should give the two
    tests an explicit timeout** — a green/red signal that depends on the host's load is
    not a signal.
-10. **C15 was a half-open contract, not a reachable failure.** With one worker per call, a
+10. **C15 was a half-open contract, not a reachable failure** — with one worker per call, a
     foreign answer could not reach the reference client — so comparing the `jobId` and making
     it unique is **hardening**, not a repair of an observed failure. It is in the report
     because the protocol carried a field that nothing honoured; anyone reading the old code
-    should know the fix did not repair a symptom they could have seen.
+    should know the fix did not repair a symptom they could have seen. **This risk is now
+    closed** (§3.15): the assumption the check rested on — one worker per job — is a spec, so
+    the hardening is guarded rather than merely asserted.
 11. **The previous wave's own guard was blind in a way this wave found.** C2's test asserted
     against a hand-written `{ type: "TRANSCRIBE_ERROR" }` — a message the worker never posted —
     so it could not see that the transcription lane still waited 120 s (C14). The new suite
