@@ -122,8 +122,8 @@
     "listening:v1v3": "node scripts/render-v1v3-listening.mjs",
     "mcp:demo": "vite-node scripts/mcp-agent-demo.mts",
     "pca:module": "node scripts/generate-pca-projection-module.mjs",
-    "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas",
-    "predev": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas",
+    "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas && npm run build:strk && npm run build:cink",
+    "predev": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas && npm run build:strk && npm run build:cink",
     "prepare": "node scripts/setup-hooks.mjs",
     "presets:fx-loudness": "node scripts/measure-fx-preset-loudness.mjs",
     "presets:loudness": "node scripts/measure-preset-loudness.mjs",
@@ -204,7 +204,9 @@
     "intent:degree-parity": "node scripts/check-intent-degree-parity.mjs",
     "intent:calibration-parity": "node scripts/check-intent-calibration-parity.mjs",
     "build:ladic": "node scripts/build-ladic-worklet.mjs",
-    "build:hlas": "node scripts/build-hlas-worklet.mjs"
+    "build:hlas": "node scripts/build-hlas-worklet.mjs",
+    "build:strk": "node scripts/build-strk-worklet.mjs",
+    "build:cink": "node scripts/build-cink-worklet.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

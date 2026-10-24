@@ -101,7 +101,9 @@ export type InstrumentKind =
   | "kopa"
   | "choral"
   | "ladic"
-  | "hlas";
+  | "hlas"
+  | "strk"
+  | "cink";
 
 export interface EffectInstance {
   id: ID;

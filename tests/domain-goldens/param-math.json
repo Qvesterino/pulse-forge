@@ -707,6 +707,38 @@
             "release": 0.25,
             "level": 0.8
           }
+        },
+        {
+          "kind": "strk",
+          "defaults": {
+            "gate": 0,
+            "tune": 0,
+            "snapLevel": 0.5,
+            "snapDecay": 0.006,
+            "bodyLevel": 0.5,
+            "bodyDecay": 0.12,
+            "bodyTone": 0.2,
+            "wireLevel": 0.6,
+            "wireTone": 3500,
+            "wireDecay": 0.18,
+            "snappy": 0.6,
+            "drive": 0.2,
+            "level": 0.8
+          }
+        },
+        {
+          "kind": "cink",
+          "defaults": {
+            "tune": 0,
+            "decay": 0.4,
+            "chirp": 0.3,
+            "chirpTime": 0.03,
+            "hpTone": 7000,
+            "metalSpread": 0.15,
+            "pulseMix": 0.5,
+            "drive": 0.25,
+            "level": 0.8
+          }
         }
       ]
     },
@@ -2122,6 +2154,50 @@
         2,
         4,
         4
+      ]
+    },
+    {
+      "name": "clampInstrumentParam strk:gate",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "strk",
+        "paramId": "gate",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam cink:tune",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "cink",
+        "paramId": "tune",
+        "probes": [
+          -112,
+          -12,
+          0,
+          12,
+          112
+        ]
+      },
+      "expected": [
+        -12,
+        -12,
+        0,
+        12,
+        12
       ]
     },
     {

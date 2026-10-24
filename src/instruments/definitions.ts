@@ -21,6 +21,10 @@ import { ladicParams } from "../ladic/params";
 export { ladicParams };
 import { hlasParams } from "../hlas/params";
 export { hlasParams };
+import { strkParams } from "../strk/params";
+export { strkParams };
+import { cinkParams } from "../cink/params";
+export { cinkParams };
 
 export const WAVE_NAMES = ["sine", "triangle", "sawtooth", "square"] as const;
 
@@ -1088,6 +1092,8 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   choral: { kind: "choral", name: "CHORÁL", params: choralParams },
   ladic: { kind: "ladic", name: "LADIČ", params: ladicParams },
   hlas: { kind: "hlas", name: "HĽAS", params: hlasParams },
+  strk: { kind: "strk", name: "ŠTRK", params: strkParams },
+  cink: { kind: "cink", name: "CINK", params: cinkParams },
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -1118,6 +1124,8 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "choral",
   "ladic",
   "hlas",
+  "strk",
+  "cink",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {

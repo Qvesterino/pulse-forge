@@ -668,6 +668,32 @@ let hlasWorkletKb = 0;
 }
 console.log(`[size-budget] HĽAS worklet: ${hlasWorkletKb.toFixed(0)} KB (budget ${HLAS_WORKLET_BUDGET_KB})`);
 
+// ŠTRK/CINK percussion designer worklets: lazy INSTRUMENT modules
+// (ADR 0060), loaded only for projects with a ŠTRK/CINK track. Percussion
+// DSP is the cheapest class; 32 KB ceilings.
+const STRK_WORKLET_BUDGET_KB = 32;
+let strkWorkletKb = 0;
+{
+  const path = join(dist, "strk-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing ŠTRK worklet: dist/strk-worklet.js");
+    process.exit(1);
+  }
+  strkWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] ŠTRK worklet: ${strkWorkletKb.toFixed(0)} KB (budget ${STRK_WORKLET_BUDGET_KB})`);
+const CINK_WORKLET_BUDGET_KB = 32;
+let cinkWorkletKb = 0;
+{
+  const path = join(dist, "cink-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing CINK worklet: dist/cink-worklet.js");
+    process.exit(1);
+  }
+  cinkWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] CINK worklet: ${cinkWorkletKb.toFixed(0)} KB (budget ${CINK_WORKLET_BUDGET_KB})`);
+
 // SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
 // (loaded only for projects that use the effect), so it carries its own
 // budget row instead of inflating the core boot bundle. All-pass-only DSP —

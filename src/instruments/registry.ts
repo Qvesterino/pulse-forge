@@ -15,6 +15,10 @@ import { createLadicRuntime } from "./ladicNode";
 import { createLadicFallbackRuntime } from "./ladicFallback";
 import { createHlasRuntime } from "./hlasNode";
 import { createHlasFallbackRuntime } from "./hlasFallback";
+import { createStrkRuntime } from "./strkNode";
+import { createStrkFallbackRuntime } from "./strkFallback";
+import { createCinkRuntime } from "./cinkNode";
+import { createCinkFallbackRuntime } from "./cinkFallback";
 import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
@@ -47,6 +51,8 @@ import {
   choralParams,
   ladicParams,
   hlasParams,
+  strkParams,
+  cinkParams,
   WAVE_NAMES,
   SYNC_BEATS,
   syncRateHz,
@@ -6964,6 +6970,63 @@ const hlas: InstrumentDefinition = {
   },
 };
 
+/**
+ * ŠTRK (ADR 0060) — the snare designer: SNAP/BODY/WIRES/SNAPPY layers.
+ * Without the module a noise-burst + sine body keeps the track audible.
+ */
+const strk: InstrumentDefinition = {
+  kind: "strk",
+  name: "ŠTRK",
+  params: strkParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("strk", ctx)) {
+      return createStrkRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "strk-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createStrkFallbackRuntime(ctx, track);
+  },
+};
+
+/**
+ * CINK (ADR 0060) — the hi-hat designer: six square metal partials, chirp,
+ * closed→open decay. Without the module a high square through a highpass
+ * keeps the track audible.
+ */
+const cink: InstrumentDefinition = {
+  kind: "cink",
+  name: "CINK",
+  params: cinkParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("cink", ctx)) {
+      return createCinkRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "cink-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createCinkFallbackRuntime(ctx, track);
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 function withNoteExpressionTargets(definition: InstrumentDefinition): InstrumentDefinition {
@@ -7003,6 +7066,8 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   choral,
   ladic,
   hlas,
+  strk,
+  cink,
 };
 
 export function instrumentTrackKindLabel(track: InstrumentTrack): string {
