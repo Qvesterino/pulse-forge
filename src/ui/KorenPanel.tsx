@@ -247,22 +247,28 @@ export function KorenPanel({
         const mode = frame?.audition ?? 0;
         const matchDb = frame?.matchDb ?? 0;
         const audDb = frame?.audDb ?? 0;
+        let text: string;
+        let hint: string;
         if (mode === 0) {
-          auditionRef.current.textContent = "LISTENING: WET";
-          auditionRef.current.title = "the processed signal";
+          text = "LISTENING: WET";
+          hint = "the processed signal";
         } else if (audDb <= -60) {
           // Silence, or a tracker that holds nothing: there is nothing to
           // compare, and the panel says so instead of showing a fake gain.
-          auditionRef.current.textContent = mode === 2 ? "NO HARMONIC LAYER" : "NOTHING TO COMPARE";
-          auditionRef.current.title = "the compared path carries no signal";
+          text = mode === 2 ? "NO HARMONIC LAYER" : "NOTHING TO COMPARE";
+          hint = "the compared path carries no signal";
         } else {
           const sign = matchDb >= 0 ? "+" : "";
           // The match is clamped: the source sits further from the reference
           // than the clamp allows, so the comparison is NOT level-neutral.
           const limited = matchDb < -audDb - 0.5;
-          auditionRef.current.textContent = `${limited ? "MATCH LIMIT" : "MATCHED"} ${sign}${matchDb.toFixed(1)} dB`;
-          auditionRef.current.title = `${audDb.toFixed(1)} dB relative to the processed signal`;
+          text = `${limited ? "MATCH LIMIT" : "MATCHED"} ${sign}${matchDb.toFixed(1)} dB`;
+          hint = `${audDb.toFixed(1)} dB relative to the processed signal`;
         }
+        // Write only on a CHANGE: the readout is inside an aria-live region,
+        // and re-assigning the same text every poll would announce it forever.
+        if (auditionRef.current.textContent !== text) auditionRef.current.textContent = text;
+        if (auditionRef.current.title !== hint) auditionRef.current.title = hint;
       }
       draw();
     }, 66);
@@ -372,16 +378,16 @@ export function KorenPanel({
         <summary>What lowCut, subAnchor and mix really do</summary>
         <ul>
           <li>
-            <b>lowCut</b> ({params.lowCut ?? 45} Hz) — the corner of the highpass on the dry before the sub
-            branch. Everything under it leaves the wet path.
+            <b>lowCut</b> ({params.lowCut ?? 45} Hz) — the corner of the highpass on the dry before the sub branch.
+            Everything under it leaves the wet path.
           </li>
           <li>
-            <b>subAnchor</b> ({params.subAnchor ?? 0.7}) — how much of the highpassed dry the wet path keeps. At 0
-            only the generated harmonics remain.
+            <b>subAnchor</b> ({params.subAnchor ?? 0.7}) — how much of the highpassed dry the wet path keeps. At 0 only
+            the generated harmonics remain.
           </li>
           <li>
-            <b>mix</b> ({params.mix ?? 0.6}) — dry ↔ wet blend. At <b>mix = 1</b> the dry is gone: what you hear
-            is the highpassed dry plus the generated harmonics, so the sub under lowCut disappears.
+            <b>mix</b> ({params.mix ?? 0.6}) — dry ↔ wet blend. At <b>mix = 1</b> the dry is gone: what you hear is the
+            highpassed dry plus the generated harmonics, so the sub under lowCut disappears.
           </li>
         </ul>
       </details>

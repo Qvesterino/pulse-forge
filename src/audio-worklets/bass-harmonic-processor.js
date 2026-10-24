@@ -530,7 +530,11 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);
     // AUDITION (monitor-only): 0 = the normal path, 1 = DRY, 2 = HARMONICS.
     // Written by the engine at runtime — the project never carries it.
-    const audition = Math.round(clamp(parameters.audition[0], 0, 2));
+    // Defensive read: a throw inside process() kills the processor and the
+    // effect goes SILENT, so a host that hands over a parameter set without
+    // this one must fall back to the normal path, not to a dead node.
+    const auditionParam = parameters.audition;
+    const audition = Math.round(clamp(auditionParam && auditionParam.length ? auditionParam[0] : 0, 0, 2));
     this.audMode = audition;
     // The switch is a CROSSFADE between two slots: `audFrom` is the slot we
     // leave, `audTo` the slot we enter, `audFade` runs 0 → 1 between them.

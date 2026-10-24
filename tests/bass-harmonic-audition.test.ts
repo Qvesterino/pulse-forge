@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { bassHarmonicParams } from "../src/effects/definitions";
 import { createBassHarmonicNode } from "../src/audio-worklets/bass-harmonic-node";
 
@@ -137,6 +140,13 @@ function goertzel(signal: Float32Array, hz: number, fromSec: number, toSec: numb
 
 const db = (ratio: number) => 20 * Math.log10(Math.max(1e-12, ratio));
 
+/** A content signature of the rendered signal — "the output moved" as a fact. */
+const signature = (signal: Float32Array) =>
+  createHash("sha256")
+    .update(Buffer.from(signal.buffer, signal.byteOffset, signal.byteLength))
+    .digest("hex")
+    .slice(0, 16);
+
 /** The last telemetry frame the processor posted (null when it posted none). */
 function lastFrame(res: RenderResult): Record<string, unknown> | null {
   return (res.frames.at(-1) as Record<string, unknown> | undefined) ?? null;
@@ -159,9 +169,7 @@ describe("GROW audition — the level-matched A/B", () => {
     // (1) LEVEL MATCH: the dry audition sits at the processed path's level.
     const rmsNormal = rms(normal.out, 2, 3);
     const rmsDry = rms(dry.out, 2, 3);
-    expect(db(rmsDry / rmsNormal), "the dry audition is not level-matched to the processed path").toBeLessThan(
-      1,
-    );
+    expect(db(rmsDry / rmsNormal), "the dry audition is not level-matched to the processed path").toBeLessThan(1);
     expect(Math.abs(db(rmsDry / rmsNormal))).toBeLessThan(1);
 
     // (2) IDENTITY: the dry path IS the input, scaled — no generated harmonic
@@ -233,6 +241,35 @@ describe("GROW audition — the level-matched A/B", () => {
     // The transition window: the crossfade plus the two paths' own slew.
     const switchSlew = maxSlew(switched.out, 0.99, 1.02);
     expect(switchSlew, "the audition switch clicks").toBeLessThan(steadySlew * 5);
+  });
+
+  it("every slot is alive — the three modes are three different measured signals", () => {
+    const wet = render(LISTEN, 1.5, bassTone);
+    const dry = render({ ...LISTEN, audition: 1 }, 1.5, bassTone);
+    const harm = render({ ...LISTEN, audition: 2 }, 1.5, bassTone);
+
+    // Three different signals, not "it is not silent": a peak > 0 check
+    // proves nothing (phaser shipped a full-spectrum one).
+    expect(new Set([signature(wet.out), signature(dry.out), signature(harm.out)]).size).toBe(3);
+
+    // Each slot moves a MEASURED property of the signal:
+    // - the harmonic slot has NO fundamental of its own (the generated stack
+    //   starts at the 2nd partial), so the dry fundamental is far below the
+    //   processed path's;
+    // - the processed path carries the GENERATED 2nd harmonic on top of the
+    //   input's own, so its 110 Hz sits clearly above the dry path's.
+    const fund = (r: RenderResult) => goertzel(r.out, 55, 1, 1.5);
+    const second = (r: RenderResult) => goertzel(r.out, 110, 1, 1.5);
+    expect(fund(harm) / fund(wet)).toBeLessThan(0.2);
+    expect(second(wet) / second(dry)).toBeGreaterThan(1.2);
+  });
+
+  it("the SHIPPED bundle carries the audition — the audit measures the bundle, not the source", () => {
+    // The browser loads `public/bass-harmonic-worklet.js`, not the source
+    // module. If the bundle is stale, the switch is dead in the product while
+    // every source-level test still passes.
+    const bundle = readFileSync(resolve(process.cwd(), "public/bass-harmonic-worklet.js"), "utf8");
+    expect(bundle).toContain("audition");
   });
 
   it("the telemetry reports the mode and the match so the panel can be honest", () => {

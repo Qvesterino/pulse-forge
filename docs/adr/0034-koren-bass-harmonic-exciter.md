@@ -540,3 +540,141 @@ Pins live in `tests/bass-harmonic.test.ts`
 (`GROW robustness — Nyquist taper, release clicks, mono compatibility`).
 The only DSP change in this audit remains the key-mode reset of Addendum 13;
 the rest of this addendum is documentation and measurement.
+
+## Addendum 15 (2026-10-24) — the monitor-only audition: level-matched A/B + the harmonic branch alone
+
+### 15.1 Why this needed a decision
+
+The flaghip roadmap's wave 1 asks for one thing: a user must be able to
+answer "did the harmonic layer help, or does it just sound louder?" Until now
+KOREŇ had exactly ONE listening aid — PHONE CHECK, a monitor-only 350 Hz
+highpass on the master path. It answers "can a phone reproduce this?", not
+"what did KOREŇ add?".
+
+Three ways to build the A/B, and only one of them is honest:
+
+1. **Use `mix` as the switch.** `mix` is a PROJECT parameter. Switching it
+   changes a saved value, an automation lane, the mix and the export. It is
+   not an audition; it is an edit that pretends to be a comparison.
+2. **A second worklet or a second graph branch.** The plugin's chain would
+   grow a parallel path that must be kept in sync with the main path — and
+   the export would inherit it unless it is branched out again.
+3. **A runtime-only AudioParam on the existing processor.** The switch lives
+   on the runtime, so nothing in the document can reach it.
+
+Chosen: **(3)**, plus a level match, because a comparison without one is a
+lie: "the effect sounds better" is otherwise "the effect is louder".
+
+### 15.2 The contract
+
+- `audition` (0..2) is a **plain AudioParam on the processor** — the same
+  native mechanism the other 18 project parameters use, so it costs no port
+  traffic and never depends on an open panel. **It is NOT a project
+  parameter**: it is absent from `bassHarmonicParams`, from the catalog and
+  from `EFFECT_META`.
+  - 0 = the normal path, 1 = DRY (the input alone), 2 = HARMONICS (the
+    generated branch `genL/genR` alone — the sub-anchor branch is the dry's
+    own highpassed part, so it is not part of the "generated" branch).
+- The **node wrapper refuses the id on the project sync path** (`setParameter`
+  and `setParameterAt` drop it). This is the barrier, not a comment: a
+  hand-edited or migrated document carrying `audition: 2` in `fx.params` must
+  not be able to push an audition into a render. Only `setAudition` — the
+  engine's runtime path — writes the parameter.
+- **`EffectRuntime.setAudition?(mode)`** is an optional capability, like
+  `setMetersEnabled?`. Only plugins with a real A/B surface implement it.
+- **`AudioEngine.setFxAudition(trackId, fxId, mode)`** writes the mode to the
+  runtime and remembers it per fx id, so a chain rebuild (an insert, a
+  reorder, a bypass toggle — all of which dispose and recreate every runtime)
+  re-applies the user's A/B position instead of silently snapping back to
+  WET. The remembered mode dies with the effect it belonged to.
+- **The export cannot inherit it.** The offline renderer builds its OWN
+  `AudioEngine` (`src/rendering/renderer.ts`), and the mode is engine
+  instance state — not document state. There is no command, no undo entry, no
+  persistence path, and therefore nothing for an export to read.
+
+### 15.3 The level match, and what it refuses to claim
+
+The processor tracks three smoothed RMS values (0.3 s time constant, per-block
+coefficient `1 - exp(-len/(tc·sr))`): the dry path, the normal output and the
+generated branch. The auditioned path is scaled by `audOutRms / audSourceRms`
+— computed from the PREVIOUS block, so it is a per-block step of a slowly
+moving number, never a per-sample jump. The dry and generated paths carry the
+`output` trim, so the trim cancels out of the ratio and the clamp only ever
+reports a genuine level difference between paths.
+
+The clamp is `[-12 dB, +18 dB]`. Inside it the match is exact; outside it the
+panel says **MATCH LIMIT** — the comparison is then not level-neutral, and the
+panel must not pretend otherwise.
+
+**No false benefit.** At silence, or while the tracker holds nothing (so the
+generated branch is empty), the source RMS is below the floor and the match
+falls back to unity. The telemetry then reports `audDb = -120` and the panel
+reads **NOTHING TO COMPARE** (or **NO HARMONIC LAYER** for the harmonic
+branch). A panel that cannot measure must not display a gain.
+
+### 15.4 The switch is a crossfade, not a cut
+
+A hard cut between two level-matched paths is a click, and a click makes a
+listening test useless. The processor keeps two slots (`audFrom`, `audTo`) and
+a per-sample fade (10 ms) between them: the output is the equal-gain blend of
+the two paths. A new request snaps the in-flight fade to its end state and
+crossfades from there.
+
+### 15.5 Evidence (measured, not asserted)
+
+Measured with `scratch/measure-audition.mts` — the SAME script against the
+parent commit `1f7ba68b` in a detached worktree and against the working tree,
+same seed, same signal (a 55 Hz bass with 2nd/3rd content, `drive 0.9`,
+`mix 0.6`, `focusHz 90`, `subAnchor 0.7`, `lowCut 45`):
+
+| Measurement                 | Before (`1f7ba68b`) | After               | Verdict           |
+| --------------------------- | ------------------- | ------------------- | ----------------- |
+| normal path, SHA-256 of 3 s | `5821fcf9d22f3dd0`  | `5821fcf9d22f3dd0`  | **bit-identical** |
+| normal path RMS [2,3 s]     | 0.267341            | 0.267341            | unchanged         |
+| normal path peak            | 0.531550            | 0.531550            | unchanged         |
+| normal path 55 Hz / 110 Hz  | 0.170551 / 0.060287 | 0.170551 / 0.060287 | unchanged         |
+
+The audition itself (after only):
+
+| Path      | RMS [2,3 s] | vs normal    | matchDb | audDb  | 55 Hz        | 110 Hz   |
+| --------- | ----------- | ------------ | ------- | ------ | ------------ | -------- |
+| DRY       | 0.263835    | **−0.12 dB** | −2.810  | +2.852 | 0.180585     | 0.043216 |
+| HARMONICS | 0.255557    | **−0.39 dB** | +6.188  | −6.151 | **0.000387** | 0.053045 |
+
+Read: the DRY path sits 0.12 dB from the processed path (level-matched, and
+it is the input — the match ATTENUATES it because the processed path is the
+quieter one: the 45 Hz highpass removes energy from a 55 Hz fundamental). The
+HARMONICS path is lifted 6.19 dB to the processed path's level, and its
+fundamental is **52.9 dB below** the processed path's — the dry fundamental is
+gone and what remains is the generated stack.
+
+**Pins.** `tests/bass-harmonic-audition.test.ts` (the REAL processor, driven
+like the audio thread drives it): the level match on both paths (< 1 dB), the
+DRY identity (the best-fit gain against the input explains the whole signal —
+the residual is under 2 % of the path's RMS), the HARMONICS spectrum (the dry
+fundamental under 20 % of the processed path's, the generated 2nd harmonic
+above 3× the fundamental in the auditioned path), silence → no false benefit,
+an untrackable input → no false benefit, the click guard (the transition's
+max sample-to-sample slew under 5× the signal's own steady-state slew — a
+hard cut would be orders of magnitude above it), and the barrier (the catalog
+has no `audition`; the node wrapper refuses the id on the sync path and
+accepts it only on the runtime path).
+
+`tests/koren-audition-engine.test.ts`: the document is byte-identical before
+and after `setFxAudition` and carries no field for the mode; the runtime
+receives it; the mode survives a chain rebuild; the mode dies with the effect.
+
+`tests/ui/KorenPanel.test.tsx`: the panel writes the mode to the engine (never
+to a command), releases it on unmount, shows MATCHED / MATCH LIMIT / NOTHING
+TO COMPARE from the PROCESSOR's own telemetry, disables the switch while the
+worklet is degraded, and explains `lowCut` / `subAnchor` / `mix` behind a
+disclosure — including the truth the DSP actually implements: **at `mix = 1`
+the dry is gone**, so the sub below `lowCut` disappears.
+
+### 15.6 What this addendum does NOT change
+
+The normal path is untouched (bit-identical, measured above). The project
+model, the schema, the command system, the automation and the export path
+are untouched — there is no new field, no new command and no migration. The
+worklet bundle is rebuilt (`public/bass-harmonic-worklet.js`, 11.9 KB) because
+the audit measures the BUNDLE, not the source.

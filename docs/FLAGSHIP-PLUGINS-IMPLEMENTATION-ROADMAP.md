@@ -88,6 +88,19 @@ Najprv obnoviť aktuálny baseline. Doterajšie roadmapy obsahujú konkrétne ot
 
 Po vyhodnotení A/B možno pridať monitorovacie profily pre malý mono reproduktor, laptop a širokopásmový systém. Profily ostanú monitor-only. Pitch režim `Audio / MIDI / Hybrid` sa začne až vtedy, ak korpus potvrdí, že MIDI koreň reálne znižuje oktávové chyby bez nových chybných lockov.
 
+### Stav (2026-10-24) — DODANÉ
+
+Implementované ako **ADR 0034 addendum 15** (kontrakt) + `docs/CURRENT-STATE.md` (popis).
+
+- **Prepínač:** panel KOREŇ má trojstupňový A/B — `WET` (spracovaný signál), `DRY` (samotný vstup), `HARM` (samotná generovaná harmonická vetva).
+- **Dorovnanie hlasitosti je v DSP, nie v UI:** procesor sleduje tri vyhladené RMS (suchý, normálny výstup, generovaná vetva; τ = 0,3 s) a auditionovanú cestu preskupuje na úroveň normálnej cesty. Prepínač je 10 ms crossfade — tvrdý skok medzi dvoma dorovnanými cestami je klik.
+- **Mimo projektovej state:** `audition` je runtime AudioParam, nie projektový parameter. Node wrapper odmieta id na projektovej sync ceste, nie je žiadny command ani undo záznam a offline renderer si stvára vlastný engine — export si to nededí.
+- **Jasný stav:** `MATCHED ±x dB`, `MATCH LIMIT` (zapnutý clamp −12…+18 dB), `NOTHING TO COMPARE` / `NO HARMONIC LAYER` (ticho alebo prázdna generovaná vetva → match padá na jednotku, žiadny falošný prínos).
+- **Vysvetlenie modelu:** `lowCut` / `subAnchor` / `mix` za `<details>`, vrátane pravdy, ktorú DSP naozaj implementuje — pri `mix = 1` suchý signál mizne a sub pod `lowCut` s ním.
+- **Dôkaz (merané, nie tvrdené):** normálna cesta **bit-identická** pred/po (SHA-256 `5821fcf9d22f3dd0` nad 3 s, skript v izolovanom worktree proti parent commitu `1f7ba68b`); DRY −0,12 dB a HARM −0,39 dB od normálnej úrovne; 55 Hz obsah v harmonickej ceste o 52,9 dB nižší než v normálnej.
+- **Brány:** `tests/bass-harmonic-audition.test.ts` (skutočný procesor), `tests/koren-audition-engine.test.ts` (dokument, rebuild, zánik s efektom), `tests/ui/KorenPanel.test.tsx` (panel).
+- **Otvorené:** posluchový review v tretej vlne korpusu — kritérium „používateľ dokáže v krátkom posluchovom teste určiť, čo harmonická vrstva pridala“ je subjektívne a patrí posluchu, nie automatizovanému testu.
+
 ## Vlna 2 — KOPA: vizuálne tvarovanie kicku
 
 ### Dodávka
@@ -197,7 +210,7 @@ Každý implementačný diff sa riadi [AGENTS.md](../AGENTS.md), relevantnými A
 ## Najbližší vykonateľný krok
 
 1. Obnoviť current baseline pre všetky tri pluginy a uzavrieť zostávajúce brány z vlny 0.
-2. Ako prvý nový používateľský workflow implementovať **KOREŇ level-matched A/B a počúvanie generovanej harmonickej vetvy**.
+2. ~~Ako prvý nový používateľský workflow implementovať **KOREŇ level-matched A/B a počúvanie generovanej harmonickej vetvy**.~~ **DODANÉ 2026-10-24** (ADR 0034 addendum 15) — zostáva posluchový review.
 3. Následne postaviť **KOPA vizuálny editor existujúcich vrstiev a pitch obálky**.
 4. Potom rozšíriť **TSAR zdrojový workflow a Forge preview viacerých návrhov**.
 

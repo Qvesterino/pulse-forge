@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
 import { createDrumTrackModel, normalizeProject } from "../src/project-model/schema";
 import type { ProjectDocument, EffectInstance } from "../src/project-model/types";
@@ -201,6 +201,10 @@ async function engineWith(effects: EffectInstance[]) {
 }
 
 describe("the monitor-only audition never reaches the document", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("writes the mode to the runtime and leaves the document byte-identical", async () => {
     const engine = await engineWith([fx("fx-grow", "bassHarmonic")]);
     const before = JSON.stringify(engine.doc);

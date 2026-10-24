@@ -162,8 +162,8 @@ describe("KorenPanel", () => {
     // The explanation lives behind a disclosure, and it states the truth the
     // DSP actually implements: at mix = 1 the dry sub below lowCut is gone.
     expect(screen.getByText("mix = 1")).toBeInTheDocument();
-    expect(screen.getByText(/lowCut/)).toBeInTheDocument();
-    expect(screen.getByText(/subAnchor/)).toBeInTheDocument();
+    expect(screen.getByText("lowCut")).toBeInTheDocument();
+    expect(screen.getByText("subAnchor")).toBeInTheDocument();
   });
 
   it("applies a scene pack pair from the select and shows the SCENE-INTENSITY chip", () => {
