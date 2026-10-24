@@ -220,6 +220,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Commits: 23aa2e1a.
 
 ### 2026-10-07 (latest) / Timeline session 3 — op-dispatch unification, right-sized (056558b6)
+
 - Decision: the FULL four-kind dispatch table was over-abstraction (scene/audio lanes genuinely differ); the RIGHT-SIZED unification consolidated the two structurally-identical TICK lanes (midi + automation): duplicateTickClips (one shared pass over a TickLaneSpec registry replaces two ~20-line pasted blocks in duplicateTimeRange) + rippleShiftTickLanes (one pure patch helper replaces 3× duplicated blocks in the ripple commands).
 - CRITICAL catch: the first helper draft MUTATED the pre-snapshot lane arrays in place — snapshot(doc, next) captures the old doc whose lanes reference the same arrays → undo corruption. Rewritten PURE (patch-returning, spread into next arrangement).
 - Verified: 10/10 structural pins, 202/202 families, typecheck clean; ADR 0025 amendment notes the TickLaneSpec registry (all-kinds registry stays future — scene/audio deliberately not unified).
