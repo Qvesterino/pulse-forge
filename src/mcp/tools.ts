@@ -82,6 +82,7 @@ import {
 } from "../intent/mix";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
 import { buildIntentCommand as intentCommand } from "../intent/command-for-route";
+import { paramReadbackReport, paramReadbackReportText } from "../intent/param-intent";
 import { formatPlan, planIntent } from "../intent/semantics/intent-plan";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
@@ -11719,6 +11720,10 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     ctx.execute(command);
     noteAppliedRoute(route, before, ctx.getDoc());
     const after = ctx.getDoc();
+    // The param branch reads the value BACK. It used to print "verification:
+    // applied" with nothing verified — the agent was told a knob moved and
+    // never saw the number, the track, or the targets it missed.
+    const paramReport = route.kind === "paramIntent" ? paramReadbackReport(before, after, route.intent) : null;
     const extra =
       route.kind === "production"
         ? ` — ${productionReadback(before, after, route.intent)}`
@@ -11726,7 +11731,31 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
           ? ` — read-back: ${effectReadback(before, after, route.intent)}`
           : route.kind === "preset"
             ? ` — read-back: ${presetReadback(after, route.intent)}`
-            : "";
+            : paramReport
+              ? ` — read-back: ${paramReadbackReportText(paramReport)}`
+              : "";
+    if (paramReport) {
+      // A target that resolved to nothing means the ask landed only PARTIALLY.
+      // Say so, and say it in the structured envelope as well as the text.
+      const partial = paramReport.skipped.length > 0;
+      const moved = paramReport.moved.length > 0 || paramReport.added.length > 0;
+      const verification = partial
+        ? "read-back confirms the value on the resolved track; one target did not resolve"
+        : moved
+          ? "read-back confirms the value"
+          : "read-back found no value change";
+      return {
+        text: `${command.label}${extra} — verification: ${verification}, one undo step in KYX`,
+        mutated: true,
+        data: {
+          status: partial ? "partial" : moved ? "applied" : "no_value_moved",
+          moved: paramReport.moved,
+          added: paramReport.added,
+          unchanged: paramReport.unchanged,
+          skipped: paramReport.skipped,
+        },
+      };
+    }
     return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
   } catch (error) {
     // The intent appliers throw on no-target / already-matches — surface as

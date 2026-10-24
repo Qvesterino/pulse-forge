@@ -483,8 +483,22 @@ export function planMixProfile(
   return { decisions, summary, masterTiltDb, masterLufsTarget, masterGlueEnabled };
 }
 
-/** Resolve a mix target to concrete track ids in THIS document. */
-function trackIdsForTarget(doc: ProjectDocument, target: MixTarget): string[] {
+/**
+ * THE ONE resolver for the family vocabulary ("drums", "bass", "chords",
+ * "lead", "vocal") → concrete track ids in THIS document.
+ *
+ * This function is the APPLY's resolver: `applyMixIntent` routes every
+ * decision through it, so whatever it returns is what actually changes.
+ * The intent layer's preview and read-back must resolve through the SAME
+ * function — a second resolver (the param layer used to carry a name regex)
+ * could say "no matching track" while the apply silently changed a track:
+ * a "Sub" at instrument index 0 IS the bass by POSITION, not by name, and a
+ * vocal take is found by its arrangement clip binding, never by the word
+ * "vocal" in its name.
+ *
+ * Exported so the preview, the plan and the read-back can share it.
+ */
+export function trackIdsForTarget(doc: ProjectDocument, target: MixTarget): string[] {
   // Exact track id passthrough (MCP trackId addressing): ids are unique and
   // can never collide with the family vocabulary below.
   if (doc.tracks.some((track) => track.id === target)) return [target];

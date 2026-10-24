@@ -24,6 +24,7 @@ import type { Command } from "../commands/types";
 import {
   effectWordIn,
   applyMixIntent,
+  trackIdsForTarget,
   TARGET_WORDS,
   type DeclinedIntentClarification,
   type MixDecision,
@@ -504,25 +505,25 @@ function currentParamValue(
   return defaultParamsOf(effectType)[paramId] ?? 0;
 }
 
+/**
+ * The family vocabulary → track ids, through the ONE resolver.
+ *
+ * This used to be a SECOND resolver (a name regex: /bas|808/, /chord|keys/…)
+ * while the APPLY went through the mix layer's `trackIdsForTarget`. The two
+ * disagreed, and the disagreement was invisible:
+ *
+ *   - "Sub" at instrument index 0 is the bass by POSITION, not by name — the
+ *     regex found nothing, the apply changed the track.
+ *   - a vocal take is found by its ARRANGEMENT CLIP BINDING, never by the
+ *     word "vocal" in its name — the regex found nothing, the apply changed
+ *     the take.
+ *
+ * So the plan said "no matching track", the apply silently mutated a track,
+ * and the read-back reported that nothing happened. Delegating makes the
+ * plan, the read-back and the apply agree by construction.
+ */
 export function trackIdsForMixTarget(doc: Parameters<typeof applyMixIntent>[0], target: MixTarget): string[] {
-  // Reuses the mix layer's resolution through a one-decision profile apply —
-  // but resolution must not mutate, so resolve ids directly.
-  const ids: string[] = [];
-  for (const track of doc.tracks) {
-    if (target === "drums" && track.kind === "drum") ids.push(track.id);
-    if (target !== "drums" && track.kind === "instrument") {
-      const name = track.name.toLowerCase();
-      if (
-        (target === "bass" && /bas|808/.test(name)) ||
-        (target === "chords" && /chord|keys|pad|akord/.test(name)) ||
-        (target === "lead" && /lead|synth|melod/.test(name)) ||
-        (target === "vocal" && /vocal|voice|spev|vokal/.test(name))
-      ) {
-        ids.push(track.id);
-      }
-    }
-  }
-  return ids;
+  return trackIdsForTarget(doc, target);
 }
 
 /**
@@ -682,19 +683,28 @@ interface ParamTargetEntry {
   trackId: string | null;
 }
 
-/** Family first-id rows + explicit/ordinal tracks, deduplicated. */
+/** Family rows + explicit/ordinal tracks, deduplicated — EVERY resolved track. */
 function paramTargetEntries(doc: Parameters<typeof applyMixIntent>[0], intent: ParamIntent): ParamTargetEntry[] {
   const entries: ParamTargetEntry[] = [];
   const covered = new Set<string>();
   for (const target of intent.targets) {
     const ids = trackIdsForMixTarget(doc, target);
-    const trackId = ids[0] ?? null;
-    if (trackId) covered.add(trackId);
-    entries.push({
-      target,
-      trackName: trackId ? (doc.tracks.find((track) => track.id === trackId)?.name ?? target) : target,
-      trackId,
-    });
+    // A family can resolve to SEVERAL tracks, and the apply changes every one
+    // of them. Reporting only the first hid the rest from the plan and the
+    // read-back — the AI saw one track move while three had changed.
+    if (ids.length === 0) {
+      entries.push({ target, trackName: target, trackId: null });
+      continue;
+    }
+    for (const trackId of ids) {
+      if (covered.has(trackId)) continue;
+      covered.add(trackId);
+      entries.push({
+        target,
+        trackName: doc.tracks.find((track) => track.id === trackId)?.name ?? target,
+        trackId,
+      });
+    }
   }
   const explicit = new Set<string>(intent.trackIds ?? []);
   if (intent.trackOrdinal != null) {
@@ -820,22 +830,96 @@ export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], inte
       params: { [intent.paramId]: clamped },
     });
   }
+  // A target that resolves to NO track is not "already matching". The mix
+  // layer's "changed nothing — the mix already matches" is a false diagnosis
+  // there, and an AI that reads it concludes the parameter already holds the
+  // requested value. Name the miss instead — while keeping the "changed
+  // nothing" phrase, because the compound runner uses it to skip a clause
+  // that has nothing to apply.
+  const resolvable = groups.filter((group) => group.currentTrackId != null || (group.trackIds?.length ?? 0) > 0);
+  if (resolvable.length === 0) {
+    const names = groups.map((group) => group.label ?? String(group.target)).join(", ");
+    throw new Error(`changed nothing — no track in this project matches ${names}`);
+  }
   return applyMixIntent(doc, {
     decisions,
     summary: intent.detected,
   });
 }
 
-/** Verification read-back in the effect's own unit. */
+/**
+ * The OUTCOME of a param apply, per resolved target.
+ *
+ * `moved`     — the value landed and changed ("808 reverb.decay 1.80 s→2.50 s").
+ * `added`     — the effect instance was created by this apply (a track that
+ *               had no such effect now has one); the value may be the default.
+ * `unchanged` — the target resolved and already held the value.
+ * `skipped`   — the target resolved to NOTHING in this project.
+ *
+ * The buckets exist so a report can say what did NOT happen. A single
+ * "moved" list cannot distinguish "the ask landed" from "the ask landed on
+ * one track and missed another", which is exactly the silent partial
+ * application an AI must never be told about as a complete success.
+ */
+export interface ParamReadbackReport {
+  moved: string[];
+  added: string[];
+  unchanged: string[];
+  skipped: string[];
+}
+
+/**
+ * One human-readable line for the outcome of a param apply.
+ *
+ * The order matters: what MOVED first (the producer wants the number), then
+ * what was ADDED, then what was missed. A target that resolved to nothing is
+ * named explicitly — "skipped vocals (no matching track)" — because a partial
+ * application reported as a complete success is the failure mode this whole
+ * read-back exists to prevent.
+ */
+export function paramReadbackReportText(report: ParamReadbackReport): string {
+  const parts: string[] = [];
+  if (report.moved.length > 0) {
+    parts.push(report.moved.slice(0, 3).join(", ") + (report.moved.length > 3 ? ` +${report.moved.length - 3}` : ""));
+  }
+  if (report.added.length > 0) parts.push(`added ${report.added.join(", ")}`);
+  if (report.unchanged.length > 0) parts.push(`already at that value: ${report.unchanged.join(", ")}`);
+  if (report.skipped.length > 0) parts.push(`skipped ${report.skipped.join(", ")} (no matching track)`);
+  return parts.join("; ");
+}
+
+/** Verification read-back in the effect's own unit — the MOVED values only. */
 export function paramReadback(
   before: Parameters<typeof applyMixIntent>[0],
   after: Parameters<typeof applyMixIntent>[0],
   intent: ParamIntent,
 ): string {
+  const report = paramReadbackReport(before, after, intent);
+  if (report.moved.length === 0) return "";
+  return report.moved.slice(0, 3).join(", ") + (report.moved.length > 3 ? ` +${report.moved.length - 3}` : "");
+}
+
+/** The full outcome of a param apply — what moved, what was added, what was missed. */
+export function paramReadbackReport(
+  before: Parameters<typeof applyMixIntent>[0],
+  after: Parameters<typeof applyMixIntent>[0],
+  intent: ParamIntent,
+): ParamReadbackReport {
   const param = paramDefOf(intent.effectType, intent.paramId);
-  const entries: string[] = [];
+  const report: ParamReadbackReport = { moved: [], added: [], unchanged: [], skipped: [] };
+  const fmt = (value: number): string =>
+    param?.format
+      ? param.format(value)
+      : param?.unit
+        ? `${param.max <= 1 ? value.toFixed(2) : value.toFixed(1)} ${param.unit}`
+        : value.toFixed(2);
   for (const entry of paramTargetEntries(before, intent)) {
-    if (!entry.trackId) continue;
+    // The target resolved to nothing in this project — the apply had no track
+    // to write to. Say so; never let it pass as a silent success.
+    if (!entry.trackId) {
+      report.skipped.push(String(entry.target));
+      continue;
+    }
     const trackId = entry.trackId;
     const beforeTrack = before.tracks.find((candidate) => candidate.id === trackId);
     const afterTrack = after.tracks.find((candidate) => candidate.id === trackId);
@@ -844,15 +928,23 @@ export function paramReadback(
     const afterInstance = afterTrack.effects.find((effect) => effect.type === intent.effectType);
     const beforeValue = beforeInstance?.params[intent.paramId] ?? defaultParamsOf(intent.effectType)[intent.paramId];
     const afterValue = afterInstance?.params[intent.paramId];
-    if (afterValue === undefined || beforeValue === afterValue) continue;
-    const fmt = (value: number): string =>
-      param?.format
-        ? param.format(value)
-        : param?.unit
-          ? `${param.max <= 1 ? value.toFixed(2) : value.toFixed(1)} ${param.unit}`
-          : value.toFixed(2);
-    entries.push(`${entry.trackName} ${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`);
+    if (afterValue === undefined) {
+      report.unchanged.push(entry.trackName);
+      continue;
+    }
+    if (beforeValue === afterValue) {
+      // No value move — but the effect may have been CREATED by this apply,
+      // which is a real change that must not be reported as "nothing happened".
+      if (!beforeInstance && afterInstance) report.added.push(entry.trackName);
+      else report.unchanged.push(entry.trackName);
+      continue;
+    }
+    // The effect type belongs in the name: "decay" exists on reverb AND on
+    // delay, and a read-back that says only "decay" leaves the reader
+    // guessing which knob moved.
+    report.moved.push(
+      `${entry.trackName} ${intent.effectType}.${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`,
+    );
   }
-  if (entries.length === 0) return "";
-  return entries.slice(0, 3).join(", ") + (entries.length > 3 ? ` +${entries.length - 3}` : "");
+  return report;
 }
