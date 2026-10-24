@@ -543,5 +543,6 @@ first page load past three minutes, so the specs' boot budget is generous by
 design.
 
 Measured on the 2026-10-24 run (a box at 100 % CPU from parallel sessions):
-all five specs green — the PCM pair in 1.9 min, the pointer trio in 1.5 min
-once the module graph was warm.
+the PCM pair green in 2.1 min (1.4 min + 41 s) and the pointer trio green in
+one run — 3.8 min for the eight gestures, 13.6 s for the cancelled gesture,
+26.4 s for the keyboard and menu verbs.
