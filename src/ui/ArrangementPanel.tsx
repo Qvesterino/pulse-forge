@@ -28,6 +28,7 @@ import { ChordProgressionPanel, type ChordGenForm } from "./arrangement/ChordPro
 import { notifyOnboardingProgress } from "./OnboardingHint";
 import { publishSessionRecordingState, IDLE_SESSION_STATE } from "./sessionStateSurface";
 import { useActivePatternId } from "./context";
+import { useShortcutHints } from "./useShortcutHints";
 import { SpectralEditPanel } from "./SpectralEditPanel";
 import {
   addArrangementClip,
@@ -528,6 +529,7 @@ export function loopSnapTargetBars(
 
 export function ArrangementPanel() {
   const services = useServices();
+  const shortcutHints = useShortcutHints();
   // Fine-grained selectors (GOAL 04): ArrangementPanel reads scenes, the
   // arrangement (clips, audioClips, transitions), tracks, markers, patterns
   // and the active pattern id. Subscribing to the whole document via
@@ -6617,7 +6619,7 @@ export function ArrangementPanel() {
                 if (c && shift > 0) {
                   execute(slipAudioClip(services.store.doc, c.id, Math.max(0, (c.offsetSec ?? 0) + shift)));
                   setRecNotice(
-                    `Clip aligned onto its phrase start (${formatShiftMs(shift)}) — Ctrl+Z if that entry was deliberate.`,
+                    `Clip aligned onto its phrase start (${formatShiftMs(shift)}) — ${shortcutHints.label("undo")} if that entry was deliberate.`,
                   );
                 } else {
                   setActionError(

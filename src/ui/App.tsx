@@ -56,6 +56,8 @@ import {
   deleteNotes,
   duplicatePattern,
   duplicateTimeRange,
+  assistFill,
+  assistVary,
   setActivePattern,
   setTrackParams,
   splitArrangementClipAtTick,
@@ -80,6 +82,7 @@ import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
 import { matchShortcut, panelIdOfShortcut, type ShortcutKey } from "./shortcuts";
+import { useShortcutHints } from "./useShortcutHints";
 import type { PaletteDeps } from "./commandPalette";
 import { PPQ, STEP_TICKS } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
@@ -118,6 +121,7 @@ import { BrowserStrip } from "./BrowserStrip";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
+import { nextSeed } from "../shared/dice";
 
 const INSPECTOR_COLLAPSED_KEY = "pf-inspector-collapsed-v1";
 
@@ -359,6 +363,13 @@ export function App({
   onReplaceServices: (services: Services) => void;
 }) {
   const doc = useSyncExternalStore(services.store.subscribe, services.store.getDoc, services.store.getDoc);
+  const shortcutHints = useShortcutHints();
+  const trackShortcutKeys: ShortcutKey[] = Array.from(
+    { length: 9 },
+    (_, index) => `selectTrack${index + 1}` as ShortcutKey,
+  );
+  const trackShortcutLabels = trackShortcutKeys.map((key) => shortcutHints.label(key));
+  const hasDefaultTrackShortcuts = trackShortcutLabels.every((label, index) => label === String(index + 1));
   // The document's bar length in ticks (ADR 0056): bar-relative work (seek by
   // one bar, clip-under-playhead, selection bounds) uses the project's meter.
   const barUnit = ticksPerBar(doc);
@@ -697,6 +708,30 @@ export function App({
         event?.preventDefault();
         services.playback.stop();
         return;
+      case "toggleLoop":
+        event?.preventDefault();
+        services.transport.setLoop(
+          !services.transport.loopEnabled,
+          services.transport.loopStart,
+          services.transport.loopEnd,
+        );
+        return;
+      case "togglePalette":
+        event?.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      case "assistVary": {
+        event?.preventDefault();
+        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
+        services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
+        return;
+      }
+      case "assistFill": {
+        event?.preventDefault();
+        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
+        services.store.execute(assistFill(doc, doc.activePatternId, seed));
+        return;
+      }
       case "seekHome":
         event?.preventDefault();
         services.playback.seek(0);
@@ -1090,6 +1125,7 @@ export function App({
       // dialog closing itself on Escape) — never double-act on it.
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
+      const matchedShortcut = matchShortcut(event);
       const typing =
         target &&
         (target.tagName === "INPUT" ||
@@ -1110,10 +1146,13 @@ export function App({
       ) {
         return;
       }
-      // Command palette (Ctrl/Cmd+K) — works while typing in inputs too.
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen((v) => !v);
+      // The command palette is the one global action available while typing.
+      if (matchedShortcut === "togglePalette") {
+        if (event.repeat) {
+          event.preventDefault();
+          return;
+        }
+        runShortcutRef.current(matchedShortcut, event);
         return;
       }
       // Escape is contextual: close menu/help → clear unified selection → reset tool → blur inputs
@@ -1594,7 +1633,7 @@ export function App({
         }
       }
 
-      const matched = matchShortcut(event);
+      const matched = matchedShortcut;
       if (!matched) return;
       // Auto-repeat must not re-trigger TRANSPORT actions: a Space held a
       // beat too long flapped play/pause ~30×/s, and held ","/"." seek-
@@ -1606,7 +1645,10 @@ export function App({
           matched === "stop" ||
           matched === "seekHome" ||
           matched === "seekBack" ||
-          matched === "seekForward")
+          matched === "seekForward" ||
+          matched === "toggleLoop" ||
+          matched === "assistVary" ||
+          matched === "assistFill")
       ) {
         event.preventDefault();
         return;
@@ -1936,8 +1978,15 @@ export function App({
                 <StatusHint
                   fallback={
                     <span>
-                      SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo ·{" "}
-                      <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks
+                      {shortcutHints.label("playPause")} play · {shortcutHints.label("togglePalette")} commands ·{" "}
+                      {shortcutHints.label("undo")} undo · {shortcutHints.label("toggleHelp")} help ·{" "}
+                      {hasDefaultTrackShortcuts ? (
+                        <>
+                          <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks
+                        </>
+                      ) : (
+                        `${trackShortcutLabels.join(" · ")} tracks`
+                      )}
                       {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
                       {/* Real tools now (V select / C cut) — the chip returns,
                           flagged when a mode is active so it never reads as noise. */}

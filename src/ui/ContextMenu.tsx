@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShortcutHints } from "./useShortcutHints";
 import { useActivePatternId, useArrangement, useSelection, useSelectionStore, useServices } from "./context";
 import {
   clearSteps,
@@ -54,6 +55,7 @@ export function ContextMenu({
   onPasteClips?: () => void;
 }) {
   const services = useServices();
+  const shortcutHints = useShortcutHints();
   // Fine-grained selectors (GOAL 04): ContextMenu reads the arrangement
   // (clip + audio clip id sets for menu enable/disable) and the active
   // pattern id (for duplicate-pattern). Subscribing to the whole doc
@@ -612,13 +614,13 @@ export function ContextMenu({
         <>
           <div className="context-menu-header">{state.context}</div>
           <button type="button" role="menuitem" onClick={() => handle("copyClips")} disabled={!hasClips}>
-            Copy (Ctrl+C)
+            Copy ({shortcutHints.label("copyClips")})
           </button>
           <button type="button" role="menuitem" onClick={() => handle("cutClips")} disabled={!hasClips}>
-            Cut (Ctrl+X)
+            Cut ({shortcutHints.label("cutClips")})
           </button>
           <button type="button" role="menuitem" onClick={() => handle("pasteClips")} disabled={!clipsClipboard}>
-            Paste at playhead (Ctrl+V)
+            Paste at playhead ({shortcutHints.label("pasteClips")})
           </button>
           <button
             type="button"
@@ -626,7 +628,7 @@ export function ContextMenu({
             onClick={() => handle("toggleClipMute")}
             disabled={!hasAudioClipSelection}
           >
-            {clipMuteLabel} (M)
+            {clipMuteLabel} ({shortcutHints.label("toggleClipMute")})
           </button>
           <button
             type="button"
@@ -634,19 +636,19 @@ export function ContextMenu({
             onClick={() => handle("groupClips")}
             disabled={selection.clipIds.length < 2}
           >
-            Group (Ctrl+G)
+            Group ({shortcutHints.label("groupClips")})
           </button>
           <button type="button" role="menuitem" onClick={() => handle("ungroupClips")} disabled={!hasClips}>
-            Ungroup (Ctrl+Shift+G)
+            Ungroup ({shortcutHints.label("ungroupClips")})
           </button>
           <button type="button" role="menuitem" onClick={() => handle("toggleClipLock")} disabled={!hasClips}>
-            {clipLockLabel} (Shift+L)
+            {clipLockLabel} ({shortcutHints.label("toggleClipLock")})
           </button>
           <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
             Delete
           </button>
           <button type="button" role="menuitem" onClick={() => handle("duplicate")} disabled={!hasAny}>
-            Duplicate
+            Duplicate ({shortcutHints.label("duplicateSelection")})
           </button>
           <button type="button" role="menuitem" onClick={() => handle("consolidate")} disabled={!hasTime}>
             Consolidate

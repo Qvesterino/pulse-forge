@@ -1,5 +1,6 @@
 import { Suspense, lazy, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { useShortcutHints } from "./useShortcutHints";
 import { StatusLine } from "./intent/StatusLine";
 import { VoiceIdeaControls } from "./intent/VoiceIdeaControls";
 import { AudioRefChip } from "./intent/AudioRefChip";
@@ -514,6 +515,7 @@ const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
 
 export function IntentPanel() {
   const services = useServices();
+  const shortcutHints = useShortcutHints();
   const selection = useSelectionStore();
   const doc = services.store.getDoc();
   const [text, setText] = useState("");
@@ -756,7 +758,7 @@ export function IntentPanel() {
     refreshReaction();
     setHistoryTick((tick) => tick + 1);
     setStatus(
-      `⟲ rewound to "${step.prompt || step.routeKind}"${detached > 0 ? ` — ${detached} later step(s) detached (Ctrl+Y redoes)` : ""}`,
+      `⟲ rewound to "${step.prompt || step.routeKind}"${detached > 0 ? ` — ${detached} later step(s) detached (${shortcutHints.label("redo", true)} redoes)` : ""}`,
     );
   };
   const toggleReactionLedger = () => {

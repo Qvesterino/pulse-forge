@@ -2,7 +2,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { AudioStatusChips } from "./AudioStatusChips";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
-import { useActivePatternId, useCanRedo, useCanUndo, useLastSavedAt, useSaveStatus, useServices } from "./context";
+import { useCanRedo, useCanUndo, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
@@ -14,13 +14,11 @@ import { STEP_TICKS } from "../project-model/types";
 import { timelineItemsOf } from "../project-model/timeline";
 import type { PlayMode } from "../project-model/types";
 import type { Services } from "../services";
-import { matchShortcut } from "./shortcuts";
+import { useShortcutHints } from "./useShortcutHints";
 import { ScalePanel } from "./ScalePanel";
 import { ThemePanel } from "./ThemePanel";
 import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
-import { assistFill, assistVary } from "../commands/commands";
-import { nextSeed } from "../shared/dice";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -34,6 +32,7 @@ type TopbarAction = {
   label: string;
   ariaLabel: string;
   title: string;
+  ariaKeyshortcuts?: string;
   priority: number;
   active?: boolean;
   disabled?: boolean;
@@ -84,10 +83,10 @@ export function TopBar({
   onToggleHistory: () => void;
 }) {
   const services = useServices();
+  const shortcutHints = useShortcutHints();
   // Fine-grained selectors (GOAL 04): TopBar subscribes to the active pattern
   // id used by assist commands. The full doc is still needed for project name,
   // BPM and arrangement-content checks — those are plain getter reads.
-  const activePatternId = useActivePatternId();
   const doc = services.store.getDoc();
   const saveStatus = useSaveStatus();
   const lastSavedAt = useLastSavedAt();
@@ -310,49 +309,15 @@ export function TopBar({
     return `${bar}.${beat}`;
   };
 
-  // "L" toggles the loop region. Handled here because loop state lives here.
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable);
-      if (typing) return;
-      if (matchShortcut(event) === "toggleLoop") {
-        // Key-repeat must not flap the loop region ~30×/s while held.
-        if (event.repeat) return;
-        event.preventDefault();
-        toggleLoop();
-      }
-      // 1-klik Assist shortcuts — deterministic, no panel (repeat-guarded:
-      // each press stamps a fresh seed; holding would spam undo history)
-      if (!event.repeat && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
-        event.preventDefault();
-        const seed = nextSeed(activePatternId + String(Date.now()), "topbar-vary");
-        services.store.execute(assistVary(doc, activePatternId, seed, 0.6));
-      }
-      if (!event.repeat && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        const seed = nextSeed(activePatternId + String(Date.now()), "topbar-fill");
-        services.store.execute(assistFill(doc, activePatternId, seed));
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loopEnabled, loopStart, loopEnd, doc, services.store]);
-
   const toolActions: TopbarAction[] = [
     ...(onOpenPalette
       ? [
           {
             id: "palette",
-            label: "⌘K",
+            label: shortcutHints.label("togglePalette"),
             ariaLabel: "Open command palette",
-            title: "Command palette (Ctrl+K) — every action, searchable",
+            title: `Command palette (${shortcutHints.label("togglePalette", true)}) — every action, searchable`,
+            ariaKeyshortcuts: shortcutHints.aria("togglePalette"),
             priority: 100,
             onClick: () => onOpenPalette(),
           },
@@ -511,7 +476,8 @@ export function TopBar({
           id: "undo",
           label: "UNDO",
           ariaLabel: "Undo",
-          title: "Undo (Ctrl+Z)",
+          title: `Undo (${shortcutHints.label("undo", true)})`,
+          ariaKeyshortcuts: shortcutHints.aria("undo"),
           priority: 0,
           disabled: !canUndo,
           onClick: () => services.store.undo(),
@@ -520,7 +486,8 @@ export function TopBar({
           id: "redo",
           label: "REDO",
           ariaLabel: "Redo",
-          title: "Redo (Ctrl+Shift+Z)",
+          title: `Redo (${shortcutHints.label("redo", true)})`,
+          ariaKeyshortcuts: shortcutHints.aria("redo"),
           priority: 0,
           disabled: !canRedo,
           onClick: () => services.store.redo(),
@@ -707,7 +674,8 @@ export function TopBar({
             type="button"
             className={`btn btn-play${playing ? " active" : ""}`}
             onClick={() => services.playback.playPause()}
-            title="Play / Pause (Space)"
+            title={`Play / Pause (${shortcutHints.label("playPause")})`}
+            aria-keyshortcuts={shortcutHints.aria("playPause")}
           >
             {playing ? "❚❚" : "▶"}
           </button>
@@ -756,9 +724,9 @@ export function TopBar({
               className="btn btn-history"
               disabled={!canUndo}
               onClick={() => services.store.undo()}
-              title="Undo (Ctrl+Z)"
+              title={`Undo (${shortcutHints.label("undo", true)})`}
               aria-label="Undo"
-              aria-keyshortcuts="Control+Z"
+              aria-keyshortcuts={shortcutHints.aria("undo")}
             >
               ↶
             </button>
@@ -769,9 +737,9 @@ export function TopBar({
               className="btn btn-history"
               disabled={!canRedo}
               onClick={() => services.store.redo()}
-              title="Redo (Ctrl+Shift+Z)"
+              title={`Redo (${shortcutHints.label("redo", true)})`}
               aria-label="Redo"
-              aria-keyshortcuts="Control+Shift+Z"
+              aria-keyshortcuts={shortcutHints.aria("redo")}
             >
               ↷
             </button>
@@ -782,8 +750,9 @@ export function TopBar({
               type="button"
               className={`btn btn-loop${loopEnabled ? " active" : ""}`}
               onClick={toggleLoop}
-              title="Toggle loop region (L). IN/OUT locators also define a single-pass punch range when LOOP is off."
+              title={`Toggle loop region (${shortcutHints.label("toggleLoop")}). IN/OUT locators also define a single-pass punch range when LOOP is off.`}
               aria-label="Toggle loop region"
+              aria-keyshortcuts={shortcutHints.aria("toggleLoop")}
               aria-pressed={loopEnabled}
             >
               LOOP
@@ -863,7 +832,7 @@ export function TopBar({
               saveStatus === "saved"
                 ? `All changes saved${lastSavedAt ? ` at ${formatClock(lastSavedAt)}` : ""}. Autosave is on.`
                 : saveStatus === "dirty"
-                  ? "Unsaved changes — autosave runs in a moment (Ctrl+S to save now)"
+                  ? `Unsaved changes — autosave runs in a moment (${shortcutHints.label("save", true)} to save now)`
                   : saveStatus === "saving"
                     ? "Saving…"
                     : "Save failed — click to retry"
@@ -897,6 +866,7 @@ export function TopBar({
               onClick={action.onClick}
               title={action.title}
               aria-label={action.ariaLabel}
+              aria-keyshortcuts={action.ariaKeyshortcuts}
               aria-pressed={action.active}
             >
               {action.label}
@@ -936,6 +906,7 @@ export function TopBar({
                           onClick={(event) => invokeOverflowAction(action, event)}
                           title={action.title}
                           aria-label={action.ariaLabel}
+                          aria-keyshortcuts={action.ariaKeyshortcuts}
                           aria-pressed={action.active}
                           disabled={action.disabled}
                           role="menuitem"
@@ -956,6 +927,7 @@ export function TopBar({
                           onClick={(event) => invokeOverflowAction(action, event)}
                           title={action.title}
                           aria-label={action.ariaLabel}
+                          aria-keyshortcuts={action.ariaKeyshortcuts}
                           aria-pressed={action.active}
                           disabled={action.disabled}
                           role="menuitem"

@@ -13,6 +13,9 @@ export type ShortcutKey =
   | "redo"
   | "save"
   | "toggleLoop"
+  | "togglePalette"
+  | "assistVary"
+  | "assistFill"
   | "duplicateSelection"
   | "copyClips"
   | "cutClips"
@@ -125,6 +128,16 @@ export const SHORTCUTS: Shortcut[] = [
     altHints: [{ key: "s", ctrl: true }],
   },
   { key: "toggleLoop", label: "Toggle loop region", group: "Transport", keyHint: "L" },
+  {
+    key: "togglePalette",
+    label: "Open command palette",
+    group: "Help",
+    keyHint: "k",
+    ctrl: true,
+    altHints: [{ key: "k", meta: true }],
+  },
+  { key: "assistVary", label: "Vary active pattern", group: "Patterns", keyHint: "v", ctrl: true, shift: true },
+  { key: "assistFill", label: "Fill active pattern", group: "Patterns", keyHint: "f", ctrl: true, shift: true },
   { key: "undo", label: "Undo", group: "Transport", keyHint: "Z", ctrl: true, altHints: [{ key: "z", ctrl: true }] },
   {
     key: "redo",
@@ -359,16 +372,6 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
     bindings: ["A"],
   },
   {
-    area: "Assist",
-    label: "One-click vary (seeded variation)",
-    bindings: ["Ctrl + Shift + V"],
-  },
-  {
-    area: "Assist",
-    label: "One-click fill",
-    bindings: ["Ctrl + Shift + F"],
-  },
-  {
     area: "Dice tray",
     label: "Roll full / vary (tray open)",
     bindings: ["D", "Shift + D"],
@@ -443,7 +446,14 @@ export function shortcutBindingFromEvent(
   event: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey">,
 ): ShortcutBindingInput | null {
   const keyHint = event.key.toLowerCase();
-  if (!/^[a-z0-9]$/.test(keyHint) || !event.shiftKey || event.altKey || (!event.ctrlKey && !event.metaKey)) return null;
+  if (
+    !/^[a-z0-9]$/.test(keyHint) ||
+    !event.shiftKey ||
+    event.altKey ||
+    (!event.ctrlKey && !event.metaKey) ||
+    (event.ctrlKey && event.metaKey)
+  )
+    return null;
   return {
     keyHint,
     ctrl: event.ctrlKey,
@@ -475,9 +485,9 @@ function parseEditorBinding(display: string): ShortcutBindingInput | null {
 
 function safeBindingReason(binding: ShortcutBindingInput): string | null {
   if (!/^[a-z0-9]$/.test(binding.keyHint)) return "Use one letter or number.";
-  if (!binding.shift || binding.alt || (!binding.ctrl && !binding.meta))
+  if (!binding.shift || binding.alt || (!binding.ctrl && !binding.meta) || (binding.ctrl && binding.meta))
     return "Use Ctrl/Cmd + Shift + one letter or number. Plain keys stay available for playing notes.";
-  if (["n", "t", "w", "q", "i", "j", "p", "m"].includes(binding.keyHint))
+  if (["n", "t", "w", "q", "i", "j", "p", "m", "k"].includes(binding.keyHint))
     return "That chord is reserved by common browser or operating-system commands.";
   return null;
 }

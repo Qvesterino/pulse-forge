@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useShortcutHints } from "./useShortcutHints";
 import type { CSSProperties } from "react";
 import {
   useActivePatternId,
@@ -47,6 +48,7 @@ function randomSeed(prev?: string): string {
  */
 export function AssistPanel({ onClose }: { onClose: () => void }) {
   const services = useServices();
+  const shortcutHints = useShortcutHints();
   // Fine-grained selector (GOAL 04): AssistPanel reads scenes (UI gate),
   // and helper functions take the full doc (getActivePattern, getDrumTrack,
   // parseArrangeIntent). A plain getter gives us the doc; the scenes
@@ -333,7 +335,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
       </div>
       <p className="collab-hint">
         Iterate on this pattern — your hits stay yours, the assist modifies surgically. Same seed = same result; the
-        seed re-rolls after every apply. Ctrl+Z takes anything back.
+        seed re-rolls after every apply. {shortcutHints.label("undo")} takes anything back.
       </p>
 
       <div className="assist-seed">

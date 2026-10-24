@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { BottomPanel, DockState } from "./dockLayout";
+import type { ShortcutKey } from "./shortcuts";
+import { useShortcutHints } from "./useShortcutHints";
 
 /**
  * Bottom dock chrome — the always-visible tab strip + resize grip
@@ -21,6 +23,7 @@ export interface DockTabDef {
   /** Stable a11y name — e2e specs target these strings. */
   ariaLabel: string;
   title: string;
+  shortcut?: ShortcutKey;
 }
 
 /** Tab order mirrors the workflow: the core four, the generative pair (the
@@ -29,18 +32,26 @@ export interface DockTabDef {
  * DockChrome test pins the two together so a new panel can never ship
  * without a tab. */
 export const DOCK_TABS: readonly DockTabDef[] = [
-  { id: "mixer", label: "MIX", ariaLabel: "Toggle mixer panel", title: "Mixer — levels, sends, groups (Alt+1)" },
+  {
+    id: "mixer",
+    label: "MIX",
+    ariaLabel: "Toggle mixer panel",
+    title: "Mixer — levels, sends, groups",
+    shortcut: "panelMix",
+  },
   {
     id: "devices",
     label: "DEV",
     ariaLabel: "Toggle track device chain",
-    title: "Instrument + effect chain of the selected track (Alt+2)",
+    title: "Instrument + effect chain of the selected track",
+    shortcut: "panelFx",
   },
   {
     id: "tsar",
     label: "TSAR",
     ariaLabel: "Toggle TSAR engine panel",
-    title: "TSAR - hybrid sample + synthesis engine: dual sources, morph, mod matrix, Forge (Alt+0)",
+    title: "TSAR - hybrid sample + synthesis engine: dual sources, morph, mod matrix, Forge",
+    shortcut: "panelTsar",
   },
   {
     id: "choral",
@@ -52,7 +63,8 @@ export const DOCK_TABS: readonly DockTabDef[] = [
     id: "arr",
     label: "ARR",
     ariaLabel: "Toggle arrangement and scenes",
-    title: "Arrangement timeline and scenes (Alt+3)",
+    title: "Arrangement timeline and scenes",
+    shortcut: "panelArr",
   },
   {
     id: "live",
@@ -60,17 +72,48 @@ export const DOCK_TABS: readonly DockTabDef[] = [
     ariaLabel: "Toggle Live Pads",
     title: "Live Pads — save loop sets and launch loops into the song arrangement",
   },
-  { id: "mod", label: "MOD", ariaLabel: "Toggle modulation panel", title: "Automation, LFOs and macros (Alt+4)" },
-  { id: "dice", label: "DICE", ariaLabel: "Toggle dice panel", title: "Dice — rapid beat generator (Alt+6)" },
-  { id: "intent", label: "INTENT", ariaLabel: "Toggle intent panel", title: "Describe the beat in words (Alt+7)" },
-  { id: "exp", label: "EXP", ariaLabel: "Toggle export panel", title: "Export audio and project (Alt+5)" },
+  {
+    id: "mod",
+    label: "MOD",
+    ariaLabel: "Toggle modulation panel",
+    title: "Automation, LFOs and macros",
+    shortcut: "panelMod",
+  },
+  {
+    id: "dice",
+    label: "DICE",
+    ariaLabel: "Toggle dice panel",
+    title: "Dice — rapid beat generator",
+    shortcut: "panelDice",
+  },
+  {
+    id: "intent",
+    label: "INTENT",
+    ariaLabel: "Toggle intent panel",
+    title: "Describe the beat in words",
+    shortcut: "panelIntent",
+  },
+  {
+    id: "exp",
+    label: "EXP",
+    ariaLabel: "Toggle export panel",
+    title: "Export audio and project",
+    shortcut: "panelExport",
+  },
   {
     id: "master",
     label: "MASTER",
     ariaLabel: "Toggle mastering panel",
-    title: "Mastering — final processing, loudness targets and stereo checks (Alt+9)",
+    title: "Mastering — final processing, loudness targets and stereo checks",
+    shortcut: "panelMaster",
   },
-  { id: "midi", label: "MIDI", ariaLabel: "Toggle MIDI input panel", title: "MIDI input and routing (Alt+8)" },
+  {
+    id: "midi",
+    label: "MIDI",
+    ariaLabel: "Toggle MIDI input panel",
+    title: "MIDI input and routing",
+    shortcut: "panelMidi",
+  },
   {
     id: "reference",
     label: "REF",
@@ -99,6 +142,7 @@ export function DockChrome({
   onResizeReset,
   onResizeStep,
 }: DockChromeProps) {
+  const shortcutHints = useShortcutHints();
   const anyOpen = dock.slotA !== null || dock.slotB !== null;
   const tabsRef = useRef<HTMLDivElement>(null);
   const [tabScrollEdges, setTabScrollEdges] = useState({ left: false, right: false });
@@ -190,7 +234,8 @@ export function DockChrome({
               data-dock-tab={tab.id}
               className={"dock-tab" + (open ? " active" : "") + (inB ? " in-split" : "")}
               onClick={(event) => onToggle(tab.id, event.ctrlKey || event.metaKey)}
-              title={tab.title}
+              title={tab.shortcut ? `${tab.title} (${shortcutHints.label(tab.shortcut)})` : tab.title}
+              aria-keyshortcuts={tab.shortcut ? shortcutHints.aria(tab.shortcut) : undefined}
             >
               <span className="dock-tab-led" aria-hidden="true" />
               <span className="dock-tab-label">{tab.label}</span>

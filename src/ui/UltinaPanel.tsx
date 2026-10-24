@@ -34,6 +34,7 @@ import { renderTrack } from "../rendering/track-renderer";
 import { useServices } from "./context";
 import { Slider } from "./controls";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
+import { useShortcutHints } from "./useShortcutHints";
 
 const MODULE_LABELS: Record<string, string> = {
   gate: "GATE",
@@ -130,6 +131,7 @@ export function UltinaPanel({
   onAbLoad?: (slot: "A" | "B") => void;
   docked?: boolean;
 }) {
+  const shortcutHints = useShortcutHints();
   const services = useServices();
   const [selectedModule, setSelectedModule] = useState<string>("comp");
   const [selectedEqBand, setSelectedEqBand] = useState(0);
@@ -467,8 +469,15 @@ export function UltinaPanel({
     try {
       onApplyProposal(review.label, review.toggles, review.changes);
       if (review.kind === "mix")
-        setAssistSummary([...review.lines, "APPLIED — one undoable gesture; Ctrl+Z restores the previous settings."]);
-      else setMatchSummary([...review.lines, "APPLIED — one undoable gesture; Ctrl+Z restores the previous settings."]);
+        setAssistSummary([
+          ...review.lines,
+          `APPLIED — one undoable gesture; ${shortcutHints.label("undo")} restores the previous settings.`,
+        ]);
+      else
+        setMatchSummary([
+          ...review.lines,
+          `APPLIED — one undoable gesture; ${shortcutHints.label("undo")} restores the previous settings.`,
+        ]);
     } catch (error) {
       updatePendingReview(review);
       const message = error instanceof Error ? error.message : "VLYX proposal could not be applied.";
@@ -1025,7 +1034,7 @@ export function UltinaPanel({
               ))}
               <div className="ultina-assist-note">
                 {matchSummary.some((line) => line.startsWith("APPLIED —"))
-                  ? "One undoable gesture — Ctrl+Z restores the previous settings."
+                  ? `One undoable gesture — ${shortcutHints.label("undo")} restores the previous settings.`
                   : "No project changes were made."}
               </div>
             </div>
@@ -1178,7 +1187,7 @@ export function UltinaPanel({
               ))}
               <div className="ultina-assist-note">
                 {assistSummary.some((line) => line.startsWith("APPLIED —"))
-                  ? "One undoable gesture — Ctrl+Z restores the previous settings."
+                  ? `One undoable gesture — ${shortcutHints.label("undo")} restores the previous settings.`
                   : "No project changes were made."}
               </div>
             </div>

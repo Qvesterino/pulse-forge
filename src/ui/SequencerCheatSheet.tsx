@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useShortcutHints } from "./useShortcutHints";
 
 /**
  * Sequencer gesture cheat sheet — every hidden drag/key the step sequencer
@@ -58,21 +59,20 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       ["ruler drag", "loop region"],
       ["Ctrl+wheel", "horizontal zoom"],
       ["⏺ + OVERDUB/REPLACE", "record mode, Q grid, strength"],
-      ["L", "loop on/off"],
-    ],
-  },
-  {
-    title: "GLOBAL",
-    items: [
-      ["Ctrl+K", "command palette"],
-      ["Ctrl+Z", "undo — a record pass is ONE entry"],
-      ["Alt+1–6", "panels"],
-      ["?", "full shortcut help"],
     ],
   },
 ];
 
 export function SequencerCheatSheet({ onClose }: { onClose: () => void }) {
+  const shortcutHints = useShortcutHints();
+  const globalItems: [string, string][] = [
+    [shortcutHints.label("playPause"), "play / pause"],
+    [shortcutHints.label("toggleLoop"), "loop on / off"],
+    [shortcutHints.label("undo"), "undo — a record pass is ONE entry"],
+    [shortcutHints.label("redo"), "redo"],
+    [shortcutHints.label("togglePalette", true), "command palette"],
+    [shortcutHints.label("toggleHelp"), "full shortcut help"],
+  ];
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -103,6 +103,15 @@ export function SequencerCheatSheet({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         ))}
+        <div className="cheat-sheet-group">
+          <span className="cheat-sheet-group-title">GLOBAL</span>
+          {globalItems.map(([keys, what]) => (
+            <div key={what} className="cheat-sheet-row">
+              <kbd className="cheat-sheet-keys">{keys}</kbd>
+              <span className="cheat-sheet-what">{what}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

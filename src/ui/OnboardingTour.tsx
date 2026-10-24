@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ProjectTransferSourceDaw } from "../project-model/types";
 import { useServices } from "./context";
+import { useShortcutHints } from "./useShortcutHints";
 import { DAW_ACTION_MAPPINGS, DAW_PROFILE_OPTIONS, readDawProfile, writeDawProfile } from "./dawProfile";
 import type { SongStarterHandoff } from "../landing/handoff";
 
@@ -113,6 +114,7 @@ export function OnboardingTour({
   songStarter?: SongStarterHandoff | null;
 }) {
   const services = useServices();
+  const shortcutHints = useShortcutHints();
   const [step, setStep] = useState(-1);
   const [preferredSourceDaw, setPreferredSourceDaw] = useState<ProjectTransferSourceDaw | null>(readDawProfile);
   const isTransferProject = sourceDaw !== undefined;
@@ -168,7 +170,13 @@ export function OnboardingTour({
   const tourBody =
     isSongStarterProject && step === 0
       ? `Your ${songStarter.genre}${songStarter.mood ? ` · ${songStarter.mood}` : ""} style and ${songStarter.bpm} BPM are already applied. KYX prepares matching loops automatically; watch the pack status, then preview one in Sounds.`
-      : current.body;
+      : current.body
+          .replaceAll("Ctrl+K", shortcutHints.label("togglePalette", true))
+          .replaceAll("Ctrl+Z", shortcutHints.label("undo"))
+          .replaceAll("Ctrl+S", shortcutHints.label("save", true));
+  const tourHint = current.hint
+    .replaceAll("Ctrl+Z", shortcutHints.label("undo"))
+    .replaceAll("Ctrl+S", shortcutHints.label("save", true));
 
   return (
     <div className="tour-card" role="dialog" aria-label="Onboarding tour" aria-live="polite">
@@ -205,7 +213,7 @@ export function OnboardingTour({
         </label>
       )}
       <div className="tour-foot">
-        <span className="tour-hint">{current.hint}</span>
+        <span className="tour-hint">{tourHint}</span>
         <div className="tour-dots" aria-hidden>
           {steps.map((_, i) => (
             <span key={i} className={`tour-dot${i === step ? " active" : ""}${i < step ? " done" : ""}`} />
