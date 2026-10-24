@@ -167,6 +167,19 @@ export interface EffectRuntime {
   /** Live meter snapshot (spectrum, LUFS, GR…) — plugins with analysis DSP. */
   getMeters?(): unknown;
   /**
+   * MONITOR-ONLY audition switch (KOREŇ, ADR 0034 addendum 15).
+   *
+   * 0 = the normal path, 1 = the dry input, 2 = a generated branch — the
+   * plugin decides what the slots mean and level-matches the auditioned path
+   * to the normal one, so the comparison is about timbre, not loudness.
+   *
+   * The mode lives on the RUNTIME, never in the project document: it cannot
+   * change a saved parameter, an automation lane, the mix or an export. Only
+   * plugins with a real A/B comparison surface implement it (KOREŇ today);
+   * every other effect simply omits it.
+   */
+  setAudition?(mode: number): void;
+  /**
    * Toggle an effect's internal metering analysis. Heavy DSP panels (Ultina)
    * keep a metering pipeline running on the audio thread; the engine flips it
    * on while a consumer (panel) is mounted and off otherwise, so closed

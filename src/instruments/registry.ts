@@ -13,6 +13,8 @@ import { createChoralRuntime } from "./choralNode";
 import { createChoralFallbackRuntime } from "./choralFallback";
 import { createLadicRuntime } from "./ladicNode";
 import { createLadicFallbackRuntime } from "./ladicFallback";
+import { createHlasRuntime } from "./hlasNode";
+import { createHlasFallbackRuntime } from "./hlasFallback";
 import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
@@ -44,6 +46,7 @@ import {
   kopaParams,
   choralParams,
   ladicParams,
+  hlasParams,
   WAVE_NAMES,
   SYNC_BEATS,
   syncRateHz,
@@ -6931,6 +6934,36 @@ const ladic: InstrumentDefinition = {
   },
 };
 
+/**
+ * HĽAS (ADR 0059) — the formant lead. The worklet runs the source-filter
+ * engine (vowel formants, breath, vibrato, MPE morph/breath); without the
+ * module a detuned saw through a static A-vowel bandpass keeps the track
+ * audible.
+ */
+const hlas: InstrumentDefinition = {
+  kind: "hlas",
+  name: "HĽAS",
+  params: hlasParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("hlas", ctx)) {
+      return createHlasRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "hlas-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createHlasFallbackRuntime(ctx, track);
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 function withNoteExpressionTargets(definition: InstrumentDefinition): InstrumentDefinition {
@@ -6969,6 +7002,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   kopa,
   choral,
   ladic,
+  hlas,
 };
 
 export function instrumentTrackKindLabel(track: InstrumentTrack): string {

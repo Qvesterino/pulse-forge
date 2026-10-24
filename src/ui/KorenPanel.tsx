@@ -6,7 +6,7 @@ import { useServices } from "./context";
 
 /**
  * GROW (bassHarmonic) panel — live missing-fundamental visualizer + PHONE
- * CHECK.
+ * CHECK + the level-matched A/B audition.
  *
  * Visualizer: a log axis (20–500 Hz) with the `focusHz` tracking window
  * shaded, the YIN-tracked fundamental marked, and the generated harmonic
@@ -20,6 +20,16 @@ import { useServices } from "./context";
  * hears — the moment the generated harmonics earn their keep. Never project
  * state, never part of a render, and always released on unmount.
  *
+ * AUDITION (wave 1 of the flagship roadmap): a three-way monitor-only switch
+ * — WET (the processed signal), DRY (the input alone) and HARMONICS (the
+ * generated branch alone). The plugin level-matches the auditioned path to
+ * the processed one, so the comparison is about TIMBRE and not loudness:
+ * "the effect sounds better" is otherwise just "the effect is louder".
+ * The switch is written to the RUNTIME (`AudioEngine.setFxAudition`), never
+ * to the document — no command, no undo entry, no export. The panel only
+ * reads the telemetry to say what it is listening to; the DSP never depends
+ * on this panel being open.
+ *
  * The panel is display + audition only: every AudioParam edit stays on the
  * generic device grid below it (single command path, one undo per gesture).
  *
@@ -29,6 +39,26 @@ import { useServices } from "./context";
  * side A and the drop lands B. The select reads CUSTOM when the stored slots
  * come from anything but a pack pair; the chip reports the armed binding.
  */
+
+/** The monitor-only audition slots (the plugin decides what they carry). */
+const AUDITION_MODES = [
+  {
+    id: 0,
+    label: "WET",
+    title: "the processed signal — the dry blend plus the generated harmonics",
+  },
+  {
+    id: 1,
+    label: "DRY",
+    title: "the input alone, level-matched to the processed signal",
+  },
+  {
+    id: 2,
+    label: "HARM",
+    title: "the generated harmonic branch alone, level-matched to the processed signal",
+  },
+] as const;
+
 export function KorenPanel({
   trackId,
   fxId,
@@ -57,16 +87,25 @@ export function KorenPanel({
   const stateRef = useRef<HTMLSpanElement>(null);
   const confidenceRef = useRef<HTMLSpanElement>(null);
   const harmRef = useRef<HTMLSpanElement>(null);
+  const auditionRef = useRef<HTMLSpanElement>(null);
   const [phoneOn, setPhoneOn] = useState(false);
+  const [audition, setAudition] = useState(0);
 
   // PHONE CHECK is monitor-only and panel-scoped: when the device card (or
   // the panel itself) unmounts, the audition filter must not survive it.
+  // The A/B audition is monitor-only for the same reason — it is released
+  // with the panel so a closed panel never leaves the track in a comparison
+  // state the user cannot see.
   useEffect(() => {
     const engine = services.engine as typeof services.engine & {
       setMonitorHighpass?: (hz: number | null) => void;
+      setFxAudition?: (trackId: string, fxId: string, mode: number) => void;
     };
-    return () => engine.setMonitorHighpass?.(null);
-  }, [services]);
+    return () => {
+      engine.setMonitorHighpass?.(null);
+      engine.setFxAudition?.(trackId, fxId, 0);
+    };
+  }, [services, trackId, fxId]);
 
   useEffect(() => {
     const engine = services.engine as typeof services.engine & {
@@ -184,6 +223,9 @@ export function KorenPanel({
               key: typeof raw.key === "number" ? raw.key : 1,
               hint: typeof raw.hint === "number" ? raw.hint : 0,
               partials: raw.partials instanceof Float32Array ? raw.partials : null,
+              audition: typeof raw.audition === "number" ? raw.audition : 0,
+              matchDb: typeof raw.matchDb === "number" ? raw.matchDb : 0,
+              audDb: typeof raw.audDb === "number" ? raw.audDb : 0,
             }
           : null;
       const frame = frameRef.current;
@@ -198,6 +240,29 @@ export function KorenPanel({
       if (harmRef.current) {
         harmRef.current.textContent =
           f0 > 0 && frame && frame.harm > 0 ? `+${frame.harm.toFixed(1)} dB harmonics` : "— dB harmonics";
+      }
+      if (auditionRef.current) {
+        // The comparison state, read from the PROCESSOR's own match — the panel
+        // never computes it, so a closed panel cannot change what it says.
+        const mode = frame?.audition ?? 0;
+        const matchDb = frame?.matchDb ?? 0;
+        const audDb = frame?.audDb ?? 0;
+        if (mode === 0) {
+          auditionRef.current.textContent = "LISTENING: WET";
+          auditionRef.current.title = "the processed signal";
+        } else if (audDb <= -60) {
+          // Silence, or a tracker that holds nothing: there is nothing to
+          // compare, and the panel says so instead of showing a fake gain.
+          auditionRef.current.textContent = mode === 2 ? "NO HARMONIC LAYER" : "NOTHING TO COMPARE";
+          auditionRef.current.title = "the compared path carries no signal";
+        } else {
+          const sign = matchDb >= 0 ? "+" : "";
+          // The match is clamped: the source sits further from the reference
+          // than the clamp allows, so the comparison is NOT level-neutral.
+          const limited = matchDb < -audDb - 0.5;
+          auditionRef.current.textContent = `${limited ? "MATCH LIMIT" : "MATCHED"} ${sign}${matchDb.toFixed(1)} dB`;
+          auditionRef.current.title = `${audDb.toFixed(1)} dB relative to the processed signal`;
+        }
       }
       draw();
     }, 66);
@@ -215,6 +280,16 @@ export function KorenPanel({
     const next = !phoneOn;
     setPhoneOn(next);
     engine.setMonitorHighpass?.(next ? 350 : null);
+  };
+
+  // The A/B switch is a RUNTIME write — the project never sees it, so there
+  // is no command, no undo entry and nothing to persist.
+  const selectAudition = (mode: number) => {
+    const engine = services.engine as typeof services.engine & {
+      setFxAudition?: (trackId: string, fxId: string, mode: number) => void;
+    };
+    setAudition(mode);
+    engine.setFxAudition?.(trackId, fxId, mode);
   };
 
   const sceneState = readKorenSceneState(deviceState);
@@ -273,6 +348,43 @@ export function KorenPanel({
         )}
       </div>
       <canvas ref={canvasRef} className="koren-viz" />
+      <div className="koren-ab-row">
+        <div className="koren-ab" role="group" aria-label="Audition comparison">
+          {AUDITION_MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              className={`btn btn-small koren-ab-btn${audition === mode.id ? " on" : ""}`}
+              aria-pressed={audition === mode.id}
+              disabled={degraded}
+              title={mode.title}
+              onClick={() => selectAudition(mode.id)}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <span className="koren-ab-state" ref={auditionRef} aria-live="polite">
+          LISTENING: WET
+        </span>
+      </div>
+      <details className="koren-notes">
+        <summary>What lowCut, subAnchor and mix really do</summary>
+        <ul>
+          <li>
+            <b>lowCut</b> ({params.lowCut ?? 45} Hz) — the corner of the highpass on the dry before the sub
+            branch. Everything under it leaves the wet path.
+          </li>
+          <li>
+            <b>subAnchor</b> ({params.subAnchor ?? 0.7}) — how much of the highpassed dry the wet path keeps. At 0
+            only the generated harmonics remain.
+          </li>
+          <li>
+            <b>mix</b> ({params.mix ?? 0.6}) — dry ↔ wet blend. At <b>mix = 1</b> the dry is gone: what you hear
+            is the highpassed dry plus the generated harmonics, so the sub under lowCut disappears.
+          </li>
+        </ul>
+      </details>
     </section>
   );
 }

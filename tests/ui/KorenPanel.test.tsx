@@ -83,6 +83,89 @@ describe("KorenPanel", () => {
     expect(screen.getByText("— Hz")).toBeInTheDocument();
   });
 
+  it("drives the level-matched A/B audition and releases it with the panel", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    const setFxAudition = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).setFxAudition = setFxAudition;
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => ({
+      f0: 55,
+      clarity: 0.95,
+      harm: 14.2,
+      key: 1,
+      partials: Float32Array.from([0.4, 0.1, 0.02]),
+      audition: 1,
+      matchDb: 2.4,
+      audDb: -2.4,
+    }));
+
+    const { unmount } = renderWithContext(
+      <KorenPanel trackId="t1" fxId="fx1" params={{ focusHz: 60 }} degraded={false} />,
+      { services },
+    );
+    vi.advanceTimersByTime(200);
+
+    const dry = screen.getByRole("button", { name: "DRY" });
+    expect(dry).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(dry);
+    // The switch is a RUNTIME write — there is no command and no document.
+    expect(setFxAudition).toHaveBeenCalledWith("t1", "fx1", 1);
+    expect(dry).toHaveAttribute("aria-pressed", "true");
+    // The comparison state comes from the PROCESSOR's own match.
+    expect(screen.getByText("MATCHED +2.4 dB")).toBeInTheDocument();
+
+    unmount();
+    // A closed panel must never leave the track in a comparison state.
+    expect(setFxAudition).toHaveBeenLastCalledWith("t1", "fx1", 0);
+  });
+
+  it("reports no false benefit when the compared path carries no signal", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => ({
+      f0: 0,
+      clarity: 0,
+      harm: 0,
+      key: 1,
+      partials: null,
+      audition: 2,
+      matchDb: 0,
+      audDb: -120,
+    }));
+    renderWithContext(<KorenPanel trackId="t1" fxId="fx1" params={{ focusHz: 90 }} degraded={false} />, { services });
+    vi.advanceTimersByTime(200);
+    expect(screen.getByText("NO HARMONIC LAYER")).toBeInTheDocument();
+  });
+
+  it("disables the A/B while the worklet is degraded (there is no DSP to audition)", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    renderWithContext(<KorenPanel trackId="t1" fxId="fx1" params={{ focusHz: 90 }} degraded={true} />, { services });
+    expect(screen.getByRole("button", { name: "DRY" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "HARM" })).toBeDisabled();
+  });
+
+  it("explains the signal model behind lowCut, subAnchor and mix", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    renderWithContext(
+      <KorenPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ focusHz: 90, lowCut: 45, subAnchor: 0.7, mix: 0.6 }}
+        degraded={false}
+      />,
+      { services },
+    );
+    // The explanation lives behind a disclosure, and it states the truth the
+    // DSP actually implements: at mix = 1 the dry sub below lowCut is gone.
+    expect(screen.getByText("mix = 1")).toBeInTheDocument();
+    expect(screen.getByText(/lowCut/)).toBeInTheDocument();
+    expect(screen.getByText(/subAnchor/)).toBeInTheDocument();
+  });
+
   it("applies a scene pack pair from the select and shows the SCENE-INTENSITY chip", () => {
     const doc = createProjectFromTemplate("house");
     const services = mockServices(doc);

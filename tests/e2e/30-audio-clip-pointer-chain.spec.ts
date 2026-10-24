@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "playwright/test";
-import { openArrangement } from "./_studio";
+import { dockTabLocator, openHouseTemplate } from "./_helpers";
+import { dismissTransientToasts } from "./_studio";
 
 /**
  * WAVE 30 — the browser pointer chain, per verb.
@@ -123,7 +124,6 @@ async function handlePoint(
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-
 /**
  * A real drag: press, move in steps, release. The steps matter — a single
  * jump-move would let a handler that only reacts to the last event miss the
@@ -150,15 +150,38 @@ async function dragBy(
 }
 
 /**
+ * The boot: the studio, with the ARRANGEMENT panel open.
+ *
+ * `_studio.ts`'s `openArrangement` is the canonical harness, but its page load
+ * is timed for an idle machine. This suite runs on a shared box where the
+ * Vite dev server competes with other agents' builds, so the load gets a
+ * generous budget of its own instead of failing on a slow transform.
+ */
+async function bootArrangement(page: Page): Promise<void> {
+  await openHouseTemplate(page, { timeoutMs: 300_000 });
+  const arr = dockTabLocator(page, "ARR");
+  await arr.waitFor({ state: "attached", timeout: 60_000 });
+  await arr.click();
+  await page.locator(".arr-lane").first().waitFor({ state: "attached", timeout: 60_000 });
+  await page.waitForTimeout(600);
+  await dismissTransientToasts(page);
+}
+
+/**
  * The fixture: a real audio clip, produced by the app itself.
  *
  * BOUNCE ZONE is `disabled={!selection.timeRange}`, so the whole spec
- * depends on producing a real time range. The attempt list mirrors
- * `audio-fades.spec.ts`: the ruler's plain drag, then the lane's ctrl- and
- * shift-drag, with the button's own enabled state as the oracle. Each
- * attempt scrolls its target into view FIRST — layout coordinates below the
- * fold are not pointer coordinates, and a gesture that never arrives looks
- * exactly like a gesture that does nothing.
+ * depends on producing a real time range — and on the zone actually covering
+ * CONTENT. The House template's only arrangement content is its scene clip at
+ * bars 0–4, and the bounce throws "Nothing to bounce — the zone has no scene
+ * or audio content" for a zone that misses it. The zone therefore starts at
+ * the ruler's LEFT EDGE (bar 0), not in the middle of the visible ruler.
+ *
+ * The attempt list mirrors `audio-fades.spec.ts`: the ruler's plain drag,
+ * then the lane's ctrl- and shift-drag, with the button's own enabled state
+ * as the oracle. Each attempt scrolls its target into view FIRST — layout
+ * coordinates below the fold are not pointer coordinates, and a gesture that
+ * never arrives looks exactly like a gesture that does nothing.
  */
 async function bounceAudioClip(page: Page): Promise<Locator> {
   const bounce = page.getByRole("button", { name: /BOUNCE ZONE/i });
@@ -175,7 +198,7 @@ async function bounceAudioClip(page: Page): Promise<Locator> {
     const box = await selector.boundingBox();
     if (!box) return false;
     const y = box.y + box.height / 2;
-    const startX = box.x + Math.min(120, box.width / 3);
+    const startX = box.x + 6;
     if (modifier !== "none") await page.keyboard.down(modifier);
     await page.mouse.move(startX, y);
     await page.mouse.down();
@@ -195,17 +218,18 @@ async function bounceAudioClip(page: Page): Promise<Locator> {
   };
 
   const gotZone =
-    (await attempt("ruler plain drag", ruler, "none", 260)) ||
-    (await attempt("lane ctrl+drag", lane, "Control", 260)) ||
-    (await attempt("lane shift+drag", lane, "Shift", 260));
+    (await attempt("ruler plain drag", ruler, "none", 160)) ||
+    (await attempt("lane ctrl+drag", lane, "Control", 160)) ||
+    (await attempt("lane shift+drag", lane, "Shift", 160));
   expect(gotZone, "no gesture produced the time range BOUNCE ZONE requires").toBe(true);
 
   await bounce.click();
 
-  // The offline render is real work: its completion is the only signal that
-  // an audio clip exists. Waiting on the CLIP beats waiting on a delay.
+  // The offline render is real work (measured: 5–8 s on a loaded box): its
+  // completion is the only signal that an audio clip exists. Waiting on the
+  // CLIP beats waiting on a delay.
   const clip = page.locator(".arr-audio-clip").first();
-  await clip.waitFor({ state: "attached", timeout: 60_000 });
+  await clip.waitFor({ state: "attached", timeout: 120_000 });
   await expect(clip).toBeVisible();
   return clip;
 }
@@ -250,14 +274,24 @@ test.describe("30 — audio clip pointer chain per verb", () => {
   });
 
   test("every pointer gesture reaches the command and lands exactly one undo step", async ({ page }) => {
-    test.setTimeout(240_000);
-    await openArrangement(page);
+    test.setTimeout(600_000);
+    await bootArrangement(page);
     const clip = await bounceAudioClip(page);
 
     const pristine = await clipState(page);
     expect(pristine.count, "the bounce produced no audio clip").toBe(1);
     expect(pristine.title, "the clip carries no state fingerprint").toContain("gain");
     console.info(`[chain] clip title: ${pristine.title}`);
+
+    // The clip's SELECTED class is panel state, not document state: the first
+    // pointer-down selects the clip and an undo does NOT unselect it. So the
+    // selection is taken BEFORE the baseline — otherwise every fingerprint
+    // comparison would report a selection difference instead of an edit
+    // difference.
+    await clip.click();
+    await page.waitForTimeout(150);
+    const baseline = await clipState(page);
+    expect(baseline.classes, "the click did not select the clip").toContain("selected");
 
     // ── MOVE (drag the body) ──────────────────────────────────────────────
     {
@@ -301,7 +335,12 @@ test.describe("30 — audio clip pointer chain per verb", () => {
     {
       const before = await clipState(page);
       const box = await clipBox(page);
-      await dragBy(page, await handlePoint(page, ".arr-audio-clip-handle-fade.left", "top-left"), Math.max(16, Math.round(box.width * 0.3)), 0);
+      await dragBy(
+        page,
+        await handlePoint(page, ".arr-audio-clip-handle-fade.left", "top-left"),
+        Math.max(16, Math.round(box.width * 0.3)),
+        0,
+      );
       const after = await clipState(page);
       expect(after.fadeInTitle, "the fade-in handle did not report a fade").not.toBe(before.fadeInTitle);
       expect(after.title, "the fade in did not reach the clip's state").not.toBe(before.title);
@@ -312,7 +351,12 @@ test.describe("30 — audio clip pointer chain per verb", () => {
     {
       const before = await clipState(page);
       const box = await clipBox(page);
-      await dragBy(page, await handlePoint(page, ".arr-audio-clip-handle-fade.right", "top-right"), -Math.max(16, Math.round(box.width * 0.3)), 0);
+      await dragBy(
+        page,
+        await handlePoint(page, ".arr-audio-clip-handle-fade.right", "top-right"),
+        -Math.max(16, Math.round(box.width * 0.3)),
+        0,
+      );
       const after = await clipState(page);
       expect(after.fadeOutTitle, "the fade-out handle did not report a fade").not.toBe(before.fadeOutTitle);
       expect(after.title, "the fade out did not reach the clip's state").not.toBe(before.title);
@@ -365,8 +409,8 @@ test.describe("30 — audio clip pointer chain per verb", () => {
   });
 
   test("a cancelled gesture commits nothing and consumes no undo step", async ({ page }) => {
-    test.setTimeout(180_000);
-    await openArrangement(page);
+    test.setTimeout(300_000);
+    await bootArrangement(page);
     await bounceAudioClip(page);
 
     const before = await clipState(page);
@@ -412,8 +456,8 @@ test.describe("30 — audio clip pointer chain per verb", () => {
   });
 
   test("the keyboard and menu verbs reach the command and land exactly one undo step", async ({ page }) => {
-    test.setTimeout(240_000);
-    await openArrangement(page);
+    test.setTimeout(600_000);
+    await bootArrangement(page);
     const clip = await bounceAudioClip(page);
 
     const pristine = await clipState(page);
@@ -474,30 +518,40 @@ test.describe("30 — audio clip pointer chain per verb", () => {
     }
 
     // ── GROUP / UNGROUP (Ctrl+G, Ctrl+Shift+G) ───────────────────────────
+    // A group is a RELATIONSHIP: `groupClips` refuses fewer than two members
+    // ("Select at least two clips to group"), so the verb needs a second clip
+    // and a selection that holds both.
     {
       await clip.click();
-      const before = await clipState(page);
+      await page.keyboard.press("Control+d");
+      await page.waitForTimeout(250);
+      expect((await clipState(page)).count, "the duplicate did not take").toBe(2);
+
+      // Two members: the original plus a duplicate, both selected.
+      await clip.click();
+      await page
+        .locator(".arr-audio-clip")
+        .nth(1)
+        .click({ modifiers: ["Control"] });
+      await page.waitForTimeout(150);
       await page.keyboard.press("Control+g");
       await page.waitForTimeout(250);
-      const grouped = await clipState(page);
-      expect(grouped.classes, "Ctrl+G did not group the clip").toContain("grouped");
+      expect((await clipState(page)).classes, "Ctrl+G did not group the clips").toContain("grouped");
       await undo(page);
       expect((await clipState(page)).classes, "the group survived the undo").not.toContain("grouped");
 
-      // Group again, then ungroup: the ungroup is a command of its own and
-      // has to undo on its own too.
       await page.keyboard.press("Control+g");
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(200);
       expect((await clipState(page)).classes, "the second group did not take").toContain("grouped");
       await page.keyboard.press("Control+Shift+g");
       await page.waitForTimeout(250);
-      const ungrouped = await clipState(page);
-      expect(ungrouped.classes, "Ctrl+Shift+G did not ungroup the clip").not.toContain("grouped");
+      expect((await clipState(page)).classes, "Ctrl+Shift+G did not ungroup the clips").not.toContain("grouped");
       await undo(page);
       expect((await clipState(page)).classes, "the ungroup survived the undo").toContain("grouped");
-      await undo(page);
-      expect((await clipState(page)).classes, "the second group survived the undo").not.toContain("grouped");
-      expect((await clipState(page)).classes).toBe(before.classes);
+
+      await undo(page); // the group
+      await undo(page); // the duplicate
+      expect((await clipState(page)).count, "the duplicate survived the undo").toBe(1);
     }
 
     // ── REVERSE (context menu) ────────────────────────────────────────────

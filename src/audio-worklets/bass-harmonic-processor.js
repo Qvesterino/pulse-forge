@@ -102,6 +102,26 @@
  *    +1 flattens the tail toward a saw-like 1/n (buzzier, richer), −1
  *    steepens toward 1/n² (darker, rounder). Applied before normalization,
  *    so it redistributes rather than raising the level.
+ * 15. `audition` (0..2, default 0) — the MONITOR-ONLY audition switch, and
+ *    the one parameter here that is NOT a project parameter:
+ *    0 = the normal path, 1 = DRY (the input alone), 2 = HARMONICS (the
+ *    generated branch alone). It is written by the engine at runtime and the
+ *    project never carries it, so an export can never inherit it.
+ *
+ *    The audition paths are LEVEL-MATCHED to the normal path: the processor
+ *    tracks the smoothed RMS of the input, of the processed output and of the
+ *    generated branch, and scales the auditioned path so all three sit at the
+ *    same level. Without that, "the effect sounds better" is just "the effect
+ *    is louder" — the match is what makes the comparison about timbre.
+ *    Below the silence floor (or while the tracker holds nothing, so the
+ *    generated branch is empty) the match falls back to unity: at silence
+ *    there is nothing to compare, and the panel says so.
+ *
+ *    The match is computed INSIDE the processor from its own RMS followers —
+ *    the DSP never depends on an open panel, its telemetry or the UI thread.
+ *    The switch is a 10 ms equal-gain CROSSFADE between the two slots: a
+ *    hard cut between two level-matched paths is a click, and a click in an
+ *    A/B switch is exactly what makes a listening test useless.
  *
  * Parameter surface: plain AudioParams (M2 pattern, zenit-m2-nodes.ts) —
  * no port messages for parameters, so offline automation works natively via
@@ -138,6 +158,15 @@ const KEY_PUMP_MAX = 1; // PUMP bloom on top at full key (×1..2)
 const KEY_DUCK_DEPTH = 0.85; // DUCK floor at full key (×0.15..1)
 const METER_INTERVAL_S = 0.05; // telemetry cadence (~20 Hz)
 const HARM_DB_MAX = 36; // clamp on the "+x dB harmonics" reading
+// AUDITION (monitor-only): the level-match window, the silence floor and the
+// clamp on the match gain. The window is long enough that the match settles
+// without pumping and short enough that a toggle is honest within ~0.3 s.
+const AUDITION_RMS_TC = 0.3;
+const AUDITION_FLOOR = 1e-4; // below this a path counts as silent (no match)
+const AUDITION_MATCH_MIN = 0.25; // −12 dB: the match never dives more than this
+const AUDITION_MATCH_MAX = 8; // +18 dB: the generated stack alone can sit far below the mix
+const AUDITION_FADE_S = 0.01; // the crossfade length of the switch (10 ms)
+const AUDITION_SILENCE_DB = -120; // reported when the auditioned path has no signal
 const PRESENCE_CENTER_HZ = 650; // phone-band hump center (a small speaker's usable band is ~350–1200 Hz)
 const PRESENCE_SIGMA = 0.45; // log-frequency width of the presence hump
 const PRESENCE_BOOST = 10; // linear boost at the hump's center at presence = 1
@@ -294,6 +323,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       { name: "hintHz", minValue: 0, maxValue: 2000, defaultValue: 0 },
       { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.6 },
       { name: "output", minValue: -18, maxValue: 12, defaultValue: 0 },
+      // AUDITION — monitor-only. Written by the engine at runtime, never
+      // projected from the project, so an export can never inherit it.
+      { name: "audition", minValue: 0, maxValue: 2, defaultValue: 0 },
     ];
   }
 
@@ -325,7 +357,32 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.lastWeightSum = 0;
     this.meterSamples = 0;
     this.meterPartials = new Float32Array(MAX_PARTIALS - 1);
-    this.meterFrame = { type: "koren", f0: 0, clarity: 0, harm: 0, key: 1, hint: 0, partials: this.meterPartials };
+    this.meterFrame = {
+      type: "koren",
+      f0: 0,
+      clarity: 0,
+      harm: 0,
+      key: 1,
+      hint: 0,
+      partials: this.meterPartials,
+      audition: 0,
+      matchDb: 0,
+      audDb: 0,
+    };
+    // AUDITION (monitor-only) — the level match between the normal path and
+    // the path being auditioned. Smoothed RMS per path, and the match gain
+    // that scales the auditioned path up to the normal path's level.
+    this.audSumDry = 0; // this block's sum of squares (the dry path)
+    this.audSumOut = 0; // this block's sum of squares (the normal output)
+    this.audSumGen = 0; // this block's sum of squares (the generated branch)
+    this.audDryRms = 0; // smoothed RMS of the dry path
+    this.audOutRms = 0; // smoothed RMS of the normal output
+    this.audGenRms = 0; // smoothed RMS of the generated branch
+    this.audMatch = 1; // the match gain currently applied
+    this.audMode = 0; // the requested audition mode (telemetry)
+    this.audFrom = 0; // the slot the crossfade fades out of (0/1/2)
+    this.audTo = 0; // the slot the crossfade fades into (0/1/2)
+    this.audFade = 1; // 0 = fully audFrom, 1 = fully audTo
     // Decimated detection domain (YIN + deficit share one ring/window).
     this.decRate = sr / DECIM;
     this.decBufLen = Math.min(8192, Math.max(1024, Math.ceil((this.decRate / TRACK_MIN_HZ) * 2.5)));
@@ -471,6 +528,38 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const hint = clamp(parameters.hintHz[0], 0, 2000);
     const mix = clamp(parameters.mix[0], 0, 1);
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);
+    // AUDITION (monitor-only): 0 = the normal path, 1 = DRY, 2 = HARMONICS.
+    // Written by the engine at runtime — the project never carries it.
+    const audition = Math.round(clamp(parameters.audition[0], 0, 2));
+    this.audMode = audition;
+    // The switch is a CROSSFADE between two slots: `audFrom` is the slot we
+    // leave, `audTo` the slot we enter, `audFade` runs 0 → 1 between them.
+    // A new request snaps the in-flight fade to its end state (so the new
+    // crossfade starts from a clean slot) and then fades the old target into
+    // the new one. A hard cut between two level-matched paths is a click,
+    // and a click makes an A/B listening test useless.
+    if (audition !== this.audTo) {
+      this.audFade = 1;
+      this.audFrom = this.audTo;
+      this.audTo = audition;
+      this.audFade = 0;
+    }
+    const auditionActive = this.audFrom !== this.audTo;
+    // The LEVEL MATCH: scale the auditioned path to the normal path's level,
+    // so "the effect sounds better" is not just "the effect is louder". It is
+    // computed from the PREVIOUS block's smoothed RMS (one block of lag, ~2.7
+    // ms) — a per-block step of a slowly moving number, never a per-sample
+    // jump. At silence — or while the tracker holds nothing, so the generated
+    // branch is empty — the match falls back to unity: there is nothing to
+    // compare, and no false benefit to show.
+    let audMatch = 1;
+    if (this.audTo !== 0) {
+      const source = this.audTo === 1 ? this.audDryRms : this.audGenRms;
+      if (source > AUDITION_FLOOR && this.audOutRms > AUDITION_FLOOR) {
+        audMatch = clamp(this.audOutRms / source, AUDITION_MATCH_MIN, AUDITION_MATCH_MAX);
+      }
+    }
+    this.audMatch = audMatch;
 
     // Per-sample coefficients (checklist §4: never a per-block blend of a
     // per-sample constant).
@@ -485,6 +574,13 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const lagCoef = 1 - Math.exp(-1 / (sr * 0.02));
     const keyAtkCoef = 1 - Math.exp(-1 / (sr * KEY_ATK_S));
     const keyRelCoef = 1 - Math.exp(-1 / (sr * KEY_REL_S));
+    // AUDITION: the RMS followers run at BLOCK rate, so their coefficient is
+    // the per-block form (checklist §4 — a per-sample constant applied once
+    // per block inflates the time constant by the block length).
+    const audRmsCoef = 1 - Math.exp(-len / (AUDITION_RMS_TC * sr));
+    // The AUDITION crossfade advances per SAMPLE, so its step is the
+    // per-sample one (checklist §4): the whole switch takes AUDITION_FADE_S.
+    const audFadeStep = 1 / (AUDITION_FADE_S * sr);
     // SUSTAIN: env^gamma compression, fading to linear below the floor so
     // the noise bottom is not pumped.
     const gamma = 1 - 0.5 * sustain;
@@ -729,12 +825,42 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
 
       const wetL = hpL * subAnchor + genL;
       const wetR = hpR * subAnchor + genR;
-      let oL = (l * (1 - mix) + wetL * mix) * outGain;
-      let oR = (r * (1 - mix) + wetR * mix) * outGain;
+      const normalL = (l * (1 - mix) + wetL * mix) * outGain;
+      const normalR = (r * (1 - mix) + wetR * mix) * outGain;
       // mix = 0 must stay bit-exact dry: dry * 1 + wet * 0. outGain at the
       // default 0 dB is exactly 1, so the sum reproduces the input sample.
+      let oL = normalL;
+      let oR = normalR;
       if (!Number.isFinite(oL)) oL = 0;
       if (!Number.isFinite(oR)) oR = 0;
+      // The AUDITION sums come from the NORMAL path — the level match
+      // compares against what the user hears in the normal mode, not against
+      // the path being auditioned. The dry and generated paths carry the
+      // output trim too, so the trim cancels out of the match ratio and the
+      // clamp only ever reports a genuine level difference between paths.
+      this.audSumOut += oL * oL;
+      const dryL = l * outGain;
+      const dryR = r * outGain;
+      const harmL = genL * outGain;
+      const harmR = genR * outGain;
+      this.audSumDry += dryL * dryL;
+      this.audSumGen += harmL * harmL;
+      if (auditionActive) {
+        // Equal-gain crossfade between the two slots. `g` runs 0 → 1; at 1
+        // the output IS the auditioned path, at 0 it IS the normal path.
+        if (this.audFade < 1) {
+          this.audFade += audFadeStep;
+          if (this.audFade > 1) this.audFade = 1;
+        }
+        const g = this.audFade;
+        const ig = 1 - g;
+        const fromL = this.audFrom === 0 ? oL : this.audFrom === 1 ? dryL * audMatch : harmL * audMatch;
+        const fromR = this.audFrom === 0 ? oR : this.audFrom === 1 ? dryR * audMatch : harmR * audMatch;
+        const toL = this.audTo === 0 ? oL : this.audTo === 1 ? dryL * audMatch : harmL * audMatch;
+        const toR = this.audTo === 0 ? oR : this.audTo === 1 ? dryR * audMatch : harmR * audMatch;
+        oL = fromL * ig + toL * g;
+        oR = fromR * ig + toR * g;
+      }
       outL[i] = oL;
       if (outR) outR[i] = oR;
     }
@@ -747,6 +873,22 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       this.detectSince = 0;
       this.detect(focus);
     }
+
+    // AUDITION: the level followers, at block rate. The next block's match is
+    // computed from these smoothed values.
+    const invLen = 1 / (len > 0 ? len : 1);
+    let rmsDry = Math.sqrt(Math.max(0, this.audSumDry) * invLen);
+    let rmsOut = Math.sqrt(Math.max(0, this.audSumOut) * invLen);
+    let rmsGen = Math.sqrt(Math.max(0, this.audSumGen) * invLen);
+    if (!Number.isFinite(rmsDry)) rmsDry = 0;
+    if (!Number.isFinite(rmsOut)) rmsOut = 0;
+    if (!Number.isFinite(rmsGen)) rmsGen = 0;
+    this.audDryRms += (rmsDry - this.audDryRms) * audRmsCoef;
+    this.audOutRms += (rmsOut - this.audOutRms) * audRmsCoef;
+    this.audGenRms += (rmsGen - this.audGenRms) * audRmsCoef;
+    this.audSumDry = 0;
+    this.audSumOut = 0;
+    this.audSumGen = 0;
 
     // Live telemetry (panel visualizer + rack mini meter). Pure observer:
     // no effect on the sample path, one small cloned frame at ~20 Hz.
@@ -769,6 +911,23 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       frame.harm = harmDb;
       frame.key = this.lastKeyGain;
       frame.hint = this.hintActive ? 1 : 0;
+      // The AUDITION state, so the panel can show what it is listening to
+      // and how far the match moved the level.
+      frame.audition = this.audTo;
+      frame.matchDb = this.audMatch > 0 && Number.isFinite(this.audMatch) ? 20 * Math.log10(this.audMatch) : 0;
+      // The auditioned path's level RELATIVE to the normal path: 0 = already
+      // at the same level, negative = quieter (the match lifts it), and the
+      // silence sentinel = there is nothing to compare.
+      let audDb = 0;
+      if (this.audTo !== 0) {
+        const source = this.audTo === 1 ? this.audDryRms : this.audGenRms;
+        const reference = Math.max(this.audOutRms, AUDITION_FLOOR);
+        audDb =
+          source > AUDITION_FLOOR
+            ? Math.max(AUDITION_SILENCE_DB, Math.min(60, 20 * Math.log10(source / reference)))
+            : AUDITION_SILENCE_DB;
+      }
+      frame.audDb = audDb;
       const partials = this.meterPartials;
       for (let n = 2; n <= MAX_PARTIALS; n++) {
         partials[n - 2] = weights[n] * this.lastNormScale * this.envGen * this.lastKeyGain;

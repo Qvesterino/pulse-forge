@@ -48,9 +48,12 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 // Generous nav timeout: under a loaded machine (parallel suites — measured
 // 61 concurrent node processes mid-workday) vite's first dep-optimization
-// competes for the .vite cache lock and can exceed even 3 minutes before
-// the first request is served.
-await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 420000 });
+// competes for the .vite cache lock; a cold start transformed ONE module
+// for 22.7 s and the full graph can exceed even 7 minutes before
+// domcontentloaded (measured 2026-10-18 — two measurement runs died on the
+// default nav timeout). timeout: 0 = no navigation cap; the browser-side
+// evaluate below carries its own logic and the process exits when done.
+await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 0 });
 
 const measurements = await page.evaluate(async () => {
   const registry = await import("/src/instruments/registry.ts");

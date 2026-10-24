@@ -332,6 +332,15 @@ export class AudioEngine {
   /** Desired metering state per fx id (panel attached → on). Re-applied when a
    * chain rebuild recreates runtimes so the panel never has to re-register. */
   private fxMetersEnabled = new Map<string, boolean>();
+  /**
+   * MONITOR-ONLY audition mode per fx id (KOREŇ A/B): 0 = normal path,
+   * 1 = dry, 2 = the generated branch. It lives on the RUNTIME, never in the
+   * project document, so it cannot change a saved parameter, an automation
+   * lane, the mix or an export — the offline renderer builds its own engine.
+   * Re-applied after a chain rebuild swaps the runtime, and cleared with the
+   * effect it belonged to.
+   */
+  private fxAudition = new Map<string, number>();
   private instruments = new Map<string, InstrumentState>();
 
   /** Non-finite events dropped at the audio boundary (first per kind logged). */
@@ -1396,7 +1405,13 @@ export class AudioEngine {
     // effect is un-bypassed.
     const liveFxIds = new Set(effects.map((fx) => fx.id));
     for (const fxId of previousFxIds) {
-      if (!liveFxIds.has(fxId)) this.fxMetersEnabled.delete(fxId);
+      if (!liveFxIds.has(fxId)) {
+        this.fxMetersEnabled.delete(fxId);
+        // An audition belongs to the effect it was set on. When that effect
+        // disappears the mode must die with it — a stale entry would be
+        // re-applied if a NEW effect later reused the id.
+        this.fxAudition.delete(fxId);
+      }
     }
     if (!transition) state.params.clear();
     const bpm = this.doc?.bpm ?? 124;
@@ -1505,6 +1520,9 @@ export class AudioEngine {
       // Metering defaults to off; re-apply the panel's desired state after a
       // rebuild swapped the runtime.
       rt.setMetersEnabled?.(this.fxMetersEnabled.get(fx.id) ?? false);
+      // Same for the monitor-only audition: a rebuild (lazy worklet load, an
+      // insert reorder) must not silently drop the user's A/B position.
+      rt.setAudition?.(this.fxAudition.get(fx.id) ?? 0);
       // Worklet plugins report latency asynchronously; re-run PDC whenever a
       // report lands so compensation never waits for the next document sync.
       if (rt.onLatencyChange) {
@@ -1714,7 +1732,10 @@ export class AudioEngine {
       }
     }
     nodes.fx.runtimes.clear();
-    for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
+    for (const fxId of nodes.fx.params.keys()) {
+      this.fxMetersEnabled.delete(fxId);
+      this.fxAudition.delete(fxId);
+    }
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
     nodes.fx.outputGain?.disconnect();
@@ -1763,7 +1784,10 @@ export class AudioEngine {
       }
     }
     nodes.fx.runtimes.clear();
-    for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
+    for (const fxId of nodes.fx.params.keys()) {
+      this.fxMetersEnabled.delete(fxId);
+      this.fxAudition.delete(fxId);
+    }
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
     nodes.fx.outputGain?.disconnect();
@@ -1788,7 +1812,10 @@ export class AudioEngine {
       }
     }
     nodes.fx.runtimes.clear();
-    for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
+    for (const fxId of nodes.fx.params.keys()) {
+      this.fxMetersEnabled.delete(fxId);
+      this.fxAudition.delete(fxId);
+    }
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
     nodes.fx.outputGain?.disconnect();
@@ -3372,6 +3399,39 @@ export class AudioEngine {
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
     rt?.setMetersEnabled?.(enabled);
+  }
+
+  /**
+   * MONITOR-ONLY audition (KOREŇ A/B, ADR 0034 addendum 15): switch one
+   * effect's live output between its normal path (0), the dry input (1) and
+   * its generated branch (2). The plugin level-matches the auditioned path to
+   * the normal one, so the comparison is about timbre, not loudness.
+   *
+   * WHY THIS CANNOT TOUCH A PROJECT: the mode is written to the RUNTIME, never
+   * to the document. There is no command, no undo entry and no project field
+   * for it, so a saved parameter, an automation lane, the mix and an export are
+   * all structurally out of reach. The offline renderer builds its OWN engine
+   * (src/rendering/renderer.ts), so an export can never inherit a live
+   * audition. The plugin's node wrapper refuses the id on the project sync
+   * path as a second barrier.
+   *
+   * The desired mode is remembered and re-applied when a chain rebuild swaps
+   * the runtime; `mode = 0` releases it.
+   */
+  setFxAudition(trackId: string, fxId: string, mode: number): void {
+    const next = Number.isFinite(mode) ? Math.max(0, Math.min(2, Math.round(mode))) : 0;
+    this.fxAudition.set(fxId, next);
+    const rt =
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    rt?.setAudition?.(next);
+  }
+
+  /** The current monitor-only audition mode of an effect (0 = normal path). */
+  getFxAudition(fxId: string): number {
+    return this.fxAudition.get(fxId) ?? 0;
   }
 
   /**

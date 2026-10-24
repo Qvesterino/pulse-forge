@@ -653,6 +653,21 @@ let ladicWorkletKb = 0;
 }
 console.log(`[size-budget] LADIČ worklet: ${ladicWorkletKb.toFixed(0)} KB (budget ${LADIC_WORKLET_BUDGET_KB})`);
 
+// HĽAS formant lead worklet: lazy INSTRUMENT module (ADR 0059), loaded
+// only for projects with an HĽAS track. Source-filter synthesis — the
+// cheapest flagship DSP; 32 KB is the ceiling.
+const HLAS_WORKLET_BUDGET_KB = 32;
+let hlasWorkletKb = 0;
+{
+  const path = join(dist, "hlas-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing HĽAS worklet: dist/hlas-worklet.js");
+    process.exit(1);
+  }
+  hlasWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] HĽAS worklet: ${hlasWorkletKb.toFixed(0)} KB (budget ${HLAS_WORKLET_BUDGET_KB})`);
+
 // SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
 // (loaded only for projects that use the effect), so it carries its own
 // budget row instead of inflating the core boot bundle. All-pass-only DSP —

@@ -315,6 +315,7 @@ export const DEFAULT_GM_PROGRAM_BY_INSTRUMENT: Readonly<Record<InstrumentKind, n
   kopa: 38,
   choral: 53,
   ladic: 6,
+  hlas: 85,
 };
 
 type DrumMappingResult =

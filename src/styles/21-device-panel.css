@@ -428,6 +428,76 @@
   background: color-mix(in srgb, var(--bg-raise) 30%, transparent);
 }
 
+/* AUDITION A/B (wave 1) — a segmented switch, not three loose buttons: the
+   three slots are one comparison, so they read as one control. */
+.koren-panel .koren-ab-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.koren-panel .koren-ab {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.koren-panel .koren-ab-btn {
+  min-width: 42px;
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-compact);
+  letter-spacing: 0.6px;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
+}
+.koren-panel .koren-ab-btn:hover:not(:disabled) {
+  background: var(--bg-raise);
+  color: var(--text);
+}
+.koren-panel .koren-ab-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(245, 158, 11, 0.16);
+}
+.koren-panel .koren-ab-btn:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+.koren-panel .koren-ab-state {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.4px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+/* The signal model behind the three knobs lives behind a disclosure — the
+   panel stays a control surface, not an essay. */
+.koren-panel .koren-notes {
+  margin-top: 6px;
+  font-size: var(--fs-compact);
+  color: var(--text-dim);
+}
+.koren-panel .koren-notes summary {
+  cursor: pointer;
+  color: var(--text-faint);
+}
+.koren-panel .koren-notes ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.koren-panel .koren-notes b {
+  color: var(--text);
+}
+
 /* TWIST panel — group-delay curve (device editor inline). */
 .skrutka-panel {
   display: flex;

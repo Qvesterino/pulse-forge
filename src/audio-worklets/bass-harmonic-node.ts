@@ -45,6 +45,20 @@ const BASS_HARMONIC_PARAMS = [
   "output",
 ] as const;
 
+/**
+ * `audition` is deliberately NOT in that list: it is the monitor-only
+ * audition switch, written by the engine at runtime and never projected from
+ * the project, so an export can never inherit it. See the engine's
+ * `setFxAudition` and ADR 0034's monitor A/B addendum.
+ *
+ * The guard below is not a comment but a BARRIER: the project sync calls
+ * `setParameter` for every key it finds in `fx.params`, and a hand-edited or
+ * migrated document could carry `audition: 2`. If that reached the worklet,
+ * an export would render the generated branch alone. So `setParameter`
+ * refuses the id and only `setAudition` (the engine's runtime path) writes it.
+ */
+const AUDITION_PARAM_ID = "audition";
+
 /** Validated live telemetry frame for panels/meters. */
 export interface KorenMeterFrame {
   f0: number;
@@ -54,6 +68,17 @@ export interface KorenMeterFrame {
   /** 1 while the engine pitch hint (`hintHz`) owns acquisition. */
   hint: number;
   partials: Float32Array | null;
+  /** The monitor-only audition mode: 0 = normal, 1 = dry, 2 = harmonics. */
+  audition: number;
+  /** The level match the processor applied to the auditioned path, in dB. */
+  matchDb: number;
+  /**
+   * The auditioned path's level relative to the normal path, in dB.
+   * 0 = already matched, negative = quieter than the normal path, and
+   * −120 = there is no signal to compare (silence or an empty generated
+   * branch).
+   */
+  audDb: number;
 }
 
 export function createBassHarmonicNode(
@@ -94,6 +119,9 @@ export function createBassHarmonicNode(
       key?: unknown;
       hint?: unknown;
       partials?: unknown;
+      audition?: unknown;
+      matchDb?: unknown;
+      audDb?: unknown;
     } | null;
     if (msg?.type !== "koren") return;
     const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -105,6 +133,9 @@ export function createBassHarmonicNode(
       key: msg.key,
       hint: finite(msg.hint) ? msg.hint : 0,
       partials: msg.partials instanceof Float32Array ? msg.partials : null,
+      audition: finite(msg.audition) ? Math.round(msg.audition) : 0,
+      matchDb: finite(msg.matchDb) ? msg.matchDb : 0,
+      audDb: finite(msg.audDb) ? msg.audDb : 0,
     };
   };
 
@@ -112,10 +143,26 @@ export function createBassHarmonicNode(
     input,
     output,
     setParameter(id, value) {
+      // The audition switch is NOT reachable from project state — see the
+      // barrier note above.
+      if (id === AUDITION_PARAM_ID) return;
       safeApplyAudioParam(node, id, value, ctx.currentTime);
     },
     setParameterAt(id, value, when) {
+      if (id === AUDITION_PARAM_ID) return;
       safeApplyAudioParam(node, id, value, when);
+    },
+    /**
+     * MONITOR-ONLY audition: 0 = the normal path, 1 = DRY (the input alone),
+     * 2 = HARMONICS (the generated branch alone). The processor level-matches
+     * the auditioned path to the normal path, so the comparison is about
+     * timbre, not loudness.
+     */
+    setAudition(mode: number) {
+      const next = Number.isFinite(mode) ? Math.max(0, Math.min(2, Math.round(mode))) : 0;
+      // `p.value` (not a scheduled write): the switch takes effect at the
+      // next block, and the processor crossfades it over 10 ms.
+      safeApplyAudioParam(node, AUDITION_PARAM_ID, next);
     },
     setSidechainInput(source: AudioNode | null) {
       const next = source ?? null;

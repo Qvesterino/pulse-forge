@@ -372,18 +372,18 @@ test — see §11.
 
 ## 11. Recommended next tests
 
-1. **A render-level assertion on an edited project** — render a clip, trim
-   it, render again, and compare the PCM against the expected source window.
-   This closes the last gap between "the window is right" and "the audio is
-   right".
+1. ~~**A render-level assertion on an edited project** — render a clip, trim
+   it, render again, and compare the PCM against the expected source window.~~
+   **DONE in wave 4** — `tests/e2e/29-clip-edit-pcm-render.spec.ts` (§13.1).
 2. **The MIDI / automation lane AUDIBLE legs** — a trimmed MIDI clip must
    play the notes its phase points at, and a trimmed automation clip must
    draw the curve its phase points at. The matrices pin the ARITHMETIC; the
    audible half is still asserted only by the engine's own suites.
-3. **A browser drag test for the edge gestures** — a pointer-level test that
+3. ~~**A browser drag test for the edge gestures** — a pointer-level test that
    drags a 0.05-bar fragment's edge and asserts the committed length (the
    defect D1 lived in the DOMAIN, but the preview/commit agreement is a UI
-   property).
+   property).~~ **DONE in wave 4** — `tests/e2e/30-audio-clip-pointer-chain.spec.ts`
+   (§13.2) drives every audio-lane gesture through the real pointer chain.
 4. **A property-based sweep** — the matrices are hand-written tables; a
    generator over random clip geometries × random verbs would find the next
    floor-like leak that a table cannot enumerate.
@@ -422,3 +422,126 @@ cycles) and `tests/mcp-idempotency.test.ts` (the ledger's bounded eviction).
 Both were re-run in isolation and are GREEN. The bar-formula guard
 (`tests/adr0056-stage2-bar-formula-guard.test.ts`), which this wave's changes
 could have tripped, is green too.
+
+---
+
+## 13. Wave 4 — the two legs this audit said were missing
+
+Wave 3 closed the DOMAIN axes. Two questions from §10 and §11 were still
+open, and both are now answered by executable artifacts rather than by
+argument.
+
+### 13.1 The PCM leg — the render follows the edit
+
+`tests/e2e/29-clip-edit-pcm-render.spec.ts` — a real Chromium, a real
+`OfflineAudioContext`, the export path's own `renderProject(doc, SampleBank,
+{mode:"song", sampleRate, tailSeconds:0})`, and a Goertzel single-frequency
+probe on the rendered PCM.
+
+**The source is a staircase, not a tone.** Every 2 s of source is a
+different frequency (220 / 440 / 660 / 880 / 1100 / 1320 / 1540 / 1760 Hz),
+so a probe can name the SOURCE POSITION that is audible instead of merely
+proving that "something is there". That is what separates the verbs:
+
+| Verb       | What the PCM says after the edit                                           | What it would say if the verb were wrong          |
+| ---------- | -------------------------------------------------------------------------- | ------------------------------------------------- |
+| trim start | the head plays source +2 s (440 Hz), the vacated head is silent            | the head still plays the old material (220 Hz)    |
+| resize     | the head survives, the tail is cut; growing pulls NEW material (1320 Hz)   | the tail repeats the head, or the head is re-read |
+| move       | the clip lands elsewhere and still plays 220 Hz — the SOURCE did not move  | the move advanced the source (that is a trim)     |
+| split      | the right fragment continues at source 4.5 s (660 Hz)                      | the right fragment restarts at the source head    |
+| reverse    | the head and the tail frequencies SWAP (880 Hz ↔ 220 Hz)                   | the source plays forwards either way              |
+| gain       | the amplitude is exactly ÷4                                                | the source itself changed                         |
+| loop       | the 2 s source repeats, and the PHASE repeats with it (440/880/440/880 Hz) | the tail is silent, or the phase drifts           |
+| duplicate  | the copy carries the source offset (660 Hz, not a reset 220 Hz)            | the copy re-read the sample from its head         |
+| paste      | the pasted clip carries the source offset too                              | the paste drops the source position               |
+
+**Every "absence" assertion has a measured control.** A claim like "the head
+region is silent after the move" is only meaningful next to a measured "the
+head region was audible before the move" — the controls are rendered from the
+SAME document the verb started from, not assumed. A fixture that rendered
+nothing would otherwise satisfy every "tone is absent" assertion in the file,
+so the controls are asserted FIRST and would fail the run before the verb
+assertions are reached.
+
+**Undo is asserted on the AUDIO, not on the document.** A second test drives
+the real `ProjectStore` (not raw command factories) and compares the rendered
+buffers sample-for-sample: after one `Ctrl+Z`, the undone render must equal
+the pristine render to within 1e-6 — and the guard is only meaningful
+because the edited render differs from the pristine one by more than the
+threshold. The wave-3 matrices pinned the document; this pins the sound.
+
+### 13.2 The pointer leg — the chain from the finger to the committed state
+
+`tests/e2e/30-audio-clip-pointer-chain.spec.ts` — the layer wave 3 never
+touched. Real `page.mouse` presses, drags and releases; real `page.keyboard`
+verbs; the real context menu. The oracle is the DOM, read as a STATE
+FINGERPRINT: the clip's committed title (`… 5.33b · trim 0.00/0.00 fade
+0.00/0.00 gain 1.00 …`), its committed `left`/`width` in px, its class list
+and the handle titles.
+
+**ONE GESTURE = ONE UNDO ENTRY** is asserted the only way a browser can
+assert it: after the gesture, ONE `Ctrl+Z` must restore the pre-gesture
+fingerprint EXACTLY and ONE `Ctrl+Y` must re-apply it exactly. A drag that
+wrote intermediate states into the store would land the first undo on an
+intermediate state — the defect, caught where the user loses the work.
+
+Covered gestures: move, resize, trim start, fade in, fade out, gain, slip,
+stretch (Alt+edge), plus the cancelled gesture (Escape mid-drag commits
+nothing and consumes no undo slot), and the keyboard/menu verbs: mute (M),
+duplicate (Ctrl+D), copy/paste (Ctrl+C / Ctrl+V), group/ungroup (Ctrl+G /
+Ctrl+Shift+G), reverse and loop (context menu), lock (Shift+L) and delete
+(Delete).
+
+**The fixture is the app's own.** `BOUNCE ZONE` offline-renders the selected
+zone and flips it into a real audio clip — a real buffer in the live bank,
+waveform included. That matters for the verbs that READ the bank: SLIP
+computes its ceiling from the sample's real duration, and a clip with no
+buffer would make the slip gesture a no-op that silently "passes". The zone
+must start at the ruler's LEFT EDGE: the House template's only arrangement
+content is its scene clip at bars 0–4, and a zone that misses it bounces
+nothing.
+
+### 13.3 What wave 4 found
+
+No new product defect. The two suites are green against the current `main`,
+and the three failures they did produce were faults in the SUITE, each of
+which named a real contract:
+
+1. **The fingerprint must exclude panel state.** The clip's `selected` class
+   is panel state, not document state: the first pointer-down selects the
+   clip and an undo does NOT unselect it. Comparing the raw class list
+   reported a selection difference where the audit was looking for an edit
+   difference. Fixed by taking the baseline after the selection.
+2. **A group is a RELATIONSHIP.** `groupClips` refuses fewer than two
+   members ("Select at least two clips to group"), so the group verb needs a
+   second clip and a selection that holds both — the suite now duplicates,
+   ctrl-clicks the copy, and groups the pair.
+3. **The zone must cover content.** The bounce throws "Nothing to bounce —
+   the zone has no scene or audio content" for a zone that misses the House
+   template's scene clip at bars 0–4.
+
+None of the three is a product defect: each is a contract of the product that
+the test had to learn. That is the point of writing the leg down — a leg
+that cannot tell a wrong product from a wrong test is not a measurement.
+
+### 13.4 Running these two suites on a shared box
+
+Both specs need the Vite dev server on `127.0.0.1:5199` (the repo's
+Playwright config starts it). On a machine where parallel agents edit the
+tree, start it with HMR OFF — the switch the repo's own `vite.config.ts`
+already provides for the long audio soak:
+
+```bash
+KYX_RECORDING_SOAK_SECONDS=1 npx vite --port 5199 --strictPort
+```
+
+With HMR on, a parallel session's save triggers a FULL PAGE RELOAD in the
+middle of a gesture: the studio is replaced by the project browser, the
+clips vanish, and the failure reads like a defect ("the paste destroyed every
+clip") when nothing was destroyed. The same saturation also stretches the
+first page load past three minutes, so the specs' boot budget is generous by
+design.
+
+Measured on the 2026-10-24 run (a box at 100 % CPU from parallel sessions):
+all five specs green — the PCM pair in 1.9 min, the pointer trio in 1.5 min
+once the module graph was warm.

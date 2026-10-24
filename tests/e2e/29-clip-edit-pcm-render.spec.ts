@@ -51,8 +51,11 @@ test.describe("29 — clip-edit PCM render assertions", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "WebKit on Windows has no Web Audio media stack");
 
   test("each remaining edit verb changes the RENDERED audio, not just the document", async ({ page }) => {
-    test.setTimeout(300_000);
-    await openHouseTemplate(page);
+    test.setTimeout(600_000);
+    // A shared box can serve the dev server's module graph in minutes. The
+    // page load budget is generous on purpose: a slow boot is an environment
+    // fact, not a defect, and it must not be reported as one.
+    await openHouseTemplate(page, { timeoutMs: 300_000 });
 
     const report = await page.evaluate(async () => {
       const load = (specifier: string) => import(/* @vite-ignore */ specifier);
@@ -108,7 +111,11 @@ test.describe("29 — clip-edit PCM render assertions", () => {
 
       /** A 2 s source: 440 Hz for the first second, 880 Hz for the second. */
       const makeLoopPair = (): AudioBuffer => {
-        const buffer = new OfflineAudioContext(1, sampleRate * 2, sampleRate).createBuffer(1, sampleRate * 2, sampleRate);
+        const buffer = new OfflineAudioContext(1, sampleRate * 2, sampleRate).createBuffer(
+          1,
+          sampleRate * 2,
+          sampleRate,
+        );
         const samples = buffer.getChannelData(0);
         for (let frame = 0; frame < samples.length; frame++) {
           const t = frame / sampleRate;
@@ -305,8 +312,9 @@ test.describe("29 — clip-edit PCM render assertions", () => {
       out.pasteHead = amplitudeAt(pasteRender, 660, 16.5);
       out.pasteHeadReset = amplitudeAt(pasteRender, 220, 16.5);
       out.pasteHeadControl = amplitudeAt(offsetControl, 220, 16.5); // …nothing there before
-      out.pasteCopyOffsetSec = (pasted.arrangement.audioClips ?? []).find((c: { startBar?: number }) => (c.startBar ?? 0) >= 8)
-        ?.offsetSec;
+      out.pasteCopyOffsetSec = (pasted.arrangement.audioClips ?? []).find(
+        (c: { startBar?: number }) => (c.startBar ?? 0) >= 8,
+      )?.offsetSec;
 
       return out;
     });
@@ -355,7 +363,9 @@ test.describe("29 — clip-edit PCM render assertions", () => {
     // ── SPLIT ─────────────────────────────────────────────────────────────
     expect(report.splitCount as number, "the split did not produce two fragments").toBe(2);
     expect(report.splitLeft as number, "the left fragment lost the head").toBeGreaterThan(0.05);
-    expect(report.splitRight as number, "the right fragment did not continue at the source position").toBeGreaterThan(0.05);
+    expect(report.splitRight as number, "the right fragment did not continue at the source position").toBeGreaterThan(
+      0.05,
+    );
     expect(report.splitRightRestarted as number, "the right fragment restarted at the source head").toBeLessThan(0.005);
     expect(report.splitControl as number, "the unsplit control was not at 660 Hz").toBeGreaterThan(0.05);
     expect(report.splitRightStartBar as number).toBe(2);
@@ -410,19 +420,23 @@ test.describe("29 — clip-edit PCM render assertions", () => {
    * the song sounding wrong.
    */
   test("undo restores the RENDERED audio, not just the document", async ({ page }) => {
-    test.setTimeout(300_000);
-    await openHouseTemplate(page);
+    test.setTimeout(600_000);
+    // A shared box can serve the dev server's module graph in minutes. The
+    // page load budget is generous on purpose: a slow boot is an environment
+    // fact, not a defect, and it must not be reported as one.
+    await openHouseTemplate(page, { timeoutMs: 300_000 });
 
     const report = await page.evaluate(async () => {
       const load = (specifier: string) => import(/* @vite-ignore */ specifier);
-      const [templateModule, commandModule, sampleModule, rendererModule, storeModule, schemaModule] = await Promise.all([
-        load("/src/project-model/templates.ts"),
-        load("/src/commands/commands.ts"),
-        load("/src/sample-library/factory.ts"),
-        load("/src/rendering/renderer.ts"),
-        load("/src/store/ProjectStore.ts"),
-        load("/src/project-model/schema.ts"),
-      ]);
+      const [templateModule, commandModule, sampleModule, rendererModule, storeModule, schemaModule] =
+        await Promise.all([
+          load("/src/project-model/templates.ts"),
+          load("/src/commands/commands.ts"),
+          load("/src/sample-library/factory.ts"),
+          load("/src/rendering/renderer.ts"),
+          load("/src/store/ProjectStore.ts"),
+          load("/src/project-model/schema.ts"),
+        ]);
       const { createProjectFromTemplate } = templateModule;
       const { addAudioClip, updateAudioClip, trimAudioClipStart } = commandModule;
       const { SampleBank } = sampleModule;
@@ -559,7 +573,9 @@ test.describe("29 — clip-edit PCM render assertions", () => {
     expect(report.reverseEdited as number, "the reverse edit is silent at the head").toBeGreaterThan(0.05);
     expect(report.reverseUndone as number, "undo left the clip reversed").toBeLessThan(0.005);
     expect(report.reverseUndoneDiff as number, "undo did not restore the forward audio").toBeLessThan(1e-6);
-    expect(report.reverseEditedDiff as number, "the reverse edit did not change the render at all").toBeGreaterThan(0.05);
+    expect(report.reverseEditedDiff as number, "the reverse edit did not change the render at all").toBeGreaterThan(
+      0.05,
+    );
 
     // ── TRIM START: undo restores the source position ────────────────────
     expect(report.trimPristine as number, "the pristine render is silent at the head").toBeGreaterThan(0.05);
