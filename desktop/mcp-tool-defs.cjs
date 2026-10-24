@@ -1229,6 +1229,7 @@ const MCP_TOOL_DEFS = [
             "kopa",
             "choral",
             "ladic",
+            "hlas",
           ],
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
@@ -2478,6 +2479,7 @@ const MCP_TOOL_DEFS = [
             "kopa",
             "choral",
             "ladic",
+            "hlas",
           ],
           maxLength: 32,
           description: "Instrument kind for subject:instrument (e.g. kopa or tsar) — see subject:instruments",
@@ -2552,6 +2554,37 @@ const MCP_TOOL_DEFS = [
             primaryKnob: {
               type: ["string", "null"],
             },
+            primaryRole: {
+              type: ["string", "null"],
+            },
+            intentControls: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  role: {
+                    type: "string",
+                  },
+                  paramId: {
+                    type: "string",
+                  },
+                  min: {
+                    type: "number",
+                  },
+                  max: {
+                    type: "number",
+                  },
+                  default: {
+                    type: "number",
+                  },
+                  unit: {
+                    type: ["string", "null"],
+                  },
+                },
+                required: ["role", "paramId", "min", "max", "default", "unit"],
+              },
+            },
             parameters: {
               type: "array",
               items: {
@@ -2623,7 +2656,7 @@ const MCP_TOOL_DEFS = [
               },
             },
           },
-          required: ["type", "name", "category", "primaryKnob", "parameters"],
+          required: ["type", "name", "category", "primaryKnob", "primaryRole", "intentControls", "parameters"],
         },
         instruments: {
           type: "array",

@@ -243,7 +243,13 @@ describe("GROW audition — the level-matched A/B", () => {
     // processed path — the panel needs both to say MATCHED vs MATCH LIMIT.
     expect(Number.isFinite(Number(frame.matchDb))).toBe(true);
     expect(Number.isFinite(Number(frame.audDb))).toBe(true);
-    expect(Number(frame.matchDb)).toBeGreaterThan(-1);
+    // Unclamped, the gain cancels the level difference exactly: the source
+    // sat X dB from the reference, and the match moved it X dB back.
+    expect(Math.abs(Number(frame.matchDb) + Number(frame.audDb))).toBeLessThan(0.5);
+    // The clamp bounds: the match never dives more than 12 dB nor lifts more
+    // than 18 dB.
+    expect(Number(frame.matchDb)).toBeGreaterThan(-12.1);
+    expect(Number(frame.matchDb)).toBeLessThan(18.1);
   });
 });
 

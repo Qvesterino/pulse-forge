@@ -690,6 +690,23 @@
             "cutoff": 16000,
             "level": 0.8
           }
+        },
+        {
+          "kind": "hlas",
+          "defaults": {
+            "vowelA": 0,
+            "vowelB": 2,
+            "morph": 0,
+            "formantScale": 1,
+            "breath": 0.2,
+            "pulse": 0.3,
+            "vibratoRate": 5.5,
+            "vibratoDepth": 14,
+            "glide": 0.06,
+            "attack": 0.02,
+            "release": 0.25,
+            "level": 0.8
+          }
         }
       ]
     },
@@ -2083,6 +2100,28 @@
         3.5,
         7,
         7
+      ]
+    },
+    {
+      "name": "clampInstrumentParam hlas:vowelA",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "hlas",
+        "paramId": "vowelA",
+        "probes": [
+          -100,
+          0,
+          2,
+          4,
+          104
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        2,
+        4,
+        4
       ]
     },
     {

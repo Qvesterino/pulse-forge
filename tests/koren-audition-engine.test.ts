@@ -77,6 +77,16 @@ function mockNode() {
 
 class MockLiveAudioContext {}
 
+/** The worklet factories run in the mock context too — without this stub
+ * every chain build throws and the rebuild never actually happens. */
+class FakeWorkletNode {
+  port = { onmessage: null as ((e: unknown) => void) | null, postMessage() {} };
+  onprocessorerror: (() => void) | null = null;
+  parameters = { get: () => undefined };
+  connect() {}
+  disconnect() {}
+}
+
 function mockCtx() {
   const constantSources: Array<{
     onended: (() => void) | null;
@@ -182,6 +192,7 @@ const modes = (engine: AudioEngine) => (engine as unknown as { fxAudition: Map<s
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 async function engineWith(effects: EffectInstance[]) {
+  vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
   const engine = new AudioEngine();
   engine.useContext(mockCtx() as unknown as BaseAudioContext);
   await engine.setProject(docWith(effects));
