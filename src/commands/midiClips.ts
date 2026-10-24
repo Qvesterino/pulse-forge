@@ -249,6 +249,31 @@ function safeGeometry(startTick: number, lengthTicks: number): { startTick: numb
   return { startTick: start, lengthTicks: length };
 }
 
+/**
+ * A resize moves the clip's END. The START stays where the user put it and
+ * the LENGTH gives way at the ceiling.
+ *
+ * THE CLAMP USED TO FALL ON THE WRONG FIELD. `safeGeometry` pulls the START
+ * back when the requested length does not fit (`start = MAX - length`), which
+ * is right for a MOVE — a move is a placement, so the position gives way —
+ * but wrong for a resize: a resize that asked for a length past the ceiling
+ * TELEPORTED the clip to the timeline's beginning.
+ *
+ * Worse, this lane wrote only the clamped LENGTH and kept the old START, so
+ * the clip's end reached past the ceiling. The normalizer drops such a clip
+ * (`startTick + lengthTicks <= MAX_ARRANGEMENT_CLIP_TICKS`, schema.ts), so the
+ * resize made the user's MIDI clip VANISH — silently, and with an undo step
+ * that could not bring it back. The property sweep found it; the hand-written
+ * matrix missed it because its fixture sits at tick 0, where the old clamp
+ * happened to land on a legal geometry.
+ */
+function safeResizeLength(startTick: number, lengthTicks: number): number {
+  if (!Number.isFinite(lengthTicks)) throw new Error("MIDI clip length must be finite ticks");
+  const start = Math.max(0, Math.round(startTick));
+  const room = Math.max(1, MAX_ARRANGEMENT_CLIP_TICKS - start);
+  return Math.min(room, Math.max(1, Math.round(lengthTicks)));
+}
+
 function modulo(value: number, period: number): number {
   return ((value % period) + period) % period;
 }
@@ -291,13 +316,14 @@ export function moveMidiClip(doc: ProjectDocument, clipId: string, startTick: nu
 export function resizeMidiClip(doc: ProjectDocument, clipId: string, lengthTicks: number): Command {
   const clip = clipOf(doc, clipId);
   editable(clip);
-  const geometry = safeGeometry(clip.startTick, lengthTicks);
-  return snapshot("resizeMidiClip", `Resize MIDI clip to ${geometry.lengthTicks} ticks`, doc, {
+  // The START stays; the LENGTH gives way at the ceiling (safeResizeLength).
+  const length = safeResizeLength(clip.startTick, lengthTicks);
+  return snapshot("resizeMidiClip", `Resize MIDI clip to ${length} ticks`, doc, {
     ...doc,
     arrangement: {
       ...doc.arrangement,
       midiClips: (doc.arrangement.midiClips ?? []).map((candidate) =>
-        candidate.id === clipId ? { ...candidate, lengthTicks: geometry.lengthTicks } : candidate,
+        candidate.id === clipId ? { ...candidate, lengthTicks: length } : candidate,
       ),
     },
   });

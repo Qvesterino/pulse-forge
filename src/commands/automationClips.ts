@@ -38,6 +38,24 @@ function safeGeometry(startTick: number, lengthTicks: number): { startTick: numb
   return { startTick: start, lengthTicks: length };
 }
 
+/**
+ * A resize moves the clip's END. The START stays where the user put it and
+ * the LENGTH gives way at the ceiling.
+ *
+ * THE CLAMP USED TO FALL ON THE WRONG FIELD. `safeGeometry` pulls the START
+ * back when the requested length does not fit (`start = MAX - length`), which
+ * is right for a MOVE — a move is a placement, so the position gives way —
+ * but wrong for a resize: a resize that asked for a length past the ceiling
+ * TELEPORTED the clip to the timeline's beginning. The property sweep found
+ * it: the resize touched a field it does not own.
+ */
+function safeResizeLength(startTick: number, lengthTicks: number, phaseCeiling: number): number {
+  if (!Number.isFinite(lengthTicks)) throw new Error("Automation clip length must be finite ticks");
+  const start = Math.max(0, Math.round(startTick));
+  const room = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - start, phaseCeiling));
+  return Math.min(room, Math.max(1, Math.round(lengthTicks)));
+}
+
 function withClip(doc: ProjectDocument, nextClip: ArrangementAutomationClip): ProjectDocument {
   const automationClips = (doc.arrangement.automationClips ?? [])
     .map((clip) => (clip.id === nextClip.id ? nextClip : clip))
@@ -130,11 +148,18 @@ export function moveAutomationClip(doc: ProjectDocument, clipId: string, startTi
 export function resizeAutomationClip(doc: ProjectDocument, clipId: string, lengthTicks: number): Command {
   const clip = clipOf(doc, clipId);
   editable(clip);
-  const geometry = safeGeometry(
+  // The START stays; the LENGTH gives way at the ceiling (safeResizeLength).
+  const length = safeResizeLength(
     clip.startTick,
-    Math.min(lengthTicks, MAX_ARRANGEMENT_CLIP_TICKS - (clip.phaseOffsetTicks ?? 0)),
+    lengthTicks,
+    MAX_ARRANGEMENT_CLIP_TICKS - (clip.phaseOffsetTicks ?? 0),
   );
-  return snapshot("resizeAutomationClip", "Resize automation clip", doc, withClip(doc, { ...clip, ...geometry }));
+  return snapshot(
+    "resizeAutomationClip",
+    `Resize automation clip to ${length} ticks`,
+    doc,
+    withClip(doc, { ...clip, lengthTicks: length }),
+  );
 }
 
 export function trimAutomationClipStart(doc: ProjectDocument, clipId: string, startTick: number): Command {
