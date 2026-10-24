@@ -3,6 +3,7 @@ import {
   parseParamIntent,
   applyParamIntent,
   paramMovePreview,
+  paramPlan,
   paramPlanLines,
   paramReadback,
   type ParamIntent,
@@ -10,8 +11,10 @@ import {
 import { routeIntentText } from "../src/intent/route";
 import { buildCapabilityMatrix, capabilityIssues } from "../src/intent/semantics/param-registry";
 import { formatPlan, planIntent } from "../src/intent/semantics/intent-plan";
-import { EFFECT_META } from "../src/effects/definitions";
+import { defaultParamsOf, EFFECT_META } from "../src/effects/definitions";
+import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
+import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
 /**
  * PARAM-LEVEL INTENT (param wave P1) — the producer names a KNOB. Every case
@@ -199,6 +202,41 @@ describe("applyParamIntent", () => {
     const reverb = lead && "effects" in lead ? lead.effects.find((effect) => effect.type === "reverb") : undefined;
     // huge ≈ +32 % of range from 19 s must clamp at 20, never exceed.
     expect(reverb?.params.decay).toBeLessThanOrEqual(20);
+  });
+
+  it("applies a relative family move from each track's own value, as previewed", () => {
+    const base = testDoc();
+    const bass = base.tracks.find(
+      (track): track is InstrumentTrack => track.kind === "instrument" && track.name === "808",
+    )!;
+    const reverb = (id: string, decay: number) => ({
+      id,
+      type: "reverb" as const,
+      bypassed: false,
+      params: { ...defaultParamsOf("reverb"), decay },
+    });
+    const first = { ...bass, effects: [...bass.effects, reverb("fx-bass-1", 1)] };
+    const second = { ...bass, id: "bass-secondary", name: "Bass Secondary", effects: [reverb("fx-bass-2", 10)] };
+    const doc = {
+      ...base,
+      tracks: base.tracks.map((track) => (track.id === bass.id ? first : track)).concat(second),
+    } as ProjectDocument;
+    const intent = mustParse("slightly longer reverb decay on the bass");
+    const store = new ProjectStore(doc);
+    const before = store.doc;
+    const planned = paramPlan(intent, before).map((line) => line.next);
+
+    store.execute(applyParamIntent(before, intent));
+    const after = store.doc;
+    const applied = [first.id, second.id].map(
+      (id) => after.tracks.find((track) => track.id === id)!.effects.find((fx) => fx.type === "reverb")!.params.decay,
+    );
+
+    expect(planned).toEqual([1.1, 11]);
+    expect(applied).toEqual(planned);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc).toEqual(before);
   });
 
   it("idempotent re-apply throws the mix layer's honest 'changed nothing'", () => {

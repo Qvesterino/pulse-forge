@@ -796,9 +796,23 @@ export function paramPlanLines(intent: ParamIntent, doc: Parameters<typeof apply
 export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], intent: ParamIntent): Command {
   const decisions: MixDecision[] = [];
   const groups: Array<{ target: MixTarget; trackIds?: string[]; label?: string; currentTrackId?: string }> = [];
+  const covered = new Set<string>();
   for (const target of intent.targets) {
     const ids = trackIdsForMixTarget(doc, target);
-    groups.push({ target, currentTrackId: ids[0] });
+    if (ids.length === 0) {
+      groups.push({ target });
+      continue;
+    }
+    for (const trackId of ids) {
+      if (covered.has(trackId)) continue;
+      covered.add(trackId);
+      groups.push({
+        target,
+        trackIds: [trackId],
+        label: doc.tracks.find((track) => track.id === trackId)?.name ?? target,
+        currentTrackId: trackId,
+      });
+    }
   }
   const explicit = new Set<string>(intent.trackIds ?? []);
   if (intent.trackOrdinal != null) {
@@ -807,14 +821,15 @@ export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], inte
   }
   for (const trackId of explicit) {
     // A family already covers this track; do not apply the same value twice.
-    if (intent.targets.some((target) => trackIdsForMixTarget(doc, target).includes(trackId))) continue;
+    if (covered.has(trackId)) continue;
     const track = doc.tracks.find((candidate) => candidate.id === trackId);
     if (!track) continue;
+    covered.add(trackId);
     groups.push({ target: "drums", trackIds: [trackId], label: track.name, currentTrackId: trackId });
   }
   for (const group of groups) {
-    // One decision per target: resolve the CURRENT value on that target's
-    // first matching instance so a relative ask moves from reality.
+    // One decision per resolved track: relative asks are measured against
+    // that track's own current value, matching the per-track plan/read-back.
     const current = group.currentTrackId
       ? currentParamValue(doc, group.currentTrackId, intent.effectType, intent.paramId)
       : (defaultParamsOf(intent.effectType)[intent.paramId] ?? 0);
