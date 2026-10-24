@@ -35,6 +35,61 @@ export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramI
   };
 }
 
+/**
+ * Set SEVERAL instrument parameters as ONE undoable step.
+ *
+ * The KOPA editor drags a whole kick shape (a layer's length AND its level,
+ * or the pitch envelope's amount AND its time) — a drag must land as ONE
+ * undo action, not one per pointer move. This command owns that: it records
+ * the previous value of every key it touches, so the undo restores exactly
+ * what was there and nothing else.
+ *
+ * The values are clamped with the instrument's own definitions, so a drag
+ * that overshoots writes the legal range — the same rule the single-param
+ * command obeys.
+ */
+export function setInstrumentParams(
+  doc: ProjectDocument,
+  trackId: string,
+  params: Record<string, number>,
+  label = "Set parameters",
+): Command {
+  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
+  if (!track) throw new Error(`Instrument track ${trackId} not found`);
+  const defaults = defaultInstrumentParams(track.instrument);
+  const prev: Record<string, number> = {};
+  const next: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(params)) {
+    const value = clampInstrumentParam(track.instrument, key, raw);
+    if (!Number.isFinite(value)) continue;
+    prev[key] = track.params[key] ?? defaults[key] ?? value;
+    next[key] = value;
+  }
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) =>
+      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...t.params, ...values } } : t,
+    ),
+  });
+  return {
+    type: "setInstrumentParams",
+    label: `${INSTRUMENT_META[track.instrument].name} — ${label}`,
+    execute: (d) => apply(d, next),
+    undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) {
+          const yParams = (t.get("params") as any);
+          for (const [key, value] of Object.entries(next)) yParams.set(key, value);
+          break;
+        }
+      }
+    },
+  };
+}
+
 export function setInstrumentSample(doc: ProjectDocument, trackId: string, assetId: string | null): Command {
   const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
   if (!track) throw new Error(`Instrument track ${trackId} not found`);

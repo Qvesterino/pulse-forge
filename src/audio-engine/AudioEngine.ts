@@ -2941,6 +2941,19 @@ export class AudioEngine {
     this.previewDeck.previewInstrumentPreset(trackId, preset);
   }
 
+  /**
+   * Audition an instrument with some parameters OVERRIDDEN — the KOPA
+   * editor's preview (roadmap wave 2).
+   *
+   * The document is not touched: the overrides live in a temporary runtime,
+   * so a drag in the editor can be heard without becoming an edit. The sound
+   * path is the live one (the same factory, the same DSP, the same
+   * normalization gain), so the preview is what the track will sound like.
+   */
+  previewInstrumentWithParams(trackId: string, pitch: number, overrides: Record<string, number>): void {
+    this.previewDeck.previewInstrumentWithParams(trackId, pitch, overrides);
+  }
+
   previewSlice(pad: DrumPad, loop = false): void {
     this.previewDeck.previewSlice(pad, loop);
   }

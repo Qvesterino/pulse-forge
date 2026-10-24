@@ -135,27 +135,68 @@ export class PreviewDeck {
    * the preset remains a separate command-owned operation in the UI.
    */
   previewInstrumentPreset(trackId: string, preset: InstrumentPreset): void {
+    const track = this.deps
+      .doc()
+      ?.tracks.find((candidate): candidate is InstrumentTrack => {
+        return candidate.kind === "instrument" && candidate.id === trackId;
+      });
+    if (!track || preset.instrument !== track.instrument) return;
+    const params = { ...track.params };
+    for (const [id, value] of Object.entries(preset.params)) {
+      params[id] = clampInstrumentParam(track.instrument, id, value);
+    }
+    this.previewTrackWithParams(track, params, preset.sampleId, preset.id, 60);
+  }
+
+  /**
+   * Audition the track's OWN sound with some parameters overridden — the
+   * KOPA editor's preview (roadmap wave 2).
+   *
+   * The project document is NOT touched: the draft values live in the
+   * temporary runtime only, so dragging in the editor never becomes an edit.
+   * The sound path is the LIVE one — the same factory, the same DSP and the
+   * same normalization gain the live chain applies — so what the editor
+   * previews is what the track will sound like.
+   */
+  previewInstrumentWithParams(trackId: string, pitch: number, overrides: Record<string, number>): void {
+    const track = this.deps
+      .doc()
+      ?.tracks.find((candidate): candidate is InstrumentTrack => {
+        return candidate.kind === "instrument" && candidate.id === trackId;
+      });
+    if (!track) return;
+    const params = { ...track.params };
+    for (const [id, value] of Object.entries(overrides)) {
+      const clamped = clampInstrumentParam(track.instrument, id, value);
+      if (Number.isFinite(clamped)) params[id] = clamped;
+    }
+    this.previewTrackWithParams(track, params, track.sampleId, track.presetId, pitch);
+  }
+
+  /** The shared body of both instrument previews: a temporary runtime that
+   * plays ONE note with the given params, then disposes itself. */
+  private previewTrackWithParams(
+    track: InstrumentTrack,
+    params: Record<string, number>,
+    sampleId: string | undefined,
+    presetId: string | undefined,
+    pitch: number,
+  ): void {
     this.deps.ensureContext();
     this.stopPreview();
     const ctx = this.deps.ctx();
     const doc = this.deps.doc();
     const master = this.deps.masterInput();
-    const track = doc?.tracks.find((candidate): candidate is InstrumentTrack => {
-      return candidate.kind === "instrument" && candidate.id === trackId;
-    });
-    if (!ctx || !master || !track || preset.instrument !== track.instrument) return;
+    if (!ctx || !master || !doc) return;
 
     const definition = INSTRUMENT_DEFS[track.instrument];
     if (!definition) return;
-    const params = { ...track.params };
-    for (const [id, value] of Object.entries(preset.params)) {
-      params[id] = clampInstrumentParam(track.instrument, id, value);
-    }
+
     const previewTrack: InstrumentTrack = {
       ...track,
       params,
-      sampleId: preset.sampleId !== undefined ? preset.sampleId : track.sampleId,
-      presetId: preset.id,
+      sampleId: sampleId !== undefined ? sampleId : track.sampleId,
+      presetId: presetId ?? track.presetId,
     };
 
     let runtime: InstrumentRuntime;
@@ -171,7 +212,7 @@ export class PreviewDeck {
     // The audition must represent the applied sound: the same preset
     // normalization the live chain gets scales the fixed headroom gain.
     const normGain = ctx.createGain();
-    normGain.gain.value = dbToLinear(presetNormalizationGainDb(preset.id));
+    normGain.gain.value = dbToLinear(presetNormalizationGainDb(presetId));
     runtime.output.connect(normGain);
 
     const gain = ctx.createGain();
@@ -184,7 +225,7 @@ export class PreviewDeck {
     this.instrumentPreviewVoices.add(voice);
 
     try {
-      runtime.noteOn(60, 0.82, when, durationSec);
+      runtime.noteOn(pitch, 0.82, when, durationSec);
     } catch {
       this.disposeInstrumentPreviewVoice(voice);
       return;
