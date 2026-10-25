@@ -19,6 +19,18 @@ function sameRef(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
+/**
+ * One line per collection that moved — the read-back has to NAME THE AREA,
+ * not just announce that something changed. An empty result means the
+ * collection is byte-for-byte the same items.
+ */
+function collectionLine(label: string, before: readonly unknown[], after: readonly unknown[]): string | null {
+  if (before.length !== after.length) return `${label} ${before.length} -> ${after.length}`;
+  const changed = after.filter((item, index) => item !== before[index]).length;
+  if (changed === 0) return null;
+  return `${changed} ${label} item(s) changed`;
+}
+
 function trackLabel(track: ProjectDocument["tracks"][number]): string {
   return `"${track.name}"`;
 }
@@ -138,7 +150,33 @@ export function summarizeDocumentChange(before: ProjectDocument, after: ProjectD
   if (!sameRef(before.master, after.master)) lines.push("master chain changed");
   if (!sameRef(before.returns, after.returns)) lines.push("return buses changed");
 
+  // The rest of the document — the areas a read-back used to stay silent
+  // about, so a mutation there produced "something changed" and nothing more.
+  const collections = [
+    collectionLine("scene automation", before.sceneAutomation, after.sceneAutomation),
+    collectionLine("macros", before.macros, after.macros),
+    collectionLine("LFOs", before.lfos, after.lfos),
+    collectionLine("live sets", before.liveSets ?? [], after.liveSets ?? []),
+    collectionLine("midi clips", before.arrangement.midiClips ?? [], after.arrangement.midiClips ?? []),
+    collectionLine(
+      "automation clips",
+      before.arrangement.automationClips ?? [],
+      after.arrangement.automationClips ?? [],
+    ),
+    collectionLine("take groups", before.arrangement.takeGroups ?? [], after.arrangement.takeGroups ?? []),
+    collectionLine("transitions", before.arrangement.transitions ?? [], after.arrangement.transitions ?? []),
+    collectionLine("chords", before.arrangement.chords ?? [], after.arrangement.chords ?? []),
+    collectionLine("clip groups", before.arrangement.clipGroups ?? [], after.arrangement.clipGroups ?? []),
+  ].filter((line): line is string => line !== null);
+  lines.push(...collections);
+
+  if (before.groove !== after.groove) lines.push("groove changed");
+  if (JSON.stringify(before.tags ?? []) !== JSON.stringify(after.tags ?? [])) lines.push("project tags changed");
+
   const visible = lines.slice(0, MAX_LINES);
   if (lines.length > MAX_LINES) visible.push(`... and ${lines.length - MAX_LINES} more change(s)`);
+  // The document moved but nothing above says where — say THAT instead of
+  // handing the agent an empty read-back.
+  if (visible.length === 0) visible.push("document metadata changed");
   return { changed: true, lines: visible };
 }

@@ -45,8 +45,9 @@ Three findings shaped this session's verdict:
    same sentence can resolve to a _different effect_ depending on which surface hears it
    (`distortion` → `saturation` in the Intent word table, but `distortion` is a real effect the MCP
    tool will insert). The same ask can be _silently rescaled_ into a full-range jump. And an AI
-   action can be reported as applied while the state it claims to have produced was never
-   verified.
+   action could be reported as applied while the state it claims to have produced was never
+   verified — **that last one is now closed (§4.6)**: the MCP surface asks the document and the
+   undo stack before it says "applied".
 
 **Verdict.** The architecture is sound and the discipline around it is real. The residual risk is
 concentrated in three places, in this order: **surface agreement** (Intent ↔ MCP ↔ registry),
@@ -64,7 +65,7 @@ as gaps in §6, not papered over.
 
 ```
                       ┌───────────── FOUR CONTROL SURFACES ──────────────┐
-  UI (149 components)  Intent Engine (172 modules)   MCP server (38 tools)   Collab (Yjs)
+  UI (149 components)  Intent Engine (172 modules)   MCP server (39 tools)   Collab (Yjs)
         │                     │                            │                    │
         └─────────────────────┴──────────┬─────────────────┴────────────────────┘
                                            ▼
@@ -112,20 +113,20 @@ Status: **PASS** = pinned by an automated guard · **PARTIAL** = the main path i
 sub-path is not · **FAIL** = a verified divergence exists · **NOT VERIFIED** = no evidence of
 either kind.
 
-| #   | Contract                                                        | Status      | Evidence                                                                                                                                                                                       |
-| --- | --------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | One authoritative state owner for every surface                 | **PASS**    | `src/mcp/desktop-host.ts` mutates `services.store`; UI reads the same store; `src/commands/**` is the only writer                                                                              |
-| 2   | A throwing plugin runtime must not strand the rest of the graph | **PASS**    | 14/14 call sites pinned in `tests/audio-engine-lifecycle-stress.test.ts` (was 3/14) — each revert-proven                                                                                       |
-| 3   | Deleted entities leave no dangling references                   | **PARTIAL** | `tests/referential-integrity.test.ts` (872 lines) pins the main classes; the take-lane + Live-Set class was **not** pinned and is now fixed (§4.3); the bus-effect-delete no-op remains (F-07) |
-| 4   | Undo restores the exact prior state                             | **PARTIAL** | `tests/undo-redo-integrity.test.ts`; the delete-track class failed (§4.3, now fixed); the class itself is not mechanically audited (R-05)                                                      |
-| 5   | Offline render == live playback                                 | **PASS**    | `tests/offline-parity.test.ts` (6 structural contracts), `tests/renderer-pdc-settle.test.ts`, `tests/render-event-parity.test.ts`                                                              |
-| 6   | Save → reload keeps project-critical state                      | **PASS**    | `tests/state-persistence-adversarial.test.ts`, `tests/project-invariants.test.ts`                                                                                                              |
-| 7   | An AI tool reports the state it actually produced               | **PARTIAL** | `kyx_plugin_param` reads back and reports `PARTIAL_FAILURE` (`src/mcp/tools.ts:9491`); `kyx_intent`'s `paramIntent` branch has **no** read-back (F-06)                                         |
-| 8   | The same effect word means the same effect on every surface     | **FAIL**    | `distortion` → `saturation` in the word table vs. a real `distortion` effect in MCP (F-01); `sv filter` → `eq` vs. `svFilter` (F-02)                                                           |
-| 9   | A value means the same unit on every surface                    | **PARTIAL** | all eight dB→linear conversions are `10^(dB/20)` — **no formula drift**; but the AI bridge clamps track gain to 0..4 while every other surface clamps to 0..1.5 (F-05)                         |
-| 10  | A failed action is visible to the user                          | **PARTIAL** | the intent bar's effect branch had no `try/catch` (silent no-op) — **fixed** in §4.1; the remaining branches were already guarded                                                              |
-| 11  | A plugin parameter has one identity everywhere                  | **PASS**    | `EFFECT_META` is the single source; the catalog derives from it; `tests/fx-catalog.test.ts`, `tests/target-param-catalog.test.ts`                                                              |
-| 12  | The build, type and format gates are green on `main`            | **PASS**    | verified on `origin/main` this session (§6)                                                                                                                                                    |
+| #   | Contract                                                        | Status      | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | --------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | One authoritative state owner for every surface                 | **PASS**    | `src/mcp/desktop-host.ts` mutates `services.store`; UI reads the same store; `src/commands/**` is the only writer                                                                                                                                                                                                                                                                                                        |
+| 2   | A throwing plugin runtime must not strand the rest of the graph | **PASS**    | 14/14 call sites pinned in `tests/audio-engine-lifecycle-stress.test.ts` (was 3/14) — each revert-proven                                                                                                                                                                                                                                                                                                                 |
+| 3   | Deleted entities leave no dangling references                   | **PARTIAL** | `tests/referential-integrity.test.ts` (872 lines) pins the main classes; the take-lane + Live-Set class was **not** pinned and is now fixed (§4.3); the bus-effect-delete no-op remains (F-07)                                                                                                                                                                                                                           |
+| 4   | Undo restores the exact prior state                             | **PARTIAL** | `tests/undo-redo-integrity.test.ts`; the delete-track class failed (§4.3, now fixed); the class itself is not mechanically audited (R-05)                                                                                                                                                                                                                                                                                |
+| 5   | Offline render == live playback                                 | **PASS**    | `tests/offline-parity.test.ts` (6 structural contracts), `tests/renderer-pdc-settle.test.ts`, `tests/render-event-parity.test.ts`                                                                                                                                                                                                                                                                                        |
+| 6   | Save → reload keeps project-critical state                      | **PASS**    | `tests/state-persistence-adversarial.test.ts`, `tests/project-invariants.test.ts`                                                                                                                                                                                                                                                                                                                                        |
+| 7   | An AI tool reports the state it actually produced               | **PASS**    | **fixed (§4.6, R-02)** — every mutating MCP result now passes through one executor-level check (`src/mcp/verified-mutation.ts`): an undo step that was never recorded is corrected, a success with an identical document is not a success, and a success without a read-back gets a structural one. `kyx_plugin_param` keeps its own value-level read-back and still reports `PARTIAL_FAILURE` (`src/mcp/tools.ts:9491`) |
+| 8   | The same effect word means the same effect on every surface     | **FAIL**    | `distortion` → `saturation` in the word table vs. a real `distortion` effect in MCP (F-01); `sv filter` → `eq` vs. `svFilter` (F-02)                                                                                                                                                                                                                                                                                     |
+| 9   | A value means the same unit on every surface                    | **PARTIAL** | all eight dB→linear conversions are `10^(dB/20)` — **no formula drift**; but the AI bridge clamps track gain to 0..4 while every other surface clamps to 0..1.5 (F-05)                                                                                                                                                                                                                                                   |
+| 10  | A failed action is visible to the user                          | **PARTIAL** | the intent bar's effect branch had no `try/catch` (silent no-op) — **fixed** in §4.1; the remaining branches were already guarded                                                                                                                                                                                                                                                                                        |
+| 11  | A plugin parameter has one identity everywhere                  | **PASS**    | `EFFECT_META` is the single source; the catalog derives from it; `tests/fx-catalog.test.ts`, `tests/target-param-catalog.test.ts`                                                                                                                                                                                                                                                                                        |
+| 12  | The build, type and format gates are green on `main`            | **PASS**    | verified on `origin/main` this session (§6)                                                                                                                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -271,7 +272,7 @@ now addressable by name — and the intent layer refuses a knob-turning ask on a
 no primary knob, which is 42 of the 57 registered types (the knob map named 15). So "add drift on
 the vocals" now reaches `ozvena` and is refused with _no knob mapped for effect ozvena_ — the same
 refusal "add eq on the bass" has always had. This is the pre-existing gap, not a new defect, but
-R-01 widened its reach from one effect to 42; it is filed as **F-17** in §4.6 with the one-line
+R-01 widened its reach from one effect to 42; it is filed as **F-17** in §4.7 with the one-line
 shape of the fix (the add does not need a knob — the instance is created with its own defaults — so
 the knob guard must not run before the add branch). `sidechain` is the one effect fixed here rather
 than filed, because its ask used to work through `pump` and would otherwise have been a regression.
@@ -332,16 +333,95 @@ transient on the drums", "more vinyl suite on the master" now move a knob instea
 F-17 narrows accordingly: the add-ask refusal now applies to the **8** knob-less effects instead
 of 42.
 
-### 4.6 — Outstanding findings (verified in code, not yet fixed)
+### 4.6 — P1 · A mutation must become a claim only when the document backs it · **FIXED** (R-02)
+
+**The class, measured.** The MCP surface has **39 tools** and ~**91** `ctx.execute(` sites. **55** of
+them end in a success claim, and **40** of those claims carried **no verification at all**: the text
+named what the tool was _asked_ to do — "mix applied (12 decisions)", "pasted 3 clips", "one undo
+step" — and nothing named what _landed_. The phrase "one undo step" appears in **18 functions**
+(~80 claims), and it is a claim about the **undo stack** that nothing ever asked the stack. The
+report's F-06 named two examples; the class is forty.
+
+**F-06 was half-closed before this session — by the repo itself.** `88cc4524` ("fix(intent): the
+param read-back must describe what actually moved") gave `kyx_intent`'s `paramIntent` branch the
+moved/added/unchanged/skipped envelope its siblings have. That half of the finding was already
+fixed when this session started; the other half — the surface-wide class — was not, and the report
+row has moved to §4.7 with the F-10 row removed.
+
+**The fix is one place, not forty.** `src/mcp/verified-mutation.ts` runs at the executor's choke
+point (`executeMcpToolCore`, after the dispatch and before the result leaves the surface), so no
+handler can forget it and no handler has to know about it:
+
+1. **The undo claim follows the stack.** "one undo step" is corrected to "folded into the previous
+   undo step" when the stack did not grow. A stack that _shrank_ means the tool undid something
+   (`kyx_undo`, redo) — that claim is about a different thing and is left alone.
+2. **A success that changed nothing is not a success.** The document is the witness: if it is
+   identical _and_ no undo step was recorded, the result says **"nothing changed (the document is
+   identical); no undo step — reported: …"**, `mutated` goes false, the stage becomes `noop` and
+   the data envelope becomes `{ status: "unchanged", changed: false }`. The truth comes FIRST and
+   the handler's narration survives only as what it _reported_ (a loudness reading the agent still
+   needs must not be thrown away with the claim).
+3. **A success without a read-back gets one.** The structural summary of what moved is appended
+   (`— read-back: track "Drums" FX [] -> [reverb]`), so the agent sees the AREA that changed.
+
+**Two exceptions, both deliberate.** A handler's **own** value-level read-back
+("mix 0.30→0.46 on Bass") is left alone — it knows more than the structural summary, and the
+summary would only blur it. And a tool that writes **outside** the document (the user sample
+library, the runtime, the export file, the checkpoint repository) is not judged by the document at
+all: `mutatesProjectDocument()` reuses the dry-run policy, which already answers exactly that
+question for every tool, so the classifier is shared instead of being a second list that could
+drift. Without that distinction an SFZ import into the user library would be reported as "nothing
+changed" — a correction that would itself be a lie.
+
+**F-10 — an added effect is not a transition.** `effectReadback` used to print
+`mix 0.30→0.46` for an effect that had just been **added**: 0.30 was the effect's default, never a
+value that track had held. The read-back now says **"added reverb on Drums (mix landed at 0.46)"**
+when the instance was not there before, and keeps the transition form only when the instance
+existed. A value that _appeared_ (the param was unset before) is reported as "appeared at", not as
+a movement.
+
+**Falsification.** `tests/mcp-verified-mutation.test.ts` (9 cases) was run against a detached
+worktree at `4460e8ec` with only the helper present but **not wired**: **5 cases went red** — the
+mix success carried no read-back, the F-10 read-back claimed the false transition
+("mix 0.3→0.34 on Drums"), the undo claim of a shrunk stack was wrongly rewritten, the identical
+document stayed a success, and — the case the falsification caught in **this session's own first
+draft** — the "folded into the previous undo step" correction failed, because a global regex
+carries `lastIndex` between `test()` calls and the detection alternated from call to call. The
+detection and the replacement now use two separate constants, and the guard pins it. With the
+fix: **9/9 green**.
+
+**Regression surface.** 2 460 tests across MCP, intent, effect, plugin, agent-trust and the
+rezonans goldens: **2 454 green**. The 6 reds are **not** this change's: the SFT pin, the artifact
+lock, the `hlas` trainer queue, the model route gate, the MCP mirror drift and the relay
+ownership are the known pre-existing set, and two more (`mcp-edit-parity`'s audio-op address
+message, `plugin-functional-audit`'s `ladic.glide` log taper) were re-run **at HEAD in a detached
+worktree** and are red there too. Zero reds are attributable to this change.
+
+**Boot path.** Measured as an A/B between two detached worktrees of the same commit — one clean,
+one with this diff — with `QVESTER_SIBLING_ROOT` pointed at the sibling checkout (the alias is
+relative to the repo root, so an isolated worktree cannot resolve it otherwise): the **studio boot
+path is 2132 KB across 27 chunks in BOTH trees** — it does not move, because the MCP executor is
+not in the browser boot closure. The DAW JS total moves **5652 → 5655 KB** (+3 KB), and that line
+was already **over its 5630 KB ceiling at HEAD** — a pre-existing red this change does not create
+and does not repair.
+
+**What it changes for the user.** An agent that asks for a mix and is told "mix applied" now also
+sees which FX chain moved. An agent that asks for something that did not land is told so instead
+of being told "one undo step". An agent that adds an effect is told the knob **landed at** a
+number, not that it **moved from** a number the track never had. The false-AI-success class is
+closed by construction rather than by editing forty call sites — and the next tool added inherits
+the guarantee.
+
+---
+
+### 4.7 — Outstanding findings (verified in code, not yet fixed)
 
 | ID       | Sev    | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Where                                                                              |
 | -------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **F-05** | **P2** | The AI bridge clamps track gain to **0..4** while the command layer clamps 0..1.5, the UI displays 0..1.5 and MCP caps at 1.5. The bridge bypasses `setTrackParams`, so a document can hold a gain no other surface can set or show.                                                                                                                                                                                                                                                                                                                                                                                   | `src/ai/bridge/executor.ts:606,1004` vs `src/commands/master.ts:70,95`             |
-| **F-06** | **P2** | `kyx_intent` asserts _"applied, one undo step in KYX"_ but its read-back chain covers only production/effectIntent/preset — the **`paramIntent`** branch gets **no verification at all**.                                                                                                                                                                                                                                                                                                                                                                                                                              | `src/mcp/tools.ts:11722-11730`                                                     |
 | **F-07** | **P2** | Two surfaces disagree on the same operation: deleting the **active take's** clip silently promotes an alternate take through the UI path, while the MCP path refuses. Removing an effect from a **return bus** is a silent no-op, while `addEffectToTracks` _can_ add effects to a bus.                                                                                                                                                                                                                                                                                                                                | `src/mcp/tools.ts:8670` vs `src/commands/audioClips.ts`; `src/commands/effects.ts` |
 | **F-08** | **P2** | `kyx_plugin_param` cannot reach deep params (`eq.band3.gainDb`, `engines.e1.mix`) although its own description claims it "sets ANY parameter of an inserted instance". The catalog exposes rack params only.                                                                                                                                                                                                                                                                                                                                                                                                           | `src/plugin-catalog.ts:95` vs `src/commands/effectParams.ts:82`                    |
 | **F-09** | **P2** | The model context offers a role outside the model's own closed enum: `compressor`→ratio, `pump`→amount and `bitcrusher`→mix have no capability row, so the role falls back to `"primary"` — which the model cannot emit in a `paramIntent`, yet the context marks the action supported.                                                                                                                                                                                                                                                                                                                                | `src/intent/model-context.ts:130,152` vs `src/intent/model-schema.ts:370`          |
-| **F-10** | **P3** | `kyx_fx`'s read-back prints `mix 0.30→0.30` when the effect was just added at defaults — a "verification" showing no movement, next to the text "one undo step".                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `src/intent/mix.ts:1200-1204`                                                      |
 | **F-11** | **P3** | The eq legacy aliases are declared twice — hardcoded in the command layer and as `deprecated/aliasOf` `ParamDef`s. They agree today; the catalog does not filter `deprecated`, so `kyx_catalog` advertises aliases as settable and the command writes **both** keys.                                                                                                                                                                                                                                                                                                                                                   | `src/commands/effectParams.ts:84-92`, `src/plugin-catalog.ts:95`                   |
 | **F-12** | **P3** | Percent semantics differ between two intent sub-layers: `mix.ts` maps percent linearly over min..max and ignores `taper:"log"`, while the param layer is log-aware. Latent today (no primary knob is log-tapered).                                                                                                                                                                                                                                                                                                                                                                                                     | `src/intent/mix.ts:1134` vs `src/intent/param-intent.ts`                           |
 | **F-13** | **P3** | `SCALE_BRIDGES` is test-only; production conversions are inline duplicates (`ozvenaNode`, `morphDynamicsNode` re-implement `v*100`). They agree today; registry↔runtime drift would be undetectable. The def↔descriptor range sweep also skips ultina/ozvena/morphdynamics.                                                                                                                                                                                                                                                                                                                                            | `src/effects/scale-bridges.ts:59-95`, `tests/param-range-coherence.test.ts:53-94`  |
@@ -350,7 +430,7 @@ of 42.
 | **F-16** | **P2** | **The app-boot check budgets 5 s for a lazily-imported panel.** `PresetBrowser` is `React.lazy`-loaded, so the check waits 5 s for a chunk that still has to download and mount. The panel exists; the budget does not cover the lazy boundary.                                                                                                                                                                                                                                                                                                                                                                        | `scripts/verify-browser.mjs:438`, `src/ui/SampleBrowser.tsx:30`                    |
 | **F-17** | **P2** | **An "add X" ask for an effect without a primary knob is refused.** "add eq on the bass" and (since R-01) "add drift on the vocals" both fail with _no knob mapped for effect X — intent understood, effect unsupported_. The knob guard runs before the add, and the add itself never needs a knob: the instance is created with its own defaults. After R-01b (§4.5) the knob map names 49 of the 57 registered effects, so the refusal now applies to the 8 effects that honestly have no knob (eq, msEq, haasWidener, utility, prud and the namespaced flagships ultina, ozvena, morphdynamics) — and to no other. | `src/intent/mix.ts:1085` vs `src/intent/mix.ts:1076`                               |
 
-### 4.7 — Findings that were checked and found **clean** (recorded so they are not re-litigated)
+### 4.8 — Findings that were checked and found **clean** (recorded so they are not re-litigated)
 
 - **No dB↔linear formula drift.** All eight amplitude conversions are `10^(dB/20)`; `10·log10`
   appears only in power/LUFS/energy-share domains, where it is correct. `10·log10(ratio*10)` in
@@ -429,13 +509,16 @@ worse than no check: it teaches the team to ignore a red. That is why these thre
 - **1203 spec files** in `tests/`; the last complete suite run measured **13 193 tests**
   (13 174 passed, 19 failed across 9 files)
   over ~2014 s under heavy parallel load.
-- **This session's new coverage** (3 files, 7 cases, each revert-proven):
+- **This session's new coverage** (6 files, 97 cases, each revert-proven):
 
-| Spec                                                | Covers                                                                                                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/effect-intent-remove-without-knob.test.ts`   | the type-level remove without a knob, through the applier and through MCP; the control that the knob guard still refuses a knob-turning ask |
-| `tests/param-intent-relative-db-unit-guard.test.ts` | the relative dB ask on a unitless knob; the controls for the dB knob and the percent path                                                   |
-| `tests/delete-track-undo-cross-references.test.ts`  | delete track + undo restores the take lanes and the Live Set routing                                                                        |
+| Spec                                                | Covers                                                                                                                                                                                                                                          |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/effect-intent-remove-without-knob.test.ts`   | the type-level remove without a knob, through the applier and through MCP; the control that the knob guard still refuses a knob-turning ask                                                                                                     |
+| `tests/param-intent-relative-db-unit-guard.test.ts` | the relative dB ask on a unitless knob; the controls for the dB knob and the percent path                                                                                                                                                       |
+| `tests/delete-track-undo-cross-references.test.ts`  | delete track + undo restores the take lanes and the Live Set routing                                                                                                                                                                            |
+| `tests/effect-word-identity.test.ts`                | every registered effect's own name resolves to THAT effect, the longest match wins, a canonical name beats an alias on a tie (66 cases)                                                                                                         |
+| `tests/effect-primary-knob.test.ts`                 | the primary knob is DECLARED on the effect and the map is derived from the registry; the census that forbids a second effect→knob table (8 cases)                                                                                               |
+| `tests/mcp-verified-mutation.test.ts`               | a mutation becomes a claim only when the document backs it: the undo claim follows the stack, an identical document is not a success, a success without a read-back gets one, a tool that writes outside the document keeps its claim (9 cases) |
 
 - **Regression surfaces run after each fix:** `intent-effect-targets`, `param-intent`,
   `mcp-tools` (147), `mcp-flagship-control`, `referential-integrity`, `undo-redo-integrity`,
@@ -480,18 +563,18 @@ worse than no check: it teaches the team to ignore a red. That is why these thre
 Ranked by impact × likelihood × detectability, weighted toward audio corruption, data loss,
 silent mismatches and false AI success.
 
-| #        | Recommendation                                                                                                                                                         | Sev   | Why it is ranked here                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **R-01** | **~~Derive the intent effect word table from the capability matrix~~** instead of maintaining it as a fourth vocabulary — **DONE (§4.4)**                              | ✅ P1 | Shipped. The table is derived from `EFFECT_META`; the longest match wins and a canonical name beats an alias on a tie. Measured: **72 of the 91 registry names (79 %) used to resolve to the wrong effect or to nothing** — the report's F-01/F-02 named two of them. The word table can no longer drift from the registry, because it is not a second copy of it.                                    |
-| **R-02** | **Give `kyx_intent`'s `paramIntent` branch the same read-back** the other branches have, and extract one shared `verifiedMutation` helper across the 38 tools          | P1    | F-06/F-10: an AI action is currently _reported as applied_ without its state being verified. This is the "false AI success" class the system cannot afford.                                                                                                                                                                                                                                           |
-| **R-03** | **Make "cross-references held by other entities" mechanically enforced**: a guard that fails when `normalizeProject` prunes anything the command's delta did not carry | P1    | The same class has now bitten twice (sidechain/MIDI, take lanes/Live Sets). A mechanical rule ends the class; a per-case fix does not.                                                                                                                                                                                                                                                                |
-| **R-04** | **Unify the track-gain domain**: route the AI bridge through `setTrackParams` so one clamp owns it                                                                     | P2    | F-05: a document can currently hold a gain no other surface can set or display.                                                                                                                                                                                                                                                                                                                       |
-| **R-05** | **Make the intent bar's failure surface uniform**: one helper every branch uses, so no branch can be a silent no-op                                                    | P2    | The effect branch was a silent no-op (fixed here); the same shape can recur in any new branch.                                                                                                                                                                                                                                                                                                        |
-| **R-06** | **Either teach `kyx_plugin_param` the deep params** (`eq.band3.gainDb`) **or make its description honest**                                                             | P2    | F-08: the tool's contract and its capability disagree; the AI reasons from the description.                                                                                                                                                                                                                                                                                                           |
-| **R-07** | **Make the model context's offered roles exactly the model's own enum**                                                                                                | P2    | F-09: the context marks an action supported that the model cannot express — a silent dead end for the AI.                                                                                                                                                                                                                                                                                             |
-| **R-08** | **Filter `deprecated` params out of the MCP catalog** and de-duplicate the eq alias table                                                                              | P3    | F-11: two alias truths that agree today and would not be caught when they stop agreeing.                                                                                                                                                                                                                                                                                                              |
-| **R-09** | **One conversion owner for dB→linear**, with the eight call sites delegating to it, and extend the range sweep to ultina/ozvena/morphdynamics                          | P3    | F-13: the copies agree today; a single owner plus a sweep makes that structural instead of lucky.                                                                                                                                                                                                                                                                                                     |
-| **R-10** | **Repair the browser verifier's drift and pay the DAW JS budget back** (the tightening trigger has fired)                                                              | P2    | F-14, F-15, F-16 plus the budget note: two of the verifier's stable reds no longer measure the product (a selector the UI dropped, a 5 s budget against a lazy chunk), so the checks that were supposed to protect the plugin workflow are unverified. The budget ceiling was raised with a measured justification, and the note now states that the next growth must offset rather than raise again. |
+| #        | Recommendation                                                                                                                                                         | Sev   | Why it is ranked here                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **R-01** | **~~Derive the intent effect word table from the capability matrix~~** instead of maintaining it as a fourth vocabulary — **DONE (§4.4)**                              | ✅ P1 | Shipped. The table is derived from `EFFECT_META`; the longest match wins and a canonical name beats an alias on a tie. Measured: **72 of the 91 registry names (79 %) used to resolve to the wrong effect or to nothing** — the report's F-01/F-02 named two of them. The word table can no longer drift from the registry, because it is not a second copy of it.                                          |
+| **R-02** | **~~Give `kyx_intent`'s `paramIntent` branch the same read-back** the other branches have, and extract one shared `verifiedMutation` helper across the 39 tools~~      | ✅ P1 | **Shipped (§4.6).** The `paramIntent` half was closed by the repo's own commit `88cc4524`; the rest is now ONE executor-level check: every mutating MCP result carries a verification, an undo step that was never recorded is corrected, and a success that changed nothing is not a success. The 40 unverified success claims the surface carried are gone by construction — not by editing 40 call sites |
+| **R-03** | **Make "cross-references held by other entities" mechanically enforced**: a guard that fails when `normalizeProject` prunes anything the command's delta did not carry | P1    | The same class has now bitten twice (sidechain/MIDI, take lanes/Live Sets). A mechanical rule ends the class; a per-case fix does not.                                                                                                                                                                                                                                                                      |
+| **R-04** | **Unify the track-gain domain**: route the AI bridge through `setTrackParams` so one clamp owns it                                                                     | P2    | F-05: a document can currently hold a gain no other surface can set or display.                                                                                                                                                                                                                                                                                                                             |
+| **R-05** | **Make the intent bar's failure surface uniform**: one helper every branch uses, so no branch can be a silent no-op                                                    | P2    | The effect branch was a silent no-op (fixed here); the same shape can recur in any new branch.                                                                                                                                                                                                                                                                                                              |
+| **R-06** | **Either teach `kyx_plugin_param` the deep params** (`eq.band3.gainDb`) **or make its description honest**                                                             | P2    | F-08: the tool's contract and its capability disagree; the AI reasons from the description.                                                                                                                                                                                                                                                                                                                 |
+| **R-07** | **Make the model context's offered roles exactly the model's own enum**                                                                                                | P2    | F-09: the context marks an action supported that the model cannot express — a silent dead end for the AI.                                                                                                                                                                                                                                                                                                   |
+| **R-08** | **Filter `deprecated` params out of the MCP catalog** and de-duplicate the eq alias table                                                                              | P3    | F-11: two alias truths that agree today and would not be caught when they stop agreeing.                                                                                                                                                                                                                                                                                                                    |
+| **R-09** | **One conversion owner for dB→linear**, with the eight call sites delegating to it, and extend the range sweep to ultina/ozvena/morphdynamics                          | P3    | F-13: the copies agree today; a single owner plus a sweep makes that structural instead of lucky.                                                                                                                                                                                                                                                                                                           |
+| **R-10** | **Repair the browser verifier's drift and pay the DAW JS budget back** (the tightening trigger has fired)                                                              | P2    | F-14, F-15, F-16 plus the budget note: two of the verifier's stable reds no longer measure the product (a selector the UI dropped, a 5 s budget against a lazy chunk), so the checks that were supposed to protect the plugin workflow are unverified. The budget ceiling was raised with a measured justification, and the note now states that the next growth must offset rather than raise again.       |
 
 ---
 
@@ -504,9 +587,12 @@ Non-blocking, ordered by leverage. None of these is required for the fixes above
    fill defaults) and never to _remove_ an entity the command left in place, the whole class in
    §4.3 and §4.4 would disappear rather than needing a per-case fix. Today the normalizer is
    allowed to prune, and that is where the undo-delta seam lives.
-2. **One verification helper for all 38 MCP tools.** The read-back pattern is already correct in
-   `kyx_plugin_param`; it is hand-rolled per tool. A shared helper would make "the tool reports
-   the state it produced" a property of the framework rather than of each tool.
+2. **One verification helper for all 39 MCP tools.** The read-back pattern was already correct in
+   `kyx_plugin_param`; it was hand-rolled per tool. A shared helper would make "the tool reports
+   the state it produced" a property of the framework rather than of each tool. — **DONE (§4.6)**:
+   `src/mcp/verified-mutation.ts` runs at the executor's choke point, so the property is now a
+   property of the framework. What remains open is the DEPTH of the read-back: the structural
+   fallback names the AREA that moved, not every value in it (R-05).
 3. **Derive the intent vocabularies from one capability matrix.** The model vocab, the knob map,
    the word table and the capability matrix are four views of the same facts; R-01 (the word table)
    is now merged and shipped — the registry IS the table. The knob map, the model vocab and the
@@ -544,8 +630,11 @@ Non-blocking, ordered by leverage. None of these is required for the fixes above
    effect_ a request means: one owner, one answer. The correction is bigger than the report first
    stated — **72 of the registry's 91 canonical names** were broken, not two — and the guard
    (`tests/effect-word-identity.test.ts`) now pins every registered effect's own name to itself.
-2. **An AI action can still be reported without verification** (F-06). The MCP plugin-param path
-   is honest; the `kyx_intent` param branch is not.
+2. **An AI action is now verified before it is reported** (F-06/F-10 — see §4.6). The MCP
+   plugin-param path was already honest; the `kyx_intent` param branch was not, and neither were
+   the ~40 other success claims across the surface. One executor-level check now answers the two
+   questions every claim was missing: **did the document move?** and **did the stack record an undo
+   step?**
 3. **The full suite was not re-run to zero-red on the final tip.** The last complete run was on an
    earlier tip (9 red files / 19 tests, of which 12 were load-induced and 2 were real and are now
    fixed by the peer wave and by this session). On the final tip the previously-red files were
@@ -582,10 +671,12 @@ falsifiable.
 1. ~~**Derive the effect word table from the capability matrix** (R-01).~~ **DONE — §4.4.** The
    table is derived from `EFFECT_META`; the guard is `tests/effect-word-identity.test.ts` (66 cases,
    falsified: 43 red before the fix). _The registry is the source; nothing else moved._
-2. **Give `kyx_intent`'s `paramIntent` branch a read-back** and extract the shared
-   `verifiedMutation` helper (R-02). Assert that a param intent reports the value that actually
-   landed, and that a no-op reports no-op rather than "one undo step". _Risk: low — the pattern
-   already exists in `kyx_plugin_param`._
+2. ~~**Give `kyx_intent`'s `paramIntent` branch a read-back** and extract the shared
+   `verifiedMutation` helper (R-02).~~ **DONE — §4.6.** The param branch was closed by the repo's own
+   commit `88cc4524`; the rest of the surface is now covered by one executor-level check
+   (`src/mcp/verified-mutation.ts`), and the guard is `tests/mcp-verified-mutation.test.ts`
+   (9 cases, falsified: 5 red against the pre-fix code). _A mutation is reported as a mutation only
+   when the document backs it._
 3. **Add the mechanical "normalize must not prune what the delta does not carry" guard** (R-03).
    A spec that deletes a track and asserts that every field the post-apply normalizer touched is
    carried by the undo delta. This is the class-ending guard, and it would have caught §4.3

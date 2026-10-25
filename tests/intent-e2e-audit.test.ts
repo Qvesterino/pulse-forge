@@ -1274,12 +1274,21 @@ describe("E2E readback verification loop", () => {
     const doc = withLead();
     const more = parseEffectIntent("viac delayu na leade")!;
     const afterMore = applyEffectIntent(doc, more).execute(doc);
-    expect(effectReadback(doc, afterMore, more)).toMatch(/mix 0\.\d+→0\.\d+ on Lead/);
+    // F-10: the delay was NOT on the track before — this is an ADD. A
+    // transition ("mix 0.3→0.34") would claim a movement FROM a value the
+    // track never had; the truth is where the knob LANDED.
+    expect(effectReadback(doc, afterMore, more)).toMatch(/added delay on Lead \(mix landed at 0\.\d+\)/);
+
+    // The instance EXISTS now — the next move IS a transition, and says so.
+    const moreAgain = parseEffectIntent("viac delayu na leade")!;
+    const afterMoreAgain = applyEffectIntent(afterMore, moreAgain).execute(afterMore);
+    expect(effectReadback(afterMore, afterMoreAgain, moreAgain)).toMatch(/mix 0\.\d+→0\.\d+ on Lead/);
 
     const setIntent = parseEffectIntent("set the lead reverb mix to 250%")!;
     const afterSet = applyEffectIntent(doc, setIntent).execute(doc);
     const maxMix = EFFECT_META.reverb.params.find((param) => param.id === "mix")!.max;
-    expect(effectReadback(doc, afterSet, setIntent)).toContain(`→${maxMix}`);
+    // The reverb was added too — the clamped landing value is the truth.
+    expect(effectReadback(doc, afterSet, setIntent)).toContain(`mix landed at ${maxMix}`);
 
     const remove = parseEffectIntent("remove reverb from the lead")!;
     const afterRemove = applyEffectIntent(afterSet, remove).execute(afterSet);

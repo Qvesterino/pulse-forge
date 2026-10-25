@@ -56,6 +56,7 @@ import { clarifyMessage } from "../intent/clarify-messages";
 import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { summarizeDocumentChange } from "./intent-readback";
+import { verifiedMutation } from "./verified-mutation";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import {
@@ -4075,6 +4076,20 @@ const RUNTIME_STAGE_TOOLS: ReadonlySet<string> = new Set([
   "kyx_meter",
 ]);
 
+/**
+ * TRUE when the tool's effect lands on the project DOCUMENT. The dry-run
+ * policy already answers exactly this question for every tool — dryRun is
+ * available precisely for the document mutations, and is refused for the
+ * tools that write the library, the runtime, the export file or the
+ * checkpoint repository. The classifier is SHARED with that policy on
+ * purpose: a second, parallel list would drift, and a drift here would turn
+ * the R-02 verification into a lie of its own.
+ */
+function mutatesProjectDocument(name: string, args: unknown): boolean {
+  const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  return dryRunPolicyRefusal(name, record) == null;
+}
+
 function dryRunPolicyRefusal(name: string, args: Record<string, unknown>): string | null {
   if (name === "kyx_batch" && Array.isArray(args.calls)) {
     for (const [index, entry] of args.calls.entries()) {
@@ -4421,6 +4436,9 @@ ${preview.text}`,
       })
     : null;
   mcpCallDepth += 1;
+  // R-02: the undo stack depth BEFORE the handler runs — the only honest
+  // witness of whether the tool recorded an undo step of its own.
+  const undoDepthBefore = ctx.undoStackLength();
   let result: McpToolResult;
   try {
     result = await executeMcpToolDispatch(ctx, name, args);
@@ -4444,6 +4462,20 @@ ${preview.text}`,
     throw error;
   }
   mcpCallDepth -= 1;
+  // R-02 — ONE PLACE WHERE A MUTATION BECOMES A CLAIM. Every handler above
+  // describes what it was ASKED to do; this is where the surface checks that
+  // the document backs it: an undo step that was never recorded is corrected,
+  // a success with an identical document is not a success, and a success
+  // without a read-back gets one. Handlers with their OWN value-level
+  // read-back are left alone — theirs knows more than the structural summary.
+  result = verifiedMutation({
+    before: docBefore,
+    after: ctx.getDoc(),
+    undoDepthBefore,
+    undoDepthAfter: ctx.undoStackLength(),
+    documentMutation: mutatesProjectDocument(name, args),
+    result,
+  });
   // P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
   // GAP-06): every caller — desktop stdio, web relay, QMR — executes
   // against the ONE relay session's document (the hub forwards to a single
@@ -5361,7 +5393,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             })
             .filter((line): line is string => line !== null)
             .join("; ");
-          return { text: `${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`, mutated: true };
+          return {
+            text: `${command.label}${readback ? ` — read-back: ${readback}` : ""} (one undo step)`,
+            mutated: true,
+          };
         }
         const intent = {
           effectType: effect,
@@ -5375,9 +5410,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         const command = applyEffectIntent(ctx.getDoc(), intent);
         ctx.execute(command);
         // Wave-8 verification: report the knob's ACTUAL landing value read
-        // from the post-execution document (clamps included).
+        // from the post-execution document (clamps included). The marker is
+        // the surface-wide convention — a handler that verified something
+        // says "read-back:", so the executor's structural fallback knows the
+        // difference between "verified" and "not verified".
         const readback = effectReadback(before, ctx.getDoc(), intent);
-        return { text: `${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`, mutated: true };
+        return {
+          text: `${command.label}${readback ? ` — read-back: ${readback}` : ""} (one undo step)`,
+          mutated: true,
+        };
       } catch (error) {
         // The intent appliers throw on no-target / no-change — over MCP that
         // must surface as an honest failure result, never a relay hang.

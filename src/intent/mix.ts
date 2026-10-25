@@ -1215,11 +1215,44 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
     const beforeFx = before.tracks
       .find((candidate) => candidate.id === trackId)
       ?.effects.find((effect) => effect.type === intent.effectType);
-    const pairs = readbackIds.map((paramId) => {
+    /** The EFFECTIVE value of a param: the explicit one, else the effect's
+     *  default, else undefined (the param does not exist for this effect). */
+    const paramValue = (
+      paramId: string,
+      source: { params: Record<string, number> } | undefined,
+    ): number | undefined => {
+      const explicit = source?.params[paramId];
+      if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
       const def = EFFECT_META[intent.effectType].params.find((param) => param.id === paramId);
-      const prev = beforeFx?.params[paramId] ?? def?.default ?? 0;
-      return `${paramId} ${fmt(prev)}→${fmt(fx.params[paramId] ?? def?.default ?? 0)}`;
-    });
+      return def?.default;
+    };
+    if (!beforeFx) {
+      // F-10: the effect was NOT on the track before — this is an ADD, not a
+      // transition. "mix 0.30→0.46" would claim a movement FROM a value the
+      // track never had; the truth is that the instance landed at 0.46.
+      const landed = readbackIds
+        .map((paramId) => {
+          const value = paramValue(paramId, fx);
+          return value === undefined ? null : `${paramId} landed at ${fmt(value)}`;
+        })
+        .filter((entry): entry is string => entry !== null);
+      entries.push(
+        landed.length > 0
+          ? `added ${intent.effectType} on ${track.name} (${landed.join(", ")})`
+          : `added ${intent.effectType} on ${track.name}`,
+      );
+      continue;
+    }
+    const pairs = readbackIds
+      .map((paramId) => {
+        const prev = paramValue(paramId, beforeFx);
+        const next = paramValue(paramId, fx);
+        if (prev === undefined && next === undefined) return null;
+        // A value that APPEARED is not a movement — the param was unset before.
+        if (prev === undefined) return `${paramId} appeared at ${fmt(next as number)}`;
+        return `${paramId} ${fmt(prev)}→${fmt(next ?? prev)}`;
+      })
+      .filter((entry): entry is string => entry !== null);
     if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name}`);
   }
   if (entries.length > 3) return `${entries.slice(0, 3).join(", ")} +${entries.length - 3}`;

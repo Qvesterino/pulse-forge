@@ -15,6 +15,7 @@ import {
 } from "../src/mcp/agentTrust";
 import { jobSnapshot, resetJobCenterForTests } from "../src/services/jobCenter";
 import { createDefaultProject } from "../src/project-model/schema";
+import { setProjectName } from "../src/commands/project";
 
 /**
  * AGENT TRUST LAYER (Wave 1/A) — risk classification, session checkpoints and
@@ -200,6 +201,12 @@ describe("agent session checkpoints", () => {
     // P1 per-operation risk: the audit records the CALL's risk, not the
     // conservative tool-level annotation. save/list/diff are reads.
     expect(readAgentAudit().every((entry) => entry.risk === "read")).toBe(true);
+    // The restore must really CHANGE the document to be a mutation, so the
+    // store is changed directly — no agent call, so no session starts and the
+    // checkpoint no longer matches the live document. (A restore of an
+    // unchanged document is a no-op, and R-02 reports it as one: "nothing
+    // changed (the document is identical); no undo step".)
+    h.store.execute(setProjectName(h.store.doc, "Renamed after the checkpoint"));
     // Restore changes the document — the session (and its checkpoint) starts.
     await h.call("kyx_checkpoint", { op: "restore", name: "clean-house" });
     expect(currentAgentSession()).not.toBeNull();
