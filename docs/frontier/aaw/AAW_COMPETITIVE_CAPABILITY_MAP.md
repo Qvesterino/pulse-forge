@@ -267,7 +267,62 @@ DAW".** It is: _make the loop trustworthy, make it hear, and prove it._
 
 ---
 
-## 9. What this document does not claim
+## 9. Business viability for a small team
+
+The competitive question is not only "can we ship it" — it is "can one maintainer afford it, and can
+a user trust it with their work".
+
+### 9.1 Running cost of the AI tier
+
+| Cost line                           | Local-first (our plan)                                                                                          | Cloud-assisted                         | Commercial generators (Suno/Udio/Stable) |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------- |
+| Inference                           | **~0** — CPU/CUDA on the user's machine                                                                         | per-minute API cost, scales with users | subscription; per-generation metering    |
+| Model download                      | 1.07 GB (LFM GGUF) / 2.14 GB (ONNX) / 6.75 MB (ONNX intent)                                                     | none                                   | none (cloud)                             |
+| Model licences                      | LFM v1.0 (<$10M revenue) · Whisper MIT/Apache-2.0 · ACE-Step MIT                                                | vendor terms                           | vendor terms                             |
+| Hardware floor                      | **6–16 GB VRAM / 64 GB RAM** — the assumed tier                                                                 | none extra                             | none (cloud)                             |
+| Failure cost of the tier going away | **low** — every capability has a deterministic fallback                                                         | **high** — bill and latency both move  | high                                     |
+| Cost of the _legacy_ tier           | **0** — REAPER 7.75 and Bitwig 5.2.5 ship no AI at all, so a zero-AI tier is a legitimate market position today | —                                      | —                                        |
+
+**The finding that matters for pricing:** the **AI tier is not the cost centre** — _support_ is. A
+feature that works offline and deterministically generates a support ticket only when the user's
+machine lacks WebGPU, or when a model pack fails its integrity check. A feature that requires a
+cloud call generates a support ticket every time a network fails.
+
+### 9.2 The five costs that are real
+
+1. **Distribution.** The model pack is a separate download with a licence record and a digest. It
+   must be an **explicit, opt-in, cancellable** download — never in the boot path (the web entry
+   budget is 1,070 KB against a 2.14 GB ONNX bundle). Every pack needs a checksum, a licence file
+   and a removal path.
+2. **Model licences.** The LFM revenue cliff is the binding constraint; Essentia/aubio copyleft is
+   the second; `Step-Audio-EditX` having no licence tag is the third. Licence review is a
+   **release gate**, not a task.
+3. **Maintenance.** Every model added is a permanent evaluation, licence, security and
+   re-validation obligation — the LFM2.5 family moved 1.2B → 350M → 230M → 2.6B → 24B in six
+   months, so "pin the version" means "re-run the suite on every base bump".
+4. **Onboarding.** A 2.14 GB speech pack is a big first-run ask. The first-run experience must
+   degrade gracefully: the product is complete with no model installed, and the download is
+   offered _after_ the user has seen what it would do.
+5. **Trust and support.** The AAW's promise is reversibility — so the support burden is dominated
+   by **"the agent did something I didn't want"**. Every capability therefore needs an obvious
+   undo, a readable receipt, and a cheap rejection. This is a support-cost decision, which is also
+   why the attention budget is a product metric.
+
+### 9.3 What this implies for pricing
+
+- The **free tier should be the deterministic DAW** — full DAW, no model, no account. That is a
+  viable market position today (REAPER, Bitwig), and it removes the trust problem for the majority
+  of users.
+- The **paid tier is the model pack plus the agent surface**, sold as _control_ (A/B, diffs,
+  receipts, automation), not as _generation_. Generation is a commodity with vendors who have
+  100× our training budget and a licensed catalogue.
+- **No per-generation metering** in the local-first tier, and **no cloud dependency** for the core
+  DAW — because the category's differentiator is trust, and trust does not survive a billing
+  failure.
+
+---
+
+## 10. What this document does not claim
 
 - It does not claim a competitor **cannot** do something — only that no such capability was found
   in the first-party pages reviewed on 2026-10-25.

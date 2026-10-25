@@ -9,6 +9,19 @@ vendor product page / release notes) · **B** independent or community measureme
 method · **C** secondary report without primary confirmation · **U** unverified.
 **Method key:** 🔧 code inspection · 📄 document read · 🌐 web fetch · 🔬 measured locally.
 
+**How to trace a claim end-to-end (the brief's claim ledger, spread across two files).**
+Each numbered row below is the _source_ half of a claim. The other halves live beside it:
+
+| Claim half               | Where it is                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Claim**                | the row's first column                                                                                                                         |
+| **Source**               | this ledger, §1–§5, with the URL and the date observed                                                                                         |
+| **Date**                 | "Date observed" column (all 2026-10-25 unless stated)                                                                                          |
+| **Confidence**           | the **Grade** column (A/B/C/U)                                                                                                                 |
+| **Assumptions**          | `AAW_STATE_OF_THE_ART_2026.md` §0 (what "SHIPS" means), and the per-document "what this does not claim" sections                               |
+| **Implications**         | `AAW_DECISION_LOG.md` §1–§2 (D-01…D-20) and `AAW_ROADMAP_2026_2029.md` §8 (the revised plan)                                                   |
+| **Falsification method** | `AAW_EXPERIMENT_BACKLOG.md` (E-01…E-13) and `AAW_EVALUATION_BENCHMARKS.md` (suites A–J) — every decision cites the experiment that can kill it |
+
 ---
 
 ## 1. The LFM candidate — the highest-stakes claims
