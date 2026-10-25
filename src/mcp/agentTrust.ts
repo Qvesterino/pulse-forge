@@ -99,22 +99,92 @@ export function toolRisk(name: string): ToolRisk {
 }
 
 /**
- * Per-call refinement of the static class, used ONLY for the session
- * decision (the audit log and the published annotations keep the static
- * class — a client reading `kyx_checkpoint` must still see it can restore).
+ * Per-call refinement of the static class. This is the risk the executor
+ * audits, starts a session checkpoint for, and publishes as `result.risk`
+ * (and `_meta["kyx/risk"]` on the wire). The static `annotations` stay
+ * conservative because a client reads them before it has arguments.
  *
- * `kyx_checkpoint` is the recovery tool: its `save` / `list` / `diff` ops do
- * not touch the document (the tool's own result reports `mutated: false`), so
- * they must not start a session or consume a session checkpoint. `restore`
- * and `delete` stay triggering — restore changes the document.
+ * The mappings below are deliberately operation-level: adding a track is not
+ * a removal, listing is not an edit, `kyx_generate replace` overwrites content,
+ * and a batch is as risky as its riskiest child.
  */
 export function effectiveRisk(name: string, args: unknown): ToolRisk {
   const risk = toolRisk(name);
-  if (name === "kyx_checkpoint" && args != null && typeof args === "object" && !Array.isArray(args)) {
-    const op = (args as { op?: unknown }).op;
-    if (op === "save" || op === "list" || op === "diff") return "read";
+  const record =
+    args != null && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+  const op = typeof record.op === "string" ? record.op : typeof record.action === "string" ? record.action : "";
+  switch (name) {
+    case "kyx_checkpoint":
+      return op === "save" || op === "list" || op === "diff" ? "read" : risk;
+    case "kyx_generate":
+      return record.replaceMode === "replace" ? "destructive" : "mutate";
+    case "kyx_tracks":
+      return op === "listPresets" ? "read" : op === "remove" ? "destructive" : "mutate";
+    case "kyx_fx":
+      return op === "remove" ? "destructive" : "mutate";
+    case "kyx_sections":
+      return op === "list" ? "read" : op === "remove" ? "destructive" : "mutate";
+    case "kyx_markers":
+      return op === "list" ? "read" : op === "remove" ? "destructive" : "mutate";
+    case "kyx_pattern":
+      return op === "list" ? "read" : "mutate";
+    case "kyx_notes":
+      return op === "list" ? "read" : op === "delete" ? "destructive" : "mutate";
+    case "kyx_automation":
+      return op === "clearLane" || op === "removeLane" ? "destructive" : "mutate";
+    case "kyx_clips":
+      if (op === "list" || op === "audioList" || op === "copy") return "read";
+      if (op === "delete" || op === "cut" || op === "deleteRipple" || op === "audioDelete") return "destructive";
+      return "mutate";
+    case "kyx_routing":
+      return op === "list" ? "read" : op === "removeReturn" ? "destructive" : "mutate";
+    case "kyx_takes":
+      return op === "list" ? "read" : op === "deleteTake" ? "destructive" : "mutate";
+    case "kyx_master":
+      if (op === "status") return "read";
+      if (op === "stems") return "runtime";
+      if (op === "remove") return "destructive";
+      if (op === "ab") {
+        const action = typeof record.action === "string" ? record.action : "list";
+        if (action === "list" || action === "compare") return "read";
+        if (action === "save") return "runtime";
+      }
+      return "mutate";
+    case "kyx_loudness":
+      return op === "measure" ? "runtime" : "mutate";
+    case "kyx_mix_idea":
+      if (record.apply === true) return "mutate";
+      return record.preview === true ? "runtime" : "read";
+    case "kyx_blind_ab":
+      return op === "record" || op === "reset" ? "runtime" : "read";
+    case "kyx_transport":
+      return op === "state" ? "read" : "runtime";
+    case "kyx_export":
+      return record.autofix === true ? "mutate" : "runtime";
+    case "kyx_unsuno":
+      return op === "similarity" ? "read" : "mutate";
+    case "kyx_batch": {
+      if (!Array.isArray(record.calls)) return "mutate";
+      const rank: Record<ToolRisk, number> = { read: 0, runtime: 1, mutate: 2, destructive: 3 };
+      let highest: ToolRisk = "read";
+      for (const entry of record.calls) {
+        if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
+          highest = "mutate";
+          continue;
+        }
+        const call = entry as { tool?: unknown; args?: unknown };
+        if (typeof call.tool !== "string") {
+          highest = "mutate";
+          continue;
+        }
+        const child = effectiveRisk(call.tool, call.args);
+        if (rank[child] > rank[highest]) highest = child;
+      }
+      return highest;
+    }
+    default:
+      return risk;
   }
-  return risk;
 }
 
 /** True when a call with this risk changes the project document. */

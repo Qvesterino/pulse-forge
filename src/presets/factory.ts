@@ -4,6 +4,7 @@ import { CHORAL_FACTORY_PRESETS } from "./choral-factory";
 import { LADIC_FACTORY_PRESETS } from "./ladic-factory";
 import { HLAS_FACTORY_PRESETS } from "./hlas-factory";
 import { STRK_FACTORY_PRESETS, CINK_FACTORY_PRESETS } from "./percussion-factory";
+import { STRUNA_FACTORY_PRESETS } from "./struna-factory";
 import {
   FACTORY_808_VELOCITY,
   FACTORY_ACID_VELOCITY,
@@ -9314,6 +9315,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
   ...HLAS_FACTORY_PRESETS,
   ...STRK_FACTORY_PRESETS,
   ...CINK_FACTORY_PRESETS,
+  ...STRUNA_FACTORY_PRESETS,
 ];
 
 export const DRUM_FACTORY_PRESETS: DrumSynthPreset[] = [

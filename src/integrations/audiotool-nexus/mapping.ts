@@ -318,6 +318,7 @@ export const DEFAULT_GM_PROGRAM_BY_INSTRUMENT: Readonly<Record<InstrumentKind, n
   hlas: 85,
   strk: 38,
   cink: 42,
+  struna: 24,
 };
 
 type DrumMappingResult =

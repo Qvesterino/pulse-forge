@@ -44,6 +44,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   hlas: "HL",
   strk: "ŠT",
   cink: "CN",
+  struna: "ST",
 };
 
 export function trackBadge(track: Track): string {

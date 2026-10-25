@@ -39,6 +39,29 @@ The audit snapshot above is read-only history. The three highest-value actions w
 
 Verification at the follow-up snapshot: `npx vitest run` over 10 affected MCP/intent files → **359 tests passed**; `npm run verify:mcp-mirrors` → in sync; `npm run typecheck` has no errors in the changed MCP/intent files (pre-existing errors remain in other in-flight work). The report’s findings below should be read with this follow-up in mind.
 
+### P1 follow-up (2026-10-25)
+
+- **F-10 (per-operation risk):** `effectiveRisk(name, args)` now refines risk per op (add vs remove, list vs edit, `kyx_generate replace`, `kyx_export autofix`, `kyx_batch` as its riskiest child). The executor audits that risk, starts session checkpoints from it, and returns `risk` on every call; the web transport publishes `_meta["kyx/risk"]`. Static tool annotations remain conservative by design.
+- **F-11 (structured receipts):** the eight primary tools now declare output schemas: `kyx_state`, `kyx_intent`, `kyx_tracks`, `kyx_fx`, `kyx_clips`, `kyx_automation`, `kyx_master`, `kyx_export`. Count is now **39 tools / 34 output schemas / 5 text-first** (remaining: `kyx_generate`, `kyx_pattern`, `kyx_checkpoint`, `kyx_song`, `kyx_unsuno`). The new schemas guarantee `status` + `stage` plus the receipt/read-back fields; family-specific fields remain additive.
+- **F-13 (transport discovery):** new `kyx_state {subject:"capabilities"}` and `kyx://session/capabilities` report the hooks this window actually has (export, meters, loudness, render/diagnose, gallery, SFZ, UN-SUNO PCM, save, offline mix render, undo frames, destructive unlock). **Cancellation is explicitly advertised as unsupported** — no cooperative MCP abort is exposed yet, so the capability is not faked.
+- **Real-audio hardening:** `npm run verify:param-readback` passes on real offline DSP renders (saturation, tone, width, level, and the honest unmeasured time case). `kyx_save` is now covered twice: against the real repository + autosave debouncer over fake IndexedDB (`stage:"persisted"` only after flush; reload sees the mutation), and end-to-end in Chromium via `npm run verify:mcp-save` (real IndexedDB flush + reload, PASS; CI gate). The measured DSP read-back gate is run locally (`npm run verify:param-readback`).
+
+Final P1 verification: 17 affected MCP/intent files → **439 tests passed**; `npm run verify:mcp-mirrors` reports in sync; real-browser `npm run verify:param-readback` reports PASS on the re-run. The P1 items still open are the **five** remaining text-only tools and **actual cooperative cancellation**; neither is claimed as done.
+
+### P2 follow-up (2026-10-25)
+
+Delivered with explicit gates rather than blanket parity:
+
+- **Save / save-as:** `kyx_save {"op":"saveAs","name":"...","confirm":true}` flushes the current project, duplicates it under a new id, renames the copy, and leaves the current project open. It returns `stage:"persisted"` plus the new `projectId`. Save-as during a collab session is refused.
+- **Project discovery:** `kyx_state {"subject":"projects"}` lists the saved library (id, name, BPM, track count, updatedAt) without switching anything.
+- **Open:** intentionally **not exposed** to MCP. Switching the open project tears down and rebuilds services, so it stays a human ProjectBrowser action; the capability block says so.
+- **Track reorder:** `kyx_tracks {"op":"move","trackId":...,"relativeTo":...,"where":"before|after"}` uses the canonical `moveTrackAdjacent` command and returns the before/after slots.
+- **Clip pitch:** `kyx_clips {"op":"audioUpdate","pitchSemitones":-24..24}` edits the clip’s independent transpose through `updateAudioClip`; out-of-range values are rejected, not clamped.
+- **Selected-track context:** the IntentPanel rewrites “this track” / “the selected channel” to the ONE mix target that resolves exactly to the selected track before routing. A family that resolves to several tracks is never used (no silent fan-out); without an exact target the router clarifies.
+- **Audio import / recording:** intentionally **not exposed**. Audio import needs a human file picker and has no binary MCP channel under the 1 MB body cap; recording needs a device-permission gesture and the ArrangementPanel recorder state. Both are named in `unavailableByDesign` instead of being advertised as working.
+
+P2 verification: save-as copy + project list against the real repository, plus the Chromium `verify:mcp-save` gate now covering the copy in real IndexedDB; track move; clip pitch acceptance + rejection; selected-track rewrite/fan-out refusal. The focused P2 run passed 23 tests; the wider affected suite passed 447 tests across 18 files. Mirrors and the agent manifest were regenerated.
+
 ---
 
 ## 1. Executive summary

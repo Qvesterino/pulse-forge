@@ -9,7 +9,7 @@ import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
 import { mcpRenderAudioPreview } from "./audio-preview";
 import { loadUserSampleMono } from "./sample-mono";
-import { flushServicesSave } from "./save-now";
+import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "./save-now";
 import type { Services } from "../services";
 
 /**
@@ -122,6 +122,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     loadSampleMono: (sampleId) => loadUserSampleMono(services, sampleId),
     // kyx_save: force the autosave pipeline and report the durable result.
     saveNow: () => flushServicesSave(services),
+    listProjects: () => listSavedProjects(services),
+    saveAsProject: (name) => saveProjectAsCopy(services, name),
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
     shareToGallery: async ({ title, author, tags, agent }) => {

@@ -15,6 +15,8 @@ import { createLadicRuntime } from "./ladicNode";
 import { createLadicFallbackRuntime } from "./ladicFallback";
 import { createHlasRuntime } from "./hlasNode";
 import { createHlasFallbackRuntime } from "./hlasFallback";
+import { createStrunaRuntime } from "./strunaNode";
+import { createStrunaFallbackRuntime } from "./strunaFallback";
 import { createStrkRuntime } from "./strkNode";
 import { createStrkFallbackRuntime } from "./strkFallback";
 import { createCinkRuntime } from "./cinkNode";
@@ -51,6 +53,7 @@ import {
   choralParams,
   ladicParams,
   hlasParams,
+  strunaParams,
   strkParams,
   cinkParams,
   WAVE_NAMES,
@@ -6971,6 +6974,36 @@ const hlas: InstrumentDefinition = {
 };
 
 /**
+ * STRUNA (ADR 0061) — extended Karplus-Strong. The worklet runs the string
+ * model (pick comb, damping loop, pitch-consistent decay, body
+ * resonances); without the module a detuned saw through a bandpass keeps
+ * the track audible.
+ */
+const struna: InstrumentDefinition = {
+  kind: "struna",
+  name: "STRUNA",
+  params: strunaParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("struna", ctx)) {
+      return createStrunaRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "struna-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createStrunaFallbackRuntime(ctx, track);
+  },
+};
+
+/**
  * ŠTRK (ADR 0060) — the snare designer: SNAP/BODY/WIRES/SNAPPY layers.
  * Without the module a noise-burst + sine body keeps the track audible.
  */
@@ -7066,6 +7099,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   choral,
   ladic,
   hlas,
+  struna,
   strk,
   cink,
 };

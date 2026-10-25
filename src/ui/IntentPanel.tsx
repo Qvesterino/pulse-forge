@@ -19,6 +19,7 @@ import { notifyOnboardingProgress } from "./OnboardingHint";
 import { warmFactoryPresets } from "../presets/factory-loader";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
+import { rewriteSelectedTrackReference } from "../intent/selected-track";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { intentCandidateBudget } from "../intent/candidate-budget";
 import { orderClarificationChoices } from "../intent/reaction-choice-bias";
@@ -4101,9 +4102,14 @@ export function IntentPanel() {
       // Pre-routed entry: the local-model fallback (below) re-enters with an
       // adapted route so the big dispatch chain runs exactly once.
       const routeSelection = selection.getState();
+      // Deictic track context: "lower this track by 3 dB" has no family word.
+      // Rewrite only when the selection resolves to EXACTLY one mix target;
+      // otherwise the sentence is left untouched so the router clarifies
+      // rather than fanning out to siblings.
+      const routedText = rewriteSelectedTrackReference(source, doc, routeSelection.trackIds[0] ?? null).text;
       const route =
         preRoutedRef.current ??
-        routeIntentText(source, doc, {
+        routeIntentText(routedText, doc, {
           hasSelectedStepSelection: Boolean(routeSelection.stepSelection),
           selectedClipId: routeSelection.clipIds.length === 1 ? routeSelection.clipIds[0] : null,
           selectedRange: routeSelection.timeRange,

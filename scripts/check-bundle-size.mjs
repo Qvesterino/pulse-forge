@@ -694,6 +694,21 @@ let cinkWorkletKb = 0;
 }
 console.log(`[size-budget] CINK worklet: ${cinkWorkletKb.toFixed(0)} KB (budget ${CINK_WORKLET_BUDGET_KB})`);
 
+// STRUNA string-modeling worklet: lazy INSTRUMENT module (ADR 0061),
+// loaded only for projects with a STRUNA track. A delay line + biquads;
+// 32 KB is the ceiling (measured ~11 KB at implementation).
+const STRUNA_WORKLET_BUDGET_KB = 32;
+let strunaWorkletKb = 0;
+{
+  const path = join(dist, "struna-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing STRUNA worklet: dist/struna-worklet.js");
+    process.exit(1);
+  }
+  strunaWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] STRUNA worklet: ${strunaWorkletKb.toFixed(0)} KB (budget ${STRUNA_WORKLET_BUDGET_KB})`);
+
 // SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
 // (loaded only for projects that use the effect), so it carries its own
 // budget row instead of inflating the core boot bundle. All-pass-only DSP —

@@ -3,6 +3,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { ProjectRepository } from "../src/persistence/ProjectRepository";
 import { createAutosaveDebouncer } from "../src/persistence/autosave-debouncer";
+import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "../src/mcp/save-now";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -192,5 +193,66 @@ describe("mcp mutation → engine projection → durable persistence (GAP-05)", 
     const reloaded = await repo.load(start.id);
     expect(reloaded!.markers).toHaveLength(start.markers.length);
     expect(store.saveStatus).toBe("saved");
+  });
+
+  it("kyx_save reports stage:persisted only after the real repository flush", async () => {
+    const start = bootDoc();
+    const store = new ProjectStore(start);
+    const engine = engineSpy();
+    const repo = new ProjectRepository();
+    const { flushSave } = wirePersistence(store, engine, repo);
+    const ctx: McpToolContext = {
+      ...storeCtx(store),
+      saveNow: () => flushServicesSave({ flushSave, store }),
+    };
+
+    await addMarker(ctx);
+    // The mutation alone only ARMS the debouncer; it is not durable yet.
+    expect(store.saveStatus).toBe("dirty");
+    const result = await executeMcpTool(ctx, "kyx_save", {});
+    expect(result.isError, result.text).not.toBe(true);
+    expect(result.mutated).toBe(false);
+    expect(result.stage).toBe("persisted");
+    expect(result.data).toMatchObject({ ok: true, saveStatus: "saved" });
+    expect(store.saveStatus).toBe("saved");
+    const reloaded = await repo.load(start.id);
+    expect(reloaded!.markers).toHaveLength(start.markers.length + 1);
+  });
+
+  it("lists saved projects and saves a durable copy without switching the open project", async () => {
+    const start = bootDoc();
+    const store = new ProjectStore(start);
+    const engine = engineSpy();
+    const repo = new ProjectRepository();
+    const { flushSave } = wirePersistence(store, engine, repo);
+    const ctx: McpToolContext = {
+      ...storeCtx(store),
+      listProjects: () => listSavedProjects({ repo }),
+      saveAsProject: (name) => saveProjectAsCopy({ flushSave, store, repo, collab: null }, name),
+    };
+
+    await repo.save(start);
+    const listed = await executeMcpTool(ctx, "kyx_state", { subject: "projects" });
+    expect(listed.isError, listed.text).not.toBe(true);
+    expect(
+      (listed.data as { projects: Array<{ id: string }> }).projects.some((project) => project.id === start.id),
+    ).toBe(true);
+
+    const refused = await executeMcpTool(ctx, "kyx_save", { op: "saveAs", name: "Copy" });
+    expect(refused.isError).toBe(true);
+    expect(refused.errorCode).toBe("POLICY_REFUSED");
+
+    const saved = await executeMcpTool(ctx, "kyx_save", { op: "saveAs", name: "Copy", confirm: true });
+    expect(saved.isError, saved.text).not.toBe(true);
+    expect(saved.stage).toBe("persisted");
+    expect(saved.mutated).toBe(false);
+    const data = saved.data as { projectId: string; name: string };
+    expect(data.projectId).not.toBe(start.id);
+    expect(data.name).toBe("Copy");
+    expect(store.doc.id).toBe(start.id);
+    expect(store.doc.name).toBe(start.name);
+    const copy = await repo.load(data.projectId);
+    expect(copy?.name).toBe("Copy");
+    expect(copy?.id).not.toBe(start.id);
   });
 });

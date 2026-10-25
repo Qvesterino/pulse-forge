@@ -122,8 +122,8 @@
     "listening:v1v3": "node scripts/render-v1v3-listening.mjs",
     "mcp:demo": "vite-node scripts/mcp-agent-demo.mts",
     "pca:module": "node scripts/generate-pca-projection-module.mjs",
-    "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas && npm run build:strk && npm run build:cink",
-    "predev": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas && npm run build:strk && npm run build:cink",
+    "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas && npm run build:strk && npm run build:cink && npm run build:struna",
+    "predev": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics && npm run build:tsar && npm run build:bass-harmonic && npm run build:kopa && npm run build:skrutka && npm run build:spectral && npm run build:rezonans && npm run build:sample-pack-manifest && npm run build:worklet-manifest && npm run build:choral && npm run build:ladic && npm run build:hlas && npm run build:strk && npm run build:cink && npm run build:struna",
     "prepare": "node scripts/setup-hooks.mjs",
     "presets:fx-loudness": "node scripts/measure-fx-preset-loudness.mjs",
     "presets:loudness": "node scripts/measure-preset-loudness.mjs",
@@ -199,6 +199,7 @@
     "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public",
     "verify:intent-model": "node scripts/verify-intent-model-browser.mts",
     "verify:param-readback": "node scripts/verify-param-readback-browser.mts",
+    "verify:mcp-save": "node scripts/verify-mcp-save-browser.mjs",
     "intent:cycle": "vite-node scripts/intent-cycle.mts",
     "build:choral": "node scripts/build-choral-worklet.mjs",
     "intent:degree-parity": "node scripts/check-intent-degree-parity.mjs",
@@ -206,7 +207,8 @@
     "build:ladic": "node scripts/build-ladic-worklet.mjs",
     "build:hlas": "node scripts/build-hlas-worklet.mjs",
     "build:strk": "node scripts/build-strk-worklet.mjs",
-    "build:cink": "node scripts/build-cink-worklet.mjs"
+    "build:cink": "node scripts/build-cink-worklet.mjs",
+    "build:struna": "node scripts/build-struna-worklet.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

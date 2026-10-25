@@ -200,6 +200,65 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["instruction"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        route: {
+          type: "string",
+        },
+        moved: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 128,
+        },
+        added: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 128,
+        },
+        unchanged: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 128,
+        },
+        skipped: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 128,
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -209,7 +268,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_state",
     description:
-      "Read-only project snapshot: tempo, key, time signature, track list, markers, groove, the ACTIVE pattern's step grid, the arrangement scenes, the send routing map (returns + per-track send levels), the undo history, or the FX chain of one family. Never mutates.",
+      "Read-only project snapshot: tempo, key, time signature, track list, markers, groove, the ACTIVE pattern's step grid, the arrangement scenes, the send routing map (returns + per-track send levels), the undo history, the FX chain of one family, or this session's transport capabilities (hooks + cancellation contract). Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
@@ -231,6 +290,8 @@ export const MCP_TOOL_DEFS = [
             "reference",
             "model-misses",
             "automation",
+            "capabilities",
+            "projects",
           ],
           description: "Which part of the project state to return",
         },
@@ -253,6 +314,55 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["subject"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        subject: {
+          type: "string",
+        },
+        name: {
+          type: "string",
+        },
+        bpm: {
+          type: "number",
+        },
+        capabilities: {
+          type: "object",
+          additionalProperties: true,
+        },
+        projects: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 500,
+        },
+        mixer: {
+          type: ["object", "null"],
+          additionalProperties: true,
+        },
+      },
+      required: ["status", "stage", "subject"],
+    },
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -262,10 +372,25 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_save",
     description:
-      "Force the autosave pipeline to flush the CURRENT project to the repository and report the durable result. Use this before ending an agent session when you need a persistence receipt; `mutated` is false because the document is unchanged. Refused honestly on transports without a repository flush hook.",
+      'Force the autosave pipeline to flush the CURRENT project to the repository and report the durable result. `op:"saveAs"` saves a COPY under `name` and leaves the current project open (switching the open document is a human ProjectBrowser action); it requires `confirm:true`. Use this before ending an agent session when you need a persistence receipt; `mutated` is false. Refused honestly on transports without a repository hook.',
     inputSchema: {
       type: "object",
       properties: {
+        op: {
+          type: "string",
+          enum: ["save", "saveAs"],
+          description: "Default save (flush the current project)",
+        },
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: 120,
+          description: "Copy name — required for saveAs; the current project keeps its name and stays open",
+        },
+        confirm: {
+          type: "boolean",
+          description: "saveAs only: true acknowledges that a NEW project record will be created",
+        },
         requestId: {
           type: "string",
           maxLength: 128,
@@ -292,6 +417,15 @@ export const MCP_TOOL_DEFS = [
         },
         lastSavedAt: {
           type: ["string", "null"],
+        },
+        projectId: {
+          type: "string",
+        },
+        name: {
+          type: "string",
+        },
+        note: {
+          type: "string",
         },
         stage: {
           type: "string",
@@ -627,6 +761,39 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["format"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        format: {
+          type: "string",
+        },
+        durationSeconds: {
+          type: ["number", "null"],
+        },
+        sizeBytes: {
+          type: ["integer", "null"],
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -743,7 +910,8 @@ export const MCP_TOOL_DEFS = [
         replaceMode: {
           type: "string",
           enum: ["new", "replace"],
-          description: "replace = overwrite the active pattern in place (default: add a new pattern)",
+          description:
+            "replace = overwrite the active pattern in place (requires the destructive unlock; default: add a new pattern)",
         },
         roles: {
           type: "array",
@@ -1080,6 +1248,54 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["effect", "action"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        effect: {
+          type: "string",
+        },
+        action: {
+          type: "string",
+        },
+        trackId: {
+          type: "string",
+        },
+        trackIds: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 256,
+        },
+        instance: {
+          type: "integer",
+          minimum: 1,
+          maximum: 128,
+        },
+        fxId: {
+          type: "string",
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -1379,7 +1595,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_tracks",
     description:
-      "Track CRUD + absolute mixer setters: add a drum or instrument track, remove/rename by family or exact trackId (group tracks are not addressable here — removing the last track is declined; duplicate clones one track with its FX and routing), or set mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value boolean). set* ops apply to every track the family resolves to.",
+      "Track CRUD + absolute mixer setters: add a drum or instrument track, remove/rename by family or exact trackId (group tracks are not addressable here — removing the last track is declined; duplicate clones one track with its FX and routing), or set mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value boolean), or MOVE a track before/after another stable track id. set* ops apply to every track the family resolves to.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1397,6 +1613,7 @@ export const MCP_TOOL_DEFS = [
             "setPan",
             "setMute",
             "setSolo",
+            "move",
           ],
         },
         presetName: {
@@ -1448,6 +1665,7 @@ export const MCP_TOOL_DEFS = [
             "hlas",
             "strk",
             "cink",
+            "struna",
           ],
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
@@ -1477,6 +1695,17 @@ export const MCP_TOOL_DEFS = [
           type: "boolean",
           description: "For setMute/setSolo — true = on",
         },
+        relativeTo: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "For move — stable id of the track to move next to (from kyx_state tracks)",
+        },
+        where: {
+          type: "string",
+          enum: ["before", "after"],
+          description: "For move — place the track before or after relativeTo (default after)",
+        },
         requestId: {
           type: "string",
           maxLength: 128,
@@ -1490,6 +1719,46 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        family: {
+          type: "string",
+        },
+        trackId: {
+          type: "string",
+        },
+        trackIds: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 256,
+        },
+        name: {
+          type: "string",
+        },
+      },
+      required: ["status", "stage"],
     },
     annotations: {
       readOnlyHint: false,
@@ -2700,6 +2969,7 @@ export const MCP_TOOL_DEFS = [
             "hlas",
             "strk",
             "cink",
+            "struna",
           ],
           maxLength: 32,
           description: "Instrument kind for subject:instrument (e.g. kopa or tsar) — see subject:instruments",
@@ -3594,6 +3864,44 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        op: {
+          type: "string",
+        },
+        laneId: {
+          type: "string",
+        },
+        points: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 4096,
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3701,6 +4009,12 @@ export const MCP_TOOL_DEFS = [
           minimum: 0,
           description: "For audioUpdate — fade-out seconds",
         },
+        pitchSemitones: {
+          type: "number",
+          minimum: -24,
+          maximum: 24,
+          description: "For audioUpdate — clip pitch in semitones (−24..+24; 0 clears the transpose)",
+        },
         reverse: {
           type: "boolean",
           description: "For audioUpdate — play the clip backwards",
@@ -3763,6 +4077,52 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        op: {
+          type: "string",
+        },
+        clipId: {
+          type: "string",
+        },
+        arrangementClips: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 256,
+        },
+        audioClips: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 256,
+        },
+      },
+      required: ["status", "stage"],
     },
     annotations: {
       readOnlyHint: false,
@@ -5197,6 +5557,39 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        op: {
+          type: "string",
+        },
+        profileId: {
+          type: "string",
+        },
+        applied: {
+          type: "boolean",
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -5573,6 +5966,13 @@ export const MCP_RESOURCE_DEFS = [
     mimeType: "text/plain",
   },
   {
+    uri: "kyx://session/capabilities",
+    name: "Session capabilities",
+    description:
+      "What THIS transport can actually execute: export, meters, loudness, render/diagnose, gallery, SFZ import, UN-SUNO PCM, save, offline mix render, undo frames, destructive unlock, and the current cancellation contract.",
+    mimeType: "application/json",
+  },
+  {
     uri: "kyx://playbook",
     name: "Producer playbook",
     description:
@@ -5829,11 +6229,14 @@ async function handleSingleRequest(hub, rpc, negotiatedProtocolVersion) {
       }
       const hasStructuredContent =
         result.data != null && typeof result.data === "object" && !Array.isArray(result.data);
+      const meta = {};
+      if (typeof result.stage === "string") meta["kyx/stage"] = result.stage;
+      if (typeof result.risk === "string") meta["kyx/risk"] = result.risk;
       const payload = {
         content,
         isError:
           result.isError === true || (result.mutated === false && String(result.text ?? "").startsWith("unknown")),
-        ...(typeof result.stage === "string" ? { _meta: { "kyx/stage": result.stage } } : {}),
+        ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
       };
       const supportsStructuredResults = supportsStructuredOutput(requestVersion);
       if (supportsStructuredResults && hasStructuredContent) payload.structuredContent = result.data;

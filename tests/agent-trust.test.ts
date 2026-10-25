@@ -11,6 +11,7 @@ import {
   subscribeAgentTrust,
   summarizeToolArgs,
   toolAnnotations,
+  effectiveRisk,
 } from "../src/mcp/agentTrust";
 import { jobSnapshot, resetJobCenterForTests } from "../src/services/jobCenter";
 import { createDefaultProject } from "../src/project-model/schema";
@@ -67,6 +68,18 @@ describe("tool risk classification", () => {
       destructiveHint: false,
       idempotentHint: false,
     });
+  });
+
+  it("refines risk per operation, not per tool", () => {
+    expect(effectiveRisk("kyx_tracks", { op: "addDrum" })).toBe("mutate");
+    expect(effectiveRisk("kyx_tracks", { op: "remove" })).toBe("destructive");
+    expect(effectiveRisk("kyx_clips", { op: "list" })).toBe("read");
+    expect(effectiveRisk("kyx_clips", { op: "deleteRipple" })).toBe("destructive");
+    expect(effectiveRisk("kyx_generate", { replaceMode: "replace" })).toBe("destructive");
+    expect(effectiveRisk("kyx_generate", {})).toBe("mutate");
+    expect(effectiveRisk("kyx_state", { subject: "capabilities" })).toBe("read");
+    expect(effectiveRisk("kyx_export", { autofix: true })).toBe("mutate");
+    expect(effectiveRisk("kyx_batch", { calls: [{ tool: "kyx_tracks", args: { op: "remove" } }] })).toBe("destructive");
   });
 });
 
@@ -184,13 +197,14 @@ describe("agent session checkpoints", () => {
     await h.call("kyx_checkpoint", { op: "list" });
     await h.call("kyx_checkpoint", { op: "diff", name: "clean-house" });
     expect(currentAgentSession()).toBeNull();
-    // The audit still records the STATIC class — a client reading the tool
-    // list must see that kyx_checkpoint can restore.
-    expect(readAgentAudit().every((entry) => entry.risk === "mutate")).toBe(true);
+    // P1 per-operation risk: the audit records the CALL's risk, not the
+    // conservative tool-level annotation. save/list/diff are reads.
+    expect(readAgentAudit().every((entry) => entry.risk === "read")).toBe(true);
     // Restore changes the document — the session (and its checkpoint) starts.
     await h.call("kyx_checkpoint", { op: "restore", name: "clean-house" });
     expect(currentAgentSession()).not.toBeNull();
     expect(currentAgentSession()!.mutations).toBe(1);
+    expect(readAgentAudit().at(-1)!.risk).toBe("mutate");
   });
 
   it("starts a fresh session (and checkpoint) when the agent changes", async () => {

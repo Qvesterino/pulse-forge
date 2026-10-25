@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(39);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(26);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(34);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );

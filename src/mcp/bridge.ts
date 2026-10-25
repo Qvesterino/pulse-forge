@@ -66,6 +66,8 @@ export interface McpBridgeDeps {
   importSamples?: NonNullable<McpToolContext["importSamples"]>;
   loadSampleMono?: NonNullable<McpToolContext["loadSampleMono"]>;
   saveNow?: NonNullable<McpToolContext["saveNow"]>;
+  listProjects?: NonNullable<McpToolContext["listProjects"]>;
+  saveAsProject?: NonNullable<McpToolContext["saveAsProject"]>;
 }
 
 export class McpBridge {
@@ -174,6 +176,8 @@ export class McpBridge {
         importSamples: this.deps.importSamples,
         loadSampleMono: this.deps.loadSampleMono,
         saveNow: this.deps.saveNow,
+        listProjects: this.deps.listProjects,
+        saveAsProject: this.deps.saveAsProject,
         allowDestructive: mcpAllowDestructive,
       },
       "web-relay",

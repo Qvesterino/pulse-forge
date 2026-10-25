@@ -20,12 +20,13 @@ import {
   prepareAgentCall,
   summarizeToolArgs,
   toolAnnotations,
-  toolRisk,
   type McpToolAnnotations,
+  type ToolRisk,
 } from "./agentTrust";
 import { startJob } from "../services/jobCenter";
 import { setMasterConfig } from "../commands/master";
 import { setInstrumentParam } from "../commands/instrument";
+import { moveTrackAdjacent } from "../commands/tracks";
 import { slipAudioClip, stretchAudioClip, setAudioClipsMute } from "../commands/audioClips";
 import {
   crossfadeAudioClips,
@@ -1471,6 +1472,127 @@ const OUTPUT_GROOVE: McpOutputSchema = {
     "reason",
   ],
 };
+/**
+ * Shared receipt envelope for the primary tools that used to be text-only.
+ * Tool-specific fields remain additive (`additionalProperties: true`); what
+ * is GUARANTEED is the completion status, the stage, and (when applicable)
+ * the read-back that proved the change. This is the first schema batch, not
+ * a claim that every family-specific field is pinned yet.
+ */
+const RECEIPT_STAGE_ENUM = [
+  "read",
+  "runtime",
+  "applied",
+  "persisted",
+  "rendered",
+  "delivered",
+  "dry-run",
+  "replayed",
+  "noop",
+] as const;
+const OUTPUT_RECEIPT: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    status: { type: "string" },
+    stage: { type: "string", enum: [...RECEIPT_STAGE_ENUM] },
+    changed: { type: "boolean" },
+    readback: { type: "array", items: { type: "string" }, maxItems: 32 },
+  },
+  required: ["status", "stage"],
+};
+
+function receiptSchema(extra: Record<string, unknown>): McpOutputSchema {
+  return { ...OUTPUT_RECEIPT, properties: { ...OUTPUT_RECEIPT.properties, ...extra } };
+}
+
+const OUTPUT_STATE: McpOutputSchema = {
+  ...receiptSchema({
+    subject: { type: "string" },
+    name: { type: "string" },
+    bpm: { type: "number" },
+    capabilities: { type: "object", additionalProperties: true },
+    projects: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 500 },
+    mixer: { type: ["object", "null"], additionalProperties: true },
+  }),
+  required: ["status", "stage", "subject"],
+};
+const OUTPUT_INTENT = receiptSchema({
+  route: { type: "string" },
+  moved: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
+  added: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
+  unchanged: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
+  skipped: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
+});
+const OUTPUT_TRACKS = receiptSchema({
+  family: { type: "string" },
+  trackId: { type: "string" },
+  trackIds: { type: "array", items: { type: "string" }, maxItems: 256 },
+  name: { type: "string" },
+});
+const OUTPUT_FX = receiptSchema({
+  effect: { type: "string" },
+  action: { type: "string" },
+  trackId: { type: "string" },
+  trackIds: { type: "array", items: { type: "string" }, maxItems: 256 },
+  instance: { type: "integer", minimum: 1, maximum: 128 },
+  fxId: { type: "string" },
+});
+const OUTPUT_CLIPS = receiptSchema({
+  op: { type: "string" },
+  clipId: { type: "string" },
+  arrangementClips: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 256 },
+  audioClips: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 256 },
+});
+const OUTPUT_AUTOMATION = receiptSchema({
+  op: { type: "string" },
+  laneId: { type: "string" },
+  points: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 4096 },
+});
+const OUTPUT_MASTER = receiptSchema({
+  op: { type: "string" },
+  profileId: { type: "string" },
+  applied: { type: "boolean" },
+});
+const OUTPUT_EXPORT = receiptSchema({
+  format: { type: "string" },
+  durationSeconds: { type: ["number", "null"] },
+  sizeBytes: { type: ["integer", "null"] },
+});
+const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
+  kyx_state: OUTPUT_STATE,
+  kyx_intent: OUTPUT_INTENT,
+  kyx_tracks: OUTPUT_TRACKS,
+  kyx_fx: OUTPUT_FX,
+  kyx_clips: OUTPUT_CLIPS,
+  kyx_automation: OUTPUT_AUTOMATION,
+  kyx_master: OUTPUT_MASTER,
+  kyx_export: OUTPUT_EXPORT,
+};
+const RECEIPT_TOOLS: ReadonlySet<string> = new Set(Object.keys(RECEIPT_SCHEMAS));
+
+/** Guarantee the receipt fields the first schema batch declares. Tool-specific
+ * fields are preserved; a handler that already stated a richer `status` keeps
+ * it. The stage is the observed stage, never a guess. */
+function normalizeReceiptResult(result: McpToolResult): void {
+  if (result.data != null && (typeof result.data !== "object" || Array.isArray(result.data))) return;
+  const data = (result.data ?? {}) as Record<string, unknown>;
+  const stage = result.stage ?? "read";
+  const status =
+    typeof data.status === "string"
+      ? data.status
+      : result.mutated
+        ? "applied"
+        : stage === "noop"
+          ? "noop"
+          : stage === "rendered"
+            ? "rendered"
+            : stage === "runtime"
+              ? "runtime"
+              : "read";
+  result.data = { ...data, status, stage: typeof data.stage === "string" ? data.stage : stage };
+}
+
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1500,7 +1622,8 @@ export const MCP_TOOLS: McpToolDef[] = [
       "Read-only project snapshot: tempo, key, time signature, track list, " +
       "markers, groove, the ACTIVE pattern's step grid, the arrangement " +
       "scenes, the send routing map (returns + per-track send levels), the " +
-      "undo history, or the FX chain of one family. Never mutates.",
+      "undo history, the FX chain of one family, or this session's transport " +
+      "capabilities (hooks + cancellation contract). Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1522,6 +1645,8 @@ export const MCP_TOOLS: McpToolDef[] = [
             "reference",
             "model-misses",
             "automation",
+            "capabilities",
+            "projects",
           ],
           description: "Which part of the project state to return",
         },
@@ -1538,12 +1663,26 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_save",
     description:
       "Force the autosave pipeline to flush the CURRENT project to the repository and " +
-      "report the durable result. Use this before ending an agent session when you need " +
-      "a persistence receipt; `mutated` is false because the document is unchanged. " +
-      "Refused honestly on transports without a repository flush hook.",
+      'report the durable result. `op:"saveAs"` saves a COPY under `name` ' +
+      "and leaves the current project open (switching the open document is a " +
+      "human ProjectBrowser action); it requires `confirm:true`. Use this before " +
+      "ending an agent session when you need a persistence receipt; `mutated` is " +
+      "false. Refused honestly on transports without a repository hook.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        op: { type: "string", enum: ["save", "saveAs"], description: "Default save (flush the current project)" },
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: 120,
+          description: "Copy name — required for saveAs; the current project keeps its name and stays open",
+        },
+        confirm: {
+          type: "boolean",
+          description: "saveAs only: true acknowledges that a NEW project record will be created",
+        },
+      },
     },
     outputSchema: {
       type: "object",
@@ -1552,6 +1691,9 @@ export const MCP_TOOLS: McpToolDef[] = [
         ok: { type: "boolean" },
         saveStatus: { type: "string", enum: ["saved", "dirty", "saving", "syncing", "error"] },
         lastSavedAt: { type: ["string", "null"] },
+        projectId: { type: "string" },
+        name: { type: "string" },
+        note: { type: "string" },
         stage: { type: "string", enum: ["persisted"] },
       },
       required: ["ok", "saveStatus", "stage"],
@@ -1736,7 +1878,8 @@ export const MCP_TOOLS: McpToolDef[] = [
         replaceMode: {
           type: "string",
           enum: ["new", "replace"],
-          description: "replace = overwrite the active pattern in place (default: add a new pattern)",
+          description:
+            "replace = overwrite the active pattern in place (requires the destructive unlock; default: add a new pattern)",
         },
         roles: {
           type: "array",
@@ -1923,7 +2066,8 @@ export const MCP_TOOLS: McpToolDef[] = [
       "duplicate clones one track with its FX and routing), or set " +
       "mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 " +
       "or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value " +
-      "boolean). set* ops apply to every track the family resolves to.",
+      "boolean), or MOVE a track before/after another stable track id. " +
+      "set* ops apply to every track the family resolves to.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1941,6 +2085,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "setPan",
             "setMute",
             "setSolo",
+            "move",
           ],
         },
         presetName: {
@@ -1970,6 +2115,17 @@ export const MCP_TOOLS: McpToolDef[] = [
         gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setGain — linear alternative to gainDb" },
         pan: { type: "number", minimum: -1, maximum: 1, description: "For setPan — −1 left, 0 center, 1 right" },
         value: { type: "boolean", description: "For setMute/setSolo — true = on" },
+        relativeTo: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "For move — stable id of the track to move next to (from kyx_state tracks)",
+        },
+        where: {
+          type: "string",
+          enum: ["before", "after"],
+          description: "For move — place the track before or after relativeTo (default after)",
+        },
       },
       required: ["op"],
     },
@@ -2429,6 +2585,12 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "For audioCrossfade — fade curve (default linear)",
         },
         fadeOut: { type: "number", minimum: 0, description: "For audioUpdate — fade-out seconds" },
+        pitchSemitones: {
+          type: "number",
+          minimum: -24,
+          maximum: 24,
+          description: "For audioUpdate — clip pitch in semitones (−24..+24; 0 clears the transpose)",
+        },
         reverse: { type: "boolean", description: "For audioUpdate — play the clip backwards" },
         loop: { type: "boolean", description: "For audioUpdate — loop the trimmed content over the clip length" },
         muted: { type: "boolean", description: "For audioMute — true mutes, false unmutes (default true)" },
@@ -3076,6 +3238,15 @@ export const MCP_TOOLS: McpToolDef[] = [
   },
 ];
 
+// First output-schema batch for the primary tools that were text-only. The
+// receipt envelope is attached here (after the literal catalog) so the eight
+// declarations cannot drift out of position, and the mirror generator sees
+// the final objects.
+for (const [toolName, schema] of Object.entries(RECEIPT_SCHEMAS)) {
+  const tool = MCP_TOOLS.find((candidate) => candidate.name === toolName);
+  if (tool != null && tool.outputSchema == null) tool.outputSchema = schema;
+}
+
 // P1-B: make the idempotency envelope DISCOVERABLE in every tool schema (the
 // wrapper accepts `requestId` on any tool; the description states exactly
 // when it matters). Injected once here instead of hand-editing 37 literals —
@@ -3251,6 +3422,16 @@ export interface McpToolContext {
     lastSavedAt: string | null;
     error?: string;
   }>;
+  /** kyx_state subject:"projects" — the saved project library (metadata only). */
+  listProjects?: () => Promise<Array<{ id: string; name: string; bpm: number; trackCount: number; updatedAt: string }>>;
+  /** kyx_save op:"saveAs" — copy the current project under a new name. */
+  saveAsProject?: (name: string) => Promise<{
+    ok: boolean;
+    projectId?: string;
+    name?: string;
+    lastSavedAt?: string | null;
+    error?: string;
+  }>;
 
   /**
    * P2 transaction support (kyx_batch): fold every mutation executed between
@@ -3351,6 +3532,8 @@ export interface McpToolResult {
   dryRun?: boolean;
   /** Completion stage: what was actually proven. Absent on errors. */
   stage?: McpCompletionStage;
+  /** Per-CALL risk (per-op, not the conservative tool-level annotation). */
+  risk?: ToolRisk;
 }
 
 /**
@@ -3747,6 +3930,71 @@ function mixerSnapshotData(doc: ProjectDocument): Record<string, unknown> {
   };
 }
 
+/**
+ * What THIS transport can actually do, without making the agent discover it
+ * by failure. Long-running calls are observable in the Job Center but the
+ * current MCP surface has no cooperative cancellation; saying so is part of
+ * the contract, not an omission to hide.
+ */
+export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown> {
+  const has = (value: unknown): boolean => typeof value === "function";
+  return {
+    transport: ctx.agentId ?? "unknown",
+    destructiveUnlock: ctx.allowDestructive?.() === true,
+    hooks: {
+      export: has(ctx.export),
+      audioPreview: has(ctx.audioPreview),
+      meters: has(ctx.meters),
+      fxMeters: has(ctx.fxMeters),
+      loudnessMeasure: has(ctx.measureLoudness),
+      loudnessApply: has(ctx.applyLoudness),
+      renderSummary: has(ctx.renderSummary),
+      diagnoseMix: has(ctx.diagnoseMix),
+      mixPreview: has(ctx.mixPreview),
+      gallery: has(ctx.shareToGallery),
+      sfzImport: has(ctx.importSamples),
+      unsunoPcm: has(ctx.loadSampleMono),
+      save: has(ctx.saveNow),
+      projectLibrary: has(ctx.listProjects),
+      saveAs: has(ctx.saveAsProject),
+      offlineMixRender: has(ctx.renderMix),
+      undoFrames: has(ctx.beginUndoFrame),
+    },
+    longRunningTools: [...LONG_RUNNING_AGENT_TOOLS],
+    unavailableByDesign: {
+      projectOpen:
+        "switching the open project rebuilds services and is owned by the human ProjectBrowser; use subject:projects to list and ask the user to open one",
+      audioImport:
+        "requires a human file picker; MCP has no binary channel and the 1 MB body cap is not an audio transport",
+      recording: "requires a device permission gesture and the ArrangementPanel recording state; not exposed to MCP",
+    },
+    cancellation: {
+      supported: false,
+      reason:
+        "MCP calls run synchronously in the owning window; long calls are visible in the Job Center but no cooperative abort is exposed over MCP yet.",
+    },
+    stages: ["read", "runtime", "applied", "persisted", "rendered", "dry-run", "replayed", "noop"],
+  };
+}
+
+function capabilitySummary(snapshot: Record<string, unknown>): string {
+  const hooks = snapshot.hooks as Record<string, boolean>;
+  const available = Object.entries(hooks)
+    .filter(([, value]) => value)
+    .map(([name]) => name);
+  const unavailable = Object.entries(hooks)
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  return [
+    `transport: ${String(snapshot.transport)}`,
+    `destructive unlock: ${snapshot.destructiveUnlock === true ? "on" : "off"}`,
+    `available: ${available.join(", ") || "none"}`,
+    `unavailable: ${unavailable.join(", ") || "none"}`,
+    `cancellation: ${snapshot.cancellation && (snapshot.cancellation as { supported?: boolean }).supported ? "supported" : "not supported"}`,
+    `by design unavailable: ${Object.keys((snapshot.unavailableByDesign as Record<string, string>) ?? {}).join(", ")}`,
+  ].join("; ");
+}
+
 // ── P1-B IDEMPOTENCY LEDGER (control-surface audit 2026-10-13, GAP-04) ──────
 //
 // Relative operations (gain deltas, groove steps, batch folds) read LIVE
@@ -4017,7 +4265,7 @@ async function executeMcpToolCore(
   // is classified and audited; the audit lives outside the tool surface so it
   // can never change tool behavior.
   const agent = ctx.agentId ?? "local";
-  const risk = toolRisk(name);
+  const risk = effectiveRisk(name, args);
   const depth = mcpCallDepth;
   const summary = summarizeToolArgs(args);
   const invalidRequestId = invalidRequestIdMessage(args);
@@ -4143,7 +4391,7 @@ ${preview.text}`,
   const prepared = prepareAgentCall({
     agent,
     tool: name,
-    risk: effectiveRisk(name, args),
+    risk,
     docId: docBefore.id,
     docName: docBefore.name,
   });
@@ -4213,6 +4461,8 @@ ${preview.text}`,
   if (result.isError !== true && result.stage == null) {
     result.stage = result.mutated === true ? "applied" : RUNTIME_STAGE_TOOLS.has(name) ? "runtime" : "read";
   }
+  result.risk = risk;
+  if (result.isError !== true && RECEIPT_TOOLS.has(name)) normalizeReceiptResult(result);
   if (result.mutated === true) {
     // Any non-intent mutation supersedes the remembered fader move; the intent
     // path records/clears itself, and kyx_undo clears when it actually moves.
@@ -4311,13 +4561,89 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
   switch (name) {
     case "kyx_state": {
       const subject = String(record.subject ?? "overview");
+      if (subject === "capabilities") {
+        const snapshot = capabilitySnapshot(ctx);
+        return {
+          text: capabilitySummary(snapshot),
+          mutated: false,
+          stage: "read",
+          data: { status: "read", subject, stage: "read", capabilities: snapshot },
+        };
+      }
+      if (subject === "projects") {
+        if (ctx.listProjects == null) {
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "the project library is not available over this MCP transport — open KYX",
+          );
+        }
+        const projects = await ctx.listProjects();
+        const text = projects.length
+          ? projects
+              .map(
+                (project) =>
+                  `${project.name} [${project.id}] ${project.bpm} BPM · ${project.trackCount} tracks · ${project.updatedAt}`,
+              )
+              .join("\n")
+          : "no saved projects";
+        return {
+          text,
+          mutated: false,
+          stage: "read",
+          data: { status: "list", subject, stage: "read", projects },
+        };
+      }
       const text = stateSnapshot(ctx.getDoc(), subject, record.family as string | undefined, () => ctx.historyLabels());
       // the MIXER view rides with a machine-readable twin: the same board as
       // structured rows, so a mixing agent can diff numbers without parsing
-      if (subject === "mixer") return { text, mutated: false, data: mixerSnapshotData(ctx.getDoc()) };
-      return { text, mutated: false };
+      const data = subject === "mixer" ? mixerSnapshotData(ctx.getDoc()) : {};
+      return { text, mutated: false, data: { status: "read", subject, ...data } };
     }
     case "kyx_save": {
+      const op = record.op === "saveAs" ? "saveAs" : "save";
+      if (op === "saveAs") {
+        const name = typeof record.name === "string" ? record.name.trim() : "";
+        if (name === "" || name.length > 120) {
+          return mcpError("INVALID_ARGUMENTS", "saveAs needs a non-empty name of at most 120 characters");
+        }
+        if (record.confirm !== true) {
+          return mcpError(
+            "POLICY_REFUSED",
+            "saveAs creates a NEW project record — pass confirm:true to acknowledge the copy",
+          );
+        }
+        if (ctx.saveAsProject == null) {
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "saveAs is not available over this MCP transport — open KYX and use Save As in the project browser",
+          );
+        }
+        try {
+          const saved = await ctx.saveAsProject(name);
+          if (!saved.ok || saved.projectId == null) {
+            return mcpError("EXECUTION_FAILED", `saveAs failed: ${saved.error ?? "the copy was not written"}`);
+          }
+          return {
+            text: `saved a copy "${saved.name ?? name}" (project ${saved.projectId}); the current project is still open. This is save-as-copy, not a project switch.`,
+            mutated: false,
+            stage: "persisted",
+            data: {
+              ok: true,
+              saveStatus: "saved",
+              lastSavedAt: saved.lastSavedAt ?? null,
+              projectId: saved.projectId,
+              name: saved.name ?? name,
+              note: "copy created; current project remains open",
+              stage: "persisted",
+            },
+          };
+        } catch (error) {
+          return mcpError(
+            "EXECUTION_FAILED",
+            `saveAs failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       if (ctx.saveNow == null) {
         return mcpError(
           "UNAVAILABLE_ON_TRANSPORT",
@@ -5301,6 +5627,43 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           text: `${bank.length} factory presets; for ${family}${query !== "" ? ` matching "${query}"` : ""}: ${shown.join("; ")}${fitting.length + rest.length > 25 ? " …" : ""}`,
           mutated: false,
           data: { family, fitting: fitting.length, total: bank.length },
+        };
+      }
+      if (op === "move") {
+        const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+        const relativeTo = typeof record.relativeTo === "string" ? record.relativeTo.trim() : "";
+        const where = record.where === "before" ? "before" : "after";
+        if (trackId === "" || relativeTo === "") {
+          return mcpError("INVALID_ARGUMENTS", "move needs trackId and relativeTo (stable ids from kyx_state tracks)");
+        }
+        const before = ctx.getDoc();
+        const movedTrack = before.tracks.find((track) => track.id === trackId);
+        const anchor = before.tracks.find((track) => track.id === relativeTo);
+        if (movedTrack == null) return mcpError("UNKNOWN_TARGET", `track ${trackId} not found`);
+        if (anchor == null) return mcpError("UNKNOWN_TARGET", `relative track ${relativeTo} not found`);
+        const beforeIndex = before.tracks.findIndex((track) => track.id === trackId);
+        ctx.execute(moveTrackAdjacent(before, trackId, relativeTo, where));
+        const after = ctx.getDoc();
+        const afterIndex = after.tracks.findIndex((track) => track.id === trackId);
+        if (afterIndex === beforeIndex) {
+          return {
+            text: `track "${movedTrack.name}" is already ${where} "${anchor.name}" — no change`,
+            mutated: false,
+            stage: "noop",
+          };
+        }
+        return {
+          text: `moved "${movedTrack.name}" ${where} "${anchor.name}" (slot ${beforeIndex + 1} → ${afterIndex + 1}) — one undo step`,
+          mutated: true,
+          data: {
+            status: "moved",
+            trackId,
+            relativeTo,
+            where,
+            fromIndex: beforeIndex + 1,
+            toIndex: afterIndex + 1,
+            trackIds: after.tracks.map((track) => track.id),
+          },
         };
       }
       if (op === "rename") {
@@ -6707,7 +7070,7 @@ export interface McpResourceDef {
   uri: string;
   name: string;
   description: string;
-  mimeType: "text/plain";
+  mimeType: "text/plain" | "application/json";
 }
 
 export const MCP_RESOURCES: McpResourceDef[] = [
@@ -6740,6 +7103,13 @@ export const MCP_RESOURCES: McpResourceDef[] = [
     name: "Undo history",
     description: "The most recent document commands (undo targets).",
     mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://session/capabilities",
+    name: "Session capabilities",
+    description:
+      "What THIS transport can actually execute: export, meters, loudness, render/diagnose, gallery, SFZ import, UN-SUNO PCM, save, offline mix render, undo frames, destructive unlock, and the current cancellation contract.",
+    mimeType: "application/json",
   },
   {
     uri: "kyx://playbook",
@@ -6786,6 +7156,15 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
       };
     case "kyx://project/history":
       return { text: stateSnapshot(ctx.getDoc(), "history", undefined, labels), mutated: false };
+    case "kyx://session/capabilities": {
+      const snapshot = capabilitySnapshot(ctx);
+      return {
+        text: JSON.stringify(snapshot, null, 2),
+        mutated: false,
+        stage: "read",
+        data: { status: "read", stage: "read", capabilities: snapshot },
+      };
+    }
     case "kyx://playbook":
       return { text: MCP_PLAYBOOK_TEXT, mutated: false };
     case "kyx://vocab":
@@ -8019,8 +8398,19 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
           patch.loop = record.loop;
           notes.push(`loop ${record.loop ? "on" : "off"}`);
         }
+        if (record.pitchSemitones !== undefined) {
+          const pitch = Number(record.pitchSemitones);
+          if (!Number.isFinite(pitch) || pitch < -24 || pitch > 24) {
+            return mcpError("INVALID_ARGUMENTS", "audioUpdate pitchSemitones must be between -24 and +24");
+          }
+          patch.pitchSemitones = pitch;
+          notes.push(`pitch ${pitch > 0 ? "+" : ""}${pitch} st`);
+        }
         if (notes.length === 0) {
-          return { text: "audioUpdate needs at least one of gain / fadeIn / fadeOut / reverse / loop", mutated: false };
+          return {
+            text: "audioUpdate needs at least one of gain / fadeIn / fadeOut / pitchSemitones / reverse / loop",
+            mutated: false,
+          };
         }
         ctx.execute(updateAudioClip(doc, target.id, patch));
         return { text: `updated ${describe()}: ${notes.join(", ")} — one undo step`, mutated: true };

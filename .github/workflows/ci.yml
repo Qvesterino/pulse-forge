@@ -211,6 +211,10 @@ jobs:
       # auto-installs the browser on first run.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      # Real-browser AI-control gate: the persisted-save receipt through
+      # IndexedDB (kyx_save). The measured DSP read-back gate is run locally
+      # (`npm run verify:param-readback`, Node 24 type-stripped .mts).
+      - run: npm run verify:mcp-save
 
   test-browser-production:
     name: Production browser smoke (dist)

@@ -435,7 +435,10 @@ try {
     // Switch to the 808 instrument track → preset browser with mood/favorite/recent filters.
     const instrTab = appPage.locator(".track-tab").filter({ hasText: "808" }).first();
     await instrTab.click();
-    await appPage.waitForSelector(".preset-browser", { timeout: 5000 });
+    // The preset browser is React.lazy-loaded: after the tab click its chunk
+    // still has to download and mount, so the budget must cover the lazy
+    // boundary — 5 s was a stable red that measured the network, not the app.
+    await appPage.waitForSelector(".preset-browser", { timeout: 15_000 });
     await appPage.waitForSelector(".preset-fav", { timeout: 5000 });
     await appPage.locator(".preset-fav").first().click();
     // Arrangement ruler seeks the transport.
@@ -778,7 +781,13 @@ try {
     // Open the device-chain dock panel and add the flagship FXEQ to the selected track.
     await clickPanelAction(plugPage, "FX");
     await plugPage.waitForSelector(".devices-panel", { timeout: 5000 });
-    await plugPage.locator(".devices-add-effect").first().selectOption("fxeq");
+    // The add-effect control is the ✚ ADD FX button and its picker dialog —
+    // the old .devices-add-effect <select> is gone from the React tree, so a
+    // selectOption against it could never pass again (and its red protected
+    // nothing). Drive the REAL flow: open the popover, pick the PRISM tile.
+    await plugPage.locator(".devices-panel .fx-add-trigger").first().click();
+    await plugPage.waitForSelector(".fx-add-popover", { timeout: 5000 });
+    await plugPage.locator('.fx-add-device:has-text("PRISM")').first().click();
     await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
     // DEV renders the flagship device in editor mode, where rack-collapse
     // controls are intentionally hidden. Verify the actual PRISM editor UI.

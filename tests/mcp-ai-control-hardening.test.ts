@@ -1,13 +1,60 @@
 import { describe, expect, it } from "vitest";
 import { createHeadlessMcpHost } from "../src/mcp/headless-host";
-import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
+import { MCP_TOOLS, executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { createDefaultProject } from "../src/project-model/schema";
+import { addAudioClip } from "../src/commands/audioClips";
 import type { ProjectDocument } from "../src/project-model/types";
 
 function docWithoutArrangement(): ProjectDocument {
   const doc = createDefaultProject();
   return { ...doc, arrangement: { ...doc.arrangement, clips: [], audioClips: [] } };
 }
+
+describe("AI control hardening — output schemas and per-call risk", () => {
+  it("declares the receipt schema for the eight primary tools", () => {
+    for (const name of [
+      "kyx_state",
+      "kyx_intent",
+      "kyx_tracks",
+      "kyx_fx",
+      "kyx_clips",
+      "kyx_automation",
+      "kyx_master",
+      "kyx_export",
+    ]) {
+      expect(MCP_TOOLS.find((tool) => tool.name === name)?.outputSchema, name).toBeDefined();
+    }
+  });
+
+  it("returns a stage/status receipt and the per-call risk", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const state = await host.call("kyx_state", { subject: "overview" });
+    expect(state.data).toMatchObject({ status: "read", stage: "read", subject: "overview" });
+    expect(state.risk).toBe("read");
+
+    const add = await host.call("kyx_tracks", { op: "addDrum", name: "Risk Probe" });
+    expect(add.isError, add.text).not.toBe(true);
+    expect(add.risk).toBe("mutate");
+    expect(add.data).toMatchObject({ status: "applied", stage: "applied" });
+
+    const remove = await host.call("kyx_tracks", { op: "remove", trackId: host.store.doc.tracks.at(-1)!.id });
+    expect(remove.isError).toBe(true);
+    expect(remove.risk).toBe("destructive");
+  });
+
+  it("advertises what the transport can actually do, including no MCP cancellation", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const result = await host.call("kyx_state", { subject: "capabilities" });
+    expect(result.isError, result.text).not.toBe(true);
+    const data = result.data as {
+      capabilities: { hooks: Record<string, boolean>; cancellation: { supported: boolean } };
+    };
+    expect(data.capabilities.hooks.export).toBe(false);
+    expect(data.capabilities.hooks.save).toBe(false);
+    expect(data.capabilities.cancellation.supported).toBe(false);
+    expect(result.text).toContain("cancellation: not supported");
+  });
+});
 
 describe("AI control hardening — destructive generation gate", () => {
   it("refuses replaceMode:replace while the destructive unlock is off and changes nothing", async () => {
@@ -165,5 +212,74 @@ describe("AI control hardening — stable clipId targets", () => {
     const unknown = await host.call("kyx_clips", { op: "resize", clipId: "clip-does-not-exist", bars: 2 });
     expect(unknown.isError).toBe(true);
     expect(unknown.errorCode).toBe("UNKNOWN_TARGET");
+  });
+});
+
+describe("P2 — track reorder", () => {
+  it("moves a track before/after a stable relative track id", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const before = host.store.doc.tracks;
+    expect(before.length).toBeGreaterThan(1);
+    const moved = before[0]!;
+    const anchor = before[1]!;
+    const result = await host.call("kyx_tracks", {
+      op: "move",
+      trackId: moved.id,
+      relativeTo: anchor.id,
+      where: "after",
+    });
+    expect(result.isError, result.text).not.toBe(true);
+    expect(result.mutated).toBe(true);
+    expect(result.data).toMatchObject({ status: "moved", trackId: moved.id, relativeTo: anchor.id, where: "after" });
+    const order = host.store.doc.tracks.map((track) => track.id);
+    expect(order.indexOf(moved.id)).toBeGreaterThan(order.indexOf(anchor.id));
+  });
+
+  it("refuses an unknown relative track", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const result = await host.call("kyx_tracks", {
+      op: "move",
+      trackId: host.store.doc.tracks[0]!.id,
+      relativeTo: "track-that-does-not-exist",
+      where: "after",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("UNKNOWN_TARGET");
+  });
+});
+
+describe("P2 — audio clip pitch", () => {
+  it("sets pitchSemitones through the canonical clip command", async () => {
+    const base = createDefaultProject();
+    const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
+    const withClip = addAudioClip(base, track.id, "user.probe", 0, 4).execute(base);
+    const clip = (withClip.arrangement.audioClips ?? [])[0]!;
+    const host = createHeadlessMcpHost({ document: withClip });
+    const result = await host.call("kyx_clips", {
+      op: "audioUpdate",
+      trackId: track.id,
+      clipId: clip.id,
+      pitchSemitones: 7,
+    });
+    expect(result.isError, result.text).not.toBe(true);
+    expect(result.mutated).toBe(true);
+    const committed = (host.store.doc.arrangement.audioClips ?? []).find((candidate) => candidate.id === clip.id)!;
+    expect(committed.pitchSemitones).toBe(7);
+  });
+
+  it("rejects an out-of-range pitch instead of clamping silently", async () => {
+    const base = createDefaultProject();
+    const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
+    const withClip = addAudioClip(base, track.id, "user.probe", 0, 4).execute(base);
+    const clip = (withClip.arrangement.audioClips ?? [])[0]!;
+    const host = createHeadlessMcpHost({ document: withClip });
+    const result = await host.call("kyx_clips", {
+      op: "audioUpdate",
+      trackId: track.id,
+      clipId: clip.id,
+      pitchSemitones: 30,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("INVALID_ARGUMENTS");
   });
 });

@@ -141,7 +141,11 @@ describe("desktop mcp bridge server (real HTTP)", () => {
       token: "tok",
       executeTool: async (name, args) => {
         if (name === "kyx_state") throw new Error("honest failure");
-        return { text: `ran:${name}:${JSON.stringify(args)}`, mutated: true };
+        return {
+          text: `ran:${name}:${JSON.stringify(args)}`,
+          mutated: true,
+          data: { status: "applied", stage: "applied" },
+        };
       },
     });
     const port = await listenOnEphemeralPort(server);
@@ -1068,7 +1072,7 @@ describe("mcp host manager", () => {
     // ipcMain.handle signature: (event, payload)
     (handlers.get("kyx:mcp:answer") as (event: unknown, payload: unknown) => unknown)(null, {
       id: sent[0]?.id,
-      result: { text: "mute read-back", mutated: true },
+      result: { text: "mute read-back", mutated: true, data: { status: "applied", stage: "applied" } },
     });
     const response = await responsePromise;
     const body = JSON.parse(response.body) as { result: { content: Array<{ text: string }>; isError?: boolean } };
@@ -1092,7 +1096,7 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
       `const { createMcpBridgeServer } = require(${JSON.stringify(path.join(DESKTOP_DIR, "mcp-bridge-server.cjs"))});`,
       "const server = createMcpBridgeServer({",
       `  token: ${JSON.stringify(token)},`,
-      '  executeTool: async (name, args) => name === "kyx_audio_preview" ? { text: "preview", mutated: false, data: { bars: 1, durationSec: 2, sampleRate: 22050, byteLength: 44144, mimeType: "audio/wav" }, audio: { data: "UklGRg==", mimeType: "audio/wav" } } : ({ text: "echo:" + name + ":" + JSON.stringify(args), mutated: false }),',
+      '  executeTool: async (name, args) => name === "kyx_audio_preview" ? { text: "preview", mutated: false, data: { bars: 1, durationSec: 2, sampleRate: 22050, byteLength: 44144, mimeType: "audio/wav" }, audio: { data: "UklGRg==", mimeType: "audio/wav" } } : ({ text: "echo:" + name + ":" + JSON.stringify(args), mutated: false, data: { status: "read", stage: "read" } }),',
       "});",
       'server.server.listen(0, "127.0.0.1", () => console.log("PORT:" + server.server.address().port));',
     ].join("\n");

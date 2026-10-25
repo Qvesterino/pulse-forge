@@ -38,11 +38,11 @@ function makeCtx(): McpToolContext {
 }
 
 describe("agent onboarding resources", async () => {
-  it("resources/list advertises playbook + vocab (7 URIs total)", async () => {
+  it("resources/list advertises playbook + vocab + capabilities (8 URIs total)", async () => {
     const uris = MCP_RESOURCES.map((resource) => resource.uri);
     expect(uris).toContain("kyx://playbook");
     expect(uris).toContain("kyx://vocab");
-    expect(uris).toHaveLength(7);
+    expect(uris).toHaveLength(8);
   });
 
   it("both resources read non-trivial text without mutating", async () => {
@@ -61,6 +61,17 @@ describe("agent onboarding resources", async () => {
     // compactness contract: the agent loads these EVERY session
     expect(playbook.text.length).toBeLessThan(8000);
     expect(vocab.text.length).toBeLessThan(8000);
+
+    const capabilities = await executeMcpTool(ctx, "__kyx_resource", {
+      uri: "kyx://session/capabilities",
+    });
+    expect(capabilities.mutated).toBe(false);
+    const snapshot = JSON.parse(capabilities.text) as {
+      hooks: Record<string, boolean>;
+      cancellation: { supported: boolean };
+    };
+    expect(snapshot.hooks.save).toBe(false);
+    expect(snapshot.cancellation.supported).toBe(false);
   });
 
   it("ROT GUARD: every registered tool is documented in playbook+vocab", async () => {

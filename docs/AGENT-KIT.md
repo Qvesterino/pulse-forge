@@ -57,6 +57,21 @@ The app enforces the classes, not the agent's goodwill:
    `stage: "persisted"` (and `ok: true`) before ending a session that must
    survive a reload. A result's `stage` is the truth: `applied` < `persisted`
    < `rendered`; `delivered` is reserved for a verified download receipt.
+   Need a copy? `kyx_save {"op":"saveAs","name":"...","confirm":true}` writes
+   a NEW project record and leaves the current project open (it is a copy,
+   not a switch). `kyx_state {"subject":"projects"}` lists the saved library.
+   Opening another project is a human ProjectBrowser decision — AI may list
+   projects and ask, never switch the open document underneath the user.
+7. **Know the transport before the long job.** Read
+   `kyx_state {"subject":"capabilities"}` or `kyx://session/capabilities`:
+   it lists the hooks this window actually has (export, meters, loudness,
+   render/diagnose, gallery, SFZ, UN-SUNO PCM, save) and states the current
+   cancellation contract. MCP cancellation is not supported yet — do not
+   start a long render you would need to abort. Per-call `risk` is in every
+   result (and `_meta.kyx/risk` on the wire); the tool-level annotations are
+   intentionally conservative. `unavailableByDesign` names the operations
+   that stay human-owned: project open, audio-file import (needs a file
+   picker; MCP has no binary channel) and recording (device gesture).
 
 ### Worked example A — read-only survey (safe everywhere)
 

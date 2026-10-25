@@ -25,6 +25,8 @@ import { strkParams } from "../strk/params";
 export { strkParams };
 import { cinkParams } from "../cink/params";
 export { cinkParams };
+import { strunaParams } from "../struna/params";
+export { strunaParams };
 
 export const WAVE_NAMES = ["sine", "triangle", "sawtooth", "square"] as const;
 
@@ -1094,6 +1096,7 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   hlas: { kind: "hlas", name: "HĽAS", params: hlasParams },
   strk: { kind: "strk", name: "ŠTRK", params: strkParams },
   cink: { kind: "cink", name: "CINK", params: cinkParams },
+  struna: { kind: "struna", name: "STRUNA", params: strunaParams },
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -1126,6 +1129,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "hlas",
   "strk",
   "cink",
+  "struna",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {

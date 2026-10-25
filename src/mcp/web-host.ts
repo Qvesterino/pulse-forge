@@ -7,7 +7,7 @@ import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters"
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { decodeAudioData } from "../services/audio-decode";
 import { loadUserSampleMono } from "./sample-mono";
-import { flushServicesSave } from "./save-now";
+import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "./save-now";
 // Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
 // enabled flag while mounting); the heavy bridge module re-exports it and
 // imports it for local use.
@@ -126,6 +126,8 @@ function depsFromServices(services: Services): McpBridgeDeps {
     loadSampleMono: (sampleId) => loadUserSampleMono(services, sampleId),
     // kyx_save: force the autosave pipeline and report the durable result.
     saveNow: () => flushServicesSave(services),
+    listProjects: () => listSavedProjects(services),
+    saveAsProject: (name) => saveProjectAsCopy(services, name),
     shareToGallery: async ({ title, author, tags, agent }) => {
       const { encodeProjectForGallery, publishBeat } = await import("../gallery/galleryApi");
       const item = await publishBeat({

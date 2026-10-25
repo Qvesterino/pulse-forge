@@ -739,6 +739,20 @@
             "drive": 0.25,
             "level": 0.8
           }
+        },
+        {
+          "kind": "struna",
+          "defaults": {
+            "pickPos": 0.25,
+            "pickSharp": 0.4,
+            "damp": 0.35,
+            "decay": 2.2,
+            "mute": 0.25,
+            "bodyLevel": 0.3,
+            "bodyTone": 1,
+            "drive": 0.1,
+            "level": 0.85
+          }
         }
       ]
     },
@@ -2198,6 +2212,28 @@
         0,
         12,
         12
+      ]
+    },
+    {
+      "name": "clampInstrumentParam struna:pickPos",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "struna",
+        "paramId": "pickPos",
+        "probes": [
+          -99.98,
+          0.02,
+          0.51,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0.02,
+        0.02,
+        0.51,
+        1,
+        1
       ]
     },
     {

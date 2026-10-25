@@ -368,6 +368,97 @@ The report body above describes the tree at the first pass; §9's backlog rows f
 are hereby closed. V-1 (gates red on `main` from concurrent waves) persisted through the session
 and remains the top procedural recommendation.
 
+---
+
+## 12b. Addendum — a SECOND session on the same tree: three findings the report above does not carry
+
+A second session worked this tree while the report above was being written. It did not re-invent the
+three axes; it went after the places the first pass had not: the **param family's target resolution**,
+the **offline graph's mixer strip**, and the **export/stem path**. Its three findings are new — none of
+them is in §4, §5 or §6 above — and one of them (B) is deeper than the finding the report credits the
+parallel read-back wave with closing.
+
+**Method note.** Every fix below was falsified FIRST: the spec was run against the pre-fix code and
+had to go RED before the change, with the behaviour-preservation controls green on both sides. The
+guards are not spot checks — they are censuses that were observed red.
+
+### 12b.1 — P1 (Axis A + Axis B) · The param family vocabulary had TWO resolvers, and the preview resolved differently from the apply
+
+|                  |                                                                                                                                                                                                                                                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Workflow**     | "set reverb decay to 2.5 s on the bass" in a project whose first instrument track is named **"Sub"**; or "… on the vocals" in a project whose take track is named **"Take 1"** and is bound to an arrangement audio clip                                                                                  |
+| **Expected**     | the plan, the read-back and the apply name the SAME track                                                                                                                                                                                                                                                                                |
+| **Observed**     | plan → `bass: no matching track` · apply → `Sub: reverb.decay = 2.5` · read-back → `""` (nothing happened)                                                                                                                                                                                                                      |
+| **Root cause**   | **two resolvers for one vocabulary.** The plan and the read-back resolved the family by NAME REGEX (`/bas|808/`, `/chord|keys|pad/`…); the APPLY resolved it by ROLE (`roleForTrack`: a name match, else **position** — index 0 = bass, 1 = chord, 2 = lead) and, for "vocal", by **ARRANGEMENT CLIP BINDING**. A "Sub" at instrument index 0 *is* the bass by position; a take called "Take 1" *is* the vocal by its binding. The regex found neither. |
+| **Consequence**  | the plan told the producer the track does not exist; the apply changed it anyway; the read-back said nothing moved. Three surfaces, three different truths, and the mutation was the one nobody reported                                                                                                                                      |
+| **Fix**          | **one resolver owns the vocabulary.** `trackIdsForTarget` (the apply's resolver) is exported from `src/intent/mix.ts`; `trackIdsForMixTarget` delegates to it. The plan, the read-back and the apply now agree by construction                                                                                                                                       |
+| **Three smaller seams, closed in the same change** | ① the read-back enumerated only the FIRST of N resolved tracks while the apply changed all of them; ② a target that resolved to nothing was silently dropped from the report; ③ the failure claimed *"the mix already matches"* when the real cause was *"there is no such track"* — an AI that reads it concludes the knob already holds the value                                                                                                                                  |
+| **Verification** | `tests/mcp-intent-param-readback.test.ts` — 8 cases, **7 RED before the fix**. The 8th pins the idempotent re-apply's `changed nothing` contract and stayed green on **both** sides, so the fix narrowed the reporting without weakening the refusal                                                                                                                                       |
+| **Commit**       | `88cc4524`                                                                                                                                                                                                                                                                                                                                 |
+
+### 12b.2 — P1 (Axis A) · The mixer strip was the last offline-critical part of the graph still on the live glide
+
+|                  |                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Workflow**     | **every** export, stem, bounce and consolidation                                                                                                                                                                                                                                                                                                                                                                  |
+| **Expected**     | the offline graph is built at the render origin (t = 0), so the strip must start at the document's values — exactly like the master chain and the effect chains already did                                                                                                                                                                                                                                                                       |
+| **Observed**     | the strip wrote `setTargetAtTime` (a 10 ms glide) at t = 0. The fader node's base value is the GainNode default **1** and is never assigned, so at t = 0 the strip was still at its DEFAULTS: a **muted track leaked at unity for ~30 ms**, a 0.5 fader started **+6 dB hot**, a hard-panned track started **centred**                                                                                                |
+| **Evidence**     | the codebase had already called this class a defect, twice, for the two other offline-critical parts of the graph: `AudioEngine.ts:2176-2181` — *"a glide on a fresh offline timeline leaves the head of the export progressively misaligned … which is a defect frozen into the file"* — and `masterChain.ts:1100` (`writeControl` → `setValueAtTime` when offline). The effect registry's `withOfflineEffectParams` does the same for the effect chains. The mixer strip was the one part left on the glide |
+| **Fix**          | one helper — `writeStripControl` — writes the strip **exactly** in an offline context and **glides** in a live one. Six write sites converted: track fader + pan, group fader + pan, frozen-track fader + pan, return-bus fader, send level, instrument norm gain. The live-only `preview*` paths keep their glide by construction — they are not on the sync path |
+| **Verification** | `tests/offline-mixer-strip.test.ts` — the offline case **RED before** the fix (`setTargetAtTime` where `setValueAtTime` was expected); the live case green on **BOTH** sides. That asymmetry is the point: the fix must change the export, never the session                                                        |
+| **Commit**       | `f61da8eb`                                                                                                                                                                                                                                                                                                                                           |
+| **Honest limit** | **no render was executed and nothing was listened to.** The write-mode divergence is certain and measured at the parameter level; its perceptual weight is not measured. A numeric render↔live A/B harness does not exist in this repo (see §12, residual risk)                                                                                                                                            |
+
+### 12b.3 — P2 (Axis B) · The MCP stem path contradicted the schema that describes it
+
+The `kyx_export` schema advertises: *"stem projects bypass the master chain, same as the ExportPanel
+stem flow"*, and exposes `bitDepth` with *"default 16"*. The ExportPanel really does pass
+`masterProcessing: false`. The MCP path passed nothing — and the render default is
+`masterProcessing: **TRUE**` — so every stem in an MCP zip carried the master limiter, tape and glue
+that the UI's stems do not. The stem branch also hardcoded 24-bit against the advertised 16, and never
+passed the `quality` tier the export UI uses. The module's own doc comment repeated the promise the
+code broke.
+
+**Fix** — the stem branch asks for `masterProcessing: false` + `quality: "studio"` and honours
+`options.bitDepth` (default 16). **Verification** — `tests/quick-bounce.test.ts`, 2 new cases.
+**Blast radius** — the MCP stems zip changes (no master chain, studio tier, 16-bit by default). That is
+the behaviour the schema already advertised; the alternative was to leave the advertisement false.
+
+> **Attribution note (shared worktree).** This fix's content landed in `0ffa24f4` ("ach jaj") — a
+> parallel session's `git add .` sweep, which carried the edited file with its message and authorship
+> intact. The change is recorded here rather than claimed as that commit's work; the two specs that
+> guard it are the durable artefact.
+
+### 12b.4 — Filed, not fixed — the export/render and recording/persistence sweeps
+
+Two read-only sweeps (export/render/stems/bounce; recording/monitoring and save/autosave/reload/
+recovery) returned findings that are **verified from code** and are left here as the next wave's
+work. They are not re-verified by this session beyond the agents' own code traces, and none of them
+rests on a render or a recording being executed.
+
+| ID              | Sev | Axis | Finding                                                                                                                                                                                                          |
+| --------------- | --- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **E-02**        | P1  | A    | a missing audio-clip asset is **silently dropped** from the export: `triggerEngine.ts:472-473` `if (!srcBuffer) return;` with no `missAsset()` call (the drum-pad path at `:847` does call it), and `engine.missingAssets` is never consulted by the export path — the file is written and reported as a success |
+| **E-03**        | P1  | A    | `setProject` **swallows a sync failure** (`AudioEngine.ts:1152` `console.error`) — a half-built graph still renders, writes the file and reports "exported"; the console is the only signal                                                     |
+| **E-04**        | P2  | B    | stem/track export has **no staleness guard** while the master export does (`ExportPanel.tsx:509-518` `assertMasterSourceCurrent()` is called in the master path only) — a later stem renders the pre-edit document and the status says "N stems exported" |
+| **R-1**         | P1  | A    | a **silent take** is accepted, persisted and shown as a take: frame count is the only gate (`pcmRecording.ts:19-20`), no peak/RMS check anywhere — the meter warns on clipping, never on silence                                                    |
+| **R-2**         | P1  | A    | in native WASAPI mode the **recorded source is not the source displayed**: the native branch ignores the `audio.deviceId` constraint the UI's device dropdown builds, so the dropdown shows one device and the recorder captures another                                                       |
+| **S-1**         | P1  | A    | the crash-recovery buffer is **ONE global slot** (`recoveryBuffer.ts:25` `kyx:recovery-buffer:v1`) — a second tab or project overwrites the first tab's uncommitted work on unload                                                                       |
+| **S-2**         | P1  | A    | "Recover" **overwrites the saved project body with an unvalidated document**: the reader's shape check is two `typeof` checks (`recoveryBuffer.ts:95`) and `ProjectBrowser.tsx:390-400` saves it without `validateProjectShape` / `migrateProject` — an incompatible doc is then quarantined out of the library with only a `console.warn` |
+| **S-3**         | P1  | A    | after a reload the recorded take's audio is hydrated **fire-and-forget** (`services.ts:404-410`); a failed decode leaves it **permanently silent** (`UserSampleRepository.ts:202-211` warns and continues) — the code documents the failure mode itself at `:253-258` |
+| **R-3**         | P2  | B    | the recording offset is **one global localStorage key**, not keyed by device (`recordingAlignment.ts:1`) — a calibration on interface A shifts every later take on interface B, in every project |
+| **R-4**         | P2  | A    | only the **first** recorder error is ever reported (`PcmMicRecorder.ts:919-921` `if (this.errorReported) return;`) — a first "input interrupted" hides a later storage failure and explains a truncated take by the wrong cause |
+| **S-4**         | P2  | A    | the recovery-buffer **write failure is discarded** (`recoveryBuffer.ts:61-68` returns `false` on quota; `services.ts:1328` ignores it) — for a large project the crash safety net silently does not exist |
+| **S-5**         | P3  | B    | undo history is **not persisted** — after a reload Ctrl+Z is a silent no-op (`ProjectStore.ts:453-462` resets the stacks; `services.ts:486` builds a fresh store) and nothing says so |
+
+The sweep also **ruled out** a class of suspicions worth recording, so they are not re-litigated: stem
+isolation (a stem cannot contain another track's signal), the WAV header ↔ buffer contract, the
+zero-length render, the master chain's offline exactness, the PDC's offline exactness, the
+generative-source export guard, the stale-snapshot save, the failed-save surfacing, the autosave
+starvation bound, and the future-schema project's "newer version" badge.
+
+---
+
 ## 12. Open questions and residual risk
 
 - **F-07 / F-08** were re-verified open but not re-investigated; both need their own falsification
