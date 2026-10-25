@@ -9,6 +9,7 @@ import { planIntent } from "../src/intent/semantics/intent-plan";
 import { gateModelRoute } from "../src/intent/model-route-gate";
 import { parseFaderIntent } from "../src/intent/conversation";
 import { parseEffectIntent } from "../src/intent/mix";
+import { addEffectToTracks } from "../src/commands/commands";
 import { testDoc } from "./fixtures/doc";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -589,12 +590,21 @@ describe("model route gate", () => {
 
   it("accepts a model mutation only when its plan is executable", () => {
     expect(pattern.kind).toBe("pattern");
-    const gated = gateModelRoute("a beat that is dark and warm", { kind: "effectIntent", intent: effect }, doc);
+    // The model proposal turns an installed effect; the gate must not infer
+    // permission to insert one from a broad creative brief. Prepare the real
+    // executable precondition in this fixture instead of relying on template
+    // defaults that may change independently.
+    const pads = doc.tracks.find((track) => track.kind === "instrument" && track.name === "Chords");
+    expect(pads).toBeDefined();
+    const effectDoc = addEffectToTracks(doc, [pads!.id], "reverb").execute(doc);
+    const gated = gateModelRoute("a beat that is dark and warm", { kind: "effectIntent", intent: effect }, effectDoc);
     expect(gated?.kind).toBe("effectIntent");
 
     // "on the lead" names no track in the house fixture: no executable plan.
     const noTarget = parseEffectIntent("more reverb on the lead")!;
-    expect(gateModelRoute("a beat that is dark and warm", { kind: "effectIntent", intent: noTarget }, doc)).toBeNull();
+    expect(
+      gateModelRoute("a beat that is dark and warm", { kind: "effectIntent", intent: noTarget }, effectDoc),
+    ).toBeNull();
   });
 
   it("rejects model generation and accepts a read-only answer", () => {
