@@ -90,6 +90,16 @@ const DOCK_TAB_ARIA = {
   MIDI: "Toggle MIDI input panel",
 };
 
+/** Expand the project browser's collapsed disclosure sections (first run renders them shut). */
+async function openProjectBrowserDisclosures(page) {
+  for (;;) {
+    const summary = page.locator("details.pb-secondary-disclosure:not([open]) > summary").first();
+    if ((await summary.count()) === 0) return;
+    await summary.click();
+    await page.waitForTimeout(120);
+  }
+}
+
 async function clickPanelAction(page, label) {
   const aria = DOCK_TAB_ARIA[label] ?? label;
   const tab = page.locator(`.dock-tabs button[aria-label="${aria}"]`).first();
@@ -435,9 +445,11 @@ try {
     // Switch to the 808 instrument track → preset browser with mood/favorite/recent filters.
     const instrTab = appPage.locator(".track-tab").filter({ hasText: "808" }).first();
     await instrTab.click();
-    // The preset browser is React.lazy-loaded: after the tab click its chunk
+    // The browser strip's views are explicit tabs — PRESETS mounts the lazy
+    // preset browser. It is React.lazy-loaded: after the tab click the chunk
     // still has to download and mount, so the budget must cover the lazy
     // boundary — 5 s was a stable red that measured the network, not the app.
+    await appPage.locator('button[aria-pressed]:has-text("PRESETS")').first().click();
     await appPage.waitForSelector(".preset-browser", { timeout: 15_000 });
     await appPage.waitForSelector(".preset-fav", { timeout: 5000 });
     await appPage.locator(".preset-fav").first().click();
@@ -755,6 +767,9 @@ try {
     await touchPage.addInitScript(SKIP_FLAGS);
     await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await touchPage.waitForSelector(".project-browser", { timeout: 15_000 });
+    // The template grids are collapsed <details> on a first run — expand
+    // them the way a user does before clicking a template.
+    await openProjectBrowserDisclosures(touchPage);
     await touchPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await touchPage.waitForSelector(".sequencer", { timeout: 15_000 });
     const step = touchPage.locator(".row-steps .step").first();
@@ -776,6 +791,9 @@ try {
     await plugPage.addInitScript(SKIP_FLAGS);
     await plugPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await plugPage.waitForSelector(".project-browser", { timeout: 15_000 });
+    // The template grids are collapsed <details> on a first run — expand
+    // them the way a user does before clicking a template.
+    await openProjectBrowserDisclosures(plugPage);
     await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
     // Open the device-chain dock panel and add the flagship FXEQ to the selected track.

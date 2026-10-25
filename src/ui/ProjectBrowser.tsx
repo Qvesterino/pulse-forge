@@ -420,6 +420,16 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   };
 
   const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
+
+  // The disclosure sections are UNCONTROLLED: the `open` prop must never be
+  // in JSX, because React re-applies it on every render and would snap a
+  // user-expanded section shut (a background re-render — project list,
+  // recovery buffer — collapsed "START FROM A TEMPLATE" within a second on a
+  // first run). Set the initial state imperatively once, then the DOM owns it.
+  const initialOpenRef = useRef(!firstRun);
+  const initialDetailsOpen = useCallback((el: HTMLDetailsElement | null) => {
+    if (el) el.open = initialOpenRef.current;
+  }, []);
   const rows = projects === null ? null : mergeRows(projects, newerProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
   const songStarterMoods = SONG_STARTER_MOODS[songStarterGenre] ?? [];
@@ -506,7 +516,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           </section>
         )}
 
-        <details className="pb-secondary-disclosure pb-import-disclosure" open={!firstRun}>
+        <details className="pb-secondary-disclosure pb-import-disclosure" ref={initialDetailsOpen}>
           <summary className="pb-title">
             {firstRun ? "ALREADY HAVE A PROJECT? IMPORT OR TRANSFER IT" : "IMPORT PROJECT"}
           </summary>
@@ -637,7 +647,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               </button>
             </div>
           </div>
-          <details className="pb-secondary-disclosure" open={!firstRun}>
+          <details className="pb-secondary-disclosure" ref={initialDetailsOpen}>
             <summary className="pb-title">{firstRun ? "EXPLORE ALL PROJECT TEMPLATES" : "PROJECT TEMPLATES"}</summary>
             <div className="pb-templates">
               {TEMPLATES.map((template) => (
@@ -660,7 +670,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           </details>
         </section>
 
-        <details className="pb-secondary-disclosure" open={!firstRun}>
+        <details className="pb-secondary-disclosure" ref={initialDetailsOpen}>
           <summary className="pb-title">{firstRun ? "OPEN A READY-MADE LOOP DEMO" : "PLAY A LOOP DEMO"}</summary>
           <p className="pb-import-hint">
             Install the 4.9 MB original KYX loop pack and open a saved, editable example.
