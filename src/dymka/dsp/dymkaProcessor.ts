@@ -348,8 +348,7 @@ export class DymkaProcessor {
         // Reed noise: bandpassed LCG turbulence, following the breath
         // (offset + proportional — quiet playing still has some hiss).
         const noise = (this.lcgDraw(voice) * 2 - 1) * (0.1 + 0.9 * voice.breath) * reedLevel;
-        const ny =
-          rb0 * noise + rb0 * voice.reedX2 - ra2 * voice.reedY2;
+        const ny = rb0 * noise + rb0 * voice.reedX2 - ra2 * voice.reedY2;
         voice.reedX2 = voice.reedX1;
         voice.reedX1 = noise;
         voice.reedY2 = voice.reedY1;
@@ -370,7 +369,11 @@ export class DymkaProcessor {
           const c = b * 5;
           const s = b * 4;
           const y =
-            cf[c]! * sample + cf[c + 1]! * st[s]! + cf[c + 2]! * st[s + 1]! - cf[c + 3]! * st[s + 2]! - cf[c + 4]! * st[s + 3]!;
+            cf[c]! * sample +
+            cf[c + 1]! * st[s]! +
+            cf[c + 2]! * st[s + 1]! -
+            cf[c + 3]! * st[s + 2]! -
+            cf[c + 4]! * st[s + 3]!;
           st[s + 1] = st[s]!;
           st[s] = sample;
           st[s + 3] = st[s + 2]!;

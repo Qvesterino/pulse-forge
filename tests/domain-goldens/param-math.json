@@ -753,6 +753,26 @@
             "drive": 0.1,
             "level": 0.85
           }
+        },
+        {
+          "kind": "dymka",
+          "defaults": {
+            "wave": 0,
+            "breath": 0.7,
+            "brightBase": 0.45,
+            "reedLevel": 0.35,
+            "reedTone": 2800,
+            "pitchLift": 12,
+            "formant1": 700,
+            "formant2": 1800,
+            "bodyTone": 1,
+            "vibRate": 5,
+            "vibDepth": 12,
+            "attack": 0.04,
+            "release": 0.2,
+            "legato": 0,
+            "level": 0.8
+          }
         }
       ]
     },
@@ -2232,6 +2252,28 @@
         0.02,
         0.02,
         0.51,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam dymka:wave",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "dymka",
+        "paramId": "wave",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
         1,
         1
       ]

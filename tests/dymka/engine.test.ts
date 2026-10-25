@@ -73,10 +73,8 @@ describe("DYMKA breath engine (ADR 0062)", () => {
     for (let frame = 0; frame < BLOCK * 12; frame += BLOCK) proc.process(left, right, frame);
     proc.applyEvent({ type: "breath", when: 0.3, pitch: 64, value: 1 });
     for (let frame = 0; frame < BLOCK * 12; frame += BLOCK) proc.process(left, right, 0.3 * SR + frame);
-    const quiet = rmsAt(sliceOf(proc, 0), 0, 0);
-    void quiet;
-    // Simplest honest measurement: render twice, once with a low breath
-    // override and once with a high one, same events otherwise.
+    // Honest measurement: render twice, once with a low breath override
+    // and once with a high one, same events otherwise.
     const low = processor({ breath: 0.25 });
     low.postEvent({ type: "noteOn", when: 0, pitch: 64, velocity: 0.9 });
     low.postEvent({ type: "breath", when: 0.05, pitch: 64, value: 0.15 });
@@ -86,9 +84,6 @@ describe("DYMKA breath engine (ADR 0062)", () => {
     high.postEvent({ type: "breath", when: 0.05, pitch: 64, value: 1 });
     const highOut = renderRest(high, 0.4);
     expect(rmsAt(highOut, 0.1, 0.25)).toBeGreaterThan(rmsAt(lowOut, 0.1, 0.25) * 1.8);
-    function sliceOf(p: DymkaProcessor, _n: number): Float32Array {
-      return new Float32Array(0);
-    }
     function renderRest(p: DymkaProcessor, seconds: number): Float32Array {
       const frames = Math.ceil(seconds * SR);
       const l = new Float32Array(frames);

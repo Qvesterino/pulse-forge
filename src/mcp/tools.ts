@@ -58,6 +58,8 @@ import { routeIsDestructive } from "../intent/route-guard";
 import { summarizeDocumentChange } from "./intent-readback";
 import { verifiedMutation } from "./verified-mutation";
 import { guardStaleWrites, describePath, readPath, WriteConflictError } from "./write-conflict";
+import { decidePermission, readAutonomyPolicy, readDeclaredRevision } from "./permissionLattice";
+import { guardScopedWrites, readScopeDeclaration, ScopeViolationError } from "./scope-guard";
 import { deepEqualRef, type DeltaPath } from "../commands/docDelta";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
@@ -3372,6 +3374,12 @@ export interface McpToolContext {
   /** C6 attribution: which automation surface drives this context (absent
    * for the human working the UI directly / headless tests). */
   agentId?: string;
+  /**
+   * ADR 0065: the current document revision. Absent on bare test fakes —
+   * the permission lattice then SKIPS the staleness rule rather than
+   * inventing a revision.
+   */
+  getRevision?: () => number | null;
   /** Present when a live engine can be metered (kyx_meter). Null/absent →
    * the tool refuses honestly instead of inventing numbers. */
   meters?: () => McpMeterSnapshot | null;
@@ -3596,6 +3604,7 @@ export type McpErrorCode =
   | "REQUEST_ID_CONFLICT"
   | "INVALID_REQUEST_ID"
   | "WRITE_CONFLICT"
+  | "CONFIRMATION_REQUIRED"
   | "RESOURCE_LIMIT";
 
 /** The single shaped constructor for error results — every `isError`
@@ -4348,6 +4357,46 @@ async function executeMcpToolCore(
   const risk = effectiveRisk(name, args);
   const depth = mcpCallDepth;
   const summary = summarizeToolArgs(args);
+  // ADR 0065 — the PERMISSION LATTICE. The trust layer CLASSIFIED this call
+  // (read | runtime | mutate | destructive); the lattice DECIDES it. Two
+  // refusals live here:
+  //   - an external agent that wants to change the document needs the user's
+  //     standing consent (21 tools were mutating with no consent at all),
+  //   - a write whose DECLARED revision the document has left behind is
+  //     refused outright — a consent given for an old document is not
+  //     consent for this one.
+  // A dry-run is exempt: it mutates nothing, so it IS how an agent asks
+  // "what would this do?" — the refusal belongs to the write, not the
+  // preview.
+  if (envelope.dryRun !== true) {
+    const permission = decidePermission({
+      risk,
+      agentId: ctx.agentId,
+      policy: readAutonomyPolicy(),
+      declaredRevision: readDeclaredRevision(envelope),
+      currentRevision: ctx.getRevision?.() ?? null,
+    });
+    if (permission.decision !== "auto") {
+      const doc = ctx.getDoc();
+      completeAgentCall({
+        agent,
+        tool: name,
+        risk,
+        depth,
+        mutated: false,
+        isError: true,
+        errorCode: permission.code,
+        durationMs: 0,
+        docId: doc.id,
+        docName: doc.name,
+        ...(summary !== "" ? { summary } : {}),
+      });
+      return mcpError(
+        permission.decision === "forbid" ? "POLICY_REFUSED" : "CONFIRMATION_REQUIRED",
+        permission.reason,
+      );
+    }
+  }
   const invalidRequestId = invalidRequestIdMessage(args);
   if (invalidRequestId !== null) {
     const doc = ctx.getDoc();
@@ -4540,11 +4589,20 @@ ${preview.text}`,
         ctx.execute(command);
       },
     };
-    result = await executeMcpToolDispatch(guardStaleWrites(recordingCtx, forceWrite), name, args);
+    // ADR 0065: the scope guard wraps the stale-write guard — the caller's
+    // declared scope is checked at the same moment the write lands, using
+    // the command's OWN ops (the paths it says it touches).
+    const scopedCtx = guardScopedWrites(
+      guardStaleWrites(recordingCtx, forceWrite),
+      readScopeDeclaration(envelope),
+      forceWrite,
+    );
+    result = await executeMcpToolDispatch(scopedCtx, name, args);
   } catch (error) {
     mcpCallDepth -= 1;
     job?.fail(error);
     const conflict = error instanceof WriteConflictError ? error : null;
+    const scopeError = error instanceof ScopeViolationError ? error : null;
     completeAgentCall({
       agent,
       tool: name,
@@ -4552,7 +4610,7 @@ ${preview.text}`,
       depth,
       mutated: false,
       isError: true,
-      errorCode: conflict ? "WRITE_CONFLICT" : "THREW",
+      errorCode: conflict ? "WRITE_CONFLICT" : scopeError ? "SCOPE_VIOLATION" : "THREW",
       durationMs: Date.now() - startedAt,
       docId: docBefore.id,
       docName: docBefore.name,
@@ -4566,6 +4624,15 @@ ${preview.text}`,
       return mcpError(
         "WRITE_CONFLICT",
         `${conflict.message}. Nothing was written — re-read the value and retry, or pass force: true to overwrite regardless.`,
+      );
+    }
+    if (scopeError) {
+      // ADR 0065: a write that would leave its declared scope is REFUSED
+      // before anything lands. The agent is told WHICH path, so it can
+      // narrow the call or declare a wider scope honestly.
+      return mcpError(
+        "POLICY_REFUSED",
+        `${scopeError.message}. Nothing was written — narrow the call to its declared scope, or declare the scope it really needs.`,
       );
     }
     throw error;

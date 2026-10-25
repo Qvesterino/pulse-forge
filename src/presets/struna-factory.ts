@@ -24,7 +24,6 @@ const SPECS: StrunaPresetSpec[] = [
     params: {
       pickPos: 0.25,
       pickSharp: 0.3,
-      damp: 0.35,
       decay: 2.2,
       damp: 0.55,
       mute: 0.3,
@@ -43,7 +42,6 @@ const SPECS: StrunaPresetSpec[] = [
     params: {
       pickPos: 0.18,
       pickSharp: 0.65,
-      damp: 0.15,
       decay: 3.2,
       damp: 0.2,
       mute: 0.5,
@@ -62,7 +60,6 @@ const SPECS: StrunaPresetSpec[] = [
     params: {
       pickPos: 0.08,
       pickSharp: 0.85,
-      damp: 0.55,
       decay: 1.4,
       damp: 0.3,
       mute: 0.6,
@@ -81,7 +78,6 @@ const SPECS: StrunaPresetSpec[] = [
     params: {
       pickPos: 0.42,
       pickSharp: 0.2,
-      damp: 0.15,
       decay: 6,
       damp: 0.7,
       mute: 1,
