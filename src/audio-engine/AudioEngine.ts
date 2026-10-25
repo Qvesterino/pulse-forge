@@ -2975,6 +2975,25 @@ export class AudioEngine {
     this.previewDeck.previewInstrumentWithParams(trackId, pitch, overrides);
   }
 
+  /**
+   * Audition an instrument with parameters AND SOURCES overridden — the
+   * Sample Forge's candidate audition (roadmap wave 3).
+   *
+   * The document is not touched. The source override exists because a
+   * candidate that targets Source B must be HEARD with the source it will
+   * be applied with — otherwise the audition compares a new sound against
+   * the old one and the producer picks by ear for a patch that will not
+   * reproduce the choice.
+   */
+  previewInstrumentWithSources(
+    trackId: string,
+    pitch: number,
+    overrides: Record<string, number>,
+    sources: { sampleId?: string | null; sampleIdB?: string | null } = {},
+  ): void {
+    this.previewDeck.previewInstrumentWithSources(trackId, pitch, overrides, sources);
+  }
+
   previewSlice(pad: DrumPad, loop = false): void {
     this.previewDeck.previewSlice(pad, loop);
   }

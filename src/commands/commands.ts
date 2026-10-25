@@ -124,5 +124,8 @@ export {
 export type { GenerativeTrackConfigPatch } from "./tracks";
 // TSAR Sample Forge (ADR 0023): plan -> TSAR patch, one undo step.
 export { forgeSampleCommand } from "./tsar";
+// TSAR Sample Forge candidates (roadmap wave 3): a chosen READING -> TSAR
+// patch, one undo step, into the slot the reading belongs to.
+export { applyForgeCandidateCommand } from "./tsar";
 export { forgeKickCommand } from "./instrument";
 export type { ForgeSampleOptions } from "./tsar";

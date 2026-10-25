@@ -187,6 +187,83 @@
   font-size: var(--fs-compact);
 }
 
+/* ── Forge candidates (roadmap wave 3) ──────────────────────────────────
+   Each candidate is a READING of the same sound. The evidence line and the
+   reason line are what make the reading honest, so they get real space
+   instead of being squeezed into a tooltip. */
+.tsar-candidates {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tsar-candidate {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "title actions"
+    "evidence actions"
+    "reason actions"
+    "warning actions";
+  gap: 1px 8px;
+  align-items: center;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-raise);
+}
+
+.tsar-candidate.selected {
+  border-color: var(--accent);
+}
+
+.tsar-candidate-title {
+  grid-area: title;
+  justify-self: start;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tsar-candidate-title[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.tsar-candidate-evidence {
+  grid-area: evidence;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+}
+
+.tsar-candidate-reason {
+  grid-area: reason;
+  color: var(--text-faint);
+  font-size: var(--fs-compact);
+}
+
+.tsar-candidate-warning {
+  grid-area: warning;
+  color: var(--warning, var(--text-faint));
+  font-size: var(--fs-compact);
+}
+
+.tsar-candidate-actions {
+  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .tsar-forge-status {
   font-family: var(--mono);
   font-size: var(--fs-compact);

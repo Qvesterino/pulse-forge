@@ -349,7 +349,7 @@ try {
     if (await continueCard.count()) {
       await continueCard.click();
     } else {
-      await appPage.locator(".pb-row button:has-text(OPEN)").first().click();
+      await appPage.locator(".pb-row button:has-text('OPEN')").first().click();
     }
     await appPage.waitForSelector(".sequencer", { timeout: 30_000 });
     const patternsAfterReload = await appPage.locator(".pattern-chip").count();
@@ -809,7 +809,10 @@ try {
     await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
     // DEV renders the flagship device in editor mode, where rack-collapse
     // controls are intentionally hidden. Verify the actual PRISM editor UI.
-    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 30_000 });
+    // The editor mounts only after the flagship's worklet runtime loads —
+    // under the suite's own parallel pages that can exceed 30 s once; the
+    // budget covers the runtime, not just the React render.
+    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 60_000 });
     const prismSource = plugPage.locator(".fx-sidechain-picker select").first();
     const sourceOptions = await prismSource.locator('option:not([value=""])').count();
     if (sourceOptions < 1) throw new Error("PRISM source picker has no eligible source tracks");
@@ -908,7 +911,7 @@ try {
     if (await continueCard.count()) {
       await continueCard.click();
     } else {
-      await plugPage.locator(".pb-row button:has-text(OPEN)").first().click();
+      await plugPage.locator(".pb-row button:has-text('OPEN')").first().click();
     }
     await plugPage.waitForSelector(".sequencer", { timeout: 30_000 });
     const reloadedDevices = plugPage.locator(".devices-panel").first();

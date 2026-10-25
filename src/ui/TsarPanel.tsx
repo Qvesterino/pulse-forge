@@ -6,9 +6,9 @@ import {
   applyInstrumentPatch,
   applyInstrumentPreset,
   setInstrumentParam,
-  forgeSampleCommand,
+  applyForgeCandidateCommand,
 } from "../commands/commands";
-import { forgePlan } from "../tsar/forge";
+import { forgeCandidates as forgeCandidateSet, candidateSummary, type ForgeCandidate } from "../tsar/forge-candidates";
 import { mutateTsarPatch, mutationReveal, type TsarMutation } from "../tsar/mutations";
 import { TSAR_FACTORY_PRESETS } from "../presets/tsar-factory";
 import { importAudioFile } from "./sample-import";
@@ -226,13 +226,26 @@ export function TsarPanel() {
   };
 
   /**
-   * Forge a dropped file: import -> decode -> plan -> command. The import
-   * lands the sample in the user library (the same path DropZone uses); the
-   * plan is refused loudly when the source is silent rather than installing
-   * an empty patch.
+   * FORGE CANDIDATES (roadmap wave 3).
+   *
+   * The flow is import -> candidates -> hear -> apply, and NOTHING before
+   * the apply touches the project. That order is the point: a producer picks
+   * a reading by ear, and a candidate that could only be judged after it
+   * was applied would be a candidate judged on a sound the producer did not
+   * choose yet.
+   *
+   * The audition uses the candidate's OWN source (`previewInstrumentWithSources`),
+   * so a Source B candidate is heard with the sound it will be applied with.
    */
+  const [forgeCandidates, setForgeCandidates] = useState<ForgeCandidate[]>([]);
+  const [forgeSampleId, setForgeSampleId] = useState<string | null>(null);
+  const [forgeSelected, setForgeSelected] = useState<string | null>(null);
+
   const forgeFromFile = async (file: File) => {
     setForgeStatus(`Reading ${file.name}…`);
+    setForgeCandidates([]);
+    setForgeSelected(null);
+    setForgeSampleId(null);
     try {
       const asset = await importAudioFile(services, file);
       const buffer = services.bank.get(asset.id);
@@ -240,20 +253,43 @@ export function TsarPanel() {
         setForgeStatus("Import failed — the sample could not be decoded");
         return;
       }
-      const plan = forgePlan(buffer.getChannelData(0), buffer.sampleRate);
-      if (plan.kind === "empty") {
-        setForgeStatus(`Nothing to forge: ${plan.warnings.join("; ")}`);
+      const set = forgeCandidateSet(buffer.getChannelData(0), buffer.sampleRate, { slot: forgeSlot });
+      if (set.candidates.length === 0) {
+        setForgeStatus(`Nothing to forge: ${set.warnings.join("; ")}`);
         return;
       }
-      services.store.execute(forgeSampleCommand(services.store.doc, track.id, asset.id, plan, { slot: forgeSlot }));
+      // The candidates are READY, not applied. The producer hears them first.
+      setForgeCandidates(set.candidates);
+      setForgeSampleId(asset.id);
+      const first = set.candidates[0]!;
+      setForgeSelected(first.id);
       setForgeStatus(
-        `Forged into source ${forgeSlot === 0 ? "A" : "B"}: ${plan.engine}${
-          plan.rootMidi !== null ? `, root MIDI ${plan.rootMidi}` : ""
-        }${plan.warnings.length > 0 ? ` — ${plan.warnings.join("; ")}` : ""}`,
+        `${set.candidates.length} candidate${set.candidates.length === 1 ? "" : "s"} from ${file.name} — hear them, then apply.`,
       );
     } catch (error) {
       setForgeStatus(error instanceof Error ? `Forge failed: ${error.message}` : "Forge failed");
     }
+  };
+
+  /** Audition a candidate WITHOUT touching the project. */
+  const previewCandidate = (candidate: ForgeCandidate) => {
+    if (!forgeSampleId) return;
+    // A Source B candidate is auditioned with the NEW B source and the
+    // track's own A source — that is the patch the candidate would land in.
+    const sources =
+      candidate.slot === 0 ? { sampleId: forgeSampleId } : { sampleIdB: forgeSampleId };
+    services.engine.previewInstrumentWithSources(track.id, 60, candidate.params, sources);
+  };
+
+  /** Apply the chosen candidate: ONE undoable command. */
+  const applyCandidate = (candidate: ForgeCandidate) => {
+    if (!forgeSampleId) return;
+    services.store.execute(
+      applyForgeCandidateCommand(services.store.doc, track.id, forgeSampleId, candidate),
+    );
+    setForgeStatus(
+      `Applied ${candidate.label} to source ${candidate.slot === 0 ? "A" : "B"}.${candidate.warnings.length > 0 ? ` — ${candidate.warnings.join("; ")}` : ""}`,
+    );
   };
 
   const onDrop = (event: React.DragEvent) => {
@@ -420,8 +456,50 @@ export function TsarPanel() {
             />
           </div>
           <div className="tsar-forge-hint">
-            Drop a WAV here — root, character and engine are detected automatically.
+            Drop a WAV here — one import, several honest readings. Hear them, then apply the one you want.
           </div>
+          {forgeCandidates.length > 0 && (
+            <ul className="tsar-candidates" aria-label="Forge candidates">
+              {forgeCandidates.map((candidate) => {
+                const selected = forgeSelected === candidate.id;
+                return (
+                  <li
+                    key={candidate.id}
+                    className={`tsar-candidate${selected ? " selected" : ""}`}
+                    aria-current={selected ? "true" : undefined}
+                  >
+                    <button
+                      type="button"
+                      className="tsar-candidate-title"
+                      aria-pressed={selected}
+                      onClick={() => setForgeSelected(candidate.id)}
+                      title={candidate.reason}
+                    >
+                      {candidate.label}
+                    </button>
+                    <span className="tsar-candidate-evidence">{candidateSummary(candidate)}</span>
+                    <span className="tsar-candidate-reason">{candidate.reason}</span>
+                    {candidate.warnings.length > 0 && (
+                      <span className="tsar-candidate-warning">{candidate.warnings.join("; ")}</span>
+                    )}
+                    <span className="tsar-candidate-actions">
+                      <button type="button" className="btn btn-small" onClick={() => previewCandidate(candidate)}>
+                        ▶ HEAR
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        disabled={!selected}
+                        onClick={() => applyCandidate(candidate)}
+                      >
+                        APPLY → {candidate.slot === 0 ? "A" : "B"}
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           {forgeStatus && <div className="tsar-forge-status">{forgeStatus}</div>}
         </section>
 

@@ -15,6 +15,7 @@
 import type { Command } from "./types";
 import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
 import type { ForgePlan } from "../tsar/forge";
+import type { ForgeCandidate } from "../tsar/forge-candidates";
 import { snapshot } from "./core";
 
 export interface ForgeSampleOptions {
@@ -84,4 +85,65 @@ export function forgeSampleCommand(
   };
   const targetLabel = slot === 0 ? "A" : "B";
   return snapshot("forgeSample", `Forge into TSAR ${targetLabel}`, doc, next);
+}
+
+/**
+ * Apply a FORGE CANDIDATE (roadmap wave 3) to a TSAR track as ONE undoable
+ * command.
+ *
+ * The candidate carries its own parameter overlay, already measured from the
+ * source; this command merges that overlay onto the track's current params
+ * and points the target slot at the source. Everything else about the patch
+ * survives: applying a candidate is a change of reading, not a reset of the
+ * instrument.
+ *
+ * The slot is the candidate's OWN slot — the reading decided which source it
+ * belongs to, and the producer chose the reading, not the slot. A candidate
+ * that was auditioned for Source B therefore lands in Source B.
+ *
+ * Honesty: the candidate's warnings are the caller's to show; this command
+ * applies what the candidate measured and never invents a root the analysis
+ * did not support (the candidate's overlay simply omits the root key when
+ * the reading was weak).
+ */
+export function applyForgeCandidateCommand(
+  doc: ProjectDocument,
+  trackId: string,
+  sampleId: string,
+  candidate: ForgeCandidate,
+): Command {
+  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
+  if (!track) throw new Error(`TSAR track ${trackId} not found`);
+  if (track.instrument !== "tsar") {
+    throw new Error("Forge candidates apply to a TSAR track");
+  }
+  if (typeof sampleId !== "string" || sampleId === "") {
+    throw new Error("Sample Forge needs a sample to forge");
+  }
+  const slot = candidate.slot;
+
+  const params: Record<string, number> = { ...track.params };
+  for (const [key, value] of Object.entries(candidate.params)) {
+    params[key] = value;
+  }
+
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((candidateTrack) => {
+      if (candidateTrack.id !== trackId || candidateTrack.kind !== "instrument") return candidateTrack;
+      // A forged patch is no longer the preset it started from, so the
+      // preset id clears — the same rule the KOPA Forge follows.
+      return slot === 0
+        ? { ...candidateTrack, sampleId, params, presetId: null }
+        : { ...candidateTrack, sampleIdB: sampleId, params, presetId: null };
+    }),
+  };
+  const targetLabel = slot === 0 ? "A" : "B";
+  const rootNote = candidate.rootReliable && candidate.rootMidi !== null ? `root MIDI ${candidate.rootMidi}, ` : "";
+  return snapshot(
+    "applyForgeCandidate",
+    `Forge ${candidate.label}${rootNote}into TSAR ${targetLabel}`,
+    doc,
+    next,
+  );
 }

@@ -1,6 +1,6 @@
 # KYX STATUS — the claims, and the commands that check them
 
-Generated 2026-10-25T15:03:18.674Z · **5 pass · 0 fail · 4 pending · 0 not run**
+Generated 2026-10-25T18:08:46.058Z · **5 pass · 0 fail · 4 pending · 0 not run**
 
 > This page is a measurement table, not marketing. A row is PASS only from a real exit code.
 > `drift-checked` rows are re-run and compared by `npm run drift:check`; `at-generation` rows show

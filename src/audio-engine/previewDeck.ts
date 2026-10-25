@@ -136,8 +136,7 @@ export class PreviewDeck {
    */
   previewInstrumentPreset(trackId: string, preset: InstrumentPreset): void {
     const track = this.deps.doc()?.tracks.find((candidate): candidate is InstrumentTrack => {
-      return candidate.kind === "instrument" && candidate.id === trackId;
-    });
+      return candidate.kind === "instrument" && candidate.id === trackId;    });
     if (!track || preset.instrument !== track.instrument) return;
     const params = { ...track.params };
     for (const [id, value] of Object.entries(preset.params)) {
@@ -169,6 +168,43 @@ export class PreviewDeck {
     this.previewTrackWithParams(track, params, track.sampleId, track.presetId, pitch);
   }
 
+  /**
+   * Audition a Forge CANDIDATE (roadmap wave 3) without touching the project.
+   *
+   * The candidate's own source is auditioned — a candidate that targets
+   * Source B must be heard with the NEW B source, not with whatever B
+   * source the track happens to hold. That is why the source override
+   * exists: without it the audition would lie, and a producer would pick a
+   * reading by ear that the applied patch would not reproduce.
+   *
+   * The document is NOT touched. The candidate's params and its sources live
+   * in the temporary runtime only.
+   */
+  previewInstrumentWithSources(
+    trackId: string,
+    pitch: number,
+    overrides: Record<string, number>,
+    sources: { sampleId?: string | null; sampleIdB?: string | null } = {},
+  ): void {
+    const track = this.deps.doc()?.tracks.find((candidate): candidate is InstrumentTrack => {
+      return candidate.kind === "instrument" && candidate.id === trackId;
+    });
+    if (!track) return;
+    const params = { ...track.params };
+    for (const [id, value] of Object.entries(overrides)) {
+      const clamped = clampInstrumentParam(track.instrument, id, value);
+      if (Number.isFinite(clamped)) params[id] = clamped;
+    }
+    this.previewTrackWithParams(
+      track,
+      params,
+      sources.sampleId !== undefined ? sources.sampleId : track.sampleId,
+      track.presetId,
+      pitch,
+      sources.sampleIdB !== undefined ? sources.sampleIdB : (track.sampleIdB ?? null),
+    );
+  }
+
   /** The shared body of both instrument previews: a temporary runtime that
    * plays ONE note with the given params, then disposes itself. */
   private previewTrackWithParams(
@@ -177,6 +213,7 @@ export class PreviewDeck {
     sampleId: string | null | undefined,
     presetId: string | null | undefined,
     pitch: number,
+    sampleIdB: string | null | undefined = undefined,
   ): void {
     this.deps.ensureContext();
     this.stopPreview();
@@ -193,6 +230,10 @@ export class PreviewDeck {
       params,
       sampleId: sampleId !== undefined ? sampleId : track.sampleId,
       presetId: presetId ?? track.presetId,
+      // The SECOND source is overridable for the same reason the first one
+      // is: a candidate that targets Source B must be auditioned with the
+      // source it will actually be applied with.
+      sampleIdB: sampleIdB !== undefined ? sampleIdB : (track.sampleIdB ?? null),
     };
 
     let runtime: InstrumentRuntime;
