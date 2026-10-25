@@ -90,8 +90,24 @@ export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: n
     execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) })),
     undo: (d) =>
       withLane(d, laneId, (l) => {
-        // Inverse of the sorted insert: remove one instance of that (tick, value).
-        const idx = l.points.findIndex((p) => p.tick === point.tick && p.value === point.value);
+        // Audit F-29 — the D3 treatment `moveAutomationPoint` already has
+        // (Audit 06 D3): re-anchor by IDENTITY first. `point` is the very
+        // object this command inserted into the lane.
+        let idx = l.points.findIndex((p) => p === point);
+        if (idx === -1) {
+          // Fall back to (tick, value) — the array was rebuilt (normalisation
+          // clones every point), so identity is gone. Remove the LAST match,
+          // not the first: a stable sorted insert puts THIS command's point
+          // after an identical earlier one, and the first match may be
+          // somebody else's point (the human's).
+          for (let i = l.points.length - 1; i >= 0; i--) {
+            const candidate = l.points[i]!;
+            if (candidate.tick === point.tick && candidate.value === point.value) {
+              idx = i;
+              break;
+            }
+          }
+        }
         if (idx === -1) return l;
         const points = [...l.points];
         points.splice(idx, 1);

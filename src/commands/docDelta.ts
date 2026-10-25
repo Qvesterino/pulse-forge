@@ -308,7 +308,23 @@ function descend(node: unknown, op: DeltaOp, depth: number): unknown {
       }
       if (op.k === "del" && segment < node.length) {
         const copy = [...node];
-        copy.splice(segment, 1);
+        // Audit F-29: the op CARRIES the element it removed (`removed`), and a
+        // positional splice ignores it. The array may have SHIFTED between the
+        // command and its undo — a point inserted before this one pushes it
+        // along — and splicing the recorded index then deletes a DIFFERENT
+        // element (in the measured case: the HUMAN's point, while the AI's
+        // survived its own undo).
+        //
+        // Verify the slot before splicing: cut positionally only when the slot
+        // still holds the removed element; otherwise find that element by
+        // CONTENT, and if it is gone entirely, delete nothing at all.
+        let at = segment;
+        if (!deepEqualRef(copy[at], op.removed)) {
+          const found = copy.findIndex((item) => deepEqualRef(item, op.removed));
+          if (found === -1) return node;
+          at = found;
+        }
+        copy.splice(at, 1);
         return copy;
       }
       if (op.k === "set" && segment < node.length) {

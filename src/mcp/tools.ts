@@ -185,7 +185,7 @@ import {
 // F2 eager diet: intent graph loads with the MCP surface, not at boot.
 import { applyExactIntentCommand } from "../commands/intentRouting";
 import { applyGenerationResultCommand } from "../commands/aiPattern";
-import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
+import { clampTargetValue, isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { clampInstrumentParam, INSTRUMENT_ORDER } from "../instruments/registry";
 import {
@@ -7930,7 +7930,17 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
       laneId = next.automation[next.automation.length - 1].id;
     }
     const value = Number(record.value);
-    next = addAutomationPoint(next, laneId, position, value).execute(next);
+    // Audit F-07: an identical point already in the lane would be a no-op
+    // that still grows the history and DUPLICATES the point (two points at
+    // one tick with one value — which is also what makes the undo ambiguous:
+    // the two are indistinguishable). The "did not land" branch below already
+    // states this intent; this makes it reachable instead of dead code.
+    const tick = Math.max(0, Math.round(position));
+    const clamped = clampTargetValue(doc, lane?.target ?? target, value);
+    if (lane?.points.some((p) => p.tick === tick && p.value === clamped)) {
+      return { text: "automation point did not land (already present with this value?)", mutated: false };
+    }
+    next = addAutomationPoint(next, laneId, tick, value).execute(next);
     const landedLane = next.automation.find((candidate) => candidate.id === laneId);
     // Last match wins: the engine samples the most recent point at a tick.
     const landed = landedLane?.points.filter((point) => point.tick === position).pop();
