@@ -363,7 +363,11 @@ export class HlasProcessor {
           const c = band * 5;
           const s = band * 4;
           const y =
-            cf[c]! * glottal + cf[c + 1]! * st[s]! + cf[c + 2]! * st[s + 1]! - cf[c + 3]! * st[s + 2]! - cf[c + 4]! * st[s + 3]!;
+            cf[c]! * glottal +
+            cf[c + 1]! * st[s]! +
+            cf[c + 2]! * st[s + 1]! -
+            cf[c + 3]! * st[s + 2]! -
+            cf[c + 4]! * st[s + 3]!;
           st[s + 1] = st[s]!;
           st[s] = glottal;
           st[s + 3] = st[s + 2]!;

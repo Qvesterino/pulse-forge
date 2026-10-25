@@ -1071,14 +1071,14 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
   // The knob is needed only where the knob is the thing that MOVES: a
   // "more"/"less" ask turns it, an absolute "set" places it. "remove" takes
   // the instance OUT and a semantic move carries its own absolute params -
-  // neither needs a knob. Requiring one up front made the type-level remove
-  // unreachable for the 43 effect types that have no primary knob (eq,
-  // saturation, ...), and the UI's intent bar swallowed the thrown error, so
-  // the user was left with nothing happening at all.
-  const turnsKnob = intent.direction !== "remove" && !intent.move;
-  if (turnsKnob && !knob) {
-    throw new Error(`no knob mapped for effect "${intent.effectType}" — intent understood, effect unsupported`);
-  }
+  // neither needs a knob. The guard therefore lives INSIDE the loop, after
+  // the add: a fresh ADD of a knob-less effect is honored (the instance is
+  // created with its own defaults), while a knob ask on an instance that is
+  // already present refuses honestly. Requiring one up front made the
+  // type-level remove unreachable for 43 effect types - and then, once the
+  // word table could name every effect, the plain add-ask on the same
+  // knob-less types (F-17).
+  const noKnob = `no knob mapped for effect "${intent.effectType}" — intent understood, effect unsupported`;
   const scale = intent.degree ? calibrateKnobScale(intent.degree.value) : AMOUNT_SCALE[intent.amount];
   const trackIds = targetTrackIds(doc, intent.targets, intent.trackIds, intent.trackOrdinal);
   if (trackIds.length === 0) {
@@ -1099,6 +1099,7 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
       continue;
     }
     let fx = cursor.tracks.find((track) => track.id === trackId)?.effects.find((fx) => fx.type === intent.effectType);
+    const wasFresh = !fx;
     if (!fx) {
       cursor = addEffectToTracks(cursor, [trackId], intent.effectType).execute(cursor);
       fx = cursor.tracks
@@ -1130,9 +1131,14 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
       continue;
     }
     // Only a knob-turning ask reaches this line (the remove branch and the
-    // semantic-move branch both continued above), so the knob is defined
-    // here - this narrows the type and keeps the guard local.
-    if (!knob) continue;
+    // semantic-move branch both continued above). A knob-less instance that
+    // was JUST added keeps its own defaults; reaching here with no knob on an
+    // instance that was already present - or with an absolute "set", which
+    // carries a number no knob here can take - refuses with the reason.
+    if (!knob) {
+      if (wasFresh && intent.direction !== "set") continue;
+      throw new Error(noKnob);
+    }
     const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
     if (!knobDef) continue;
     if (intent.direction === "set") {
@@ -1165,9 +1171,15 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
 
   const scaleNote =
     intent.direction === "set" ? `= ${intent.percent}%` : intent.percent != null ? `±${intent.percent}%` : `×${scale}`;
+  // A knob-less fresh add performed no turn - the label must not claim one.
+  const knoblessAddOnly = !knob && intent.direction !== "remove" && !intent.move;
   return snapshot(
     "applyEffectIntent",
-    `Effect: ${[...parts, `${intent.effectType} ${intent.direction} ${scaleNote}`].join(", ")}`,
+    `Effect: ${
+      knoblessAddOnly
+        ? parts.join(", ")
+        : [...parts, `${intent.effectType} ${intent.direction} ${scaleNote}`].join(", ")
+    }`,
     doc,
     cursor,
   );

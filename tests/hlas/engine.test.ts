@@ -86,15 +86,15 @@ describe("HĽAS vowel engine (ADR 0059)", () => {
     const left = new Float32Array(BLOCK);
     const right = new Float32Array(BLOCK);
     for (let frame = 0; frame < BLOCK * 8; frame += BLOCK) proc.process(left, right, frame);
-    const envBefore = (proc as unknown as { voices: Array<{ active: boolean; env: number; stage: number }> }).voices.find(
-      (v) => v.active,
-    )!;
+    const envBefore = (
+      proc as unknown as { voices: Array<{ active: boolean; env: number; stage: number }> }
+    ).voices.find((v) => v.active)!;
     expect(envBefore.stage).toBe(1); // sustaining
     // MPE timbre sweeps the morph to 1 — the envelope must NOT restart.
     proc.applyEvent({ type: "timbre", when: 0.15, pitch: 60, timbre: 1 });
-    const voice = (proc as unknown as { voices: Array<{ active: boolean; env: number; stage: number; morph: number }> }).voices.find(
-      (v) => v.active,
-    )!;
+    const voice = (
+      proc as unknown as { voices: Array<{ active: boolean; env: number; stage: number; morph: number }> }
+    ).voices.find((v) => v.active)!;
     expect(voice.morph).toBe(1);
     expect(voice.stage).toBe(1); // still sustaining, not re-attacked
     expect(voice.env).toBe(1);

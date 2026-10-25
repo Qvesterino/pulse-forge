@@ -125,9 +125,15 @@ function effectContext(
 
   if (catalog?.primaryKnob) {
     const parameter = catalog.parameters.find((candidate) => candidate.id === catalog.primaryKnob);
-    if (parameter) {
+    const primaryRole = catalog.primaryRole;
+    // The offered role must be one the model's own grammar can emit
+    // (actionContract.parameterRoles). A knob without a capability row used
+    // to fall back to the literal role "primary", which the grammar rejects -
+    // a control marked supported whose every paramIntent it enabled was
+    // rejected. Same gate as the param-exposed controls below.
+    if (parameter && primaryRole !== null && supportedRoles.has(primaryRole)) {
       intentControls.push({
-        role: catalog.primaryRole ?? "primary",
+        role: primaryRole,
         paramId: parameter.id,
         value: valueById.get(parameter.id) ?? parameter.default,
         min: parameter.min,

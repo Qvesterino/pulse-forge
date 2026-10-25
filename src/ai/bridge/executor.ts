@@ -1001,7 +1001,11 @@ function findLastIndex<T>(arr: readonly T[], pred: (v: T) => boolean): number {
 }
 
 function setTrackGain(gainLinear: number, doc: ProjectDocument, trackId: ID): ProjectDocument {
-  const clamped = clamp(gainLinear, 0, 4);
+  // The command layer owns this domain: setTrackParams (which the UI fader,
+  // the MCP surface and intent routing all go through) clamps [0, 1.5]. The
+  // bridge used to clamp 0..4, so a valid-looking +12 dB ask could land a
+  // gain no other surface can set or show.
+  const clamped = clamp(gainLinear, 0, 1.5);
   return withTrack(doc, trackId, (t) => ({ ...t, gain: clamped }));
 }
 
