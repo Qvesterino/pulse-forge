@@ -81,7 +81,7 @@ export function setInstrumentParams(
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);
         if (t.get("id") === trackId) {
-          const yParams = (t.get("params") as any);
+          const yParams = t.get("params") as any;
           for (const [key, value] of Object.entries(next)) yParams.set(key, value);
           break;
         }
@@ -198,6 +198,42 @@ export function applyInstrumentPatch(
   return {
     type: "applyInstrumentPatch",
     label: `${INSTRUMENT_META[track.instrument].name} — ${label}`,
+    execute: (d) => apply(d, nextParams, null),
+    undo: (d) => apply(d, prevParams, prevPresetId),
+  };
+}
+
+/**
+ * Apply a KOPA Forge plan to a KOPA track: the measured kick parameters
+ * overlay the current patch as ONE undoable step (the CHORÁL
+ * applyInstrumentPatch semantics — a forged patch is no longer the preset
+ * it started from, so the preset id clears).
+ */
+export function forgeKickCommand(
+  doc: ProjectDocument,
+  trackId: string,
+  plan: { params: Record<string, number>; rootMidi: number | null },
+): Command {
+  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  if (track.kind !== "instrument" || track.instrument !== "kopa") {
+    throw new Error("Kick Forge applies to a KOPA track");
+  }
+  const prevParams = { ...track.params };
+  const prevPresetId = track.presetId ?? null;
+  const nextParams: Record<string, number> = { ...track.params };
+  for (const [key, value] of Object.entries(plan.params)) {
+    nextParams[key] = clampInstrumentParam(track.instrument, key, value);
+  }
+  const apply = (d: ProjectDocument, patch: Record<string, number>, presetId: string | null): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) =>
+      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...patch }, presetId } : t,
+    ),
+  });
+  return {
+    type: "forgeKick",
+    label: `Kick Forge — ${plan.rootMidi !== null ? `root MIDI ${plan.rootMidi}, ` : ""}fitted patch`,
     execute: (d) => apply(d, nextParams, null),
     undo: (d) => apply(d, prevParams, prevPresetId),
   };

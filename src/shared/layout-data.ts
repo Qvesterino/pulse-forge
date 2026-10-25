@@ -35,6 +35,7 @@ export const PANEL_KEYS = [
   "devices",
   "tsar",
   "choral",
+  "kopa",
   "arr",
   "live",
   "mod",
