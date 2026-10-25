@@ -10,8 +10,8 @@
 
 ## 1. Executive reliability verdict
 
-**The DAW's *authoritative state* is sound — with exactly one exception the audit found. Its
-*reported state* is not uniformly sound.**
+**The DAW's *authoritative state* is sound — with two exceptions the audit found, one of them
+Critical. Its *reported state* is not uniformly sound.**
 
 KYX has a genuinely well-disciplined core: one authoritative document, one command write path,
 delta-based undo that cannot revert a concurrent human edit, an atomic IndexedDB commit, a
@@ -28,11 +28,18 @@ The result is measured, not inferred: **the DSP plays wet/dry 1.0 while the docu
 say 0.3, and a save + reload moves the sound back to 0.3.** One second writer, one missing
 inverse-id map, and the project's "same project, same sound" contract breaks.
 
+**The second exception is F-29**, and it is the opposite failure: the document is right, but the
+**undo** that is supposed to restore it can remove the wrong thing. An automation point carries no
+identity, so its undo is anchored to an array *position*; when the lane shifted between the AI's
+write and its undo, the AI's undo removed the **human's** point and left the AI's standing —
+measured, §5.7. It is a silent loss of authored work, and the window that opens it is F-26's
+unsynchronised dispatch.
+
 What is *not* uniformly sound is everything that **reports** on that state rather than holding it:
 
 | Surface | Verdict |
 |---|---|
-| Project document, undo/redo, save/reload | **Trustworthy — except the DSP write-back path.** One authority, one write path, atomic save, verified round-trip. **F-28** is the single hole: a second writer whose value is discarded. |
+| Project document, undo/redo, save/reload | **Trustworthy — with two holes.** One authority, one write path, atomic save, verified round-trip. **F-28** is the critical one: a second writer whose value is discarded. **F-29** is the second: the document is right, but an automation point's undo is *positional*, so a shifted lane lets the AI's undo remove the **human's** point. |
 | MCP refusal + acknowledgement contract | **Mixed — and improving in the working tree.** The new R-02 `verifiedMutation` gate now corrects false *successes* at one dispatch choke point. It does **not** cover two paths: a refusal that is not flagged as an error, and the idempotency replay, which returns before the gate. |
 | Export paths | **Divergent from each other.** The master export refuses to render a changed project; the stem and track exports do not check at all and can ship a stale arrangement. |
 | Automation / DSP value display | **Divergent.** The knob shows the committed document value while the DSP plays the automated value, with no "under automation" indicator anywhere in the rack. |
@@ -54,16 +61,21 @@ is deliberate rather than accidental.
 
 **Evidence limits — read before trusting this report.**
 
-1. **The repository's own test suite (1230 test files) was NOT executed.** No `npm run test`,
-   no `npm run typecheck`, no `npm run build`. Every claim below is either read from source or
-   measured by a purpose-built probe. Where a claim rests only on reading, it is labelled as such.
-2. **Two probe harnesses were used; both executed.** `tmp-divergence-probe.mts` (7 sub-probes,
-   `vite-node`) and three vitest specs — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**),
+1. **The repository's suite was measured — and it is RED.** The full suite ran on a **clean
+   baseline worktree** at the audited commit: **1232 files, 1213 passed, 19 failed** (21 tests), plus
+   **13 typecheck errors in 5 files**. All of it is pre-existing and none of it is caused by this
+   audit — its four commits touched one Markdown file. The production build **cannot** run, because
+   `build` starts with the failing `tsc`. So this report does not rest on a green tree: every claim
+   below is still either read from source or measured by a purpose-built probe, and where a claim
+   rests only on reading it is labelled as such. (§5.5)
+2. **Four probe harnesses were used; all executed.** `tmp-divergence-probe.mts` (7 sub-probes,
+   `vite-node`) and four vitest specs — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**),
    `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**, covering the four mission probes the
-   first pass had to report as *not executed*) and `tmp-probe/second-writer.test.ts` (T6, the DSP
-   write-back). An earlier `vite-node` attempt at the second probe hung for 420 s twice and was
-   abandoned; re-implementing it under vitest loaded the same module graph in **8 seconds**. Results
-   and raw output are in §5.
+   first pass had to report as *not executed*), `tmp-probe/second-writer.test.ts` (T6, the DSP
+   write-back) and `tmp-probe/gaps.test.ts` (T7–T9, **7/7 green** — the three probes §5.6 had left
+   open, which produced **F-29** and refuted **F-22**). An earlier `vite-node` attempt at the second
+   probe hung for 420 s twice and was abandoned; re-implementing it under vitest loaded the same
+   module graph in **8 seconds**. Results and raw output are in §5.
 3. **The working tree moved under this audit, and it changed a finding.** `src/mcp/tools.ts` was
    edited by another session *while the probes were running* (file mtime 11:36:56; `git diff` grew
    during the session). The change landed the **R-02 `verifiedMutation` gate**, which fixed the
@@ -205,8 +217,8 @@ Severity: **Critical** (wrong audio / lost work / false success in the common pa
 Confidence: **Confirmed** (read the code path that proves it, or measured it) · **Strongly indicated** ·
 **Hypothesis** · **Untested**.
 
-**28 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
-a worked example rather than an open item; 27 remain open, one of them **Critical** (F-28).
+**29 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
+a worked example rather than an open item; 28 remain open, one of them **Critical** (F-28).
 Fourteen are **Confirmed** by code reading that the parent re-verified directly; **nine of those were
 additionally measured** (§5). Two are **Strongly indicated** and are flagged for confirmation
 (F-16, F-22); one is a **Hypothesis** (F-23).
@@ -474,7 +486,13 @@ additionally measured** (§5). Two are **Strongly indicated** and are flagged fo
 ### F-07 — Automation points are addressed by value: an AI undo can delete the human's point, and repeated identical AI writes duplicate points
 
 **Severity:** Medium · **Confidence:** Confirmed — **measured** (§5.2) for the duplication half; the
-identity half is Confirmed by code reading only
+identity half was Confirmed by code reading only and is now **measured** (§5.7, T7a–T7c)
+
+> **Superseded in part by F-29.** §5.7 measured the identity half and found the mechanism is
+> **positional**, not merely value-addressed: the undo delta splices whatever occupies the recorded
+> index and never compares the point it carried. **F-29 carries the destructive form** — the AI's
+> undo removes the human's point outright — while F-07 keeps the duplication half. The two share one
+> root cause (an automation point has no identity) and one repair.
 
 > **Measured (§5.2):** the identical write duplicated the point and grew the undo stack.
 > ```
@@ -847,7 +865,7 @@ identity half is Confirmed by code reading only
 
 ### F-22 — Undo inside an open undo frame can resurrect the undone command
 
-**Severity:** Low · **Confidence:** Strongly indicated
+**Severity:** Low · **Confidence:** Hypothesis — **NOT REPRODUCED** by the §5.7 probe (T9)
 
 - **Observed divergence:** `ProjectStore.undo()` never consults `frameCommands`, while
   `endUndoFrame()` builds the compound command from `frameCommands`, which still contains the
@@ -857,6 +875,28 @@ identity half is Confirmed by code reading only
   undo twice.
 - **Not confirmed** by execution: no test covers undo-inside-a-frame
   (`tests/commands-edge-cases.test.ts:194-218` covers the happy path only).
+- **MEASURED AND NOT REPRODUCED (audit correction, §5.7 T9).** The probe opened a frame, ran three
+  commands on three different tracks, pressed undo **inside** the frame, sealed it, and then pressed
+  the frame's single Ctrl+Z:
+  ```
+  [T9] inside the frame            : 0.11 0.22 0.33
+  [T9] after the undo inside the frame: 0.11 0.22 0.85     ← the third command reverted
+  [T9] stack length after the inner undo: 2
+  [T9] after endUndoFrame           : 0.11 0.22 0.85
+  [T9] stack length after the seal  : 1                   ← collapsed to ONE entry
+  [T9] after the frame's single Ctrl+Z: 0.9 0.85 0.85     ← the BASELINE, exactly
+  ```
+  The frame's undo restored the baseline **exactly** — no resurrection, no partial revert. The reason
+  is visible in the code: `endUndoFrame` computes `grew = undoStack.length − frameOpenDepth`
+  (`src/store/ProjectStore.ts:339`) and the inner undo already reduced that count, so the compound
+  was built from a **shorter** command list than the frame recorded. §5.7 T9b confirms the
+  underlying mechanism *does* exist — the compound's undo re-runs a command that was already undone
+  inside the frame — but for the commands exercised (snapshot-based) that re-run is idempotent and
+  changes nothing.
+- **So the finding is narrowed, not dismissed:** the hazard is real in the *mechanism* but it needs a
+  **value-addressed** command (an automation point's undo removes "one instance of that
+  (tick, value)" — `src/commands/automation.ts:94`) **and** a duplicate point to remove twice
+  (F-07). That combination was not exercised here.
 - **Smallest safe repair:** have `undo()` seal or reconcile the open frame, exactly as `jumpTo`
   does.
 
@@ -1077,6 +1117,56 @@ is the only finding that breaks the product's own central contract.
 
 ---
 
+### F-29 — The automation-point undo is POSITIONAL, so a shifted lane makes the AI's undo destroy the human's point
+
+**Severity:** High · **Confidence:** Confirmed — **measured** (§5.7, probe T7)
+
+- **Affected journey:** the human authors an automation point; the AI writes another point into the
+  same lane; the user undoes.
+- **Observed divergence:** a lane point carries **no identity** — `AutomationPoint` is
+  `{ tick, value }` (`src/project-model/types.ts:1019-1022`), with no id. The command layer therefore
+  *cannot* address a point by identity, and the undo delta it builds is **positional**:
+  `diffPlainArray` — "Lists of primitives or plain objects without ids (rows, points, tags…)"
+  (`src/commands/docDelta.ts:227-241`) — diffs the points array **by index**. The `del` op even
+  *carries* the point it removed, but `applyOp` splices **whatever occupies that index now** and
+  never compares it (`src/commands/docDelta.ts:309-313`).
+- **Measured (§5.7 T7a–T7d):**
+  ```
+  [T7a] point own keys : ["tick","value"]      (has an id? false)
+  [T7b] backward ops   : [{"k":"del","path":[...,"points",0],"removed":{...}}]
+  [T7c] after the human      : [{"tick":0,"value":0.9}]
+  [T7c] after the AI landed  : [{"tick":0,"value":0.9},{"tick":5760,"value":0.5}]
+  [T7c] after the AI's undo  : [{"tick":5760,"value":0.5}]
+  [T7c] the HUMAN's point was deleted by the AI's undo: true
+  [T7c] the AI's own point SURVIVED the AI's undo     : true
+  ```
+  The AI's undo removed the **human's** point and left the **AI's** point standing — the exact
+  inverse of what the undo label claims. The human's authored work is gone.
+- **A dead undo step follows.** The human's own command is still on the stack, but its undo searches
+  for "one instance of that (tick, value)" (`src/commands/automation.ts:94`) and no longer finds it —
+  so the next Ctrl+Z changes nothing while consuming a history entry (the same dead-step class as
+  F-28).
+- **The window is precisely scoped — the plain stack order is SAFE.** Probe T7d is the control: with
+  a synchronous dispatch the human's command sits *above* the AI's on the stack, so its undo runs
+  first and the lane is back in the shape the delta was computed against before the AI's undo runs.
+  The damage requires the lane's array to shift **between the command and its undo**. One such
+  window is already a finding in this report: **F-26** — the MCP host contract does not require
+  `ctx.execute` to be synchronous, and the R-02 gate's verdict depends on it. The others are a
+  collab merge and a point moved since the command was issued.
+- **Class:** write conflict → **silent loss of authored work.** It breaks invariant I-4 (undo/redo
+  restores all logically coupled values) and, through F-26, it makes a deferred AI write
+  *destructive* rather than merely mis-acknowledged.
+- **Root cause — precise and small:** the undo of an identity-less object must be **value-checked**.
+  The smallest safe repair is to make the point's undo verify that the slot it is about to remove
+  still holds the point it created: if `points[index]` no longer matches the captured
+  `{tick, value}`, the undo must refuse (and report) rather than splice blindly. That is a local
+  change in `src/commands/docDelta.ts` / `src/commands/automation.ts` — no schema change, no audio
+  change, no migration.
+- **Regression plan:** probe T7c is the test. Promote it and assert that the human's point survives
+  the AI's undo, and that the AI's point is the one removed.
+
+---
+
 ### 4.1 Divergence scenario matrix
 
 The scenario catalogue from the mission brief, each traced request-to-effect. **Observed** means the
@@ -1162,6 +1252,7 @@ product but no probe or test in this audit exercised it.
 | `tmp-probe/f03.test.ts` (F-03, F-05, F-06, F-06b, F-07) | **vitest** (the repo's own harness) | **PASS — 5/5 tests green** | the MCP ack contract, measured |
 | `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 7/7 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 |
 | `tmp-probe/second-writer.test.ts` (T6) | **vitest** | **PASS** | the DSP→document write-back — the audit's first **Critical** finding (F-28) |
+| `tmp-probe/gaps.test.ts` (T7–T9) | **vitest** | **PASS — 7/7 tests green** | the three probes §5.6 had left open: point-identity, mixer idempotency, undo-inside-a-frame — plus **F-29** |
 
 Commands, from the repository root:
 
@@ -1359,16 +1450,81 @@ product finding. It is noted here because it is a minor **API inconsistency** in
 **P7 — Normalisation drift:** `normalizeProject(store.doc) === store.doc : **YES**` — **PASS**. The
 store holds a canonical document; the normaliser is idempotent on it.
 
-### 5.5 Repository suite — NOT EXECUTED
+### 5.5 Repository suite — MEASURED on a clean baseline worktree
 
-`npm run test` (1230 spec files), `npm run typecheck`, `npm run build` were **not run** in this
-session. Consequently:
+The first pass of this audit did not run the repository suite. **That gap is now closed**, measured
+against a **clean baseline** rather than the dirty shared tree — `docs/MULTI-AGENT-GUARDRAILS.md`
+rule 6 requires exactly that ("a full-suite run on a shared tree measures other waves' work in
+progress, not the project").
 
-- this report makes **no claim** that the repository is green;
+**Method.** A detached worktree at the audited commit (`git worktree add ../pf-audit-baseline
+20fbade7`), with `node_modules` and the gitignored binary assets (ONNX runtime, stem models, sample
+packs) linked in — so the baseline is identical to the audited tree in source and complete in assets.
+The audited commit `20fbade7` and the current tip `0b688bea` differ in **zero** non-`.md` files, so
+this baseline measures **today's source**.
+
+**Results.**
+
+| Gate | Command | Result |
+|---|---|---|
+| Full suite | `vitest run` | **1232 files — 1213 passed, 19 failed.** 13,896 tests: 13,729 passed, **21 failed**, 145 pending |
+| Typecheck | `tsc --noEmit --incremental false` | **13 errors in 5 files** |
+| Production build | — | **NOT EXECUTED — and it cannot run:** `build` starts with `tsc --noEmit`, which fails with the same 13 errors |
+
+**The repository is therefore NOT green at the audited commit.**
+
+**Attribution.** All 19 failing files are pre-existing and **none** of them is caused by this
+audit's work: this audit's four commits touched `STATE_DIVERGENCE_HUNTER_REPORT.md` and nothing
+else — a Markdown file that no test imports. The 19:
+
+```
+tests/adr0057-meter-disclosure.test.ts          tests/ui/ContextMenu.test.tsx
+tests/audio-engine-effect-intent-preview.test.ts tests/ui/DockChrome.test.tsx
+tests/creative-task-contract.test.ts             tests/ui/SamplerMapping.test.tsx
+tests/drift-check.test.ts                        tests/ui/shortcuts.test.ts
+tests/intent-model-artifact.test.ts              tests/invariants.test.ts
+tests/intent-model-schema.test.ts                tests/layout-data.test.ts
+tests/mcp-edit-parity.test.ts                    tests/mcp-relay-session-ownership.test.ts
+tests/plugin-functional-audit.test.ts            tests/slider-taper.test.ts
+tests/transport-audit.test.ts                    tests/ux-audit.test.ts
+tests/voice-envelope-release.test.ts
+```
+
+The 13 typecheck errors, likewise pre-existing:
+
+```
+src/audio-engine/previewDeck.ts        2   TS2345  null not assignable to string | undefined
+src/presets/struna-factory.ts          4   TS1117  duplicate key in object literal
+tests/bass-harmonic-audition.test.ts   1   TS2322  unknown[] not assignable to Record<string, unknown>[]
+tests/koren-audition-engine.test.ts    4   TS2341  private member 'doc' accessed
+tests/struna/engine.test.ts            2   TS2304  cannot find name 'InstrumentRuntime'
+```
+
+**Cross-check with the parallel audit.** A concurrent session published
+`DAW_TRIPLE_AXIS_RELIABILITY_REPORT.md` (commit `4aeee390`) with its own full-suite baseline:
+"1208/1230 files pass, 22 fail (24 tests) — every red attributed by measurement". The two
+measurements agree in substance (a red tree, every red attributed) and differ in count (19 files /
+21 tests here vs 22 / 24 there) because they ran on different tips. **Neither is a statement that
+the repo is green.**
+
+**What this changes for the reader.** Three of the failing files are *contract* tests that constrain
+exactly the surfaces this report touches:
+
+- `tests/invariants.test.ts` — the leaky `as any` budget on `src/commands/`
+- `tests/mcp-edit-parity.test.ts` — the MCP surface must expose every command-layer verb
+- `tests/drift-check.test.ts` — `docs/CURRENT-STATE.md` must match live code
+
+A reader about to remediate a finding in those areas must expect those guards to move.
+
+**Consequences for this report.**
+
+- this report makes **no claim** that the repository is green — and now it says so with a
+  measurement instead of an omission;
 - any finding that a test already guards would be a **duplicate**, not a discovery — the reader
   should check `docs/AGENT-MAP.md`'s invariant register before acting;
-- the "guarded by" test references quoted in this report were read from the **spec source**, not
-  from a green run.
+- the "guarded by" test references quoted in this report were read from the **spec source**; the
+  baseline confirms which specs are green, but it does not turn a source-read into a measured
+  claim.
 
 ### 5.6 Not executed, and why it matters
 
@@ -1385,10 +1541,83 @@ session. Consequently:
 | F-05 refusal signalling | **Executed — still open** | — | `isError` is absent on the automation refusal ❌ |
 | F-06 idempotency replay staleness | **Executed — still open** | — | stale read-back + contradictory `mutated` ❌ |
 | F-07 automation duplicate points | **Executed — still open** | — | 1→2 points, 1→2 undo entries ❌ |
-| **F-07's other half** — an AI undo deleting the *human's* point | **Not executed** | needs point-**identity** observation, not a JSON diff | the value-addressed undo damage |
-| P6 idempotency of the *mixer* setters | **Not executed** | the fixture had no effect instance for the first pass | that a repeated identical mixer write does not grow history |
-| Undo-inside-a-frame resurrection | **Not executed** | needs a ≥3-command frame | F-22 |
+| **F-07's other half** — an AI undo deleting the *human's* point | **Executed — MEASURED** (T7a–T7d, §5.7) | — | points carry no identity and the undo delta is positional → the AI's undo removes the human's point when the lane shifted → **F-29** |
+| P6 idempotency of the *mixer* setters | **Executed — PASS** (T8, §5.7) | — | a repeated identical mixer write adds **no** history entry ✅ |
+| Undo-inside-a-frame resurrection | **Executed — NOT REPRODUCED** (T9/T9b, §5.7) | — | the frame's single Ctrl+Z restored the baseline exactly → **F-22 downgraded to Hypothesis** |
 | **Perceptual** audio truth for the remaining audible claims | **Not executed** | jsdom has no `OfflineAudioContext`; the graph was measured instead | F-09, F-11, F-17, F-18, F-19 (§10) |
+
+### 5.7 Probe results — `tmp-probe/gaps.test.ts` (vitest, **7/7 green**)
+
+This probe closes the three rows §5.6 had left open, **refutes one existing finding**, and produced
+one new one (**F-29**).
+
+**T7a–T7b — why an automation point cannot be undone by identity.**
+```
+[T7a] point object   : {"tick":5760,"value":0.5}
+[T7a] point own keys : ["tick","value"]
+[T7a] has an id?     : false
+[T7b] forward ops  : [{"k":"ins","path":["automation"],"index":0,"value":{...lane...}}]
+[T7b] backward ops : [{"k":"del","path":["automation",0],"removed":{...lane...}}]
+```
+`AutomationPoint` is `{ tick, value }` with no id (`src/project-model/types.ts:1019-1022`), and the
+points array is diffed **by index** (`src/commands/docDelta.ts:227-241`). The `del` op carries the
+point it removed, but `applyOp` splices whatever occupies that index **now** and never compares it
+(`src/commands/docDelta.ts:309-313`). → the basis of **F-29**.
+
+**T7c — the AI's undo removes the HUMAN's point. (F-29, measured.)**
+```
+[T7c] lane ready, points: []
+[T7c] after the human      : [{"tick":0,"value":0.9}]
+[T7c] after the AI landed  : [{"tick":0,"value":0.9},{"tick":5760,"value":0.5}]
+[T7c] stack length         : 3
+[T7c] after the AI's undo  : [{"tick":5760,"value":0.5}]
+[T7c] the HUMAN's point was deleted by the AI's undo: true
+[T7c] the AI's own point SURVIVED the AI's undo     : true
+```
+The human's point is gone; the AI's point survives. The lane's array shifted between the AI's
+command and its undo, so the positional delete hit the wrong slot.
+
+**T7d — the control: with a synchronous dispatch the same undo is CORRECT.**
+```
+[T7d] after the AI landed  : [{"tick":5760,"value":0.5}]
+[T7d] after the human      : [{"tick":0,"value":0.9},{"tick":5760,"value":0.5}]
+[T7d] after undo #1        : [{"tick":5760,"value":0.5}]   ← the human's point, correctly
+[T7d] after undo #2        : []                          ← then the AI's, correctly
+```
+→ the finding is scoped to the **shift window**, not to every automation undo.
+
+**T8 — P6: the mixer setter IS idempotent.**
+```
+[T8] undo stack: 0 -> 1 -> 1
+[T8] the gain in the document: 0.5
+```
+A repeated identical `kyx_tracks setGain` adds **no** history entry — the identity guard in
+`ProjectStore.applyCommand` (`src/store/ProjectStore.ts:256-263`) catches it. **P6 is a pass.** This
+also draws the contrast with **F-07**, where the *automation* path does **not** have that guard.
+
+**T9 — F-22: NOT REPRODUCED.**
+```
+[T9] inside the frame              : 0.11 0.22 0.33
+[T9] after the undo inside the frame: 0.11 0.22 0.85
+[T9] stack length after the inner undo: 2
+[T9] after endUndoFrame             : 0.11 0.22 0.85
+[T9] stack length after the seal    : 1
+[T9] after the frame's single Ctrl+Z: 0.9 0.85 0.85    ← the BASELINE, exactly
+```
+The frame's single undo restored the baseline exactly — no resurrection, no partial revert. **F-22
+is downgraded from *Strongly indicated* to *Hypothesis — not reproduced* (§4/F-22).**
+
+**T9b — the mechanism behind F-22 does exist, but is harmless for the commands exercised.**
+```
+[T9b] stack length inside the frame   : 4
+[T9b] stack length after the inner undo: 3
+[T9b] stack length after the seal      : 3
+[T9b] after the frame's single Ctrl+Z  : [{"tick":0,"value":0.9}]
+```
+The compound's undo does re-run the command that was already undone inside the frame — but for the
+snapshot-based commands used here that re-run is idempotent. It would only bite a **value-addressed**
+command (an automation point) **and** only if a duplicate point exists (F-07). That combination was
+not exercised.
 
 ---
 
@@ -1403,20 +1632,25 @@ effort and regression risk.
 | **2** | **F-01** — stem/track export renders a stale document | The only finding that can ship **silently wrong output** to a paying user. The master path already proves the guard is cheap. | S (capture at call time + reuse the existing assertion) | Low |
 | **3** | **F-04** — recovery buffer is a single global slot | The buffer is the **only** copy of uncommitted work; the loss is silent and permanent. | S–M (per-project key + honour the write result) | Low |
 | **4** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
-| **5** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. | S + S (one meta-test) | Very low |
-| **6** | **F-06** — idempotency replay serves a stale read-back and escapes the R-02 gate | The root cause is now precise (the replay returns **before** the gate), so the fix is small and provable — but until it is fixed, an agent's retry receives a **wrong current value**. | S | Low |
-| **7** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
-| **8** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
-| **9** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
-| **10** | **F-07** — automation points addressed by value; identical writes duplicate | Undo can delete the human's point; repeated AI writes duplicate points **and** grow history (measured). | S (cheap variant) / M (id variant) | Low (cheap) / M (id) |
+| **5** | **F-29** — the automation-point undo is **positional**, so a shifted lane makes the AI's undo destroy the human's point | **Measured** (§5.7, T7c): the AI's undo removed the **human's** authored point and left the AI's — silent loss of work, followed by a dead undo step. The plain stack order is safe (T7d), so the window is the shift between a command and its undo — which is exactly the window **F-26** opens. | S (verify the slot before splicing) | Low |
+| **6** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. | S + S (one meta-test) | Very low |
+| **7** | **F-06** — idempotency replay serves a stale read-back and escapes the R-02 gate | The root cause is now precise (the replay returns **before** the gate), so the fix is small and provable — but until it is fixed, an agent's retry receives a **wrong current value**. | S | Low |
+| **8** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
+| **9** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
+| **10** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
 *(F-03 — the AI false-success on rename — **left this list**: it was fixed in the working tree by the
 R-02 `verifiedMutation` gate during this audit, and the probe confirms the fix (§5.2). It is
-retained as a worked example in §4 rather than as an open finding. **F-14 + F-13** (recovery writes
+retained as a worked example in §4 rather than as an open finding. **F-07** left this list too:
+it and **F-29** share one root cause — automation points have no identity, so they are addressed by
+value and by position — and **one repair (give the point an identity, or verify the slot before
+splicing) closes both**. **F-14 + F-13** (recovery writes
 an unvalidated document; `migrateProject` is not a migration), **F-26** (the R-02 gate's undocumented
-synchrony precondition — measured, *not* live today), **F-11** (macro and automation share one effect
+synchrony precondition — measured, *not* live today, but it is the window that makes F-29
+destructive), **F-11** (macro and automation share one effect
 AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three save timestamps),
 **F-16** (collab normalisation parity), **F-17** (bypass cold restart), **F-18/F-19** (fallback
-honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (undo-in-frame), **F-23**
+honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (undo-in-frame — now
+**Hypothesis: not reproduced** by the §5.7 probe), **F-23**
 (onset cache), **F-24** (automation ack), **F-27** (a reopened instance resets to defaults) are all
 **below the top 10**: real, documented, and scheduled for a later wave.)*
 
@@ -1549,16 +1783,17 @@ scheduled with the `MIGRATIONS` chain).
 
 ### Phase 0 — Evidence (no production code)
 
-**The probes already exist.** `tmp-probe/f03.test.ts` (5/5 green) and `tmp-probe/scenarios.test.ts`
-(7/7 green) are re-runnable reproductions of F-03, F-05, F-06, F-07, F-10, F-25, F-26 and F-27.
+**The probes already exist.** `tmp-probe/f03.test.ts` (5/5 green), `tmp-probe/scenarios.test.ts`
+(7/7 green) and `tmp-probe/gaps.test.ts` (7/7 green) are re-runnable reproductions of F-03, F-05,
+F-06, F-07, F-10, F-22, F-25, F-26, F-27 and **F-29**.
 **Promote them into `tests/`** — they are the regression guards for this whole report, and they cost
 nothing to keep.
 
-Then add a per-finding reproduction test for each of F-01, F-02, F-04, F-08, F-12 … F-15, F-22, F-24,
+Then add a per-finding reproduction test for each of F-01, F-02, F-04, F-08, F-12 … F-15, F-24,
 and turn each remaining finding into a **failing** test before a line is changed.
 
 *Gate:* every finding below has a red test that reproduces it, and the red test fails for the
-*stated* reason — not for an incidental reason. The two probes that already exist stay green.
+*stated* reason — not for an incidental reason. The three probes that already exist stay green.
 
 ### Phase 1 — The wrong-audio layer and the truth layer (smallest change, highest trust return)
 
@@ -1574,7 +1809,14 @@ idempotency replay inside the gate's perimeter; force `mutated: false` on a repl
 label the read-back), **F-26** (make the gate's synchrony precondition explicit and checked), and
 **F-24** (mirror the gate's read-back into `result.data`).
 
-*Gate:* the meta-test is green; F-05's, F-06's and **T6**'s reproductions flip from red to green;
+And **F-29**, because it is small and it destroys authored work: make the automation point's undo
+**verify the slot before it splices** — if `points[index]` no longer holds the `{tick, value}` the
+command captured, the undo must refuse and say so rather than remove whatever moved into that
+position. That one change also closes F-07's identity half. It touches no schema, no audio and no
+serialisation.
+
+*Gate:* the meta-test is green; F-05's, F-06's, **F-29's** and **T6**'s reproductions flip from red
+to green;
 no MCP client contract changes; the R-02 gate's own regression spec stays green; and — the check
 that matters most — **a PRISM in-plugin undo now survives a save + reload with the same wet/dry**.
 
@@ -1644,6 +1886,9 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 | Ordering (delayed acknowledgement) | apply A then B with A's ack late; assert the documented precedence | Yes | **MEASURED (T2)** — unrelated field survives; same field → last-APPLIED-wins. **F-25** |
 | Lifecycle — reopen a plugin instance | remove + re-add; assert the parameter state | Yes | **MEASURED (T3)** — resets to factory defaults, id re-minted. **F-27** |
 | MCP host `execute` is synchronous | assert every registered host applies the command inline | Yes | no — the type does not enforce it. **F-26** |
+| Automation undo removes the point it created | write a point, shift the lane, undo; assert the right point went | Yes | **FAIL (measured, T7c)** — the undo is positional and removed the human's point. **F-29** |
+| Undo inside an open frame is atomic | frame with ≥3 commands, undo inside, then the frame's Ctrl+Z | Yes | **PASS (measured, T9)** — the baseline was restored exactly. **F-22 not reproduced** |
+| Repeated identical mixer write is idempotent | write the same value twice; assert the history did not grow | Yes | **PASS (measured, T8)** ✅ |
 | **Exactly one writer to the document** | every write path lands in the document's canonical id and value | Yes | **MEASURED — FAILS (T6)**: the PRISM DSP write-back is discarded. **F-28** |
 | A plugin's in-plugin undo survives a save + reload | undo in the plugin, reload the project, compare the audible parameter | Yes | no — **F-28** |
 | MCP ack truthfulness | every mutating tool: does `mutated` match the document? | Yes | **partially ✅** — the R-02 gate covers the dispatch path; **F-06** (the replay) escapes it |
@@ -1736,7 +1981,10 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
     that determines whether F-25 is a bug or a documented contract.
 17. **F-26 — will any host ever defer `execute`?** Not today; all three are synchronous. The open
     question is whether a *planned* collab-merged or worker-backed store would — and if so, whether
-    the gate is fixed before that lands.
+    the gate is fixed before that lands. **This question got heavier in this pass:** the deferred
+    window is exactly what turns **F-29** from a latent positional-delete hazard into silent loss
+    of the human's authored point. Until it is answered the hazard is latent; the moment any host
+    defers, it is live — so the gate should be fixed *before* that host lands, not after.
 
 ---
 
@@ -1753,12 +2001,17 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   grep or file read, and the citation was taken from that verification — not from the delegated
   text. Findings that survived only the delegated reading are labelled **Strongly indicated** and
   are flagged for confirmation.
-- **Three probe harnesses, all executed.** `vite-node` (`tmp-divergence-probe.mts`, 7 sub-probes) and
+- **Four probe harnesses, all executed.** `vite-node` (`tmp-divergence-probe.mts`, 7 sub-probes) and
   the repository's **vitest** — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**),
-  `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**) and `tmp-probe/second-writer.test.ts`
-  (T6, **1/1 green**). An earlier `vite-node` attempt at the second probe hung twice and was
+  `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**), `tmp-probe/second-writer.test.ts`
+  (T6, **1/1 green**) and `tmp-probe/gaps.test.ts` (T7–T9, **7/7 green**). An earlier `vite-node`
+  attempt at the second probe hung twice and was
   abandoned rather than reported as a pass; re-implementing it under vitest loaded the same module
   graph in 8 seconds.
+- **The repository suite was measured on a CLEAN baseline worktree**, not on the shared dirty tree:
+  a detached checkout of the audited commit with `node_modules` and the gitignored binary assets
+  linked in, per `docs/MULTI-AGENT-GUARDRAILS.md` rules 5 and 6. The audited commit and the current
+  tip differ in **zero** non-`.md` files, so the baseline measures today's source (§5.5).
 - **The scenario probes reused the repository's own mock-Web-Audio harness** (`tests/mixer-audit3.test.ts`),
   whose recording nodes make the **graph topology** assertable rather than inferable — that is how
   F-10 moved from *strongly indicated* to *confirmed*.
@@ -1771,7 +2024,9 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   trusting its earlier reading: F-03 was found to be fixed, F-05/F-06/F-07 were found to still be
   open, and both verdicts are reported (§4/F-03, §5.2). Any finding outside `src/mcp/tools.ts` should
   be re-verified before acting, for the same reason.
-- **No test suite, typecheck or build was run** — an explicit evidence limit (§1.4).
+- **No browser was driven and no audio was listened to.** The repository suite and the typecheck
+  **were** run, on a clean baseline worktree (§5.5) — the production build could not run, because
+  `build` starts with the failing `tsc`.
 - **Line numbers** were re-verified immediately before writing this file. `src/mcp/tools.ts` was
   under concurrent edit by another session during the audit; a small drift is possible. Where a
   citation is load-bearing for a proposed fix, re-verify before editing.
