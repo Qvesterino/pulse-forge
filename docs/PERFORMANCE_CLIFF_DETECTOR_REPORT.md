@@ -3,6 +3,11 @@
 **Date:** 2026-10-25 · **Tree:** `main` @ `0b688bea` · **Mode:** read-only investigation, no production code changed
 **Question:** at which workload, duration or interaction boundary does the DAW stop scaling predictably, and why?
 
+> **Addendum:** §13 re-verifies §4's measured numbers on the tree as it stands after the
+> peer wave (`b2c3b680` + peers) and records one **new** shape that the peer wave
+> introduced after the audit tree. Read §13 together with §4 — the two are from different
+> trees, and the difference is stated rather than smoothed over.
+
 ---
 
 ## 0. EXECUTIVE SUMMARY
@@ -29,13 +34,14 @@ cost is paid once per track per edit** (the audio engine's audibility rule — a
 
 ### Suspected cliffs (shape derived from code, magnitude NOT measured)
 
-| #   | Suspected cliff                                                                                                                           | Where                                                                        | Why it is not yet a finding                                                                          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| S-1 | The intent context-trim loop re-serialises the whole context once per dropped contract → **quadratic** in the number of inserted effects. | `src/intent/model-context.ts:305`                                            | The loop is observed; its cost on a real context was not measured. The cap (12 000 chars) bounds it. |
-| S-2 | Feature extraction recomputes the **batch statistics of the whole candidate bank once per candidate** → O(n²) in bank size.               | `src/ai/features/pattern-features.ts:430-434`                                | Observed in code; n is bounded (≤ 8 local + ≤ 4 symbolic), so the magnitude is small today.          |
-| S-3 | `artistNamePattern` compiles a **new RegExp per artist name per call** over a 667-entry preset table, 2–3 full scans per prompt.          | `src/intent/artists.ts:7464`                                                 | Observed in code; the cost is bounded by the table size.                                             |
-| S-4 | Every prior/ranker call **re-posts the model manifest** to a worker that has already cached the session.                                  | `src/ai/symbolic/prior-client.ts:265`, `src/ai/ranking/ranker-client.ts:171` | Observed in code; the manifest is small, so the cost is round-trip count, not bytes.                 |
-| S-5 | The intent pipeline can regenerate the candidate bank **up to 24 times** per candidate index.                                             | `src/intent/candidate-search.ts:466`                                         | Bounded and observed; the per-attempt cost was not measured.                                         |
+| #   | Suspected cliff                                                                                                                                                                 | Where                                                                        | Why it is not yet a finding                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S-1 | The intent context-trim loop re-serialises the whole context once per dropped contract → **quadratic** in the number of inserted effects.                                       | `src/intent/model-context.ts:305`                                            | The loop is observed; its cost on a real context was not measured. The cap (12 000 chars) bounds it.                                                                   |
+| S-2 | Feature extraction recomputes the **batch statistics of the whole candidate bank once per candidate** → O(n²) in bank size.                                                     | `src/ai/features/pattern-features.ts:430-434`                                | Observed in code; n is bounded (≤ 8 local + ≤ 4 symbolic), so the magnitude is small today.                                                                            |
+| S-3 | `artistNamePattern` compiles a **new RegExp per artist name per call** over a 667-entry preset table, 2–3 full scans per prompt.                                                | `src/intent/artists.ts:7464`                                                 | Observed in code; the cost is bounded by the table size.                                                                                                               |
+| S-4 | Every prior/ranker call **re-posts the model manifest** to a worker that has already cached the session.                                                                        | `src/ai/symbolic/prior-client.ts:265`, `src/ai/ranking/ranker-client.ts:171` | Observed in code; the manifest is small, so the cost is round-trip count, not bytes.                                                                                   |
+| S-5 | The intent pipeline can regenerate the candidate bank **up to 24 times** per candidate index.                                                                                   | `src/intent/candidate-search.ts:466`                                         | Bounded and observed; the per-attempt cost was not measured.                                                                                                           |
+| S-6 | The arrangement normaliser computes the scene's true period **once per clip**, and the period computation walks the pattern's note tracks → O(clips × note-tracks) per command. | `src/project-model/schema.ts:1733`, `src/project-model/midiTime.ts:60-67`    | Introduced **after** the audit tree (commit `2db3009f`). The audit's fixture carries no `notes`, so the term never executes there — magnitude not measured. See §13.2. |
 
 ### Areas measured and found healthy (no cliff)
 
@@ -381,6 +387,11 @@ normalisation.
    serialisation cliff here, and the undo stack is bounded at 64 delta entries. **The state layer
    is not where this DAW's problem is.**
 
+**Re-verified on the tree as it stands after the peer wave:** every row above reproduces — see
+**§13.1**. One caveat belongs with them: the peer wave added a new super-linear term to
+`normalizeProject` that this fixture cannot execute, because the fixture carries no `notes`.
+See **§13.2 (S-6)**.
+
 ### 4.3 The audio path — the verified cliff
 
 **`soloAudibility(doc).audible(id)` for every track** — the exact work the engine does on every
@@ -463,6 +474,9 @@ if (nodes.fx.signature !== sig) {
 So **one bypass toggle destroys and re-instantiates every effect on that track**, instead of
 writing one parameter. The audible consequence (does the effect's state survive? is there a
 discontinuity?) was **not** verified — see §12.
+
+**Re-verified on the tree as it stands after the peer wave:** the quadratic reproduces, with
+lower absolute milliseconds and the same shape — see **§13.1**.
 
 ### 4.4 The arrangement render path — the shapes, and one citation
 
@@ -576,19 +590,20 @@ Severity is judged on: audible correctness, frequency in normal production, repr
 regression risk, maintainability and ease of verification. **Real-time glitches and data loss
 outrank micro-optimisations** — nothing in this register is a data-loss risk.
 
-| ID      | Threshold                                                                 | Symptom                                                                                                                                                                                                                        | Severity                                                                             | Evidence                                             | Root cause                                                                                                                                | Owner                                                                            |
-| ------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| **C-1** | **> 64 tracks**; the marginal cost doubles per doubling (measured 16→256) | Every edit (a knob turn, a drag commit) pays an O(T²) audibility resolution. At 256 tracks that is 1.67 ms of pure overhead per document change — and the same shape appears twice more in `syncPdc`.                          | **High** — it is on the _most frequent_ interaction in the product                   | **OBSERVED (measured)**, quadratic                   | `tracks.find` inside a per-track closure (`solo-audibility.ts:46,50`); `tracks.find` inside a per-track loop (`AudioEngine.ts:2218,2259`) | `src/project-model/solo-audibility.ts`, `src/audio-engine/AudioEngine.ts`        |
-| **C-2** | **zoom ≤ 0.05** (1.5 px/bar)                                              | Scrolling re-renders up to 800× more often than at max zoom; each render carries C-3/C-4. The whole cost of the arrangement is multiplied by the zoom ratio.                                                                   | **High** — zoom-out is how a user surveys a whole song                               | **OBSERVED (code)**                                  | The viewport is quantised in bars, but the render cost is in pixels                                                                       | `src/ui/ArrangementPanel.tsx` (viewport model)                                   |
-| **C-3** | **W × N** — visible audio clips × all audio/scene clips                   | Per-render super-linear terms: a `Set` over all audio clips and a sorted span map over all scene clips, **per visible audio clip**. Measured: 0.165 ms per call at 2000 scene clips.                                           | **Medium–High** — a cost risk at extreme density; the commit count is already 1/move | **OBSERVED (code)** + per-call cost measured         | Per-item work that scans the whole list instead of an index                                                                               | `src/ui/ArrangementPanel.tsx:5849-5887`, `src/project-model/scene-time.ts:67-87` |
-| **C-4** | any clip count                                                            | The windowed memo's forced-id pass walks the whole clip list every render, defeating the windowing that `Sequencer` and `PianoRoll` already have.                                                                              | **Medium** — O(N) per render, unconditional                                          | **OBSERVED (code)**                                  | The forced-id set is empty most of the time, but the scan is not conditional on it                                                        | `src/ui/ArrangementPanel.tsx:2222-2259`                                          |
-| **C-5** | every bypass toggle                                                       | The whole effect chain of a track is destroyed and re-instantiated instead of one parameter being written. Effect internal state (a delay tail, a reverb decay) cannot survive, and the audio graph is churned under playback. | **Medium–High** — audible risk, unverified                                           | **OBSERVED (code)**; audible effect **NOT ASSESSED** | `fxSignature` filters bypassed effects out, so bypass is encoded as a structural change                                                   | `src/audio-engine/AudioEngine.ts:1190-1200, 1976-1981`                           |
-| **C-6** | any remote update                                                         | A remote keystroke re-projects the whole document and re-renders the whole tree.                                                                                                                                               | **Medium** — collaboration is a first-class product mode                             | **OBSERVED (code)**; magnitude not measured          | The Yjs adapter rebuilds arrays without structural sharing, so no selector can stay stable                                                | `src/collab/YDocStore.ts:139-143`, `src/collab/YDocAdapter.ts:67-98`             |
-| **S-1** | inserted effects in a model context                                       | The context trim loop re-serialises the whole context once per dropped contract → quadratic.                                                                                                                                   | Low–Medium (bounded by a 12 000-char cap)                                            | **SUSPECTED**                                        | `model-context.ts:305`                                                                                                                    | `src/intent/model-context.ts`                                                    |
-| **S-2** | candidate bank size                                                       | The batch statistics are recomputed once per candidate instead of once per bank.                                                                                                                                               | Low (bank ≤ 12)                                                                      | **SUSPECTED**                                        | `pattern-features.ts:430-434`                                                                                                             | `src/ai/features/pattern-features.ts`                                            |
-| **S-3** | 667 artist presets                                                        | A new `RegExp` per artist name per call, 2–3 full scans per prompt.                                                                                                                                                            | Low                                                                                  | **SUSPECTED**                                        | `artists.ts:7464`                                                                                                                         | `src/intent/artists.ts`                                                          |
-| **S-4** | every model call                                                          | The manifest is re-posted to a worker that already cached it.                                                                                                                                                                  | Low (bytes), Medium (round trips)                                                    | **SUSPECTED**                                        | `prior-client.ts:265`, `ranker-client.ts:171`                                                                                             | `src/ai/symbolic/prior-client.ts`, `src/ai/ranking/ranker-client.ts`             |
-| **S-5** | candidate index                                                           | Up to 24 candidate regenerations per index.                                                                                                                                                                                    | Low                                                                                  | **SUSPECTED**                                        | `candidate-search.ts:466`                                                                                                                 | `src/intent/candidate-search.ts`                                                 |
+| ID      | Threshold                                                                 | Symptom                                                                                                                                                                                                                        | Severity                                                                                                                                           | Evidence                                             | Root cause                                                                                                                                | Owner                                                                             |
+| ------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **C-1** | **> 64 tracks**; the marginal cost doubles per doubling (measured 16→256) | Every edit (a knob turn, a drag commit) pays an O(T²) audibility resolution. At 256 tracks that is 1.67 ms of pure overhead per document change — and the same shape appears twice more in `syncPdc`.                          | **High** — it is on the _most frequent_ interaction in the product                                                                                 | **OBSERVED (measured)**, quadratic                   | `tracks.find` inside a per-track closure (`solo-audibility.ts:46,50`); `tracks.find` inside a per-track loop (`AudioEngine.ts:2218,2259`) | `src/project-model/solo-audibility.ts`, `src/audio-engine/AudioEngine.ts`         |
+| **C-2** | **zoom ≤ 0.05** (1.5 px/bar)                                              | Scrolling re-renders up to 800× more often than at max zoom; each render carries C-3/C-4. The whole cost of the arrangement is multiplied by the zoom ratio.                                                                   | **High** — zoom-out is how a user surveys a whole song                                                                                             | **OBSERVED (code)**                                  | The viewport is quantised in bars, but the render cost is in pixels                                                                       | `src/ui/ArrangementPanel.tsx` (viewport model)                                    |
+| **C-3** | **W × N** — visible audio clips × all audio/scene clips                   | Per-render super-linear terms: a `Set` over all audio clips and a sorted span map over all scene clips, **per visible audio clip**. Measured: 0.165 ms per call at 2000 scene clips.                                           | **Medium–High** — a cost risk at extreme density; the commit count is already 1/move                                                               | **OBSERVED (code)** + per-call cost measured         | Per-item work that scans the whole list instead of an index                                                                               | `src/ui/ArrangementPanel.tsx:5849-5887`, `src/project-model/scene-time.ts:67-87`  |
+| **C-4** | any clip count                                                            | The windowed memo's forced-id pass walks the whole clip list every render, defeating the windowing that `Sequencer` and `PianoRoll` already have.                                                                              | **Medium** — O(N) per render, unconditional                                                                                                        | **OBSERVED (code)**                                  | The forced-id set is empty most of the time, but the scan is not conditional on it                                                        | `src/ui/ArrangementPanel.tsx:2222-2259`                                           |
+| **C-5** | every bypass toggle                                                       | The whole effect chain of a track is destroyed and re-instantiated instead of one parameter being written. Effect internal state (a delay tail, a reverb decay) cannot survive, and the audio graph is churned under playback. | **Medium–High** — audible risk, unverified                                                                                                         | **OBSERVED (code)**; audible effect **NOT ASSESSED** | `fxSignature` filters bypassed effects out, so bypass is encoded as a structural change                                                   | `src/audio-engine/AudioEngine.ts:1190-1200, 1976-1981`                            |
+| **C-6** | any remote update                                                         | A remote keystroke re-projects the whole document and re-renders the whole tree.                                                                                                                                               | **Medium** — collaboration is a first-class product mode                                                                                           | **OBSERVED (code)**; magnitude not measured          | The Yjs adapter rebuilds arrays without structural sharing, so no selector can stay stable                                                | `src/collab/YDocStore.ts:139-143`, `src/collab/YDocAdapter.ts:67-98`              |
+| **S-1** | inserted effects in a model context                                       | The context trim loop re-serialises the whole context once per dropped contract → quadratic.                                                                                                                                   | Low–Medium (bounded by a 12 000-char cap)                                                                                                          | **SUSPECTED**                                        | `model-context.ts:305`                                                                                                                    | `src/intent/model-context.ts`                                                     |
+| **S-2** | candidate bank size                                                       | The batch statistics are recomputed once per candidate instead of once per bank.                                                                                                                                               | Low (bank ≤ 12)                                                                                                                                    | **SUSPECTED**                                        | `pattern-features.ts:430-434`                                                                                                             | `src/ai/features/pattern-features.ts`                                             |
+| **S-3** | 667 artist presets                                                        | A new `RegExp` per artist name per call, 2–3 full scans per prompt.                                                                                                                                                            | Low                                                                                                                                                | **SUSPECTED**                                        | `artists.ts:7464`                                                                                                                         | `src/intent/artists.ts`                                                           |
+| **S-4** | every model call                                                          | The manifest is re-posted to a worker that already cached it.                                                                                                                                                                  | Low (bytes), Medium (round trips)                                                                                                                  | **SUSPECTED**                                        | `prior-client.ts:265`, `ranker-client.ts:171`                                                                                             | `src/ai/symbolic/prior-client.ts`, `src/ai/ranking/ranker-client.ts`              |
+| **S-5** | candidate index                                                           | Up to 24 candidate regenerations per index.                                                                                                                                                                                    | Low                                                                                                                                                | **SUSPECTED**                                        | `candidate-search.ts:466`                                                                                                                 | `src/intent/candidate-search.ts`                                                  |
+| **S-6** | melodic tracks in one pattern                                             | The per-command normaliser walks the pattern's note tracks once per arrangement clip, so a pattern with many melodic tracks multiplies the cost of every command.                                                              | Low–Medium — bounded by the pattern's melodic track count (tens), not by the document; but it sits on the per-command path §4.2 measured as linear | **OBSERVED (code)**; magnitude **not measured**      | The period is computed per clip instead of per pattern; the `Object.values()` allocation and the LCM chain are not cached across clips    | `src/project-model/schema.ts:1733`, `src/project-model/midiTime.ts:60-67` (§13.2) |
 
 ### 5.1 What was measured and found NOT to be a cliff
 
@@ -869,6 +884,107 @@ Every number in §4 is reproducible with the commands named beside it, on the en
 says **NOT ASSESSED** or **SUSPECTED** and names the experiment that would settle it. The audit's
 own methodological rule — inherited from AUDIT-15 and confirmed by two probe defects of my own —
 is that **a number nobody can reproduce is worse than no number**.
+
+---
+
+## 13. POST-AUDIT-TREE ADDENDUM — re-verification, and one shape the peer wave introduced
+
+The audit tree was `main` @ `0b688bea`. While this report was being written, four peer commits
+landed on `main` (the scene-lane phase fix `2db3009f`, an AGENTS.md rules update, a persistence
+data-loss fix, and the MCP receipt census). This section records two things: **a re-verification
+of §4's measured numbers on the tree as it now stands**, and **one shape the peer wave
+introduced after the audit tree**, which this audit's own measurements cannot see.
+
+### 13.1 Re-verification — the measured numbers still hold
+
+Both disposable instruments were re-run against the tree at `b2c3b680` + peers, on the same
+loaded host:
+
+| Quantity                                         | Audit tree (§4)         | Re-run on the current tree | Verdict                                     |
+| ------------------------------------------------ | ----------------------- | -------------------------- | ------------------------------------------- |
+| `normalizeProject`, 50 → 2000 clips              | 0.2213 → 0.8956 ms      | 0.1903 → 0.8890 ms         | reproduces                                  |
+| `snapshot()` **development**, 2000 clips         | 1.6938 ms               | 1.7205 ms                  | reproduces                                  |
+| `snapshot()` **production**, 2000 clips          | 1.3127 ms               | 1.3347 ms                  | reproduces                                  |
+| `snapshot()` **production**, 50 clips            | 0.0282 ms               | 0.0282 ms                  | reproduces exactly                          |
+| `JSON.stringify`, 50 → 2000 clips                | 0.0312 → 0.3419 ms      | 0.0317 → 0.3694 ms         | reproduces (payload 13.5 → 143.4 KiB)       |
+| `arrangementSecondsBetweenTicks`, 2000 clips     | 0.1653 ms               | 0.1393 ms                  | reproduces (same order, same slope)         |
+| `ProjectStore.execute()`, 50 → 2000 clips        | 0.5342 → 5.7136 ms      | 0.2081 → 2.5710 ms         | reproduces (absolute values host-dependent) |
+| **C-1 `soloAudibility`, marginal µs/track**      | 1.375 → 10.041 µs       | 0.375 → 3.978 µs           | **the quadratic reproduces**                |
+| **M8 `automationClipForTarget` vs. track count** | O(P), track-independent | O(P), track-independent    | **the refutation reproduces**               |
+| `targetParamDef`, 16 → 256 tracks                | 0.0031 → 0.0182 ms      | 0.0015 → 0.0110 ms         | reproduces (same mild growth)               |
+
+**The C-1 re-verification is the important one.** On the current tree the marginal cost per
+track is 0.375 → 0.922 → 2.020 → 3.978 µs at 32 → 64 → 128 → 256 tracks: it still roughly
+**doubles with every doubling of the track count**, and 256 tracks costs 70× what 16 tracks
+cost for a 16× larger document. The absolute milliseconds are lower than in §4 — the host was
+less contended during this run — but the **shape is what reproduces**, and the shape is the
+finding.
+
+**One row is recorded deliberately:** re-running instrument 1 **does** reproduce the no-op
+measurement defect documented in §1.4 (0.8 listener calls per command, a flat 0.0015 ms). The
+corrected measurement is in instrument 2 (M9), and it reproduces at **12.0 listener calls per
+command** at every document size. A reader who re-runs instrument 1 and sees "0.8 listeners" is
+seeing the documented defect, not a contradiction.
+
+**Line-number drift:** `normalizeProject` moved from `schema.ts:3506` to `schema.ts:3543`
+because of the peer wave. The line references in §4 were read on the audit tree.
+
+### 13.2 A new shape the peer wave introduced — S-6
+
+Commit `2db3009f` ("fix(scene-lane): the phase names the scene's TRUE period") fixed a
+**correctness** defect: the arrangement normaliser wrapped a scene clip's phase against the
+step grid, while the command layer wrapped it against the scene's true period. The fix
+replaced a constant with a computation — and the computation sits **inside the per-clip
+loop**.
+
+`src/project-model/schema.ts:1733`, inside the per-clip `.map()` of
+`normalizeArrangementDomain`, which runs after **every** command (`normalizeProject` →
+`NORMALIZE_DOMAINS`, `schema.ts:3543`):
+
+```ts
+const periodTicks = pattern ? scenePatternPeriodTicks(pattern) : 0;
+```
+
+and `src/project-model/midiTime.ts:60-67`:
+
+```ts
+export function scenePatternPeriodTicks(pattern: Pick<Pattern, "stepCount" | "notes">): number {
+  const grid = pattern.stepCount * STEP_TICKS;
+  let period = grid > 0 ? grid : 1;
+  for (const notes of Object.values(pattern.notes ?? {})) {
+    period = lcmTicks(period, midiPhraseLengthTicks(pattern.stepCount, notes));
+  }
+  return period;
+}
+```
+
+**Shape:** the arrangement normaliser now costs **O(clips × note-tracks in the pattern)** per
+command — the same "per-item work that scans the whole collection" class as C-1 and C-3,
+sitting on the most frequent interaction in the product. The inner note scan
+(`midiPhraseLengthTicks`) is `WeakMap`-cached per notes array, so it amortises; the
+`Object.values()` allocation and the LCM chain are **per clip** and are not cached across
+clips.
+
+**Why this audit cannot quantify it, stated plainly:** the audit's synthetic fixture carries
+**no `notes` at all** — `.git/perf-cliff-measure.mts` builds patterns without a `notes` map —
+so `Object.values(pattern.notes ?? {})` is empty, `scenePatternPeriodTicks` returns the grid
+period immediately, and the term **never executes**. The measured linearity of
+`normalizeProject` in §4.2 therefore still holds **for that fixture**, and says nothing at all
+about a real document whose patterns carry melodic content. A measurement that cannot see a
+change is not a measurement of that change.
+
+|                                     |                                                                                                                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Evidence                            | **OBSERVED (code)** for the shape; **magnitude NOT measured**                                                                                             |
+| Severity                            | Low–Medium — bounded by the melodic track count in one pattern (tens), not by the document                                                                |
+| Why it is not top-10                | The multiplier is small and the fix is correct; but it is a **per-command** cost on a path §4.2 measured as linear, so it must not stay invisible         |
+| What would settle it                | Re-run M2 with a fixture whose patterns carry notes on T melodic tracks: hold the clip count, vary T, and check whether the marginal ms/clip grows with T |
+| Where it belongs                    | **S-6** in the cliff register (§0, §5)                                                                                                                    |
+| The cheap fix, if it is ever needed | Hoist the period per **pattern** (a `Map` keyed by pattern id) instead of recomputing it per clip — §9's recommendation #1 applied to a two-line site     |
+
+**The honest summary of this addendum:** the state layer's measured linearity survives the
+peer wave, and the peer wave introduced one new super-linear term that the audit's fixture is
+blind to by construction. §13.2 is a code-read and is labelled as one.
 
 ---
 
