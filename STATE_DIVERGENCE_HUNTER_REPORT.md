@@ -10,20 +10,29 @@
 
 ## 1. Executive reliability verdict
 
-**The DAW's *authoritative state* is sound. Its *reported state* is not uniformly sound.**
+**The DAW's *authoritative state* is sound — with exactly one exception the audit found. Its
+*reported state* is not uniformly sound.**
 
-KYX has a genuinely well-disciplined core: exactly one authoritative document, exactly one write path
-(commands → store), delta-based undo that cannot revert a concurrent human edit, an atomic IndexedDB
-commit, a revision-guarded save path, a typed MCP error taxonomy, and a plugin param write path that
+KYX has a genuinely well-disciplined core: one authoritative document, one command write path,
+delta-based undo that cannot revert a concurrent human edit, an atomic IndexedDB commit, a
+revision-guarded save path, a typed MCP error taxonomy, and a plugin param write path that
 re-reads the committed document and reports `PARTIAL_FAILURE` when the commit does not match the
 intent. Those are not incidental; they are defended by named tests. **The user can trust what the
 project saves and what the undo stack contains.**
+
+**The exception is F-28**, and it is the one finding that breaks the product's own doctrine: the
+PRISM plugin's DSP core is a **second writer** to the document. Its in-plugin Undo applies the change
+to the audio, writes the value back into the document — and the normaliser then discards that write,
+because the value arrives under the plugin's *internal* id rather than the project's canonical one.
+The result is measured, not inferred: **the DSP plays wet/dry 1.0 while the document and the knob
+say 0.3, and a save + reload moves the sound back to 0.3.** One second writer, one missing
+inverse-id map, and the project's "same project, same sound" contract breaks.
 
 What is *not* uniformly sound is everything that **reports** on that state rather than holding it:
 
 | Surface | Verdict |
 |---|---|
-| Project document, undo/redo, save/reload | **Trustworthy.** One authority, one write path, atomic save, verified round-trip. |
+| Project document, undo/redo, save/reload | **Trustworthy — except the DSP write-back path.** One authority, one write path, atomic save, verified round-trip. **F-28** is the single hole: a second writer whose value is discarded. |
 | MCP refusal + acknowledgement contract | **Mixed — and improving in the working tree.** The new R-02 `verifiedMutation` gate now corrects false *successes* at one dispatch choke point. It does **not** cover two paths: a refusal that is not flagged as an error, and the idempotency replay, which returns before the gate. |
 | Export paths | **Divergent from each other.** The master export refuses to render a changed project; the stem and track exports do not check at all and can ship a stale arrangement. |
 | Automation / DSP value display | **Divergent.** The knob shows the committed document value while the DSP plays the automated value, with no "under automation" indicator anywhere in the rack. |
@@ -49,11 +58,12 @@ is deliberate rather than accidental.
    no `npm run typecheck`, no `npm run build`. Every claim below is either read from source or
    measured by a purpose-built probe. Where a claim rests only on reading, it is labelled as such.
 2. **Two probe harnesses were used; both executed.** `tmp-divergence-probe.mts` (7 sub-probes,
-   `vite-node`) and two vitest specs — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**) and
+   `vite-node`) and three vitest specs — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**),
    `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**, covering the four mission probes the
-   first pass had to report as *not executed*). An earlier `vite-node` attempt at the second probe
-   hung for 420 s twice and was abandoned; re-implementing it under vitest loaded the same module
-   graph in **8 seconds**. Results and raw output are in §5.
+   first pass had to report as *not executed*) and `tmp-probe/second-writer.test.ts` (T6, the DSP
+   write-back). An earlier `vite-node` attempt at the second probe hung for 420 s twice and was
+   abandoned; re-implementing it under vitest loaded the same module graph in **8 seconds**. Results
+   and raw output are in §5.
 3. **The working tree moved under this audit, and it changed a finding.** `src/mcp/tools.ts` was
    edited by another session *while the probes were running* (file mtime 11:36:56; `git diff` grew
    during the session). The change landed the **R-02 `verifiedMutation` gate**, which fixed the
@@ -88,6 +98,7 @@ is deliberate rather than accidental.
 | Runtime transport cursor | `Transport`, anchored on the **AudioContext clock** (`src/audio-engine/AudioEngine.ts:545-547` → `src/services.ts:588`) | engine | UI playhead via shared rAF | audio-clock, not wall clock | not persisted | UI playhead freezes in a hidden tab (F-21) |
 | Effect parameter (document) | `EffectInstance.params` | commands, MCP, plugin panel | `EffectRack` (`src/ui/EffectRack.tsx:930, 1270`), engine | `syncFxParams` diff-guarded push (`src/audio-engine/AudioEngine.ts:1620-1625`) | with the document | **knob ≠ DSP under automation (F-09)** |
 | Effect parameter (runtime) | AudioParam in the graph | `syncFxParams`, automation bridge, macro | DSP only | `setTargetAtTime`, tc 20 ms native / instant worklet | not persisted | macro vs automation conflict (F-11) |
+| **DSP-side write-back** | **a second writer — and the only one found** | the PRISM core, via `FxEqPanel`'s in-plugin Undo/Redo | the document, via `setFxEqParam` | arrives under the plugin's **internal** id (`globalMix`, 0..100) instead of the project's canonical one (`mix`, 0..1) — so the normaliser discards it | **not persisted** | **F-28 — measured: the audio and the document disagree, and a reload changes the sound** |
 | Track gain | `track.gain` (fader) + `modAutoGain` (automation) + `modMacroGain` (macro) | commands | mixer UI | chain `gain → modAutoGain → modMacroGain` (`AudioEngine.ts:1896-1905`) | with the document | **absolute-vs-multiplicative (F-10)** |
 | Automation lane | `doc.automation` points | commands, MCP | engine (runtime only), arrangement lanes | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1191-1210`) | with the document | points addressed by value (F-07) |
 | MCP read model | **none** — tools read `ctx.getDoc()` live | — | all tools | — | — | idempotency ledger replay (F-06) |
@@ -163,7 +174,7 @@ Derived from the product's actual contracts, not imposed. Status reflects this a
 | **I-1** | Every mutation flows through the command layer; there is no second write path | `src/commands/*`; grep for direct `doc.<slice> =` in `src/` returns nothing | **Holds** (verified by search) |
 | **I-2** | A parameter set by *any* control surface yields the same domain value after normalisation | `src/commands/*` is shared by UI and MCP | **Holds — MEASURED** (§5.3, T1): identical domain map **and** identical DSP param cache. The *report* still breaks (F-05, F-06, F-07) |
 | **I-3** | A committed operation is observable in the engine/DSP path, or reports pending/failure accurately | `syncFxParams` diff-guarded push; MCP `PARTIAL_FAILURE` | **Partially holds** — F-06, F-24 |
-| **I-4** | Save/reopen reproduces the arrangement, routing, automation and plugin state | `ProjectRepository.save` = whole doc, one transaction | **Holds — MEASURED** (§5.3, T3): the reloaded document is byte-identical **and** rehydrates to an identical DSP state |
+| **I-4** | Save/reopen reproduces the arrangement, routing, automation and plugin state | `ProjectRepository.save` = whole doc, one transaction | **Holds — MEASURED** (§5.3, T3): the reloaded document is byte-identical **and** rehydrates to an identical DSP state — **except after a DSP-side write-back (F-28), where the reload changes what you hear** |
 | **I-5** | Undo/redo restores all logically coupled values | delta snapshot; `src/commands/docDelta.ts` | **Holds** for the measured battery (probe P2/P3) — **except** the frame case (F-22) |
 | **I-5b** | A late-acknowledged write must not overwrite a newer write to the same field | no version, no expected-revision guard | **Breaks — MEASURED** (§5.3, T2): last-APPLIED-wins (F-25). An unrelated field is protected by the delta snapshot; the same field is not |
 | **I-6** | Automation playback does not overwrite the persistent baseline | `writeDeviceTargetAt` touches runtime only; `automationReset` restores the doc base | **Holds — this defect does NOT exist.** The doc is never written by automation. |
@@ -173,6 +184,7 @@ Derived from the product's actual contracts, not imposed. Status reflects this a
 | **I-10** | Repeated command delivery is idempotent, or non-idempotent with explicit dedup/ordering rules | MCP idempotency ledger (requestId) | **Holds for the ledger**; **breaks for automation points** (F-07) |
 | **I-11** | Transient meter/playhead values may lag within a documented bound, and that lag must not corrupt committed state | scheduler tick 25 ms, lookahead 120 ms, smoothing tc 8–20 ms | **Holds** — the lag is bounded and documented; UI playhead freeze in a hidden tab is a *display* issue (F-21) |
 | **I-12** | The AI's structured answer agrees with what the document actually contains | MCP ack contract + the R-02 `verifiedMutation` gate | **Holds on the dispatch path** (gate); **breaks** on refusals and on the idempotency replay (F-05, F-06) |
+| **I-13** | There is exactly **one** writer to the authoritative document | `src/commands/*` → `ProjectStore.execute` | **Breaks — MEASURED** (§5.3, T6): the PRISM DSP core is a second writer (its in-plugin undo writes into the document), and the normaliser discards that write — so the audio and the document diverge (F-28) |
 
 **Deliberately asynchronous contracts (not defects):**
 
@@ -193,11 +205,11 @@ Severity: **Critical** (wrong audio / lost work / false success in the common pa
 Confidence: **Confirmed** (read the code path that proves it, or measured it) · **Strongly indicated** ·
 **Hypothesis** · **Untested**.
 
-**27 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
-a worked example rather than an open item; 26 remain open. Thirteen are **Confirmed** by code
-reading that the parent re-verified directly; **eight of those were additionally measured** (§5).
-Two are **Strongly indicated** and are flagged for confirmation (F-16, F-22); one is a
-**Hypothesis** (F-23).
+**28 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
+a worked example rather than an open item; 27 remain open, one of them **Critical** (F-28).
+Fourteen are **Confirmed** by code reading that the parent re-verified directly; **nine of those were
+additionally measured** (§5). Two are **Strongly indicated** and are flagged for confirmation
+(F-16, F-22); one is a **Hypothesis** (F-23).
 
 ---
 
@@ -990,6 +1002,81 @@ identity half is Confirmed by code reading only
 
 ---
 
+### F-28 — The PRISM in-plugin undo moves the DSP but the document write-back is normalised away: a **second writer** whose value is discarded
+
+**Severity:** **CRITICAL** · **Confidence:** Confirmed — **measured** (§5.3, probe T6)
+
+This is the finding the audit's own §10.3 item 13 flagged as unverified — *"does anything ever write
+back into the document from the DSP?"* **It does.** This is the first **second writer** found, and it
+is the only finding that breaks the product's own central contract.
+
+- **Affected journey:** open a PRISM (fxeq) instance → drag the MIX → press the panel's **↶ Undo**
+  button → listen, then save, reload, or press Ctrl+Z.
+- **Authoritative state:** `EffectInstance.params`. **Second writer:** the DSP core, via the panel.
+- **Expected contract:** one musical intent → one authoritative transition → consistent observable
+  representations. Here the intent produces **two** transitions, and the normaliser throws the
+  second one away.
+- **The chain, as read in the source:**
+  1. `src/ui/FxEqPanel.tsx:219-227` — the panel's Undo/Redo calls
+     `onParam(entry.id, entry.value)`, where `entry` came from the **core**.
+  2. `src/effects/fxeqNode.ts:249-250` — the node's own comment states the intent: *"the restored
+     entry arrives asynchronously via the callback so the host can write it through."* The write-back
+     is **deliberate design**, not an accident.
+  3. `src/ui/EffectRack.tsx:1076` — `onParam` → `store.execute(setFxEqParam(doc, trackId, fxId, fullId, value))`.
+  4. `src/effects/fxeq-core/core/fxEqProcessor.ts:747-756` — the core's `undo()` **already applied**
+     the restored value to the live DSP (`values[entry.id] = entry.value`; and `values["globalMix"]`
+     *is* the audible wet/dry — `:591`), then returned the **core** id (`globalMix`) and the **core**
+     value (0..100).
+  5. `src/effects/definitions.ts:415-418` — `normalizePluginParams` **overwrites** `params.globalMix`
+     with `params.mix`, because the rack id is the source of truth.
+  6. `src/project-model/schema.ts:797` — the normaliser runs on **every** command execute.
+  7. `src/audio-engine/AudioEngine.ts:1620-1625` — `syncFxParams` pushes only keys that **differ**
+     from the cache, so an unchanged document means **nothing is pushed** and the core keeps its
+     undone value.
+- **MEASURED (probe T6, using the vendored core and the real normalisation path):**
+  ```
+  [T6] core after the drag : 30  (wet/dry 0.3)
+  [T6] core after the undo : 100  (wet/dry 1)
+  [T6] core undo entry     : {"id":"globalMix","value":100}
+  [T6] doc before: mix=0.3 globalMix=0.3
+  [T6] doc after write-back: mix=0.3 globalMix=0.3
+  [T6] document changed at all: false
+  [T6] params the engine would push: []
+  [T6] DOCUMENT wet/dry: 0.3   DSP wet/dry: 1
+  [T6] RELOADED project wet/dry: 0.3  (live session: 1)
+  [T6] after Ctrl+Z the document content is unchanged: true
+  ```
+- **Three consequences, all measured:**
+  1. **Hard divergence.** The DSP plays wet/dry **1.0**; the document — and the MIX knob the user is
+     looking at — says **0.3**. Nothing is wrong on screen; everything is wrong in the audio.
+  2. **The project does not reproduce the session.** A reload rebuilds the effect from the document
+     (0.3), so **saving and reloading changes what you hear**. This breaks invariant **I-4**, and it
+     breaks it in the loudest possible way: the sound is not the same after a save.
+  3. **A dead undo step.** The document's *content* did not change, yet the undo stack grew by one.
+     Ctrl+Z consumes that step and changes nothing — a dead Ctrl+Z.
+- **Reachability:** `src/ui/FxEqPanel.tsx:730-738` — a plain `<button>` with
+  `aria-label="Undo PRISM parameter edit"`, **never disabled**, wired to `undoParam`. Any user with
+  the PRISM panel open can hit it.
+- **Root cause — precise and small:** a **canonical-id mismatch at the host boundary.** The core
+  speaks **core** ids and units (`globalMix`, 0..100); the rack and the document speak **rack** ids
+  and units (`mix`, 0..1). `src/effects/fxeqNode.ts:16-21` provides `RACK_TO_CORE` — a **one-way**
+  map used on the way *in* to the DSP. The write-back path needs the **inverse** (core id → rack id,
+  core value → rack value) and does not have it, so it writes a core id into a rack-owned field and
+  the normaliser resolves the conflict in favour of the rack — discarding the write.
+- **Blast radius today:** PRISM only — `undoParam`/`redoParam` exist in `src/ui/FxEqPanel.tsx` alone
+  (the other flagship panels have no in-plugin history button). But the *class* is open: any future
+  plugin with an in-plugin history inherits the same one-way map.
+- **Smallest safe repair:** add the inverse map next to `RACK_TO_CORE` in `src/effects/fxeqNode.ts`
+  (`toRackId`, and the inverse of `mix01ToPercent100`), and translate the write-back in
+  `FxEqPanel.tsx:220-227` before it reaches `onParam` — so the document receives the rack id and the
+  rack value. Then the normalisation alias (`definitions.ts:417`) stops fighting the write-back,
+  because the write-back would now arrive *as* `mix`.
+- **Regression plan:** probe T6 is the test. Promote it into `tests/` and assert three things: the
+  document's `mix` changes to the undone value; the document and the core agree; and a reload
+  reproduces the same wet/dry.
+
+---
+
 ### 4.1 Divergence scenario matrix
 
 The scenario catalogue from the mission brief, each traced request-to-effect. **Observed** means the
@@ -1026,6 +1113,7 @@ product but no probe or test in this audit exercised it.
 | Parameter unit mapping mismatch (0–1 vs dB/Hz/ms/%) | the doc stores a normalized value, the DSP wants a native one | the same intent yields the same sound on every surface | **Observed — two separate owners** for dB→linear, and percent-100 bridges hardcoded in 2 of 4 registered pairs | `src/effects/scale-bridges.ts:32, 75-84` vs `src/effects/registry.ts:161`; `ozvenaNode.ts:143`; `morphDynamicsNode.ts:23` | low today, **high if one is edited** (F-20) | assert every `SCALE_BRIDGES` entry is the function the node actually calls (fails today for ozvena + morphdynamics) |
 | A plugin preset restores UI fields but misses runtime processor values | a preset is applied | the processor holds what the UI shows | **Observed — one candidate left open**: the parameter cache is seeded from the document and only pushes *differences*, so a factory that does not apply every parameter would leave it permanently unsent | `src/audio-engine/AudioEngine.ts:1519, 1620-1625` | medium — **not confirmed**; the shipped factories read appear to apply the full set | for every effect type, assert the runtime holds every document parameter after a rebuild |
 | A plugin instance is closed and reopened | remove the effect, add it back | the instance state is preserved, or the reset is disclosed | **Observed — diverges.** The reopened instance starts at the **factory defaults** and mints a **new id**, invalidating every AI-held reference to the old one | measured §5.3 (T3) | low-medium (F-27) | assert the AI surface discloses the reset |
+| A plugin's in-plugin undo writes back into the document | the user presses PRISM's ↶ Undo | the document, the UI and the DSP all show the undone value | **Observed — diverges, and it is the only second writer.** The DSP applies the undo and posts it back; the write arrives under the plugin's internal id (`globalMix`, 0..100) and the normaliser discards it in favour of the canonical id (`mix`) | **measured §5.3 (T6)**; `src/ui/FxEqPanel.tsx:219-227`; `src/effects/fxeqNode.ts:249-250`; `src/effects/definitions.ts:415-418` | **critical (F-28)** | assert the document's `mix` changes, that document and core agree, and that a reload reproduces the same wet/dry |
 | Reordered effects change the render but the visual order stays stale | the user drags an effect in the chain | the graph order and the visual order agree | **Observed — contract-compliant.** Doc order → signature → rebuild → serial connect | `src/audio-engine/AudioEngine.ts:1420, 1516-1517`; `src/commands/effectParams.ts:326-344` | low | — |
 | The audio thread reads unsafe mutable state | a param change during a render quantum | no torn multi-field transitions | **Observed — clean.** No I/O, logging or unbounded allocation in a processor callback; change-gated `postMessage` | `src/audio-worklets/*`; `src/effects/fxeq-core/**` | low | — |
 
@@ -1073,6 +1161,7 @@ product but no probe or test in this audit exercised it.
 | `tmp-divergence-probe.mts` (P1–P7) | `vite-node` | **PASS** — executed end-to-end | 7 sub-probes, results below |
 | `tmp-probe/f03.test.ts` (F-03, F-05, F-06, F-06b, F-07) | **vitest** (the repo's own harness) | **PASS — 5/5 tests green** | the MCP ack contract, measured |
 | `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 7/7 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 |
+| `tmp-probe/second-writer.test.ts` (T6) | **vitest** | **PASS** | the DSP→document write-back — the audit's first **Critical** finding (F-28) |
 
 Commands, from the repository root:
 
@@ -1193,6 +1282,22 @@ reopening a plugin instance resets its parameters to the factory defaults and mi
 ```
 → **F-26.**
 
+**T6 — the DSP write-back (the audit's first CRITICAL finding).**
+```
+[T6] core after the drag : 30  (wet/dry 0.3)
+[T6] core after the undo : 100  (wet/dry 1)
+[T6] core undo entry     : {"id":"globalMix","value":100}
+[T6] doc before: mix=0.3 globalMix=0.3
+[T6] doc after write-back: mix=0.3 globalMix=0.3
+[T6] document changed at all: false
+[T6] params the engine would push: []
+[T6] DOCUMENT wet/dry: 0.3   DSP wet/dry: 1
+[T6] RELOADED project wet/dry: 0.3  (live session: 1)
+[T6] after Ctrl+Z the document content is unchanged: true
+```
+→ **F-28.** The DSP plays 1.0, the document and the knob say 0.3, a save + reload moves the sound
+back to 0.3, and the project's undo stack carries a dead step.
+
 ### 5.4 Probe results — `tmp-divergence-probe.mts` (`vite-node`)
 
 **P1 — A/B control equivalence (UI command path vs MCP tool path):**
@@ -1275,6 +1380,7 @@ session. Consequently:
 | **Lifecycle** — reopen a plugin instance | **Executed** (T3) | — | parameters reset to factory defaults, id re-minted → F-27 |
 | **Audio truth** — the track-gain lane's composition | **Executed — MEASURED** (T4) | — | the lane is a multiply stage in series → F-10 confirmed |
 | **R-02 gate's synchrony precondition** | **Executed** (T5) | — | the gate answers "nothing changed" for a deferred mutation → F-26 |
+| **DSP → document write-back** | **Executed — MEASURED** (T6) | — | the DSP is a second writer and its write is discarded → **F-28, Critical** |
 | F-03 rename false-success | **Executed — and now CORRECTED** | — | the R-02 gate works ✅ |
 | F-05 refusal signalling | **Executed — still open** | — | `isError` is absent on the automation refusal ❌ |
 | F-06 idempotency replay staleness | **Executed — still open** | — | stale read-back + contradictory `mutated` ❌ |
@@ -1293,26 +1399,26 @@ effort and regression risk.
 
 | # | Finding | Why this rank | Effort | Regression risk |
 |---|---|---|---|---|
-| **1** | **F-01** — stem/track export renders a stale document | The only finding that can ship **silently wrong output** to a paying user. The master path already proves the guard is cheap. | S (capture at call time + reuse the existing assertion) | Low |
-| **2** | **F-04** — recovery buffer is a single global slot | The buffer is the **only** copy of uncommitted work; the loss is silent and permanent. | S–M (per-project key + honour the write result) | Low |
-| **3** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
-| **4** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. | S + S (one meta-test) | Very low |
-| **5** | **F-06** — idempotent replay serves a stale read-back and escapes the R-02 gate | The root cause is now precise (the replay returns **before** the gate), so the fix is small and provable — but until it is fixed, an agent's retry receives a **wrong current value**. | S | Low |
-| **6** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Now measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
-| **7** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
-| **8** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
-| **9** | **F-07** — automation points addressed by value; identical writes duplicate | Undo can delete the human's point; repeated AI writes duplicate points **and** grow history (measured). | S (cheap variant) / M (id variant) | Low (cheap) / M (id) |
-| **10** | **F-14 + F-13** — recovery writes an unvalidated document; `migrateProject` is not a migration | The two together make the *next* breaking change land in the least visible place available — and a recovered project can vanish at the next boot. | S + M | Low |
-
+| **1** | **F-28** — the PRISM DSP is a **second writer** whose write-back is normalised away | **Critical, and measured.** The DSP holds wet/dry 1.0 while the document and the knob say 0.3; a **save + reload changes what you hear**; the project's undo stack carries a dead step. It breaks the product's central doctrine and its "same project, same sound" contract. The fix is one inverse id map. | S–M (an inverse `toRackId` + value conversion) | Low |
+| **2** | **F-01** — stem/track export renders a stale document | The only finding that can ship **silently wrong output** to a paying user. The master path already proves the guard is cheap. | S (capture at call time + reuse the existing assertion) | Low |
+| **3** | **F-04** — recovery buffer is a single global slot | The buffer is the **only** copy of uncommitted work; the loss is silent and permanent. | S–M (per-project key + honour the write result) | Low |
+| **4** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
+| **5** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. | S + S (one meta-test) | Very low |
+| **6** | **F-06** — idempotency replay serves a stale read-back and escapes the R-02 gate | The root cause is now precise (the replay returns **before** the gate), so the fix is small and provable — but until it is fixed, an agent's retry receives a **wrong current value**. | S | Low |
+| **7** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
+| **8** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
+| **9** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
+| **10** | **F-07** — automation points addressed by value; identical writes duplicate | Undo can delete the human's point; repeated AI writes duplicate points **and** grow history (measured). | S (cheap variant) / M (id variant) | Low (cheap) / M (id) |
 *(F-03 — the AI false-success on rename — **left this list**: it was fixed in the working tree by the
 R-02 `verifiedMutation` gate during this audit, and the probe confirms the fix (§5.2). It is
-retained as a worked example in §4 rather than as an open finding. **F-26** (the R-02 gate's
-undocumented synchrony precondition — measured, *not* live today), **F-11** (macro and automation
-share one effect AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three
-save timestamps), **F-16** (collab normalisation parity), **F-17** (bypass cold restart),
-**F-18/F-19** (fallback honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22**
-(undo-in-frame), **F-23** (onset cache), **F-24** (automation ack), **F-27** (a reopened instance
-resets to defaults) are all **below the top 10**: real, documented, and scheduled for a later wave.)*
+retained as a worked example in §4 rather than as an open finding. **F-14 + F-13** (recovery writes
+an unvalidated document; `migrateProject` is not a migration), **F-26** (the R-02 gate's undocumented
+synchrony precondition — measured, *not* live today), **F-11** (macro and automation share one effect
+AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three save timestamps),
+**F-16** (collab normalisation parity), **F-17** (bypass cold restart), **F-18/F-19** (fallback
+honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (undo-in-frame), **F-23**
+(onset cache), **F-24** (automation ack), **F-27** (a reopened instance resets to defaults) are all
+**below the top 10**: real, documented, and scheduled for a later wave.)*
 
 ---
 
@@ -1391,12 +1497,18 @@ migration, and migrations are exactly what F-13 says is currently missing. **S-3
 **Migration:** `SCHEMA_VERSION` 38 → 39; add a `MIGRATIONS` map that assigns ids to existing
 points; the normalisation continues to tolerate points without ids until the migration has run.
 
-### S-4 — A single unit/scale ownership layer, and a documented composed signal path
+### S-4 — A single unit/scale ownership layer, a **bidirectional** id map, and a documented composed signal path
 
-**Expected value:** closes F-10, F-11, F-19 and F-20, and makes F-18 detectable.
+**Expected value:** closes F-10, F-11, F-19, F-20 and — with one line — **F-28**, the Critical one.
 
 Shape: every parameter declares, in one registry: its **domain** (absolute vs modulation), its
-**display unit**, its **DSP transform**, and the **signal path** it is composed into. Then:
+**display unit**, its **DSP transform**, the **signal path** it is composed into, and — the part
+F-28 proves is missing — its **canonical project id** in **both** directions. Then:
+
+- **every id map is bidirectional.** `src/effects/fxeqNode.ts:16-21` has `RACK_TO_CORE` and no
+  inverse. A one-way map is fine for values flowing *into* the DSP and fatal for values flowing
+  *back out* of it — which is exactly what the in-plugin undo does. The registry must state, per
+  parameter, the canonical id, the DSP id, and the conversion in **both** directions (**F-28**);
 
 - every unit conversion has exactly one owner (fold `dbToLin` into `scale-bridges.ts`);
 - every `SCALE_BRIDGES` entry is asserted to be the function the node actually calls;
@@ -1448,19 +1560,23 @@ and turn each remaining finding into a **failing** test before a line is changed
 *Gate:* every finding below has a red test that reproduces it, and the red test fails for the
 *stated* reason — not for an incidental reason. The two probes that already exist stay green.
 
-### Phase 1 — The false-success and refusal layer (smallest change, highest trust return)
+### Phase 1 — The wrong-audio layer and the truth layer (smallest change, highest trust return)
 
-**F-03 is already done** — the R-02 gate landed in the working tree during this audit (§4/F-03).
-This phase **widens its perimeter** rather than building it.
+**F-28 comes first** — it is the only Critical finding, and its fix is small: add the inverse of
+`RACK_TO_CORE` (`toRackId` + the inverse value conversion) in `src/effects/fxeqNode.ts`, and
+translate the write-back in `FxEqPanel.tsx:220-227` so the document receives the **canonical** id and
+value. Then the normalisation alias stops fighting the write-back, because the write now arrives
+*as* `mix`.
 
-Fix **F-05** (typed refusals for the automation handler + the meta-test that every mutating tool's
-refusal sets `isError`), **F-06** (move the idempotency replay inside the gate's perimeter; force
-`mutated: false` on a replay and re-read or label the read-back), and **F-24** (mirror the gate's
-read-back into `result.data`).
+Alongside it, **widen the perimeter of the R-02 gate**: **F-05** (typed refusals for the automation
+handler + the meta-test that every mutating tool's refusal sets `isError`), **F-06** (move the
+idempotency replay inside the gate's perimeter; force `mutated: false` on a replay and re-read or
+label the read-back), **F-26** (make the gate's synchrony precondition explicit and checked), and
+**F-24** (mirror the gate's read-back into `result.data`).
 
-*Gate:* the meta-test is green; F-05's and F-06's reproductions flip from red to green; no MCP
-client contract changes; the R-02 gate's own regression spec (`tmp-probe/f03.test.ts`, promoted
-into `tests/`) stays green.
+*Gate:* the meta-test is green; F-05's, F-06's and **T6**'s reproductions flip from red to green;
+no MCP client contract changes; the R-02 gate's own regression spec stays green; and — the check
+that matters most — **a PRISM in-plugin undo now survives a save + reload with the same wet/dry**.
 
 ### Phase 2 — The export freshness layer
 
@@ -1528,6 +1644,8 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 | Ordering (delayed acknowledgement) | apply A then B with A's ack late; assert the documented precedence | Yes | **MEASURED (T2)** — unrelated field survives; same field → last-APPLIED-wins. **F-25** |
 | Lifecycle — reopen a plugin instance | remove + re-add; assert the parameter state | Yes | **MEASURED (T3)** — resets to factory defaults, id re-minted. **F-27** |
 | MCP host `execute` is synchronous | assert every registered host applies the command inline | Yes | no — the type does not enforce it. **F-26** |
+| **Exactly one writer to the document** | every write path lands in the document's canonical id and value | Yes | **MEASURED — FAILS (T6)**: the PRISM DSP write-back is discarded. **F-28** |
+| A plugin's in-plugin undo survives a save + reload | undo in the plugin, reload the project, compare the audible parameter | Yes | no — **F-28** |
 | MCP ack truthfulness | every mutating tool: does `mutated` match the document? | Yes | **partially ✅** — the R-02 gate covers the dispatch path; **F-06** (the replay) escapes it |
 | MCP refusal detectability | every mutating tool: does a refusal set `isError`? | Yes | no — **F-05** (the meta-test is Phase 1) |
 | MCP stale-id handling | stale track/fx/clip/note/param ids | Yes | partially ✅ (`UNKNOWN_TARGET` in most handlers) |
@@ -1568,6 +1686,12 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
    click?
 5. **F-18 / F-19 — fallback honesty.** With the worklet module unavailable, is the native fallback
    audibly different from the worklet path? A/B the two renders.
+6. **F-28 — confirm the audible symptom.** The graph-level fact is measured (the DSP holds 1.0 while
+   the document says 0.3), so no listening is needed to *establish* the defect. What listening
+   confirms is the user-visible symptom: with a PRISM instance on a track, drag MIX to 30 %, press
+   the panel's ↶ Undo, and hear whether the wet/dry returns to full while the knob still reads 30 %;
+   then save, reload, and hear whether the sound changes back. If the knob moves with the sound, the
+   symptom does not reproduce and the finding must be re-measured before it is fixed.
 6. **The 8–20 ms smoothing difference between native and worklet parameters** (`F-19`/`F-20`
    family) is a click-behaviour difference, not a value difference — only listening can rank it.
 
@@ -1590,10 +1714,12 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 
 12. **The collab normalisation asymmetry (F-16)** was read, not traced end-to-end. Does a
     collab-edited project, exported and re-imported, really differ from the solo equivalent?
-13. **Does anything ever write back into the document from the DSP?** The engine→document write-back
-    path for plugin parameters (e.g. an in-plugin undo) was reported as a candidate by delegated
-    exploration and **not independently verified** here. If it is real, it is a **second writer** and
-    deserves its own finding.
+13. ~~**Does anything ever write back into the document from the DSP?**~~ **CLOSED — it does.**
+    The PRISM core is a second writer: its in-plugin undo writes into the document and the
+    normaliser discards the write (**F-28**, measured). The write-back currently exists only in
+    `src/ui/FxEqPanel.tsx`; the other flagship panels have no in-plugin history button. **The
+    open question is now the class, not the instance:** the reverse id map does not exist, so any
+    future plugin that adds an in-plugin history inherits the same defect.
 14. **How many shipped effect factories apply the full document parameter set?** The engine's
     parameter cache is seeded from the document and only pushes *differences*; a factory that does
     not apply every parameter would leave that parameter permanently unsent. The shipped factories
@@ -1628,13 +1754,18 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   text. Findings that survived only the delegated reading are labelled **Strongly indicated** and
   are flagged for confirmation.
 - **Three probe harnesses, all executed.** `vite-node` (`tmp-divergence-probe.mts`, 7 sub-probes) and
-  the repository's **vitest** — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**) and
-  `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**). An earlier `vite-node` attempt at the
-  second probe hung twice and was abandoned rather than reported as a pass; re-implementing it under
-  vitest loaded the same module graph in 8 seconds.
+  the repository's **vitest** — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**),
+  `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**) and `tmp-probe/second-writer.test.ts`
+  (T6, **1/1 green**). An earlier `vite-node` attempt at the second probe hung twice and was
+  abandoned rather than reported as a pass; re-implementing it under vitest loaded the same module
+  graph in 8 seconds.
 - **The scenario probes reused the repository's own mock-Web-Audio harness** (`tests/mixer-audit3.test.ts`),
   whose recording nodes make the **graph topology** assertable rather than inferable — that is how
   F-10 moved from *strongly indicated* to *confirmed*.
+- **The Critical finding was measured against the vendored core itself** (`createFxEqProcessor`),
+  not a stand-in: the probe drives the real `undo()`, the real `normalizePluginParams` and the real
+  `setFxEqParam`, so the whole chain — DSP → host → document → normaliser → engine push decision —
+  is exercised end to end.
 - **The working tree moved during the audit.** `src/mcp/tools.ts` was edited by another session
   mid-probe (mtime 11:36:56, and again at 12:01). The audit therefore **re-measured** rather than
   trusting its earlier reading: F-03 was found to be fixed, F-05/F-06/F-07 were found to still be
