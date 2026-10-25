@@ -58,7 +58,6 @@ import {
   duplicatePattern,
   duplicateTimeRange,
   duplicateTrack,
-  moveTrackAdjacent,
   moveTrackBySteps,
   assistFill,
   assistVary,
@@ -1142,7 +1141,10 @@ export function App({
       // Another window-level listener already consumed this event (e.g. a
       // dialog closing itself on Escape) — never double-act on it.
       if (event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
+      // Keydown can target non-Elements (window/document in embedded or
+      // synthetic environments) — treat those as "no element target" so the
+      // DOM probes below (closest/isContentEditable) never throw.
+      const target = event.target instanceof Element ? (event.target as HTMLElement) : null;
       const matchedShortcut = matchShortcut(event);
       const typing =
         target &&

@@ -26,7 +26,12 @@ const ALL_KEYS: ShortcutKey[] = [
   "redo",
   "save",
   "toggleLoop",
+  // ⌘K palette.
+  "togglePalette",
   "duplicateSelection",
+  // Assist panel iterate verbs (⚡VARY / ⚡FILL shortcuts).
+  "assistFill",
+  "assistVary",
   "deleteNote",
   // Clip clipboard / lock family (the editor lock+clipboard wave).
   "copyClips",
@@ -50,6 +55,11 @@ const ALL_KEYS: ShortcutKey[] = [
   "selectTrack9",
   "toggleMuteTrack",
   "toggleSoloTrack",
+  // Track-tab action parity (experience-friction F-02): reorder + duplicate
+  // are keyboard/palette-first, via the same moveTrackAdjacent command.
+  "moveTrackUp",
+  "moveTrackDown",
+  "duplicateTrack",
   "panelMix",
   "panelFx",
   "panelArr",

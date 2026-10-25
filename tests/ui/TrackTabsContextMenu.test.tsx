@@ -32,7 +32,8 @@ describe("TrackTabs — track actions context menu", () => {
     await user.click(screen.getByRole("menuitem", { name: "Move down" }));
     expect(order()).toEqual([before[1], before[0], ...before.slice(2)]);
 
-    fireEvent.contextMenu(tab(0));
+    // The moved track now sits at index 1 — restoring opens ITS menu.
+    fireEvent.contextMenu(tab(1));
     await user.click(screen.getByRole("menuitem", { name: "Move up" }));
     expect(order()).toEqual(before);
   });
@@ -51,14 +52,15 @@ describe("TrackTabs — track actions context menu", () => {
 
   it("duplicates a track with its FX from the tab menu", async () => {
     const user = userEvent.setup();
-    const { store, order } = tabsHarness();
+    const { store, tab } = tabsHarness();
+    const countBefore = store.getDoc().tracks.length;
     const first = store.getDoc().tracks[0]!;
 
     fireEvent.contextMenu(tab(0));
     await user.click(screen.getByRole("menuitem", { name: /Duplicate/ }));
 
     const tracks = store.getDoc().tracks;
-    expect(tracks.length).toBe(order().length + 1);
+    expect(tracks.length).toBe(countBefore + 1);
     expect(tracks[1]!.name).toBe(`${first.name} copy`);
     expect(tracks[1]!.effects.map((fx) => fx.type)).toEqual(first.effects.map((fx) => fx.type));
     expect(tracks[1]!.id).not.toBe(first.id);
@@ -66,7 +68,7 @@ describe("TrackTabs — track actions context menu", () => {
 
   it("deletes only after the confirm dialog accepts, and never on cancel", async () => {
     const user = userEvent.setup();
-    const { store, tab, order } = tabsHarness();
+    const { tab, order } = tabsHarness();
     const before = order();
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 

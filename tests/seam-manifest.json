@@ -736,6 +736,24 @@
       "seamEvent": "shows the inferred intent plan BEFORE execution",
       "negativeSpec": "typing must not apply anything",
       "note": "P3 (2026-10-20) / step 3 (2026-10-21): typing a resolvable ask renders the SAME canonical command the executor would build, dry-run against the document value: resolved target, current value, destination, range fraction in the parameter's own domain and any clamp/add marker. The spec asserts the store was not executed."
+    },
+    {
+      "id": "track-reorder-keyboard",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx keydown handler → moveTrackBySteps",
+      "spec": "tests/ui/track-reorder-shortcut.test.tsx",
+      "seamEvent": "fireEvent.keyDown(window, { key: \"ArrowDown\", altKey: true, shiftKey: true })",
+      "negativeSpec": "is a no-op at the top edge — no command, no undo entry",
+      "note": "Experience-friction F-02 (2026-10-25): Alt+Shift+↑/↓ reorders the selected track through the SAME moveTrackAdjacent command the mixer drag uses; both edges are no-ops (null command, no junk undo), and Ctrl+Shift+D duplicates through the canonical duplicateTrack."
+    },
+    {
+      "id": "track-tab-actions-menu",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TrackTabs.tsx onContextMenu → fader-menu",
+      "spec": "tests/ui/TrackTabsContextMenu.test.tsx",
+      "seamEvent": "fireEvent.contextMenu(tab(0))",
+      "negativeSpec": "deletes only after the confirm dialog accepts, and never on cancel",
+      "note": "Experience-friction F-02 (2026-10-25): the tab nameplate owns Rename/Duplicate/Delete/Move up/Move down so no Mixer round-trip is needed. Edge moves render disabled, delete rides a real window.confirm with an undo hint, and rename enters the SAME inline input as F2."
     }
   ]
 }
