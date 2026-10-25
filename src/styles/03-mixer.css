@@ -704,6 +704,42 @@
   justify-content: center;
 }
 
+/* The composed channel gain — the fader × the volume lane (audit F-10).
+   The lane is a MULTIPLIER around unity, so the channel plays at fader ×
+   lane: a number NEITHER the fader nor the lane showed. The readout sits
+   under the VOL fader and appears only when a lane actually drives the
+   channel — without one, the fader already IS the value in effect. */
+.mixer-composed-gain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-compact);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* The "AUTO" badge says the lane is driving this channel — the same cue
+   the effect rack needs (audit F-09), in the accent colour so it reads as
+   "the machine is driving", not as a label. */
+.mixer-auto-badge {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.6px;
+}
+
+.mixer-composed-factor {
+  color: var(--text-dim);
+}
+
+.mixer-composed-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* MASTER strip: the IN/CEIL column has a definite width and the stereo meters
    live inside it (flex:1 here created a huge void left of the metering wall).
    The strip keeps a floor wide enough for the wall (controls 150 + wall min

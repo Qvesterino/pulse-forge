@@ -22,7 +22,9 @@ import {
   setTrackSend,
 } from "../commands/commands";
 import type { EffectType, Track } from "../project-model/types";
+import { composedTrackGain } from "../project-model/effective-values";
 import { EFFECT_DEFS } from "../effects/registry";
+import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
 import { TextPromptDialog } from "./TextPromptDialog";
 import { Meter } from "./Meter";
@@ -93,6 +95,36 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
     const id = setTimeout(() => setDeleteToast(null), 6000);
     return () => clearTimeout(id);
   }, [deleteToast]);
+  // The playhead tick. A volume lane is a MULTIPLIER around unity, and the
+  // value it plays is the lane's value AT THE PLAYHEAD — so the composed
+  // gain each strip shows has to follow the transport (audit F-10 / S-5).
+  // The shared rAF bus runs only while the transport plays; a stopped
+  // transport has no playhead to follow.
+  const [playheadTick, setPlayheadTick] = useState(() => services.transport.position);
+  useEffect(() => {
+    let lastSampleAt = 0;
+    let rafRegistered = false;
+    const update = (time: number) => {
+      if (time - lastSampleAt < 100) return;
+      lastSampleAt = time;
+      const position = services.transport.position;
+      setPlayheadTick((current) => (Math.abs(position - current) < 1 ? current : position));
+    };
+    const stop = services.transport.subscribePlaying((playing) => {
+      if (playing && !rafRegistered) {
+        registerRaf("mixer-playhead", update);
+        rafRegistered = true;
+      } else if (!playing && rafRegistered) {
+        unregisterRaf("mixer-playhead");
+        rafRegistered = false;
+        setPlayheadTick(services.transport.position);
+      }
+    });
+    return () => {
+      stop();
+      if (rafRegistered) unregisterRaf("mixer-playhead");
+    };
+  }, [services]);
   const handleTrackDeleted = (track: Track) => {
     services.store.execute(deleteTrack(doc, track.id));
     selectionStore.pruneTrack(track.id);
@@ -207,7 +239,13 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
       <SceneStrip />
       <div className="mixer-strips">
         {visibleTracks.map((track) => (
-          <ChannelStrip key={track.id} track={track} canDelete={tracks.length > 1} onDeleteTrack={handleTrackDeleted} />
+          <ChannelStrip
+            key={track.id}
+            track={track}
+            playheadTick={playheadTick}
+            canDelete={tracks.length > 1}
+            onDeleteTrack={handleTrackDeleted}
+          />
         ))}
         {collapsedGroups.size > 0 && (
           <div className="mixer-fold-hint" style={{ fontSize: 10, color: "var(--muted)", padding: "4px 6px" }}>
@@ -322,10 +360,12 @@ function savePreMeterTracks(ids: string[]): void {
 
 function ChannelStrip({
   track,
+  playheadTick,
   canDelete,
   onDeleteTrack,
 }: {
   track: Track;
+  playheadTick: number;
   canDelete: boolean;
   onDeleteTrack: (track: Track) => void;
 }) {
@@ -342,6 +382,12 @@ function ChannelStrip({
   const returns = useReturns();
   const macros = useMacros();
   const doc = services.store.getDoc();
+  // The composed channel gain: the fader × the volume lane (audit F-10).
+  // The lane is a multiplier around unity, so the channel plays at
+  // fader × lane — a number NEITHER the fader nor the lane showed. When no
+  // lane drives this track, `automated` is FALSE and the readout is omitted:
+  // the fader already IS the value in effect.
+  const composed = useMemo(() => composedTrackGain(doc, track.id, playheadTick), [doc, track.id, playheadTick]);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   // Drag affordance for THIS strip: "group" (the established drop-into-group
   // target), or "before"/"after" (reorder — the pointer's half of the strip
@@ -563,6 +609,17 @@ function ChannelStrip({
             onCancel={() => services.engine.previewTrackGain(track.id, track.gain)}
             onMenu={(x, y) => setFaderMenu({ x, y, param: "gain", defaultValue: 0.9, trackId: track.id })}
           />
+          {composed.automated && (
+            <div
+              className="mixer-composed-gain"
+              data-testid="mixer-composed-gain"
+              title={`Channel gain — fader ${composed.documentValue.toFixed(2)} × volume lane ${(composed.laneValue ?? 1).toFixed(2)} = ${composed.value.toFixed(3)}`}
+            >
+              <span className="mixer-auto-badge">AUTO</span>
+              <span className="mixer-composed-factor">×{(composed.laneValue ?? 1).toFixed(2)}</span>
+              <span className="mixer-composed-value">{gainDbLabel(composed.value)}</span>
+            </div>
+          )}
           <Slider
             label="PAN"
             hint="Stereo position — L100 hard left, C centre, R100 hard right"
