@@ -6,6 +6,7 @@ import type { LibraryState } from "../persistence/LibraryRepository";
 import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibration";
 import type { ArrangementCaptureSnapshot } from "../arrangement/capture";
 import type { SelectionState } from "../store/SelectionStore";
+import type { RecoveryStatus } from "../store/ProjectStore";
 import { SelectionStore } from "../store/SelectionStore";
 import type { Tool } from "../store/ToolStore";
 import { ToolStore } from "../store/ToolStore";
@@ -145,6 +146,23 @@ export function useSaveStatus(): AppSaveStatus {
 export function useLastSavedAt(): string | null {
   const { store } = useServices();
   return useSyncExternalStore(store.subscribe, store.getLastSavedAt, store.getLastSavedAt);
+}
+
+/**
+ * Whether the crash buffer can hold this project.
+ *
+ * `unprotected` means a closed tab cannot be recovered — the user has to be
+ * told while they can still save, not after the work is gone.
+ */
+export function useRecoveryStatus(): RecoveryStatus {
+  const { store } = useServices();
+  // Arrow wrappers, not method references: `store.getRecoveryStatus` handed to
+  // useSyncExternalStore unbound loses `this` and reads off undefined.
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.getRecoveryStatus(),
+    () => store.getRecoveryStatus(),
+  );
 }
 
 /** True iff the project has at least one command in its undo stack. */
