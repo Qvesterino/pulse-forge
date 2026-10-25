@@ -7,6 +7,7 @@ import {
   type OfflineRenderRuntimeDiagnostics,
 } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
+import { assertExportSourceCurrent, captureExportSource } from "./export-freshness";
 import {
   createBextMetadata,
   downloadWav,
@@ -257,6 +258,20 @@ export function ExportPanel({
   const deliveryProfile = resolveDeliveryTarget(master);
   const recommendedExport = profileExportRecommendation(deliveryProfile);
   const doc = services.store.getDoc();
+  /**
+   * The export freshness contract (audit F-01).
+   *
+   * `doc` above is captured at RENDER time, and this panel's selectors are
+   * fine-grained: `normalizeProject` preserves object identity for untouched
+   * slices, so an edit confined to the arrangement / automation / returns /
+   * macros / lfos / scenes does NOT re-render the panel — the captured
+   * document can already be stale BEFORE the user clicks.
+   *
+   * The master path has guarded this since it was written
+   * (`assertMasterSourceCurrent`); the stem and track paths had no guard at
+   * all. `captureExportSource` / `assertExportSourceCurrent` are that same
+   * contract in one place — see src/ui/export-freshness.ts.
+   */
   const [mode, setMode] = useState<PlayMode>(masteringMode ? "song" : services.playback.mode);
   const [sampleRate, setSampleRate] = useState(44100);
   const [standardBitDepth, setStandardBitDepth] = useState<WavBitDepth>(16);
@@ -835,12 +850,20 @@ export function ExportPanel({
   const exportStems = async () => {
     const signal = beginExport();
     try {
+      // Audit F-01: capture the document AT CALL TIME, and derive the stem
+      // groups and the file name from THAT document. The render-time capture
+      // can already be stale — the panel does not re-render on an
+      // arrangement-only edit.
+      const { doc: source, revisionId } = captureExportSource(() => services.store.getDoc());
+      const exportGroups = nonEmptyStemGroups(source);
+      const exportBaseName = sanitizeFilename(source.name);
       let lastSummary: BufferSummary | null = null;
-      for (let i = 0; i < groups.length; i++) {
+      for (let i = 0; i < exportGroups.length; i++) {
         if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
-        const group = groups[i];
-        setStatus({ kind: "busy", label: `Rendering stem ${i + 1}/${groups.length}: ${group.label}…` });
-        const stemDoc = buildStemProject(doc, group.filter);
+        const group = exportGroups[i];
+        setStatus({ kind: "busy", label: `Rendering stem ${i + 1}/${exportGroups.length}: ${group.label}…` });
+        assertExportSourceCurrent({ doc: source, revisionId }, () => services.store.getDoc());
+        const stemDoc = buildStemProject(source, group.filter);
         const buffer = await renderProject(stemDoc, services.bank, {
           mode,
           sampleRate,
@@ -850,20 +873,23 @@ export function ExportPanel({
           // they must not bake the master limiter/tape/glue into every stem.
           masterProcessing: false,
         });
+        // The render is multi-second — an edit made DURING it must not be
+        // exported as if it had not happened.
+        assertExportSourceCurrent({ doc: source, revisionId }, () => services.store.getDoc());
         lastSummary = summarizeBuffer(buffer);
         downloadWav(
           await encodeWavAsync(buffer, bitDepth, {
-            bext: bextFor(`${doc.name} — ${group.label} stem`, lastSummary, sampleRate, bitDepth),
+            bext: bextFor(`${source.name} — ${group.label} stem`, lastSummary, sampleRate, bitDepth),
             ixml: await stampFor(`${group.label} stem`, "stems", buffer),
             onProgress: (f) => setStatus({ kind: "busy", label: `Encoding stem WAV… ${Math.round(f * 100)}%` }),
             signal,
           }),
-          `${baseName}-${group.id}.wav`,
+          `${exportBaseName}-${group.id}.wav`,
         );
       }
       setStatus({
         kind: "done",
-        label: `${groups.length} stems exported (${groups.map((g) => g.label).join(", ")})`,
+        label: `${exportGroups.length} stems exported (${exportGroups.map((g) => g.label).join(", ")})`,
         summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
@@ -874,15 +900,21 @@ export function ExportPanel({
   const exportTracks = async () => {
     const signal = beginExport();
     try {
+      // Audit F-01: the same contract as the stem export — the document, the
+      // track list and the file name all come from the CALL-TIME document,
+      // and a mutation during the multi-second render aborts the export.
+      const { doc: source, revisionId } = captureExportSource(() => services.store.getDoc());
+      const exportBaseName = sanitizeFilename(source.name);
       // Group tracks have no own generators — rendering one produces a
       // silent WAV (their children belong to their own stems).
-      const renderableTracks = tracks.filter((t) => t.kind !== "group");
+      const renderableTracks = source.tracks.filter((t) => t.kind !== "group");
       let lastSummary: BufferSummary | null = null;
       for (let i = 0; i < renderableTracks.length; i++) {
         if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
         const track = renderableTracks[i];
         setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${renderableTracks.length}: ${track.name}…` });
-        const trackDoc = buildStemProject(doc, (t) => t.id === track.id);
+        assertExportSourceCurrent({ doc: source, revisionId }, () => services.store.getDoc());
+        const trackDoc = buildStemProject(source, (t) => t.id === track.id);
         const buffer = await renderProject(trackDoc, services.bank, {
           mode,
           sampleRate,
@@ -894,15 +926,16 @@ export function ExportPanel({
           // final stereo master and must not be printed onto every track.
           masterProcessing: false,
         });
+        assertExportSourceCurrent({ doc: source, revisionId }, () => services.store.getDoc());
         lastSummary = summarizeBuffer(buffer);
         downloadWav(
           await encodeWavAsync(buffer, bitDepth, {
-            bext: bextFor(`${doc.name} — ${track.name} track stem`, lastSummary, sampleRate, bitDepth),
+            bext: bextFor(`${source.name} — ${track.name} track stem`, lastSummary, sampleRate, bitDepth),
             ixml: await stampFor(`${track.name} track`, "track", buffer),
             onProgress: (f) => setStatus({ kind: "busy", label: `Encoding track WAV… ${Math.round(f * 100)}%` }),
             signal,
           }),
-          `${baseName}-track-${sanitizeFilename(track.name)}.wav`,
+          `${exportBaseName}-track-${sanitizeFilename(track.name)}.wav`,
         );
       }
       setStatus({
