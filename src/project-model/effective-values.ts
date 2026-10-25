@@ -46,7 +46,14 @@
  * is named here rather than silently half-composed.
  */
 import { valueAt } from "./automation";
-import { automationTargetKey, clampTargetValue, targetParamDef } from "./targets";
+import {
+  automationTargetKey,
+  canonicalizeDeprecatedTarget,
+  clampTargetValue,
+  targetEffectsOf,
+  targetParamDef,
+} from "./targets";
+import { EFFECT_META } from "../effects/definitions";
 import type { AutomationLane, AutomationTarget, ProjectDocument } from "./types";
 
 /** Where an effective value comes from. */
@@ -77,10 +84,41 @@ export function automationComposition(target: AutomationTarget): AutomationCompo
   return target.kind === "trackGain" ? "multiply" : "override";
 }
 
+/**
+ * The deprecated alias ids that name this parameter (eq.lowMidGain is named
+ * by the legacy eq.midGain).
+ */
+function deprecatedAliasesOf(doc: ProjectDocument, target: AutomationTarget): string[] {
+  if (target.kind !== "fxParam" || !target.fxId || !target.paramId) return [];
+  const effect = targetEffectsOf(doc, target.trackId).find((fx) => fx.id === target.fxId);
+  if (!effect) return [];
+  const meta = EFFECT_META[effect.type];
+  if (!meta) return [];
+  return meta.params.filter((param) => param.deprecated && param.aliasOf === target.paramId).map((param) => param.id);
+}
+
 /** The lane that drives this target, if the project has one. */
 export function automationLaneFor(doc: ProjectDocument, target: AutomationTarget): AutomationLane | undefined {
-  const key = automationTargetKey(target);
-  return doc.automation.find((lane) => automationTargetKey(lane.target) === key);
+  const canonical = canonicalizeDeprecatedTarget(doc, target);
+  const key = automationTargetKey(canonical);
+  // Fast path: the lane names the canonical id.
+  const direct = doc.automation.find((lane) => automationTargetKey(lane.target) === key);
+  if (direct) return direct;
+  // Legacy path: the lane names a DEPRECATED ALIAS of the canonical param
+  // (eq.midGain → eq.lowMidGain). Old documents keep their lanes after an
+  // alias stops being a valid target, and the value transfers 1:1 because the
+  // commands already remap writes through the same pair. The alias list is
+  // only computed when the direct scan missed, so the common case (no lane)
+  // costs one scan.
+  const aliases = deprecatedAliasesOf(doc, canonical);
+  if (aliases.length === 0) return undefined;
+  return doc.automation.find(
+    (lane) =>
+      lane.target.kind === "fxParam" &&
+      lane.target.trackId === canonical.trackId &&
+      lane.target.fxId === canonical.fxId &&
+      aliases.includes(lane.target.paramId ?? ""),
+  );
 }
 
 /** The committed document value for a target, or `null` when it cannot be read. */
@@ -108,9 +146,13 @@ export function documentValueFor(doc: ProjectDocument, target: AutomationTarget)
  * caller gets the document value back, with `source: "document"`.
  */
 export function effectiveParamValue(doc: ProjectDocument, target: AutomationTarget, tick: number): EffectiveValue {
-  const documentValue = documentValueFor(doc, target);
-  const def = targetParamDef(doc, target);
-  const lane = automationLaneFor(doc, target);
+  // A deprecated alias resolves to its canonical id first: the document holds
+  // the canonical id, so the def, the document value and the lane all have to
+  // be looked up under it.
+  const canonical = canonicalizeDeprecatedTarget(doc, target);
+  const documentValue = documentValueFor(doc, canonical);
+  const def = targetParamDef(doc, canonical);
+  const lane = automationLaneFor(doc, canonical);
   const hasLane = lane !== undefined && lane.points.length > 0 && def !== null;
   if (!hasLane || documentValue === null) {
     return {
@@ -124,9 +166,9 @@ export function effectiveParamValue(doc: ProjectDocument, target: AutomationTarg
   // The lane's value at this tick, clamped to the target's authoritative
   // range — the same clamp the DSP writer applies, so the readout cannot
   // show a number the engine would never play.
-  const laneValue = clampTargetValue(doc, target, valueAt(lane.points, tick, def.default));
+  const laneValue = clampTargetValue(doc, canonical, valueAt(lane.points, tick, def.default));
 
-  if (automationComposition(target) === "multiply") {
+  if (automationComposition(canonical) === "multiply") {
     return { value: documentValue * laneValue, documentValue, source: "automation", automated: true, laneValue };
   }
   return { value: laneValue, documentValue, source: "automation", automated: true, laneValue };
@@ -140,4 +182,31 @@ export function effectiveParamValue(doc: ProjectDocument, target: AutomationTarg
  */
 export function composedTrackGain(doc: ProjectDocument, trackId: string, tick: number): EffectiveValue {
   return effectiveParamValue(doc, { kind: "trackGain", trackId }, tick);
+}
+
+/**
+ * The values IN EFFECT for a set of effect parameters, at one tick.
+ *
+ * Only the parameters an automation lane actually drives are returned. An
+ * absent parameter means "no lane drives it" — the document value IS the value
+ * in effect — so the caller can use the map itself as the "these knobs are
+ * under automation" answer.
+ *
+ * The effect parameter lane OVERRIDES the document value (the lane writes the
+ * absolute value into the parameter), so the effective value is the lane's
+ * value, not a composition of the two.
+ */
+export function effectParamEffectiveValues(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  paramIds: readonly string[],
+  tick: number,
+): Record<string, number> {
+  const effective: Record<string, number> = {};
+  for (const paramId of paramIds) {
+    const value = effectiveParamValue(doc, { kind: "fxParam", trackId, fxId, paramId }, tick);
+    if (value.automated) effective[paramId] = value.value;
+  }
+  return effective;
 }

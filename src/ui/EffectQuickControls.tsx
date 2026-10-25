@@ -35,11 +35,18 @@ export function EffectQuickControls({
   values,
   onChange,
   contextHint,
+  effectiveValues,
 }: {
   params: readonly ParamDef[];
   values: Record<string, number>;
   onChange: (paramId: string, value: number) => void;
   contextHint?: (paramId: string) => string | undefined;
+  /**
+   * The value IN EFFECT for the parameters an automation lane drives (audit
+   * F-09). A parameter absent from the map has no lane — the document value
+   * IS the value in effect, and nothing is disclosed.
+   */
+  effectiveValues?: Record<string, number>;
 }) {
   const controls = quickControlsOf(params);
   if (controls.length === 0) return null;
@@ -56,6 +63,7 @@ export function EffectQuickControls({
       <div className="fx-preset-controls-grid">
         {controls.map(({ param, label }) => {
           const modeHint = contextHint?.(param.id);
+          const effectiveValue = effectiveValues?.[param.id];
           const options =
             param.options ??
             (param.kind === "toggle"
@@ -68,6 +76,12 @@ export function EffectQuickControls({
           return options ? (
             <label key={param.id} className="fx-param-select" title={modeHint}>
               <span className="slider-label">{label}</span>
+              {effectiveValue !== undefined ? (
+                <span className="fx-param-auto" data-testid={`fx-param-auto-${param.id}`}>
+                  <span className="fx-auto-badge">AUTO</span>
+                  <span className="fx-param-auto-value">{formatParamValue(param, effectiveValue)}</span>
+                </span>
+              ) : null}
               <select
                 aria-description={modeHint || undefined}
                 aria-label={label}
@@ -82,22 +96,34 @@ export function EffectQuickControls({
               </select>
             </label>
           ) : (
-            <Slider
-              key={param.id}
-              compact
-              label={label}
-              hint={modeHint}
-              value={value}
-              min={param.min}
-              max={param.max}
-              defaultValue={param.default}
-              format={param.format}
-              taper={param.taper}
-              onCommit={(next) => onChange(param.id, next)}
-            />
+            <div key={param.id} className="fx-quick-control">
+              <Slider
+                compact
+                label={label}
+                hint={modeHint}
+                value={value}
+                min={param.min}
+                max={param.max}
+                defaultValue={param.default}
+                format={param.format}
+                taper={param.taper}
+                onCommit={(next) => onChange(param.id, next)}
+              />
+              {effectiveValue !== undefined ? (
+                <span className="fx-param-auto" data-testid={`fx-param-auto-${param.id}`}>
+                  <span className="fx-auto-badge">AUTO</span>
+                  <span className="fx-param-auto-value">{formatParamValue(param, effectiveValue)}</span>
+                </span>
+              ) : null}
+            </div>
           );
         })}
       </div>
     </section>
   );
+}
+
+/** A parameter's value in the effect's own units. */
+function formatParamValue(param: ParamDef, value: number): string {
+  return param.format ? param.format(value) : value.toFixed(2);
 }

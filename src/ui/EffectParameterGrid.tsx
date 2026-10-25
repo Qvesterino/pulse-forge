@@ -9,6 +9,7 @@ export function EffectParameterGrid({
   onChange,
   paged,
   contextHint,
+  effectiveValues,
 }: {
   family: EffectEditorFamily;
   params: ParamDef[];
@@ -16,12 +17,23 @@ export function EffectParameterGrid({
   onChange: (paramId: string, value: number) => void;
   paged: boolean;
   contextHint?: (paramId: string) => string | undefined;
+  /**
+   * The value IN EFFECT for the parameters an automation lane drives (audit
+   * F-09). A parameter that is absent from the map has no lane: the document
+   * value IS the value in effect, and the cell says nothing.
+   *
+   * The slider keeps showing the COMMITTED value — that is the number the
+   * user set and the number a drag writes back — and the automation line
+   * below it discloses what the DSP is actually playing.
+   */
+  effectiveValues?: Record<string, number>;
 }) {
   return (
     <div className={`fx-device-params${paged ? " is-paged" : ""}`} data-family={family}>
       {params.map((param) => {
         const modeHint = contextHint?.(param.id);
         const note = param.secondary?.(values);
+        const effectiveValue = effectiveValues?.[param.id];
         const options =
           param.options ??
           (param.kind === "toggle"
@@ -33,6 +45,12 @@ export function EffectParameterGrid({
         return options ? (
           <label key={param.id} className="fx-param-select" title={modeHint}>
             <span className="slider-label">{param.label}</span>
+            {effectiveValue !== undefined ? (
+              <span className="fx-param-auto" data-testid={`fx-param-auto-${param.id}`}>
+                <span className="fx-auto-badge">AUTO</span>
+                <span className="fx-param-auto-value">{formatParamValue(param, effectiveValue)}</span>
+              </span>
+            ) : null}
             <select
               aria-description={modeHint || undefined}
               value={
@@ -66,6 +84,16 @@ export function EffectParameterGrid({
               taper={param.taper}
               onCommit={(value) => onChange(param.id, value)}
             />
+            {effectiveValue !== undefined ? (
+              // The knob value is the REQUEST; this line is what the DSP is
+              // actually playing, because an automation lane drives the
+              // parameter and the committed value no longer describes the
+              // sound (audit F-09).
+              <span className="fx-param-auto" data-testid={`fx-param-auto-${param.id}`}>
+                <span className="fx-auto-badge">AUTO</span>
+                <span className="fx-param-auto-value">{formatParamValue(param, effectiveValue)}</span>
+              </span>
+            ) : null}
             {note ? (
               // The knob value is the REQUEST; this line is what the engine can
               // actually deliver at the current rate. It renders only when the
@@ -77,4 +105,9 @@ export function EffectParameterGrid({
       })}
     </div>
   );
+}
+
+/** A parameter's value in the effect's own units. */
+function formatParamValue(param: ParamDef, value: number): string {
+  return param.format ? param.format(value) : value.toFixed(2);
 }

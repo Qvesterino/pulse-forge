@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServices, useTracks } from "./context";
+import { usePlayheadTick } from "./usePlayheadTick";
+import { effectParamEffectiveValues } from "../project-model/effective-values";
+import { canonicalizeDeprecatedTarget } from "../project-model/targets";
 import type { EffectType, Track } from "../project-model/types";
 import type { EffectGainReductionReading } from "../effects/types";
 import { FxAddPopover } from "./FxAddPopover";
@@ -748,6 +751,35 @@ function Device({
   const pageCount = Math.max(1, controlPages.length);
   const visibleParams = controlPages[paramPage] ?? [];
 
+  // Which of THIS effect's parameters an automation lane drives (audit F-09).
+  // The lane's target is canonicalised, so a lane that names a deprecated
+  // legacy alias (`eq.midGain`) is credited to the canonical knob the user
+  // actually sees (`eq.lowMidGain`).
+  const automatedParamKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const lane of doc.automation) {
+      if (lane.points.length === 0) continue;
+      const target = lane.target;
+      if (target.kind !== "fxParam" || target.fxId !== fx.id || target.trackId !== track.id) continue;
+      const canonical = canonicalizeDeprecatedTarget(doc, target);
+      if (canonical.paramId) ids.add(canonical.paramId);
+    }
+    return [...ids].sort().join(",");
+  }, [doc, fx.id, track.id]);
+
+  // The value in effect follows the PLAYHEAD — a lane's value is a function of
+  // the tick. The subscription only runs for a device that actually has an
+  // automated parameter, so a rack full of un-automated effects does not
+  // re-render ten times a second.
+  const playheadTick = usePlayheadTick(automatedParamKey.length > 0);
+  const effectiveValues = useMemo(
+    () =>
+      automatedParamKey
+        ? effectParamEffectiveValues(doc, track.id, fx.id, automatedParamKey.split(","), playheadTick)
+        : {},
+    [automatedParamKey, doc, track.id, fx.id, playheadTick],
+  );
+
   useEffect(() => setParamPage(0), [fx.id]);
 
   return (
@@ -928,6 +960,7 @@ function Device({
             <EffectQuickControls
               params={quickParams}
               values={fx.params}
+              effectiveValues={effectiveValues}
               contextHint={contextHint}
               onChange={(paramId, value) =>
                 services.store.execute(
@@ -1268,6 +1301,7 @@ function Device({
             family={editorSpec.family}
             params={visibleParams}
             values={fx.params}
+            effectiveValues={effectiveValues}
             paged={devicesMode}
             contextHint={contextHint}
             onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}

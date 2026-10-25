@@ -24,7 +24,7 @@ import {
 import type { EffectType, Track } from "../project-model/types";
 import { composedTrackGain } from "../project-model/effective-values";
 import { EFFECT_DEFS } from "../effects/registry";
-import { registerRaf, unregisterRaf } from "../services/rafLoop";
+import { usePlayheadTick } from "./usePlayheadTick";
 import { Slider } from "./controls";
 import { TextPromptDialog } from "./TextPromptDialog";
 import { Meter } from "./Meter";
@@ -98,33 +98,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   // The playhead tick. A volume lane is a MULTIPLIER around unity, and the
   // value it plays is the lane's value AT THE PLAYHEAD — so the composed
   // gain each strip shows has to follow the transport (audit F-10 / S-5).
-  // The shared rAF bus runs only while the transport plays; a stopped
-  // transport has no playhead to follow.
-  const [playheadTick, setPlayheadTick] = useState(() => services.transport.position);
-  useEffect(() => {
-    let lastSampleAt = 0;
-    let rafRegistered = false;
-    const update = (time: number) => {
-      if (time - lastSampleAt < 100) return;
-      lastSampleAt = time;
-      const position = services.transport.position;
-      setPlayheadTick((current) => (Math.abs(position - current) < 1 ? current : position));
-    };
-    const stop = services.transport.subscribePlaying((playing) => {
-      if (playing && !rafRegistered) {
-        registerRaf("mixer-playhead", update);
-        rafRegistered = true;
-      } else if (!playing && rafRegistered) {
-        unregisterRaf("mixer-playhead");
-        rafRegistered = false;
-        setPlayheadTick(services.transport.position);
-      }
-    });
-    return () => {
-      stop();
-      if (rafRegistered) unregisterRaf("mixer-playhead");
-    };
-  }, [services]);
+  const playheadTick = usePlayheadTick();
   const handleTrackDeleted = (track: Track) => {
     services.store.execute(deleteTrack(doc, track.id));
     selectionStore.pruneTrack(track.id);

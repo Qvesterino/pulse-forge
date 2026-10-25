@@ -1510,6 +1510,36 @@
   padding-left: 1px;
 }
 
+/* The value IN EFFECT when an automation lane drives the parameter (audit
+   F-09). The knob keeps showing the COMMITTED value — that is the number the
+   user set and the number a drag writes back — and this line discloses what
+   the DSP is actually playing. The accent colour is the same cue the mixer's
+   composed gain uses: "the machine is driving this", not a label. */
+.fx-param-auto {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-2xs);
+  line-height: 1.25;
+  color: var(--text-dim);
+  padding-left: 1px;
+}
+
+.fx-auto-badge {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.6px;
+}
+
+.fx-param-auto-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 .fx-param-select {
   display: flex;
   flex-direction: column;
