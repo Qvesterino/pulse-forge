@@ -1,0 +1,425 @@
+# AAW_DECISION_LOG
+
+**Status:** ADR-style decisions, unresolved questions, and evidence gaps for the KYX / ZYVO frontier program
+**Date:** 2026-10-25
+**Status key:** **Accepted** · **Proposed** (needs a decision) · **Open** (deliberately undecided) · **Rejected**
+
+> Every decision here cites the evidence that produced it. A decision without a citation is a
+> preference, and preferences belong in the roadmap, not in a decision log.
+
+---
+
+## D-01 — The AAW's centre of gravity is trust infrastructure, not models
+
+**Status: Accepted** · **Date: 2026-10-25** · **Scope: both products**
+
+**Context.** The brief assumes an AAW is defined by AI capability. The verified audits show the
+opportunity is elsewhere: KYX already owns a reversible command layer, frame-grouped undo, a
+39-tool MCP surface with a real dry-run sandbox, live/offline render parity, a hard real-time
+boundary and typed effect metadata. ZYVO already owns 283 typed commands, a draft-only external MCP
+surface, a fail-closed show preflight and a clean worklet boundary. What is missing on both sides
+is **consent, scope enforcement and perception**.
+
+**Decision.** The program's definition of an AI-Assisted Audio Workstation is:
+
+> Perception (deterministic first) → a **typed, scoped, reversible** proposal → a **deterministic
+> permission decision** → a **transactional apply** → an **independent verification** → a
+> **receipt**. The model is one interchangeable implementor inside that loop, and the loop works
+> without it.
+
+**Consequence.** Wave 0 (capability metadata + permission lattice + scope verifier) is **blocking**:
+no new AI capability ships before it. The category-defining demos are _situated_ (selection-aware,
+two-variant, instantly switchable, numerically diffed), not conversational.
+
+**Evidence.** `AAW_STATE_OF_THE_ART_2026.md` §1 (verified substrate, both repos); §7.4 (ZYVO's consent
+posture is stronger than KYX's); `AAW_ROADMAP_2026_2029.md` §2.3 (the top of the ranking is
+trust/measurement infrastructure, not AI features).
+
+**Reverses if.** E-10 shows the assisted path is not faster than manual editing on any task.
+
+---
+
+## D-02 — The pinned intent model carries a revenue-triggered licence cliff
+
+**Status: Proposed — needs a decision before the next revenue milestone** · **Date: 2026-10-25**
+
+**Context.** The LFM Open License v1.0 §5(a) conditions the commercial-use grant on the using legal
+entity not exceeding **USD 10,000,000 annual revenue**, and §5(b) states that commercial use above
+the Threshold "**is not licensed**". KYX ships and pins `LiquidAI/LFM2.5-1.2B-Instruct` under that
+licence. The audio sibling `LiquidAI/LFM2.5-Audio-1.5B` is under the same licence.
+
+**Decision proposed.** Treat the intent backbone as a **replaceable provider with a permitted
+fallback**, and evaluate an Apache/MIT-licensed alternative (Whisper large-v3 Apache-2.0 for ASR;
+Phi-4-multimodal MIT for understanding; a permissively-licensed text planner) **now**, while the
+decision is cheap. Requirements:
+
+1. The provider interface carries `version` + `artifactDigest` (already specified in
+   `AAW_AUDIO_MODEL_LANDSCAPE.md` §6).
+2. A second permitted backbone runs the golden intent suite at **≥ parity** — if it cannot, the
+   migration is a legal/business problem, not an engineering one, and must be escalated.
+3. The licence file is **vendored with the model pack**, never fetched at runtime — the licence
+   terminates automatically and immediately on breach (§11), so a runtime fetch is a compliance risk.
+
+**Consequence.** A permanent second backbone to maintain. That cost is accepted deliberately: it is
+insurance priced before the event.
+
+**Evidence.** `https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct/raw/main/LICENSE` (grade **A**);
+repo pin in `docs/IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md:614`.
+
+---
+
+## D-03 — Which LFM checkpoint does the desktop path point at?
+
+**Status: Open — a small inconsistency, deliberately not silently patched** · **Date: 2026-10-25**
+
+**Context.** `docs/LOCAL-INTENT-MODEL.md:113-114` documents the Ollama default as
+`hf.co/LiquidAI/LFM2-**1.2B**-GGUF:Q4_K_M` (730 MB) — the **LFM2** checkpoint — while the roadmap and
+the SFT base pin **LFM2.5**-1.2B-Instruct. Both checkpoints exist. The documented smoke test on the
+LFM2 base reports **schema-legal 8/8 but expected-kind 3/8** (`docs/LOCAL-INTENT-MODEL.md:119-121`),
+i.e. the base model guesses — which is what the SFT fine-tune fixes.
+
+**Options.**
+
+- (a) Point the default at **LFM2.5**-1.2B-GGUF so the desktop default matches the training base and
+  the roadmap naming. Cost: a behaviour change for every desktop user.
+- (b) Keep **LFM2** as the default and correct the docs to say so, treating LFM2.5 as the _training_
+  base only. Cost: two base models in the story.
+- (c) Make the default **configurable with an explicit warning** when the loaded base does not match
+  the adapter's training base.
+
+**Recommendation.** (c), then (a). The real defect is that the product can load an adapter whose base
+does not match the model it was trained on, and say nothing.
+
+**Why it is not patched here.** Changing the default shipped model is a product decision with user-visible
+consequences, and this program is in **research mode** (no code edits). It is recorded as an ADR
+candidate instead.
+
+---
+
+## D-04 — Is the capability registry a published, versioned artifact?
+
+**Status: Open** · **Date: 2026-10-25**
+
+**Context.** KYX already has `docs/mcp-manifest.json` (39 tools, matching `src/mcp/tools.ts:1597`) and
+ZYVO has a generated MCP catalog (61 tools) plus `MCP_AI_CONTROL_MATRIX.md`. Both are already
+_descriptions of a capability surface_ — but neither carries the fields an agent needs to reason
+safely: `version`, `sideEffects`, `realtimeSafe`, `latencyClass`, `riskClass`, `undoUnit`.
+
+**Options.** (a) Keep the registry internal, extended with the missing fields. (b) Publish it as a
+versioned public artifact (like an MCP manifest, plus the AAW-specific fields).
+
+**Recommendation.** (b), **after** (a). The internal version is what every capability needs; the
+public version is what makes the category defensible and what lets third parties build on the
+surface. (a) is a prerequisite, not an alternative.
+
+**Consequence if (b).** A published contract is a compatibility promise — it needs a deprecation
+policy and a version history from day one.
+
+---
+
+## D-05 — Copyleft MIR components run behind an IPC boundary, not linked
+
+**Status: Proposed** · **Date: 2026-10-25**
+
+**Context.** `MTG/essentia` is **AGPL-3.0**; `aubio/aubio` is **GPL-3.0**;
+`sonic-visualiser/sonic-annotator` is **GPL-2.0**. Permissive alternatives exist (madmom BSD-2,
+librosa ISC, basic-pitch Apache-2.0). Essentia's _model_ licences are separately unverified
+(`NOASSERTION`).
+
+**Decision proposed.** Any AGPL/GPL component is shipped as an **unmodified binary or sidecar
+service** behind a process boundary, never linked into the product. The repo already does exactly
+this for a neighbouring problem — the native audio engine is a separate C++ module — so the pattern
+is not new.
+
+**Consequence.** One extra process; a packaging obligation; and a rule that any new MIR dependency
+is reviewed for licence **before** it is added.
+
+**Evidence.** `https://github.com/MTG/essentia` (grade **A**), `https://github.com/aubio/aubio` (**A**),
+`https://github.com/CPJKU/madmom` (**A**).
+
+---
+
+## D-06 — Autonomy can only be raised by the user, never by the model
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Context.** The brief asks how autonomy should be governed. ZYVO already demonstrates the right
+posture externally: autonomy is **not forwarded** across the MCP boundary
+(`agentVoiceManager.ts:5638-5648`); acceptance is a UI click. But ZYVO's _in-app_ agent can
+auto-apply channel gain/pan/send/tempo in `"command"` autonomy mode with no live-show guard (H4),
+and KYX lets **21 of 39** tools mutate with no per-call approval.
+
+**Decision.** Autonomy is a **user-side, versioned, per-project policy object**. It can be _raised_
+by the user for R1/R2 classes. It can never be raised by a model, never lower the R2–R4 requirements,
+and never survive a project switch without re-confirmation. The permission lattice is a
+**deterministic rule table**, never model-driven (`AAW_AI_CONTROL_CONTRACTS.md` §4).
+
+**Consequence.** R2 and R3 capabilities always require an explicit user action. This is a
+deliberate reduction in apparent "magic" and an increase in trust and reviewability.
+
+---
+
+## D-07 — Are plans stored in the project?
+
+**Status: Open** · **Date: 2026-10-25**
+
+**Context.** Storing the plan makes a proposal **reproducible, reviewable and replayable** — and
+makes "what did the AI actually propose, and why" answerable months later. It also grows the
+project file and couples the project to a contract version.
+
+**Options.** (a) Ephemeral (the plan lives only in the receipt). (b) Persisted in the project
+document, with a contract version and an expiry.
+
+**Recommendation.** (b), with `contractVersion` + `expired` marking, and with the _plan_ stored
+rather than the _reasoning_. The contract's "no chain-of-thought" rule (`AI-PRODUCER-CONTRACT.md`
+§6.7) applies to storage as much as to display.
+
+---
+
+## D-08 — The perception cache is per-project and revision-keyed
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Context.** Perception must be a cache, not a stage (see `AAW_REFERENCE_ARCHITECTURE.md` §3.1).
+The cache key is `(projectRevision, artifactId, algoVersion, paramsHash)`.
+
+**Decision.** The cache is **per-project, per-device, revision-keyed, and reproducible**: the same
+key must yield the same bytes. Artifacts are cleared with the project and are **never uploaded**.
+A shared or cross-project cache would be a privacy leak; a non-reproducible cache would make the
+verifier's claims unfalsifiable.
+
+---
+
+## D-09 — No training without a published baseline failure
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Context.** The repo's own negative result is the strongest evidence in the program: a creative-task
+LoRA over a 32-row synthetic corpus **passed 25/32 schema checks and produced 0 of 24 expected
+creative proposals** (`scripts/data/creative-task-sft/README.md`). Format learning is not capability
+learning.
+
+**Decision.** The seven-rung decision tree in `AAW_TRAINING_AND_DATA_STRATEGY.md` §2 is binding. A
+training project may only begin with a **measured, held-out, reproducible baseline failure**, and
+every candidate names its exit **and** kill criteria. The current count of justified training
+projects is **zero**.
+
+---
+
+## D-10 — The generation target is ACE-Step 1.5, not the famous models
+
+**Status: Proposed** · **Date: 2026-10-25**
+
+**Context.** MusicGen, AudioGen, YuE2, MMAudio, MERT and Music2Latent are **CC-BY-NC-4.0**; Audio
+Flamingo is **NVIDIA OneWay Noncommercial**. `ACE-Step/Ace-Step1.5` is **MIT with an explicit
+commercial-use grant**, 2.39 B, **< 4 GB VRAM**, **< 2 s**/song on an A100 (**< 10 s** on a 3090), and
+**LoRA-able from 8 songs**.
+
+**Decision proposed.** If and only if the deterministic retrieval baseline exists and is measured
+(K-3 first, then K-8), the generation target is **ACE-Step 1.5**, run locally on the assumed
+6–16 GB VRAM tier. Its "50+ languages" claim is **not enumerated** — Slovak coverage is unverified
+(E-13).
+
+**Open risk.** Its licence is permissive but the _output_ rights, and the provenance obligations for
+generated stems shipped inside a user's project, must be checked before it is used in a product.
+
+---
+
+## D-11 — Slovak transcription is Whisper, not LFM2.5-Audio
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Context.** `openai/whisper-large-v3-turbo` is **MIT** (809 M params) and `openai/whisper-large-v3`
+is **Apache-2.0** (1.55 B); both carry verified `sk` and `cs` language tags.
+`LiquidAI/LFM2.5-Audio-1.5B` is **English only** (plus a separate JP checkpoint) and is under the
+revenue-cliff licence.
+
+**Decision.** Slovak ASR is Whisper-family. LFM2.5-Audio may be evaluated as an English-only
+offload (E-01) and as a fine-tune candidate (T-1) **only if** E-02 shows a Whisper gap on sung
+Slovak.
+
+---
+
+## D-12 — Live cue prediction is rejected
+
+**Status: Rejected** · **Date: 2026-10-25**
+
+**Context.** The deterministic arrangement already knows the section structure, so the common case
+needs no model. The model would only help for deviations (ad-libs, dropped sections) — the rare case
+— and a late or wrong cue during a show is a visible, humiliating failure.
+
+**Decision.** Not built. It scored **last (36th) under three of four weightings** and 34th under the
+fourth — the most robust rejection in the portfolio. A deterministic cue plus a manual "next
+section" control replaces it.
+
+**Revive if.** A measured case appears where the arrangement is genuinely wrong at performance time
+**and** a human confirmation step remains in the loop.
+
+---
+
+## D-13 — A learned project representation is rejected pending E-11
+
+**Status: Rejected (provisional)** · **Date: 2026-10-25**
+
+**Context.** Alt-4 in the architecture doc. The typed graph (schema v38, 480 PPQ, scenes, markers,
+automation lanes, legal target resolution) is already exact. A learned embedding is a proxy.
+
+**Decision.** Not built. **E-11** (150 edit-target cases, split by project) decides it; the bar is
+**≥ 10 points absolute** over graph traversal.
+
+---
+
+## D-14 — Port ZYVO's draft-only consent posture to KYX
+
+**Status: Proposed — actionable now** · **Date: 2026-10-25**
+
+**Context.** ZYVO's external MCP path is **draft-only**; autonomy is not forwarded; acceptance is a
+UI click. KYX's external MCP path lets **21 mutating tools** execute with no per-call approval
+(only 7 destructive tools are gated behind `pf:mcp-allow-destructive`).
+
+**Decision proposed.** KYX adopts ZYVO's posture as the default for any **external** (non-UI) agent
+transport: proposals are drafted, and acceptance is a user gesture. The internal lattice
+(`AAW_AI_CONTROL_CONTRACTS.md` §4) generalises it for in-product use.
+
+**Evidence.** `apps/vocalforge-daw/src/agentVoiceManager.ts:5638-5648`;
+`src/mcp/agentTrust.ts:190-193`; `src/mcp/flags.ts:9-17`.
+
+---
+
+## D-15 — A show lock is required for the in-app agent
+
+**Status: Accepted — urgent** · **Date: 2026-10-25**
+
+**Context (H4).** In autonomy mode `"command"`, a proposal whose children are all in
+`SAFE_AUTO_APPLY_COMMANDS` — including `SetChannelGain`, `SetChannelPan`, `SetSendLevel`,
+`SetClipFade` and `SetTempoMap` — is accepted immediately, with no check for `rehearsal`/`gig` mode.
+
+**Decision.** In `gig` mode: the auto-apply allowlist is **empty**; `SetTempoMap` is never
+auto-applied; every audible parameter change becomes a proposal requiring a UI click; and the
+permission lattice's R2 class applies to the whole live surface regardless of autonomy.
+
+**Honest caveat.** Whether the Live window's modality already makes this unreachable in the shipped
+UI was **not proven at runtime**. The fix is required either way, because the _code path_ has no
+guard and the next UI change could expose it.
+
+---
+
+## D-16 — The realtime invariant stands, and it is verified
+
+**Status: Accepted (reaffirmed)** · **Date: 2026-10-25**
+
+**Context.** Both repos have a clean audio path today, and that is worth stating as a fact rather
+than an aspiration: KYX — **51** `AudioWorkletProcessor` classes across **50** files, with **no**
+`fetch`/`XMLHttpRequest`/`WebSocket` occurrence in `src/audio-worklets/**` or `src/audio-engine/**`;
+ZYVO — an allocation-free worklet `process` with every throw caught, and Parakeet inference on its
+own thread with its own `IAudioClient`.
+
+**Decision.** No inference, network, blocking allocation or unbounded work enters an audio callback,
+in either product, in any mode. AI influences audio only through a **bounded, slewed envelope**
+(RT-5).
+
+---
+
+## D-17 — The local ONNX model is a slot-filler, not a planner
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Context.** `public/models/intent-model-report.json` describes the shipped browser model as a
+_"multi-head slot-filling MLP (BoW trunk + closed-class heads)"_ — 59 heads, 6144-token vocabulary,
+2,601,522 B, `valHeadAccuracyMean = 0.9949`, `gatePassed = true`.
+
+**Decision.** Do not describe it as a planner or as "AI understanding". It is a **fast, small,
+deterministic-ish parser** for the browser path, and the deterministic router always has the last
+word (`src/intent/model-route-gate.ts:144-165`).
+
+**Collateral note (not fixed here — research mode).** `src/intent/model-loader.ts:29-30` calls the
+model _"6.69 MiB"_ while the manifest and the file on disk say **2,601,522 B ≈ 2.48 MiB**. A stale
+comment about a measurement is a small but real provenance leak; it is listed in the evidence-gap
+register rather than silently edited.
+
+---
+
+## D-18 — The shared control plane defines formats and protocols only
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Context.** KYX and ZYVO have different schemas, different effect systems, different time bases
+(KYX: 480 PPQ; ZYVO: currently **no addressable musical time at all**), different engines and
+different plugin models. The existing `.kyxzyvo` seam crosses audio and structure but not
+instrument/effect/automation state, and MIDI arrives only as a converted sketch.
+
+**Decision.** The shared core may define the **brief schema, the plan schema, the registry format,
+the risk lattice, the preview artifact, the verification report, the receipt, and the provider
+interface**. It may **never** define musical vocabulary — "tension", "role", "section" and "preserve"
+are product adapters.
+
+**First concrete step.** P-9: carry the **notes/patterns** across `.kyxzyvo`, so a KYX beat arrives
+in ZYVO as editable material rather than a flattened render.
+
+---
+
+## D-19 — Evidence grades are mandatory in every claim this program makes
+
+**Status: Accepted** · **Date: 2026-10-25**
+
+**Decision.** Every load-bearing claim carries a grade (**A** primary/official · **B** independent
+measurement · **C** secondary · **U** unverified) and a date. "SHIPS" means _implemented and reachable
+in source_, never _observed working_ and never _good_. A claim sourced only from a markdown file is
+marked **(doc claim)**. Corrections are stated explicitly rather than silently edited — as this
+program did for the "ASR benchmarks are unpublished" claim in `AAW_AUDIO_MODEL_LANDSCAPE.md` §1.6.
+
+---
+
+## D-20 — Documentation drift is treated as a defect, not a nuisance
+
+**Status: Open** · **Date: 2026-10-25**
+
+**Context.** The ZYVO re-verification found four of ten load-bearing status claims wrong (transfer
+library size, file/LOC counts, WASAPI latency, and a command count stated as 282 in one document
+where the code has 283), plus a stale "24 tools" matrix against 61, a stale "no envelope-follower
+source" claim, a 37-effects registry described as 17, 17 plugin directories described as 16, and
+ASIO described as opt-in when it is on by default with the SDK vendored.
+
+**Decision proposed.** A generated status document, produced by a read-only counting script that
+**cannot** write to the document it describes, is the single source for all numbers. `MCP_AI_CONTROL_MATRIX.md`
+and similar hand-maintained matrices are either regenerated or explicitly marked as archived
+revisions with their date.
+
+**Why it is open.** This touches another product's documentation conventions, which is a decision
+for that product's owner.
+
+---
+
+## 3. Unresolved questions (blocking or shaping)
+
+| #    | Question                                                                                                               | Blocks                           | Owner       | Answer by                          |
+| ---- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ----------- | ---------------------------------- |
+| Q-1  | Which legal entity ships KYX/ZYVO, and what revenue trajectory?                                                        | D-02 (the licence cliff)         | founder     | before the next funding/scale step |
+| Q-2  | Which LFM checkpoint does the desktop path default to?                                                                 | D-03                             | product     | next release                       |
+| Q-3  | Is the capability registry published?                                                                                  | D-04                             | founder     | Portfolio I exit                   |
+| Q-4  | Are plans persisted in the project document?                                                                           | D-07                             | product     | Portfolio II                       |
+| Q-5  | What is the AAW's latency budget for a proposal? (H-2 ≤ 2 s vs H-3 ≤ 8 s)                                              | P-4, K-4                         | product     | Portfolio I                        |
+| Q-6  | Does ZYVO get an addressable musical-time coordinate system, and does it match KYX's PPQ?                              | Z-2, Z-7, D-18                   | ZYVO owner  | Portfolio II                       |
+| Q-7  | Is ZYVO's general modulation matrix in scope for this program?                                                         | singer-as-modulator architecture | ZYVO owner  | Portfolio III                      |
+| Q-8  | Does the shared control plane live in one repo or as a versioned spec package?                                         | D-18                             | both owners | Portfolio I                        |
+| Q-9  | Is a "research prototype" allowed to ship to users at all, and under what label?                                       | Portfolio III                    | founder     | Portfolio II                       |
+| Q-10 | What is the ceiling on model-pack download size for a browser-first product? (2.14 GB ONNX vs a 1,070 KB entry budget) | E-04, P-12                       | product     | Portfolio II                       |
+
+---
+
+## 4. Evidence gaps this program could not close
+
+| #     | Gap                                                                                                                                                 | Consequence                                                                          |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| EG-1  | **No independent (non-vendor) evaluation** of any frontier audio model was found. Every benchmark quoted is vendor-reported                         | accuracy claims in this program are provisional; E-01/E-02 supply local measurements |
+| EG-2  | **Liquid AI's announced LFM2.5 release date is unverified** (the blog page is JS-rendered); all dates used are HF repository `createdAt` timestamps | dates in this program are repository timestamps, and labelled as such                |
+| EG-3  | **Essentia's _model_ licences are `NOASSERTION`**                                                                                                   | no Essentia model may be redistributed until confirmed (D-05)                        |
+| EG-4  | **`stepfun-ai/Step-Audio-EditX` has no licence tag**; `coqui/XTTS-v2` terms unread (CPML)                                                           | both excluded from any commercial path                                               |
+| EG-5  | **"Qwen3.5-Omni" does not exist on the Hub** as of 2026-10-25 despite a technical report appearing in search                                        | do not plan against it                                                               |
+| EG-6  | **No runtime verification** of either product's AI surface was performed (read-only audits; no builds, no test runs, no listening)                  | every "SHIPS" is a source-level claim                                                |
+| EG-7  | **ZYVO H4 reachability during a modal Live window is unproven**                                                                                     | the fix is required regardless (D-15)                                                |
+| EG-8  | **The Wake-word stub, the Parakeet second capture client, and the VST3 JS-thread entry point** were read but not exercised                          | H6/H7/H2 severity is inferred, not measured                                          |
+| EG-9  | **No measured accuracy exists for ZYVO's vocal analysis** (pitch, onset, key/tempo, reference blueprints)                                           | every vocal-analysis claim is unverified; this is a Portfolio I deliverable          |
+| EG-10 | **ACE-Step 1.5's language list is not enumerated** — Slovak unknown                                                                                 | E-13                                                                                 |
+| EG-11 | **Neither product has a measured, reproducible "tension" or "quality" human-labelled dataset**                                                      | the flagship emotional claims stay unclaimed until E-07                              |
+| EG-12 | **`d1-omni-600M` was 19 days old** at the time of writing; no independent evaluation exists                                                         | E-12 is a research probe, not a plan                                                 |
