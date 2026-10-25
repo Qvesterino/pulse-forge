@@ -50,8 +50,9 @@ cost is paid once per track per edit** (the audio engine's audibility rule — a
   defect is fixed and stays fixed.
 - **The command / delta / undo / serialisation path.** Measured at 50 → 2000 scene clips:
   `normalizeProject` 0.22 → 0.90 ms, `snapshot()` (production) 0.03 → 1.31 ms, `JSON.stringify`
-  0.031 → 0.342 ms, **all linear**. The undo stack is **bounded at 64 entries**
-  (`ProjectStore.ts:70`) and stores **deltas**, not document snapshots
+  0.031 → 0.342 ms, **all linear**. The undo **command** stack is **bounded at 256 entries**
+  (`ProjectStore.ts:269`), the document-snapshot window at **64** (`HISTORY_LIMIT`,
+  `ProjectStore.ts:69`), and both store **deltas / references**, not document copies
   (`src/commands/core.ts:34-67`).
 - **The MCP tool registry.** 39 tools, built once, `ctx.getDoc` is a lazy accessor, the relay frame
   carries `{tool, args}` only — **no whole-document snapshot per call**.
@@ -234,7 +235,9 @@ mutation ──► saveStatus "dirty" ──► autosave debouncer (src/persiste
                                    IndexedDB repositories (src/persistence/*)
 ```
 
-`ProjectStore` holds `HISTORY_LIMIT = 64` (`ProjectStore.ts:70`); the history panel's diffs are
+`ProjectStore` holds `HISTORY_LIMIT = 64` (`ProjectStore.ts:69`), which caps the **document
+snapshot** window (`historyDocs`); the **command** stack is trimmed separately at **256**
+(`ProjectStore.ts:269`). The history panel's diffs are
 memoised in `diffCache` and the cache is cleared on every mutation (`ProjectStore.ts:47,136-160`).
 The undo stack stores **deltas**, not documents (`core.ts:34-67`) — the undo stack no longer pins
 whole document chains.
@@ -257,7 +260,7 @@ MCP tool call ──► src/mcp/bridge.ts ──► tool registry (39 tools, bui
 | Path                         | Bounded?                                                          |
 | ---------------------------- | ----------------------------------------------------------------- |
 | Scheduler tick               | Bounded and cheap (measured, 0.66 % of a core at 16 lanes).       |
-| Undo history                 | Bounded (64 entries) and delta-based.                             |
+| Undo history                 | Bounded (256 commands, 64 snapshots) and delta-based.             |
 | Autosave payload             | Linear in the document (measured).                                |
 | MCP registry                 | Static, built once.                                               |
 | Candidate bank               | Bounded (≤ 8 local + ≤ 4 symbolic).                               |
@@ -384,7 +387,8 @@ normalisation.
    the store level. The store has fine-grained selectors, but the root component does not use
    them (C-2/C-3's amplifier).
 2. **The autosave payload is cheap.** At 2000 scene clips it is 143 KiB and 0.34 ms. There is no
-   serialisation cliff here, and the undo stack is bounded at 64 delta entries. **The state layer
+   serialisation cliff here, and the undo stack is bounded at 256 delta entries (with a
+   64-snapshot window). **The state layer
    is not where this DAW's problem is.**
 
 **Re-verified on the tree as it stands after the peer wave:** every row above reproduces — see
@@ -610,15 +614,15 @@ outrank micro-optimisations** — nothing in this register is a data-loss risk.
 Recording these is as valuable as the findings, because they are the places a reader would
 expect a cliff and there is none:
 
-| Area                    | Result                                                                             |
-| ----------------------- | ---------------------------------------------------------------------------------- |
-| Scheduler tick          | 0.66 % of one core at 16 lanes, p95 0.268 ms/tick. **Healthy.**                    |
-| Command / delta / undo  | Linear; the undo stack is bounded at 64 **delta** entries. **Healthy.**            |
-| Autosave serialisation  | 143 KiB and 0.34 ms at 2000 scene clips. **Healthy.**                              |
-| `normalizeProject`      | Linear (0.45 µs/clip). **Healthy as a shape.**                                     |
-| MCP registry and relay  | Static registry, lazy document accessor, no per-call snapshot. **Healthy.**        |
-| Audio-thread allocation | Two allocation sites in the whole processor set, both near-necessary. **Healthy.** |
-| Metering                | Reused buffers, rAF-driven. **Healthy.**                                           |
+| Area                    | Result                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| Scheduler tick          | 0.66 % of one core at 16 lanes, p95 0.268 ms/tick. **Healthy.**                         |
+| Command / delta / undo  | Linear; the undo stack is bounded at 256 **delta** entries (64 snapshots). **Healthy.** |
+| Autosave serialisation  | 143 KiB and 0.34 ms at 2000 scene clips. **Healthy.**                                   |
+| `normalizeProject`      | Linear (0.45 µs/clip). **Healthy as a shape.**                                          |
+| MCP registry and relay  | Static registry, lazy document accessor, no per-call snapshot. **Healthy.**             |
+| Audio-thread allocation | Two allocation sites in the whole processor set, both near-necessary. **Healthy.**      |
+| Metering                | Reused buffers, rAF-driven. **Healthy.**                                                |
 
 ---
 
@@ -626,16 +630,16 @@ expect a cliff and there is none:
 
 **NOT MEASURED** — §12 carries the plan. What the code says, with evidence levels:
 
-| Concern                          | Code fact                                                                                                                                                                                                                               | Evidence        |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| Undo history growth              | `HISTORY_LIMIT = 64` (`ProjectStore.ts:70`); the stack holds **deltas**, and the delta engine is reference-pruned, so an entry pins only the changed subtrees. **Bounded.**                                                             | OBSERVED (code) |
-| History snapshots                | `historyDocs` holds **document references** (`ProjectStore.ts:36-37`), not copies — cheap under structural sharing, but it keeps the _initial_ document's unchanged subtrees alive for as long as the window (64 entries).              | OBSERVED (code) |
-| History panel cost               | `diffForIndex` walks both snapshots; the result is memoised in `diffCache` and the cache is cleared on every mutation (`ProjectStore.ts:47,136-160`). The first render after an edit pays the walk for every visible row.               | OBSERVED (code) |
-| Coalescing                       | Same-key commands merge within a 1 000 ms window (`COALESCE_WINDOW_MS`, `ProjectStore.ts:23`), so a continuous gesture is one undo entry, not 200.                                                                                      | OBSERVED (code) |
-| Sample / waveform retention      | `src/persistence/` keeps frozen buffers and user samples in IndexedDB; the release path for frozen buffers was audited in the 2026-10-22 hardening wave. **Not re-examined here.**                                                      | NOT ASSESSED    |
-| Cache inflation                  | The arrangement's waveform canvas scans raw PCM per redraw and `buildWaveformPeaks` (`src/reference/audio/waveform.ts:13`) exists but is **unused** — so there is no peak cache to inflate, and equally no peak cache to save the work. | OBSERVED (code) |
-| Abandoned timers / subscriptions | The worker-boundary wave (this audit's predecessor, C11–C16) fixed the AI clients' missing `error` listeners; the collab client timers (250 ms, 100 ms) and the server ping (30 s) are constant-rate by design.                         | OBSERVED (code) |
-| Open/close cycles                | **NOT ASSESSED.**                                                                                                                                                                                                                       | NOT ASSESSED    |
+| Concern                          | Code fact                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Evidence        |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| Undo history growth              | The **command** stack is trimmed at **256** (`ProjectStore.ts:269`); the **snapshot** window (`historyDocs`) is capped at **64** by `HISTORY_LIMIT` (`ProjectStore.ts:69`). The stack holds **deltas**, and the delta engine is reference-pruned, so an entry pins only the changed subtrees. **Bounded.**                                                                                                                                                                                                        | OBSERVED (code) |
+| History snapshots                | `historyDocs` holds **document references** (`ProjectStore.ts:36-37`), not copies — cheap under structural sharing, but it keeps the _initial_ document's unchanged subtrees alive for as long as the window (64 entries). Because the snapshot window (64) is **shorter** than the command stack (256), `diffForIndex` reports **no diff** for entries older than the window (`ProjectStore.ts:125-127`) — the history panel loses its diff detail for the oldest steps rather than pairing the wrong snapshots. | OBSERVED (code) |
+| History panel cost               | `diffForIndex` walks both snapshots; the result is memoised in `diffCache` and the cache is cleared on every mutation (`ProjectStore.ts:47,136-160`). The first render after an edit pays the walk for every visible row.                                                                                                                                                                                                                                                                                         | OBSERVED (code) |
+| Coalescing                       | Same-key commands merge within a 1 000 ms window (`COALESCE_WINDOW_MS`, `ProjectStore.ts:23`), so a continuous gesture is one undo entry, not 200.                                                                                                                                                                                                                                                                                                                                                                | OBSERVED (code) |
+| Sample / waveform retention      | `src/persistence/` keeps frozen buffers and user samples in IndexedDB; the release path for frozen buffers was audited in the 2026-10-22 hardening wave. **Not re-examined here.**                                                                                                                                                                                                                                                                                                                                | NOT ASSESSED    |
+| Cache inflation                  | The arrangement's waveform canvas scans raw PCM per redraw and `buildWaveformPeaks` (`src/reference/audio/waveform.ts:13`) exists but is **unused** — so there is no peak cache to inflate, and equally no peak cache to save the work.                                                                                                                                                                                                                                                                           | OBSERVED (code) |
+| Abandoned timers / subscriptions | The worker-boundary wave (this audit's predecessor, C11–C16) fixed the AI clients' missing `error` listeners; the collab client timers (250 ms, 100 ms) and the server ping (30 s) are constant-rate by design.                                                                                                                                                                                                                                                                                                   | OBSERVED (code) |
+| Open/close cycles                | **NOT ASSESSED.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | NOT ASSESSED    |
 
 **The honest statement:** the long-session dimension is the one this environment cannot measure,
 and it is the one where a memory leak would be most expensive to discover late. It is the first
@@ -985,6 +989,45 @@ change is not a measurement of that change.
 **The honest summary of this addendum:** the state layer's measured linearity survives the
 peer wave, and the peer wave introduced one new super-linear term that the audit's fixture is
 blind to by construction. §13.2 is a code-read and is labelled as one.
+
+---
+
+### 13.3 A correction to this report — the undo stack is 256, not 64
+
+While preparing this addendum, a code read for an unrelated recommendation turned up a **number
+in this report that was wrong**, in six places (§0, §2.3, §2.5, §4.2, §5.1, §6).
+
+**What the report said:** the undo stack is bounded at 64 entries (`HISTORY_LIMIT`, cited as
+`ProjectStore.ts:70`).
+
+**What the code says** (`src/store/ProjectStore.ts`):
+
+| Thing                                            | Bound                                                    | Where                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| the **undo/redo command** stack                  | **256 commands**                                         | `ProjectStore.ts:269` — `if (this.undoStack.length > 256) { … }`                      |
+| the **document snapshot** window (`historyDocs`) | **64**                                                   | `HISTORY_LIMIT` at `ProjectStore.ts:69`, applied at `:361` and `:439`                 |
+| the **diff cache** (`diffCache`)                 | one entry per history row, **cleared on every mutation** | `ProjectStore.ts:47` (declaration); the `clear()` calls sit at `:242,267,362,402,463` |
+
+So there are **two different limits in one store**, and the report conflated them:
+`HISTORY_LIMIT = 64` caps the _snapshot_ window, not the _command_ stack. The line reference
+was off by one as well (`69`, not `70`).
+
+**Does the conclusion change? No — the finding survives, the number did not.** Both containers
+hold deltas and references rather than document copies, and the delta engine is
+reference-pruned, so an entry pins only the changed subtrees. The undo history is **bounded
+and cheap** either way; the memory ceiling is simply 4× what was stated.
+
+**What the correction adds** — a fact that was not in the report at all: because the snapshot
+window (64) is **shorter** than the command stack (256), `diffForIndex` returns **no diff** for
+entries older than the window, which the code's own comment states (`ProjectStore.ts:125-127`).
+The user can undo 256 steps, but the history panel carries diff detail only for the most recent 64. That is a **UI** consequence, not a performance cliff, and it is the right behaviour — the
+alternative would be pairing the wrong snapshots — but it is a real limit of the history panel
+that this report previously did not state.
+
+**Why this is recorded here rather than silently patched:** a report that gets a number wrong is
+a report whose other numbers deserve suspicion. The correction is visible, the corrected number
+is cited to its line, and the conclusion it supports is unchanged. §13.2's lesson applies here
+too — a claim read off code is a claim until it is checked against the code that actually runs.
 
 ---
 
