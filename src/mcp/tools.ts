@@ -4453,12 +4453,30 @@ ${preview.text}`,
           replayed: true,
           ...(summary !== "" ? { summary } : {}),
         });
-        return {
+        const replayed: McpToolResult = {
           ...cached.result,
           text: `idempotent replay — requestId was already applied; nothing re-executed\n${cached.result.text}`,
           replayed: true,
           stage: "replayed",
+          // F-06: the SECOND channel — what holds NOW for the fields the
+          // original call wrote. The text and data above stay the original
+          // outcome (a pinned contract); this is the present, and it carries
+          // only what MOVED.
+          current: replayCurrentState(cached.written, doc),
         };
+        // The replay passes through the R-02 gate's perimeter. The gate is
+        // REPLAY-AWARE: a replay's `mutated: true` describes the ORIGINAL
+        // call, so the gate must not apply its "nothing changed" rewrite to it
+        // (that rewrite would contradict the replay and break the pinned
+        // contract).
+        return verifiedMutation({
+          before: doc,
+          after: ctx.getDoc(),
+          undoDepthBefore: ctx.undoStackLength(),
+          undoDepthAfter: ctx.undoStackLength(),
+          result: replayed,
+          replay: true,
+        });
       }
       idempotencyLedger.delete(requestId); // stale project scope — re-bind below
     }
@@ -4597,7 +4615,12 @@ ${preview.text}`,
   }
   if (requestId !== "" && signature !== undefined && (result.mutated === true || sideEffectCommitted)) {
     idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
-    idempotencyLedger.set(requestId, { docId: docBefore.id, signature, result });
+    idempotencyLedger.set(requestId, {
+      docId: docBefore.id,
+      signature,
+      result,
+      ...(written.length > 0 ? { written } : {}),
+    });
     while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
       const oldest = idempotencyLedger.keys().next();
       if (oldest.done) break;

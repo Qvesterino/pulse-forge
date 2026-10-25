@@ -70,8 +70,11 @@ export function guardStaleWrite(command: Command, force: boolean): Command {
  */
 export function guardStaleWrites<T extends { execute(command: Command): void }>(ctx: T, force: boolean): T {
   if (force) return ctx;
-  const guarded = Object.create(ctx) as T;
-  guarded.execute = (command: Command) => ctx.execute(guardStaleWrite(command, force));
+  // A SPREAD, not Object.create: the ctx implementations are object literals,
+  // and a later spread of THIS object must still carry every method. (A
+  // prototype-based wrapper loses them to the next spread — which broke the
+  // batch's sub-calls.)
+  const guarded = { ...ctx, execute: (command: Command) => ctx.execute(guardStaleWrite(command, force)) } as T;
   return guarded;
 }
 

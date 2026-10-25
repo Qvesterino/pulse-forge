@@ -61,6 +61,17 @@ export interface VerifiedMutationInput {
    * unchanged document says nothing about whether the work happened.
    */
   documentMutation?: boolean;
+  /**
+   * TRUE for a REPLAY of an earlier call (audit F-06).
+   *
+   * The replay reports the ORIGINAL outcome — the ledger already verified
+   * that call against the document when it happened, and the requestId names
+   * ONE logical operation. The gate's "nothing changed" rewrite would
+   * contradict it (the replay's `mutated: true` describes the original call,
+   * not this one), so the gate checks the envelope and leaves the outcome
+   * alone. The replay's PRESENT rides in its own `current` field.
+   */
+  replay?: boolean;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -80,6 +91,9 @@ export function verifiedMutation(input: VerifiedMutationInput): McpToolResult {
   const { before, after, undoDepthBefore, undoDepthAfter, result } = input;
   // An error or a non-mutation claims nothing; there is nothing to verify.
   if (result.mutated !== true || result.isError === true) return result;
+  // A REPLAY is not a fresh mutation — its outcome was verified when it
+  // happened. The gate leaves it alone (see `replay`).
+  if (input.replay === true) return result;
 
   const documentMutation = input.documentMutation !== false;
   const documentChanged = before !== after;
