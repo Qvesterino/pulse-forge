@@ -1154,6 +1154,13 @@ npx vite-node .git/perf-cliff-measure.mts      # the state layer (M1–M5)
 npx vite-node .git/perf-cliff-measure-2.mts    # the audio-path suspects (M6–M9)
 ```
 
+A third instrument, added with the C-2 remediation (§14.2), counts the viewport **commits** — a
+count, not a millisecond, because each commit pays the per-render cost measured separately:
+
+```
+npx vite-node .git/perf-cliff-viewport.mts    # the viewport commit count, pre-fix vs post-fix
+```
+
 They are the instrument, not the deliverable — the same discipline AUDIT-15 applied when it
 removed its throwaway probe after taking the numbers.
 
