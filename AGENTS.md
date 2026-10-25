@@ -243,6 +243,33 @@ are mandatory:
    untangle the history later.
 6. **Push `main`.** `main` is the release branch; work that only exists on this
    machine has not shipped.
+7. **A file another session is editing: stage the HUNK, not the file.**
+   `docs/CURRENT-STATE.md` is the one everybody writes. `git add` on it takes the
+   other session's paragraph into your commit. Build your version ON TOP of
+   `HEAD` in a temp file, diff it against `HEAD`, rewrite the patch headers
+   onto the real path, and apply it to the INDEX only:
+
+   ```
+   git show HEAD:docs/CURRENT-STATE.md > temp/head.md   # HEAD's bytes, exactly
+   # edit temp/head.md with YOUR changes only
+   git diff --no-index temp/head.md temp/mine.md > temp/patch   # exit 1 is normal
+   # rewrite the two header lines to a/… and b/… the real path, then:
+   git apply --cached temp/patch
+   ```
+
+   `git apply --cached` touches the index, never the working tree: the other
+   session's paragraph stays in the file, unstaged, and lands in THEIR commit.
+   Measured 2026-10-25: a whole-file `git add` of `docs/CURRENT-STATE.md`
+   would have carried a parallel session's KOPA paragraph into the scene-lane
+   commit.
+
+8. **Look at what your commit actually contains before you push.**
+   `git show --name-status HEAD`. A peer can stage between your `git add` and
+   your `commit`, and their path lands in YOUR commit — the content survives,
+   only the authorship shifts. Measured 2026-10-25:
+   `docs/PERFORMANCE_CLIFF_DETECTOR_REPORT.md` did. Fix it with
+   `git rm --cached <theirs>` + `git commit --amend --no-edit`: their file
+   stays on disk, unstaged, for their own commit.
 
 Isolated READ-ONLY verification runs are still fine — see
 `docs/MULTI-AGENT-GUARDRAILS.md` rule 5 (`git worktree add` at a commit, for a
