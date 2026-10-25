@@ -131,6 +131,7 @@ Implementované ako **ADR 0062** (kontrakt) + `docs/CURRENT-STATE.md` (popis).
 - **Preview nemení projekt:** `A · SAVED / B · EDIT` prehráva dočasný runtime z draft hodnôt (rovnaká továreň, rovnaké DSP, rovnaká normalizácia ako živý reťazec) — nahradil samostatné tlačidlo „PREVIEW C2“.
 - **Klávesnica a úzky panel:** každý handle je `role="slider"`, focusateľný a riaditeľný šípkami.
 - **Dôkaz (merané, nie tvrdené):** proti **vykreslenému** procesoru — nakreslená obálka body aj nakreslená pitch krivka sedia so zvukom do 8 %; sub sleduje tail v okamžiku, keď body zhasla. `tests/kopa/layer-model.test.ts`, `tests/kopa/editor-command.test.ts`, `tests/ui/KopaEditor.test.tsx`.
+- **Náklad vlny (meraný):** **+9 KB** do DAW-JS sumy, **+1 KB** do boot pathu (2132 → 2135 KB pri strope 2200 KB). Strop DAW-JS (5630 KB) bol už na HEAD **červený o 22 KB** pred touto vlnou — pretečenie nie je moje. Mŕtva váha bola odmeraná skriptom `scripts/audit-dead-weight.mjs`: **204 z 204 chunkov dosiahnuteľných**, **0** modulov poslaných dvakrát v hlavnom grafe — splácať sa nie je čím, lebo suma je shipnutý produkt. Rozhodnutie o strope patrí vlastníkovi budgetu s týmito číslami ako dôkazom.
 - **Otvorené:** ladenie podľa tóniny projektu a BPM/groove-aware dĺžky (v „neskoršie rozšírenie“).
 
 ## Vlna 3 — TSAR: zdroje a viac možností z Forge
