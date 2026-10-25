@@ -10,7 +10,15 @@ describe("struna debug", () => {
     proc.applyParams({ level: 0.85, decay: 4 });
     proc.postEvent({ type: "noteOn", when: 0, pitch: 45, velocity: 0.9 });
     const inner = proc as unknown as {
-      voices: Array<{ active: boolean; lineLen: number; rho: number; muteRho: number; lpCoef: number; line: Float32Array; read: number }>;
+      voices: Array<{
+        active: boolean;
+        lineLen: number;
+        rho: number;
+        muteRho: number;
+        lpCoef: number;
+        line: Float32Array;
+        read: number;
+      }>;
     };
     const frames = 9600;
     const left = new Float32Array(frames);

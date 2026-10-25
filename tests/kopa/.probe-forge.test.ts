@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 const SR = 48000;
 function synthKick(click: boolean): Float32Array {
-  const startHz = 130, settledHz = 50, pitchTimeSec = 0.04, decaySec = 0.4;
+  const startHz = 130,
+    settledHz = 50,
+    pitchTimeSec = 0.04,
+    decaySec = 0.4;
   const n = Math.ceil(1.2 * SR);
   const pcm = new Float32Array(n);
   let phase = 0;
