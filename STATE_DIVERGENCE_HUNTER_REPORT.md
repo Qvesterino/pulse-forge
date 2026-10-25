@@ -40,11 +40,14 @@ depending on whether a collab session is open — and the difference lands on th
 (measured, §5.9). It also makes the Critical finding **mode-dependent**: the PRISM write-back is
 discarded solo and lands in collab. **Whoever repairs F-28 has to know that.**
 
-**And the audit corrected itself twice.** A duplicate-guard scan over all 1277 spec files (§5.8)
+**And the audit corrected itself three times.** A duplicate-guard scan over all 1277 spec files (§5.8)
 showed that **two findings the report had listed as open were already fixed** by a concurrent
 session — F-04 and F-14, whose fix landed *six minutes before this report's own last commit*. A
 third, F-06, turned out to be **half a deliberately pinned contract** rather than a defect. Every
-`file:line` in this report was then re-verified mechanically against the current tree (§11). The
+`file:line` in this report was then re-verified mechanically against the current tree (§11). And in a
+later correction pass **F-10 was re-measured and its verdict reversed** — the track-gain lane is a
+*multiplier* and the graph is **correct**; the defect is its label and the missing effective-value
+readout, so it fell from **High to Medium** and left the TOP 10 (§4/F-10). The
 verdict below is stated on the corrected list: **29 findings, 3 resolved, 26 open, 1 Critical.**
 
 What is *not* uniformly sound is everything that **reports** on that state rather than holding it:
@@ -54,7 +57,7 @@ What is *not* uniformly sound is everything that **reports** on that state rathe
 | Project document, undo/redo, save/reload | **Trustworthy — with two holes.** One authority, one write path, atomic save, verified round-trip. **F-28** is the critical one: a second writer whose value is discarded. **F-29** is the second: the document is right, but an automation point's undo is *positional*, so a shifted lane lets the AI's undo remove the **human's** point. |
 | MCP refusal + acknowledgement contract | **Mixed — and improving in the working tree.** The new R-02 `verifiedMutation` gate now corrects false *successes* at one dispatch choke point. It does **not** cover two paths: a refusal that is not flagged as an error, and the idempotency replay, which returns before the gate. |
 | Export paths | **Divergent from each other.** The master export refuses to render a changed project; the stem and track exports do not check at all and can ship a stale arrangement. |
-| Automation / DSP value display | **Divergent.** The knob shows the committed document value while the DSP plays the automated value, with no "under automation" indicator anywhere in the rack. |
+| Automation / DSP value display | **Divergent.** The knob shows the committed document value while the DSP plays the automated value, with no "under automation" indicator anywhere in the rack. The track-gain lane has the same shape: it is **correctly** a multiplier, but it is labelled and scaled like an absolute "Volume" (F-10). |
 | Persistence recovery | **Much improved in the working tree — it was the weakest area.** The single global recovery slot is gone (per-project slots, `9d2fc17c`), and a malformed, foreign or newer buffer is now **refused** instead of written into the store. One hole survives: a **failed buffer write is still discarded** (`src/services.ts:1328`). |
 
 **The headline risk is not "the DAW loses data on save". It is "the DAW says something that is not
@@ -96,9 +99,10 @@ is deliberate rather than accidental.
    against the current source and are still open.** Every other finding was read from source; a
    finding outside `src/mcp/tools.ts` may also have been affected by concurrent work and should be
    re-verified before acting.
-4. **No audio was listened to.** Audible-truth claims (F-09, F-10, F-11, F-17, F-18, F-19) are
+4. **No audio was listened to.** Audible-truth claims (F-09, F-11, F-17, F-18, F-19) are
    *structural* claims about what value reaches which DSP node. They are not perceptual claims.
-   §10 specifies the listening protocol that would close them.
+   §10 specifies the listening protocol that would close them. **F-10 was re-measured during the
+   correction pass and re-classified from an audible-truth claim to a visibility gap** (§4/F-10).
 5. **No browser was driven.** UI-level claims (F-01 staleness, F-02 indicator, F-09 knob) are derived
    from the subscription model and the render-time capture, not from a rendered frame.
 6. **Four layer maps were produced by delegated read-only exploration and then independently
@@ -123,7 +127,7 @@ is deliberate rather than accidental.
 | Effect parameter (document) | `EffectInstance.params` | commands, MCP, plugin panel | `EffectRack` (`src/ui/EffectRack.tsx:930, 1270`), engine | `syncFxParams` diff-guarded push (`src/audio-engine/AudioEngine.ts:1620-1625`) | with the document | **knob ≠ DSP under automation (F-09)** |
 | Effect parameter (runtime) | AudioParam in the graph | `syncFxParams`, automation bridge, macro | DSP only | `setTargetAtTime`, tc 20 ms native / instant worklet | not persisted | macro vs automation conflict (F-11) |
 | **DSP-side write-back** | **a second writer — and the only one found** | the PRISM core, via `FxEqPanel`'s in-plugin Undo/Redo | the document, via `setFxEqParam` | arrives under the plugin's **internal** id (`globalMix`, 0..100) instead of the project's canonical one (`mix`, 0..1) — so the normaliser discards it | **not persisted** | **F-28 — measured: the audio and the document disagree, and a reload changes the sound** |
-| Track gain | `track.gain` (fader) + `modAutoGain` (automation) + `modMacroGain` (macro) | commands | mixer UI | chain `gain → modAutoGain → modMacroGain` (`AudioEngine.ts:1896-1905`) | with the document | **absolute-vs-multiplicative (F-10)** |
+| Track gain | `track.gain` (fader) + `modAutoGain` (automation **lane — a multiplier**) + `modMacroGain` (macro — a multiplier) | commands | mixer UI | chain `gain → modAutoGain → modAutoPan → modMacroGain` (`AudioEngine.ts:2016-2019`; the return strip is `gain → modAutoGain → modMacroGain`, `:1904-1906`) | with the document | **the lane is a multiplier but is labelled and scaled like an absolute "Volume" (F-10)** |
 | Automation lane | `doc.automation` points | commands, MCP | engine (runtime only), arrangement lanes | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1191-1210`) | with the document | points have **no identity** → addressed by value and by position (F-07, F-29) |
 | MCP read model | **none** — tools read `ctx.getDoc()` live | — | all tools | — | — | idempotency ledger replay (F-06) |
 | Session checkpoint / A-B | `masterAbStore`, outside the document (`src/mcp/tools.ts:75`) | MCP session | `kyx_master` | not invalidated on document change | not persisted | stale restore (F-08) |
@@ -164,7 +168,7 @@ is deliberate rather than accidental.
              │
              ├──► Scheduler (25 ms tick) ──► automationBridge ──► runtime AudioParams
              │                                  ⚠ F-09 lane overrides the doc value
-             │                                  ⚠ F-10 lane is multiplicative, authored absolute
+             │                                  ⚠ F-10 lane is a MULTIPLIER, labelled as absolute "Volume"
              │                                  ⚠ F-11 macro + automation ⇒ same AudioParam
              ▼
      ┌────────────────────────────────┐
@@ -670,45 +674,86 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 
 ---
 
-### F-10 — Track-gain automation is authored in an absolute domain but applied multiplicatively
+### F-10 — The track-gain lane is a **multiplier**, but it is labelled and scaled like an absolute "Volume"
 
-**Severity:** High · **Confidence:** Confirmed — **measured** (§5.2, probe T4)
+**Severity:** Medium (was High) · **Confidence:** Confirmed — **measured** (§5.3, probe T4 + T4b)
 
-- **Affected journey:** a track-gain automation lane with a fader that is not at unity.
-- **Authoritative state:** `doc.automation` lane value vs. `track.gain` (fader).
-- **Expected contract:** the lane's displayed value is the gain you hear.
-- **Observed divergence:** the lane value is written into `modAutoGain.gain`
-  (`src/audio-engine/automationBridge.ts:1199-1203`), and the code comment states the
-  **authoritative range is `targetParamDef` (0..1.5)** — an absolute gain domain. But the audio
-  chain is `gain` (fader) → `modAutoGain` → `modMacroGain` (`src/audio-engine/AudioEngine.ts:1896-1905`),
-  and `modAutoGain.gain.value = 1` — a **multiply** stage.
-- **MEASURED (probe T4 — the repo's own mock-AudioContext harness, which records
-  `connect()` so the topology is asserted, not guessed):**
+- **Affected journey:** a track-gain automation lane on a strip whose fader is not at unity.
+- **Authoritative state:** the composed channel gain = fader (`track.gain`) × lane (`modAutoGain`) ×
+  macro (`modMacroGain`).
+- **Expected contract:** the number the lane shows is the number the user means.
+- **MEASURED (probe T4 — the repo's own mock-AudioContext harness, which records `connect()` so the
+  topology is asserted, not guessed):**
   ```
   [T4] fader (doc track.gain)      : 0.8
   [T4] lane value written to DSP  : 0.5
   [T4] fader -> modAutoGain is a SERIES connection: true
   [T4] modAutoGain -> modMacroGain series: false
   [T4] product (multiplicative)   : 0.4
-  [T4] lane as authored (absolute): 0.5
+  [T4] lane is a MULTIPLIER (unity 1.0), NOT an absolute gain: true
+  [T4] VERDICT: modAutoGain is a MULTIPLY stage in series after the fader — the audible gain is 0.4 while the lane reads 0.5
   ```
   The decisive fact is the third line: the fader's `GainNode` feeds `modAutoGain` **directly**, in
-  series. So the audible channel gain is **0.8 × 0.5 = 0.4**, while the lane reads **0.5** and the
-  fader reads **0.8** — *neither* surface shows 0.4.
-- **This is a unit/semantic drift, and it needs a product decision, not a code change:** either the
-  lane is absolute (then the graph is wrong and the lane should drive the fader) or the lane is a
-  modulation (then the 0..1.5 clamp, the lane UI and the comment are wrong). Note the *return* bus
-  path (`:1197-1198`) has the same shape.
-- **Evidence:** measurement above; `src/audio-engine/automationBridge.ts:1194-1208`;
-  `src/audio-engine/AudioEngine.ts:1896-1905`; `src/project-model/targets.ts:225`.
+  series. The track strip's chain is `gain → modAutoGain → modAutoPan → modMacroGain`
+  (`src/audio-engine/AudioEngine.ts:2016-2019`); the *return* strip is `gain → modAutoGain →
+  modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4**, while the lane
+  reads **0.5** and the fader reads **0.8** — *neither* surface shows 0.4.
+- **The stage's contract is "multiplier around unity" — measured, not inferred.** Three independent
+  facts in the source agree, and all three would be meaningless for an absolute gain:
+  1. **The modulator composes `1 + v` into the same parameter.** `makeModulatorWriter` clamps a gain
+     modulator to `1 + v` (0..1.5) and writes it into the **same** `modAutoGain` param the lane
+     writes (`src/audio-engine/automationBridge.ts:1108-1118`) — the code's own comment: *"Gain
+     modulators swing the channel multiplier around base 1"*. An absolute-gain param has no base 1.
+  2. **A new lane starts at unity.** `targetParamDef` declares `default: 1` for `trackGain`
+     (`src/project-model/targets.ts:225`) and the lane editor creates a new lane at that default
+     (`src/ui/arrangement/AutomationClipLanes.tsx:228`) — so adding a lane **cannot change the
+     sound**. Under absolute semantics a new lane would have to start at the fader's value, or adding
+     a lane would jump the mix.
+  3. **Stop restores unity, not the fader's value.** `automationReset()` writes `1` back into the
+     stage (`src/audio-engine/automationBridge.ts:1326-1353`), and cancels the pending scheduled
+     values first — so a stopped lane leaves **no residue**.
+  ```
+  [T4b] modulator amount 0.2 -> modAutoGain.gain = 1.2   (base 1 + v, clamped 0..1.5)
+  [T4b] trackGain lane default = 1, range 0..1.5
+  [T4b] after automationReset(): modAutoGain.gain = 1
+  ```
+- **CORRECTION (2026-10-25).** An earlier revision of this report stated that the lane was *"authored
+  absolute but applied multiplicatively"*, and that therefore *"the 0..1.5 clamp, the lane UI and the
+  comment are wrong"*. **That was wrong, and it would have misled an implementer into "fixing" a
+  correct lane.** The clamp, the lane range and the code comment are exactly right for a multiplier:
+  0..1.5 bounds the *multiplier* (up to +3.5 dB) to the same ceiling the fader may legally reach —
+  which is what `automationBridge.ts:1200-1202` says. **The lane is a modulation and the graph is
+  right.** The finding is re-classified from *wrong audio* to a **visibility + presentation-semantics
+  gap**, and its severity drops from **High to Medium**.
+- **What actually diverges.** The lane's number is a **multiplier**, but:
+  - it is **labelled "Volume"** — `targetParamDef` returns
+    `{ id: "gain", label: "Volume", min: 0, max: 1.5, default: 1 }` for `trackGain`
+    (`src/project-model/targets.ts:225`), the *same definition* the absolute fader uses;
+  - it is **drawn on the same 0..1.5 scale as the fader** — `clampFaderGain` bounds the fader at
+    0..1.5 (`src/audio-engine/AudioEngine.ts:73-75`) and the lane is drawn on `def.min..def.max`
+    (`src/ui/arrangement/AutomationClipLanes.tsx:100`);
+  - and **no surface shows the composed result**. Fader 0.8, lane 0.5 → the channel sits at **0.4**,
+    while the two surfaces read **0.8** and **0.5**.
+- **Root cause:** one parameter definition (`targetParamDef`) serves **two different domains** — an
+  absolute fader and a multiplicative lane — so the lane inherits the fader's label and its numeric
+  scale while meaning something else.
+- **Evidence:** measurement above; `src/audio-engine/automationBridge.ts:1108-1118, 1191-1210,
+  1326-1353`; `src/audio-engine/AudioEngine.ts:2016-2019, 73-75`;
+  `src/project-model/targets.ts:225`; `src/ui/arrangement/AutomationClipLanes.tsx:100, 228`.
   The `mixer-audit3` suite already pins the *clamp* on this lane (0..1.5) and never the
   *composition* — `tests/mixer-audit3.test.ts:355-370`.
-- **Smallest safe repair:** decide the semantic first; then either (a) make the lane drive the
-  fader's `AudioParam` directly, or (b) rename/relabel the lane as a modulation and document the
-  multiplication. Option (b) is documentation-only and safe; option (a) is a behavioural change.
-- **Regression plan:** probe T4 is already the test — promote it into `tests/` as a graph-topology
-  assertion (fader 0.8 + lane 0.5 → the product, and the product must match whichever semantic the
-  ADR picks).
+- **Smallest safe repair — now purely additive, no ADR and no behaviour change:**
+  1. **Relabel** the lane (display only; the `targetParamDef` id stays `gain`, so no public MCP
+     contract breaks) — e.g. "Gain mod" — and draw a **unity line at 1.0**, so the multiplier's neutral
+     point is visible instead of implied.
+  2. **Show the effective value** — the composed channel gain (fader × lane) beside the lane, with an
+     "AUTO" badge. This is the **S-5 effective-value read model**, the *same* repair F-09 needs; one
+     read model closes both.
+  3. Declare the domain in the parameter registry (`absolute` vs `modulation`) — the **S-4** registry,
+     so the next lane kind cannot inherit a mismatched label.
+- **Regression plan:** probe T4/T4b is already the test — promote it into `tests/` as a graph-topology
+  assertion (fader 0.8 + lane 0.5 → the product; a new lane is unity; a stop restores unity). Add a
+  component test that the lane renders the unity line and the effective value.
 
 ---
 
@@ -1335,7 +1380,7 @@ product but no probe or test in this audit exercised it.
 | Recording stops unexpectedly while the UI remains armed/recording | a device disconnect, or the transport stops | the indicator reflects reality | **Observed — diverges.** The ⏺ stays lit; `captureTick()` returns `null` while stopped, so notes are silently discarded | `src/ui/TopBar.tsx:158, 613`; `src/midi/patternRecorder.ts:131, 116-120` | high (F-02) | stop the transport, assert the indicator is not in the "recording" state |
 | Async waveform/peak generation renders stale metadata as authoritative | a buffer is replaced under the same id | the drawn peaks match the buffer | **Observed — guarded.** The async result is protected by a `live` flag; the *cache key* is content-blind | `src/ui/ArrangementPanel.tsx:285, 299-303, 7008-7019` | low (F-23, Hypothesis) | replace a buffer's content under an existing id and assert the peaks are invalidated |
 | Automation playback overwrites the persistent baseline | the transport runs over a lane | the document's value survives playback | **Observed — does NOT diverge.** Automation writes runtime only; `automationReset` restores the doc base | `src/audio-engine/deviceLookup.ts:133-156`; `src/audio-engine/automationBridge.ts:1359-1380`; `tests/scene-packs.test.ts:492` | low — *the classic defect is absent* | — |
-| Track-gain lane value vs the gain actually heard | the fader is not at unity | the lane's value is the gain | **Observed — diverges.** The lane is authored absolute but applied multiplicatively | `src/audio-engine/automationBridge.ts:1199-1203` vs `src/audio-engine/AudioEngine.ts:1896-1905` | medium (F-10) | render offline with fader 0.8 + lane 0.5 and measure the channel level; **needs a product decision first** |
+| Track-gain lane value vs the gain actually heard | the fader is not at unity | the lane's value is the gain | **Observed — the lane is a *multiplier*, correctly implemented, but labelled and scaled like an absolute "Volume"; no surface shows the composed value** | `src/audio-engine/automationBridge.ts:1108-1118, 1191-1210` vs `src/audio-engine/AudioEngine.ts:2016-2019` | medium (F-10) | **MEASURED (T4 + T4b)** — the graph is right; the *display* is wrong. Fix = relabel + unity line + effective-value readout (S-5); **no ADR, no behaviour change** |
 
 #### E. Persistence and recovery
 
@@ -1371,12 +1416,12 @@ product but no probe or test in this audit exercised it.
 |---|---|---|---|
 | `tmp-divergence-probe.mts` (P1–P7) | `vite-node` | **PASS** — executed end-to-end | 7 sub-probes, results below |
 | `tmp-probe/f03.test.ts` (F-03, F-05, F-06, F-06b, F-07) | **vitest** (the repo's own harness) | **PASS — 5/5 tests green** | the MCP ack contract, measured |
-| `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 7/7 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 |
+| `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 8/8 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 (incl. **T4b**, the multiplier-contract proof) |
 | `tmp-probe/second-writer.test.ts` (T6) | **vitest** | **PASS** | the DSP→document write-back — the audit's first **Critical** finding (F-28) |
 | `tmp-probe/gaps.test.ts` (T7–T9) | **vitest** | **PASS — 7/7 tests green** | the three probes §5.6 had left open: point-identity, mixer idempotency, undo-inside-a-frame — plus **F-29** |
 | `tmp-probe/collab.test.ts` (T10a–T10d) | **vitest** | **PASS — 4/4 green** | the collab-vs-solo document shape — the last finding still resting on code reading alone. **F-16 → Confirmed and measured** |
 | `tmp-probe/guard-scan.mjs` | **node** | **RUN — 1277 spec files scanned** | the duplicate-guard scan §5.5 promised: which of the 29 findings the repository's own tests already pin (§5.8) |
-| `tmp-probe/citation-check.mjs` | **node** | **RUN — 101 citations checked** | every `file:line` in this report, verified against the current tree; two had drifted and were corrected |
+| `tmp-probe/citation-check.mjs` | **node** | **RUN — 112 citations checked** | every `file:line` in this report, verified against the current tree; four had drifted and were corrected, and the count was re-run after the F-10 correction pass |
 
 Commands, from the repository root:
 
@@ -1477,15 +1522,26 @@ Save → load → rehydrate reproduces **both** the document and the DSP state e
 reopening a plugin instance resets its parameters to the factory defaults and mints a new id
 → **F-27**.
 
-**T4 — audio truth for F-10: MEASURED.**
+**T4 — audio truth for F-10: MEASURED (and, in the correction pass, re-measured).**
 ```
 [T4] fader (doc track.gain)      : 0.8
 [T4] lane value written to DSP  : 0.5
 [T4] fader -> modAutoGain is a SERIES connection: true
+[T4] modAutoGain -> modMacroGain series: false
 [T4] product (multiplicative)   : 0.4
-[T4] VERDICT: the lane is a MULTIPLY stage in series after the fader — the audible gain is 0.4 while the lane reads 0.5
+[T4] lane is a MULTIPLIER (unity 1.0), NOT an absolute gain: true
+[T4] VERDICT: modAutoGain is a MULTIPLY stage in series after the fader — the audible gain is 0.4 while the lane reads 0.5
 ```
-→ **F-10 is now Confirmed by measurement**, not by inference.
+**T4b — the multiplier contract, proven (added in the correction pass).**
+```
+[T4b] modulator amount 0.2 -> modAutoGain.gain = 1.2   (base 1 + v, clamped 0..1.5)
+[T4b] trackGain lane default = 1, range 0..1.5
+[T4b] after automationReset(): modAutoGain.gain = 1
+```
+→ **F-10 is Confirmed by measurement** — but the *verdict* was corrected. The stage is a multiplier
+around unity 1.0, and the code says so in three independent places (the modulator's `1 + v`, the lane's
+default of 1, the reset to 1). The lane is therefore **correct**; what is wrong is its **label and the
+missing effective-value readout**. See §4/F-10 for the full correction.
 
 **T5 — the R-02 gate's hidden synchrony precondition.**
 ```
@@ -1652,7 +1708,7 @@ A reader about to remediate a finding in those areas must expect those guards to
 - the "guarded by" test references quoted in this report were read from the **spec source**; the
   baseline confirms which specs are green, but it does not turn a source-read into a measured
   claim;
-- **every `file:line` in this report was re-verified against the current tree** (§11): all 109
+- **every `file:line` in this report was re-verified against the current tree** (§11): all 112
   citations resolve to the content they claim; the four that had drifted were corrected.
 
 ### 5.6 Not executed, and why it matters
@@ -1663,7 +1719,7 @@ A reader about to remediate a finding in those areas must expect those guards to
 | **Ordering** (delayed A acknowledgement) | **Executed** (T2) | — | unrelated field survives; **same field → last-APPLIED-wins** → F-25 |
 | **Lifecycle** — save → load → rehydrate the engine | **Executed — PASS** (T3) | — | identical document **and** identical DSP state ✅ |
 | **Lifecycle** — reopen a plugin instance | **Executed** (T3) | — | parameters reset to factory defaults, id re-minted → F-27 |
-| **Audio truth** — the track-gain lane's composition | **Executed — MEASURED** (T4) | — | the lane is a multiply stage in series → F-10 confirmed |
+| **Audio truth** — the track-gain lane's composition | **Executed — MEASURED** (T4 + T4b) | — | the lane is a **multiplier around unity 1.0** and the graph is correct → F-10 **re-classified** from wrong-audio to a visibility gap |
 | **R-02 gate's synchrony precondition** | **Executed** (T5) | — | the gate answers "nothing changed" for a deferred mutation → F-26 |
 | **DSP → document write-back** | **Executed — MEASURED** (T6) | — | the DSP is a second writer and its write is discarded → **F-28, Critical** |
 | F-03 rename false-success | **Executed — and now CORRECTED** | — | the R-02 gate works ✅ |
@@ -1852,7 +1908,7 @@ effort and regression risk.
 | **2** | **F-01** — stem/track export renders a stale document | The only finding that can ship **silently wrong output** to a paying user. The master path already proves the guard is cheap. | S (capture at call time + reuse the existing assertion) | Low |
 | **3** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
 | **4** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. **Lost work**, live, on the common human/AI path — it outranks every visibility gap. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
-| **5** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. **Wrong audio**, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
+| **5** | **F-11** — a macro mapped to an effect parameter is **silently dropped** during playback | **Wrong audio, live.** The macro path and the automation path write the *same* `AudioParam`; during playback the scheduler rewrites the parameter every 25 ms, so the macro's contribution disappears with no message. Confirmed from the code path — the one TOP-10 entry whose evidence is a **code read, not a probe** (§5.6 lists its perceptual half as *not executed*). | M (an explicit precedence, or the same dedicated modulation bus the track strips already have) | Medium |
 | **6** | **F-26** — the R-02 gate silently assumes `ctx.execute` is synchronous | **Measured** (§5.3, T5): the gate answers *"nothing changed"* while the mutation lands afterwards. It is the **window that makes F-29 destructive**, and the MCP host contract (`McpToolContext.execute(command): void`) does not enforce the synchrony it depends on. Today no host defers — so this is a **precondition to fix before the first deferred host ships**, not after. | S (state the precondition; check it) | Low |
 | **7** | **F-16** — a local collab edit skips normalisation, so the session's document is not the saved document | **Measured** (§5.9, T10): the same command yields `params.globalMix = 1` solo and `30` in collab, and normalising on the way out rewrites it back. **It makes F-28 mode-dependent** — the Critical write-back is discarded solo and lands in collab — so F-28's repair must cover it. | S (normalise at the export boundary + on the local-origin path) | Low |
 | **8** | **F-29** — the automation-point undo is **positional**, so a shifted lane makes the AI's undo destroy the human's point | **Measured** (§5.7, T7c): the AI's undo removed the **human's** authored point and left the AI's — silent loss of work, followed by a dead undo step. The plain stack order is safe (T7d), so the window is the shift between a command and its undo — which is exactly the window **F-26** opens. The fix pattern already exists in the sibling command (audit 06 D3). | S (verify the slot before splicing) | Low |
@@ -1868,8 +1924,8 @@ splicing) closes both**. **F-04** left this list in this pass: the duplicate-gua
 minutes before this report's last commit — **F-14 left with it**, because the same commit made
 `recoverProject` refuse an unvalidated, un-migrated or foreign document instead of writing it into
 the store. Both are **resolved in the working tree**, not by this audit but by a concurrent one.
-**F-13** (`migrateProject` is not a migration), **F-11** (macro and automation share one effect
-AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three save timestamps),
+**F-13** (`migrateProject` is not a migration), **F-12** (normalisation clamps without disclosure),
+**F-15** (three save timestamps),
 **F-06** (the idempotency replay escapes the R-02 gate — the stale read-back half is a **pinned
 contract**, §5.8, so what remains is the envelope ambiguity), **F-17** (bypass cold restart),
 **F-18/F-19** (fallback
@@ -1877,6 +1933,13 @@ honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (und
 **Hypothesis: not reproduced** by the §5.7 probe), **F-23**
 (onset cache), **F-24** (automation ack), **F-27** (a reopened instance resets to defaults) are all
 **below the top 10**: real, documented, and scheduled for a later wave.)*
+**F-10 left this list in the correction pass.** It was ranked **#5** on the claim that the track-gain
+lane was *"authored absolute but applied multiplicatively"* — a **wrong-audio** claim. The
+correction pass re-measured it (§5.3, T4 + T4b) and found the opposite: the lane **is** a multiplier
+and the graph is **correct**. What remains is a **visibility gap** (the lane is labelled "Volume",
+drawn on the fader's scale, and no surface shows the composed gain) — the same class as **F-09**, and
+**one repair closes both**: the S-5 effective-value read model. It stays a live, documented finding
+(§4/F-10) and a **Phase 5** item, but it no longer outranks the wrong-audio and lost-work findings.
 ---
 
 ## 7. TOP 5 systemic state architecture improvements
@@ -1957,7 +2020,8 @@ points; the normalisation continues to tolerate points without ids until the mig
 
 ### S-4 — A single unit/scale ownership layer, a **bidirectional** id map, and a documented composed signal path
 
-**Expected value:** closes F-10, F-11, F-19, F-20 and — with one line — **F-28**, the Critical one.
+**Expected value:** closes F-10's root cause (one parameter definition serving two domains), F-11,
+F-19, F-20 and — with one line — **F-28**, the Critical one.
 
 Shape: every parameter declares, in one registry: its **domain** (absolute vs modulation), its
 **display unit**, its **DSP transform**, the **signal path** it is composed into, and — the part
@@ -1970,12 +2034,15 @@ F-28 proves is missing — its **canonical project id** in **both** directions. 
 
 - every unit conversion has exactly one owner (fold `dbToLin` into `scale-bridges.ts`);
 - every `SCALE_BRIDGES` entry is asserted to be the function the node actually calls;
-- the track-gain lane's semantic is **decided** and the graph is made to match it;
+- the track-gain lane's semantic is **already settled by measurement** (a multiplier around unity 1.0
+  — §5.3, T4 + T4b) and the registry must **declare** it, so the label and the scale can no longer
+  drift apart from the domain;
 - effect parameters get the same precedence rule (or the same dedicated modulation bus) that track
   parameters already have.
 
-**Risk:** F-10 and F-11 are **behavioural** changes. They need a decision, an ADR and a listening
-protocol (§10) before any code moves.
+**Risk:** F-11 is a **behavioural** change. It needs an ADR and a listening protocol (§10) before any
+code moves. **F-10, after the correction, is not behavioural** — it is a registry declaration plus a
+display change, and needs neither.
 
 **Migration:** a documentation + assertion first (no behaviour change), the semantic decision
 second, the graph change third.
@@ -2008,7 +2075,7 @@ scheduled with the `MIGRATIONS` chain).
 ### Phase 0 — Evidence (no production code)
 
 **The probes already exist.** `tmp-probe/f03.test.ts` (5/5 green), `tmp-probe/scenarios.test.ts`
-(7/7 green) and `tmp-probe/gaps.test.ts` (7/7 green) are re-runnable reproductions of F-03, F-05,
+(8/8 green) and `tmp-probe/gaps.test.ts` (7/7 green) are re-runnable reproductions of F-03, F-05,
 F-06, F-07, F-10, F-22, F-25, F-26, F-27 and **F-29**.
 **Promote them into `tests/`** — they are the regression guards for this whole report, and they cost
 nothing to keep.
@@ -2074,8 +2141,11 @@ v38 still open; a round-trip of every project fixture is byte-identical.
 ### Phase 5 — The audible-truth layer
 
 **S-4** and **S-5**: first the *assertions* (scale registry, unit ownership, composed-path
-documentation) with no behaviour change; then the **decision** on the track-gain lane semantic
-(ADR required); then the effective-value read model (**S-5**) consumed by the effect rack; then
+documentation) with no behaviour change; then the **declaration** of each parameter's domain in the
+registry — the track-gain lane's semantic is **settled by measurement** (§5.3, T4 + T4b: a
+multiplier around unity), so this is a *labelling + unity-line* change, **not** a graph change and
+**no ADR**; then the effective-value read model (**S-5**) consumed by the effect rack and the
+track-gain lane; then
 **F-09**, **F-11**. **F-17** (node-level bypass), **F-18** and **F-19** (fallback honesty) last,
 because they are DSP changes.
 
@@ -2105,7 +2175,7 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 | Automation does not mutate the doc | assert `doc` unchanged during playback | Yes | `tests/scene-packs.test.ts:492` ✅ |
 | Effect param: doc == DSP | instrument the runtime AudioParam vs `fx.params` | Yes | partially — `tests/param-range-coherence.test.ts`, `tests/fxeq-rack-contract.test.ts` |
 | Effect param under automation | assert the *effective* value reaches the DSP | Yes | no — **F-09**, **F-11** |
-| Track-gain lane semantics | measure the rendered channel level | Yes (offline) | **MEASURED at the graph level (T4)** — the lane is a multiply stage in series; the audible gain is the product. The *decision* about which semantic is intended is still open — **F-10** |
+| Track-gain lane semantics | measure the rendered channel level | Yes (offline) | **MEASURED at the graph level (T4 + T4b)** — the lane is a multiply stage in series around unity 1.0, so the audible gain is the product, and the *semantic is settled*. What is still missing is the **effective-value display** — **F-10** |
 | A/B control equivalence (UI path vs MCP path) | set the same parameter both ways, compare domain **and** DSP state | Yes | **PASS (measured, T1)** ✅ |
 | Ordering (delayed acknowledgement) | apply A then B with A's ack late; assert the documented precedence | Yes | **MEASURED (T2)** — unrelated field survives; same field → last-APPLIED-wins. **F-25** |
 | Lifecycle — reopen a plugin instance | remove + re-add; assert the parameter state | Yes | **MEASURED (T3)** — resets to factory defaults, id re-minted. **F-27** |
@@ -2137,15 +2207,19 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 
 ### 10.1 Requires human listening (no automated equality can settle these)
 
-1. **F-10 — track-gain lane semantics: the GRAPH is settled, the PRODUCT DECISION is not.** The
-   measurement is done (§5.3, T4): the lane is a multiply stage in series after the fader, so fader
-   0.8 + lane 0.5 sounds at **0.4**, not 0.5. What listening must settle is which semantic the
-   product *wants*: if the lane should be absolute, then the graph, the lane UI and the clamp comment
-   are all wrong; if the lane is a modulation, the UI and the comment must say so and the lane must
-   stop being labelled in the absolute gain domain. **A product decision is required before any code
-   changes** — and the A/B that a human should perform is: fader at 0.8, one lane point at 0.5, and
-   confirm the channel sits ≈ −8 dB (0.4). If it sits at −6 dB (0.5) instead, the graph has changed
-   since this measurement and the finding must be re-measured.
+1. **F-10 — the lane's *semantics* are settled by measurement; only the *display* needs a human eye.**
+   The lane is a **multiplier around unity 1.0** (§5.3, T4 + T4b): the graph is correct, the clamp is
+   correct, the **label** is not. So there is no semantic decision left to make and **no code change is
+   blocked**. Two things still need a human:
+   - **the listening A/B (to confirm the measurement on real speakers):** fader at 0.8, one lane point
+     at 0.5, and confirm the channel sits ≈ **−8 dB (0.4)**. If it sits at −6 dB (0.5) instead, the
+     graph has changed since this measurement and the finding must be re-measured. This A/B also shows
+     whether the *current* labelling is actively misleading — a user who reads "Volume 0.5" and hears
+     0.4 will reach for the fader.
+   - **the wording (a design choice, not a measurement):** what should the lane be called — "Gain mod",
+     "Volume ×", "Trim ×"? And should it show the **composed** value (fader × lane) beside the
+     multiplier, or only the multiplier with a unity line? Both are additive display options; the
+     second is the smaller change.
 2. **F-09 — does the knob lie in practice?** Play an effect with an active lane and move the knob
    by ear: if the knob moves but the sound does not, the gap is user-visible; if the knob is
    already showing the lane value, the finding is cosmetic.
@@ -2245,8 +2319,8 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   linked in, per `docs/MULTI-AGENT-GUARDRAILS.md` rules 5 and 6. The audited commit and the current
   tip differ in **zero** non-`.md` files, so the baseline measures today's source (§5.5).
 - **Every citation in this report was checked mechanically against the tree.** `tmp-probe/
-  citation-check.mjs` extracts all 109 `file:line` references and prints the content that is
-  actually there now. **All 109 resolve to the content they claim**; the ones that had drifted
+  citation-check.mjs` extracts all 112 `file:line` references and prints the content that is
+  actually there now. **All 112 resolve to the content they claim**; the ones that had drifted
   (the `masterAbStore` line, the idempotency-ledger line and the gate's read-back line) were
   corrected.
   This matters because a concurrent session landed a persistence fix **six minutes before this
@@ -2261,7 +2335,9 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   `$.tracks[0].effects[0].params.globalMix: solo=1 collab=30`.
 - **The scenario probes reused the repository's own mock-Web-Audio harness** (`tests/mixer-audit3.test.ts`),
   whose recording nodes make the **graph topology** assertable rather than inferable — that is how
-  F-10 moved from *strongly indicated* to *confirmed*.
+  F-10 moved from *strongly indicated* to *confirmed* — and the correction pass **re-measured it again**
+  (T4 + T4b) and **reversed its verdict**: the lane is a multiplier, the graph is correct, and the
+  defect is the label plus the missing effective-value readout.
 - **The Critical finding was measured against the vendored core itself** (`createFxEqProcessor`),
   not a stand-in: the probe drives the real `undo()`, the real `normalizePluginParams` and the real
   `setFxEqParam`, so the whole chain — DSP → host → document → normaliser → engine push decision —
