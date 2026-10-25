@@ -49,10 +49,11 @@ is deliberate rather than accidental.
    no `npm run typecheck`, no `npm run build`. Every claim below is either read from source or
    measured by a purpose-built probe. Where a claim rests only on reading, it is labelled as such.
 2. **Two probe harnesses were used; both executed.** `tmp-divergence-probe.mts` (7 sub-probes,
-   `vite-node`) and `tmp-probe/f03.test.ts` (5 sub-probes, the repository's own **vitest** harness,
-   **5/5 green**). An earlier `vite-node` attempt at the second probe hung for 420 s twice and was
-   abandoned; re-implementing it under vitest loaded the same module graph in **8 seconds**. Results
-   and raw output are in §5.
+   `vite-node`) and two vitest specs — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**) and
+   `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**, covering the four mission probes the
+   first pass had to report as *not executed*). An earlier `vite-node` attempt at the second probe
+   hung for 420 s twice and was abandoned; re-implementing it under vitest loaded the same module
+   graph in **8 seconds**. Results and raw output are in §5.
 3. **The working tree moved under this audit, and it changed a finding.** `src/mcp/tools.ts` was
    edited by another session *while the probes were running* (file mtime 11:36:56; `git diff` grew
    during the session). The change landed the **R-02 `verifiedMutation` gate**, which fixed the
@@ -160,10 +161,11 @@ Derived from the product's actual contracts, not imposed. Status reflects this a
 | # | Invariant | Contract source | Status |
 |---|---|---|---|
 | **I-1** | Every mutation flows through the command layer; there is no second write path | `src/commands/*`; grep for direct `doc.<slice> =` in `src/` returns nothing | **Holds** (verified by search) |
-| **I-2** | A parameter set by *any* control surface yields the same domain value after normalisation | `src/commands/*` is shared by UI and MCP | **Holds** for the value; **breaks** for the *report* (F-05, F-06, F-07) |
+| **I-2** | A parameter set by *any* control surface yields the same domain value after normalisation | `src/commands/*` is shared by UI and MCP | **Holds — MEASURED** (§5.3, T1): identical domain map **and** identical DSP param cache. The *report* still breaks (F-05, F-06, F-07) |
 | **I-3** | A committed operation is observable in the engine/DSP path, or reports pending/failure accurately | `syncFxParams` diff-guarded push; MCP `PARTIAL_FAILURE` | **Partially holds** — F-06, F-24 |
-| **I-4** | Save/reopen reproduces the arrangement, routing, automation and plugin state | `ProjectRepository.save` = whole doc, one transaction | **Holds** — measured (probe P4: reload reproduces the session doc exactly) |
+| **I-4** | Save/reopen reproduces the arrangement, routing, automation and plugin state | `ProjectRepository.save` = whole doc, one transaction | **Holds — MEASURED** (§5.3, T3): the reloaded document is byte-identical **and** rehydrates to an identical DSP state |
 | **I-5** | Undo/redo restores all logically coupled values | delta snapshot; `src/commands/docDelta.ts` | **Holds** for the measured battery (probe P2/P3) — **except** the frame case (F-22) |
+| **I-5b** | A late-acknowledged write must not overwrite a newer write to the same field | no version, no expected-revision guard | **Breaks — MEASURED** (§5.3, T2): last-APPLIED-wins (F-25). An unrelated field is protected by the delta snapshot; the same field is not |
 | **I-6** | Automation playback does not overwrite the persistent baseline | `writeDeviceTargetAt` touches runtime only; `automationReset` restores the doc base | **Holds — this defect does NOT exist.** The doc is never written by automation. |
 | **I-7** | Export/offline render uses semantically equivalent mix state and processing rules | `renderProject(doc)`; `tests/offline-parity.test.ts` | **Holds for the mix**; **breaks for freshness** (F-01) |
 | **I-8** | Removing an entity invalidates stale references cleanly | `deleteTrack` cleans cross-references; `tests/delete-track-undo-cross-references.test.ts` | **Holds** (measured: deleteTrack round-trips) |
@@ -191,11 +193,11 @@ Severity: **Critical** (wrong audio / lost work / false success in the common pa
 Confidence: **Confirmed** (read the code path that proves it, or measured it) · **Strongly indicated** ·
 **Hypothesis** · **Untested**.
 
-**24 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
-a worked example rather than an open item; 23 remain open. Eleven are **Confirmed** by code reading
-that the parent re-verified directly; four of those were additionally **measured** (§5.2). Two are
-**Strongly indicated** and are flagged for confirmation (F-16, F-22); one is a **Hypothesis**
-(F-23).
+**27 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
+a worked example rather than an open item; 26 remain open. Thirteen are **Confirmed** by code
+reading that the parent re-verified directly; **eight of those were additionally measured** (§5).
+Two are **Strongly indicated** and are flagged for confirmation (F-16, F-22); one is a
+**Hypothesis** (F-23).
 
 ---
 
@@ -574,7 +576,7 @@ identity half is Confirmed by code reading only
 
 ### F-10 — Track-gain automation is authored in an absolute domain but applied multiplicatively
 
-**Severity:** Medium · **Confidence:** Strongly indicated (code path read; needs a product decision)
+**Severity:** High · **Confidence:** Confirmed — **measured** (§5.2, probe T4)
 
 - **Affected journey:** a track-gain automation lane with a fader that is not at unity.
 - **Authoritative state:** `doc.automation` lane value vs. `track.gain` (fader).
@@ -583,21 +585,34 @@ identity half is Confirmed by code reading only
   (`src/audio-engine/automationBridge.ts:1199-1203`), and the code comment states the
   **authoritative range is `targetParamDef` (0..1.5)** — an absolute gain domain. But the audio
   chain is `gain` (fader) → `modAutoGain` → `modMacroGain` (`src/audio-engine/AudioEngine.ts:1896-1905`),
-  and `modAutoGain.gain.value = 1` — a **multiply** stage. Effective channel gain = fader × lane.
-  With the default fader (1.0) the two coincide. With fader 0.8 and a lane point of 0.5, the
-  channel plays **0.4** while the lane reads 0.5 and the fader reads 0.8 — *neither* surface shows
-  0.4.
+  and `modAutoGain.gain.value = 1` — a **multiply** stage.
+- **MEASURED (probe T4 — the repo's own mock-AudioContext harness, which records
+  `connect()` so the topology is asserted, not guessed):**
+  ```
+  [T4] fader (doc track.gain)      : 0.8
+  [T4] lane value written to DSP  : 0.5
+  [T4] fader -> modAutoGain is a SERIES connection: true
+  [T4] modAutoGain -> modMacroGain series: false
+  [T4] product (multiplicative)   : 0.4
+  [T4] lane as authored (absolute): 0.5
+  ```
+  The decisive fact is the third line: the fader's `GainNode` feeds `modAutoGain` **directly**, in
+  series. So the audible channel gain is **0.8 × 0.5 = 0.4**, while the lane reads **0.5** and the
+  fader reads **0.8** — *neither* surface shows 0.4.
 - **This is a unit/semantic drift, and it needs a product decision, not a code change:** either the
   lane is absolute (then the graph is wrong and the lane should drive the fader) or the lane is a
   modulation (then the 0..1.5 clamp, the lane UI and the comment are wrong). Note the *return* bus
   path (`:1197-1198`) has the same shape.
-- **Evidence:** `src/audio-engine/automationBridge.ts:1194-1208`;
+- **Evidence:** measurement above; `src/audio-engine/automationBridge.ts:1194-1208`;
   `src/audio-engine/AudioEngine.ts:1896-1905`; `src/project-model/targets.ts:225`.
+  The `mixer-audit3` suite already pins the *clamp* on this lane (0..1.5) and never the
+  *composition* — `tests/mixer-audit3.test.ts:355-370`.
 - **Smallest safe repair:** decide the semantic first; then either (a) make the lane drive the
   fader's `AudioParam` directly, or (b) rename/relabel the lane as a modulation and document the
   multiplication. Option (b) is documentation-only and safe; option (a) is a behavioural change.
-- **Regression plan:** an audio-measurement test: fader 0.8, lane 0.5, assert the rendered channel
-  level equals the documented intent (0.4 or 0.5, per the decision).
+- **Regression plan:** probe T4 is already the test — promote it into `tests/` as a graph-topology
+  assertion (fader 0.8 + lane 0.5 → the product, and the product must match whichever semantic the
+  ADR picks).
 
 ---
 
@@ -864,6 +879,117 @@ identity half is Confirmed by code reading only
 
 ---
 
+### F-25 — A delayed older write overwrites a newer one: the ordering semantics are *last-APPLIED-wins*
+
+**Severity:** Medium-High · **Confidence:** Confirmed — **measured** (§5.2, probe T2)
+
+- **Affected journey:** the AI issues a write; a human edits **the same field** before the AI's
+  command is applied; the AI's command then lands.
+- **Authoritative state:** `ProjectStore.doc_`.
+- **Expected contract:** either the later *intent* wins, or the conflict is reported. The mission
+  brief's own probe wording is *"apply A then B, including delayed A acknowledgement; ensure B wins
+  under defined semantics"* — so what matters is that the semantics are **defined and disclosed**.
+- **Observed divergence — measured.** The probe drives the real MCP surface with a context whose
+  `execute` defers the command, which is exactly "A's acknowledgement is late":
+  ```
+  [T2] A text: nothing changed (the document is identical); no undo step — reported: Drums: gain 0.500 (-6.0 dB)
+  [T2] B applied: gain=0.9
+  [T2] final gain=0.5
+  [T2] VERDICT: the OLDER, late-acknowledged intent wins (last APPLIED wins)
+  ```
+  **The human's newer value (0.9) is overwritten by the older AI intent (0.5).**
+  The *other* half of the probe is the good news and is worth stating explicitly:
+  ```
+  [T2] B applied: pan=-0.7
+  [T2] final gain=0.5 pan=-0.7
+  [T2] VERDICT: a late acknowledgement does NOT revert an unrelated field
+  ```
+  The delta snapshot (`src/commands/core.ts:34-45`) correctly preserves a human edit to a
+  **different** field. The exposure is confined to the **same** field, where there is no version,
+  no expected-revision guard, and no conflict signal — `ProjectDocument` has no revision field
+  (`src/project-model/types.ts:1444`) and `ProjectStore.execute` takes no expected-version argument.
+- **Root-cause hypothesis:** last-write-wins is the documented design for *field-level* safety, but
+  the design never addressed **intent age**. A write that was *issued* first and *applied* last wins,
+  and the AI's acknowledgement does not say so.
+- **Smallest safe repair:** two independent steps, in increasing cost.
+  1. *Cheap, no schema change:* the AI's acknowledgement should name the value it set **and** say
+     when it was applied over a newer value. The R-02 gate already re-reads the document — it has
+     the information it needs to say "applied 0.5 over a newer 0.9".
+  2. *Correct:* a monotonic document revision counter, and an MCP write path that compares the
+     revision the tool computed against the current one, refusing or flagging a stale write.
+- **Regression plan:** probe T2 is the test — promote it into `tests/`, and assert the documented
+  precedence (whatever the ADR chooses) rather than the accidental one.
+
+---
+
+### F-26 — The new R-02 verification gate silently assumes `ctx.execute` is synchronous
+
+**Severity:** Medium · **Confidence:** Confirmed — **measured** (§5.2, probe T5) · **NOT live today**
+
+- **Affected journey:** any MCP host whose `execute` does not apply the command inline.
+- **Authoritative state:** the gate's own verdict.
+- **Expected contract:** a mutation that happens is reported as a mutation.
+- **Observed divergence — measured.** The R-02 gate takes the document from *before* the handler
+  and the document from *after* it, and concludes "nothing changed" when they are identical
+  (`src/mcp/verified-mutation.ts:82-87`). If the host's `execute` defers the command, the document is
+  identical at that moment — so the gate answers **"nothing changed (the document is identical)"**
+  with `mutated: false`, and the mutation lands *afterwards*:
+  ```
+  [T5] text                 : nothing changed (the document is identical); no undo step — reported: Drums: gain 0.500 (-6.0 dB)
+  [T5] mutated              : false
+  [T5] document changed yet : false
+  [T5] commands queued      : 1
+  [T5] gain after the flush : 0.5
+  ```
+  The gate's answer was **wrong at the moment it was returned**. A whole-surface truth gate failing
+  *open* — reporting "nothing changed" for a change that did happen — is worse than no gate, because
+  it is trusted.
+- **Not live today:** all three real hosts apply the command inline —
+  `src/mcp/web-host.ts:77`, `src/mcp/desktop-host.ts:58`, `src/mcp/headless-host.ts` (`:76`).
+- **Why it matters anyway:** the precondition is **not enforced by the type**. The contract is
+  `execute(command: Command): void` (`src/mcp/tools.ts`, `McpToolContext`), and TypeScript lets a
+  Promise-returning function satisfy a `void`-returning signature. A future *deferred*, *queued*,
+  *collab-merged* or *worker-backed* host would compile cleanly and would silently turn every
+  mutation into "nothing changed".
+- **Smallest safe repair:** make the precondition explicit and checked. Options: (a) change the
+  contract so `execute` returns the committed document revision, and have the gate compare
+  revisions rather than object identity; or (b) have the gate wait for the undo-depth to settle; or
+  (c) at minimum, document the precondition on `McpToolContext.execute` and add a lint/test that
+  asserts every host's `execute` applies the command synchronously.
+- **Regression plan:** probe T5 is the test. It should be promoted into `tests/` and inverted into
+  a guard: every registered MCP host's `execute` must apply the command inline.
+
+---
+
+### F-27 — Closing and reopening a plugin instance resets its parameters to the factory defaults, and mints a new id
+
+**Severity:** Low-Medium · **Confidence:** Confirmed — **measured** (§5.2, probe T3)
+
+- **Affected journey:** remove an effect instance and add one back.
+- **Authoritative state:** `EffectInstance.params` and `EffectInstance.id`.
+- **Expected contract:** a reopened instance is a *new* instance; whether it should inherit the old
+  settings is a product decision — but the outcome must not be silent.
+- **Observed divergence — measured:**
+  ```
+  [T3] before close: {"decay":0.42,"predelay":20,"tone":9000,"damping":6000,"diffusion":0.5,"mod":0.35,"mix":0.3}
+  [T3] after reopen: {"decay":1.8,"predelay":20,"tone":9000,"damping":6000,"diffusion":0.5,"mod":0.35,"mix":0.3}
+  [T3] fxId changed: fx-28ed07b8-… -> fx-d2094d6e-…
+  [T3] tuned value lost: 0.42 -> 1.8
+  ```
+  The removal is undoable, so the user's work is recoverable — this is **not** lost work. The two
+  consequences that matter are: (a) the *audible* settings snap back to the factory defaults with no
+  on-screen notice; (b) **the instance id changes**, which invalidates every AI-held reference to
+  the old instance — and that is precisely the condition under which F-08's ordinal fallback
+  silently redirects a later write to the *wrong* instance.
+- **Evidence:** measurement above; `src/commands/tracks.ts` — `addEffectToTracks` /
+  `removeEffectFromTracks`.
+- **Smallest safe repair:** no change to the reset itself — a new instance *should* start at
+  defaults. The fix is disclosure on the AI surface: `kyx_fx` add should say it created a *new*
+  instance at factory defaults, and an AI holding a stale `fxId` should be told the instance was
+  replaced rather than silently falling back to an ordinal.
+
+---
+
 ### 4.1 Divergence scenario matrix
 
 The scenario catalogue from the mission brief, each traced request-to-effect. **Observed** means the
@@ -879,6 +1005,8 @@ product but no probe or test in this audit exercised it.
 | A command acknowledges before the queued audio update is applied | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms) | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1198-1203` | low — *not a defect* | assert the applied value reaches 95 % of the commanded value within 3 × tc |
 | Tool output claims success though the command failed or was rejected | an AI call on a stale target | `isError` + a typed code | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result | `src/mcp/tools.ts:7863`; measured §5.2 | high (F-05) | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy |
 | A human edits between an AI's call and its retry (same `requestId`) | the AI retries a timed-out call | the retry reports the document's current value | **Observed — diverges.** The replay serves the *first* call's read-back | `src/mcp/tools.ts:4377` (returns) vs `:4457` (the gate); measured §5.2 | high (F-06) | edit, retry the same `requestId`, assert the reported value equals the document's current value |
+| The AI's write is acknowledged late, after the human has edited the same field | the AI's command is applied after the human's | the later *intent* wins, or the conflict is reported | **Observed — diverges.** The later-*applied* write wins: the human's 0.9 is overwritten by the AI's older 0.5 | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1444`) | high (F-25) | already measured — assert the documented precedence instead of the accidental one |
+| The AI's write is acknowledged late, after the human edited a *different* field | same, different field | the human's unrelated edit survives | **Observed — holds.** The delta snapshot preserves it | measured §5.3 (T2); `src/commands/core.ts:34-45` | low | — |
 
 #### B. Editing and history
 
@@ -897,6 +1025,7 @@ product but no probe or test in this audit exercised it.
 | Bypass toggled in the UI but not in the DSP | the user clicks bypass | the effect is audibly bypassed | **Observed — diverges in kind.** Bypass is a *structural* removal: the chain rebuilds, so processor state (tails, envelope, filter memory) is lost and the UI says ACTIVE | `src/audio-engine/AudioEngine.ts:1190-1199, 1976-1981, 1364-1373` | medium (F-17) | toggle bypass on a reverb with a long tail; assert the tail survives (listening) |
 | Parameter unit mapping mismatch (0–1 vs dB/Hz/ms/%) | the doc stores a normalized value, the DSP wants a native one | the same intent yields the same sound on every surface | **Observed — two separate owners** for dB→linear, and percent-100 bridges hardcoded in 2 of 4 registered pairs | `src/effects/scale-bridges.ts:32, 75-84` vs `src/effects/registry.ts:161`; `ozvenaNode.ts:143`; `morphDynamicsNode.ts:23` | low today, **high if one is edited** (F-20) | assert every `SCALE_BRIDGES` entry is the function the node actually calls (fails today for ozvena + morphdynamics) |
 | A plugin preset restores UI fields but misses runtime processor values | a preset is applied | the processor holds what the UI shows | **Observed — one candidate left open**: the parameter cache is seeded from the document and only pushes *differences*, so a factory that does not apply every parameter would leave it permanently unsent | `src/audio-engine/AudioEngine.ts:1519, 1620-1625` | medium — **not confirmed**; the shipped factories read appear to apply the full set | for every effect type, assert the runtime holds every document parameter after a rebuild |
+| A plugin instance is closed and reopened | remove the effect, add it back | the instance state is preserved, or the reset is disclosed | **Observed — diverges.** The reopened instance starts at the **factory defaults** and mints a **new id**, invalidating every AI-held reference to the old one | measured §5.3 (T3) | low-medium (F-27) | assert the AI surface discloses the reset |
 | Reordered effects change the render but the visual order stays stale | the user drags an effect in the chain | the graph order and the visual order agree | **Observed — contract-compliant.** Doc order → signature → rebuild → serial connect | `src/audio-engine/AudioEngine.ts:1420, 1516-1517`; `src/commands/effectParams.ts:326-344` | low | — |
 | The audio thread reads unsafe mutable state | a param change during a render quantum | no torn multi-field transitions | **Observed — clean.** No I/O, logging or unbounded allocation in a processor callback; change-gated `postMessage` | `src/audio-worklets/*`; `src/effects/fxeq-core/**` | low | — |
 
@@ -931,6 +1060,7 @@ product but no probe or test in this audit exercised it.
 | Worker restart / IPC interruption / plugin reload | a device is unplugged | the session recovers without lying | **Observed — contract-compliant for recording**: the recorder stops itself on device loss, the group stops every member before invoking `onFailure`, and the UI resets to idle | `src/audio-engine/PcmMicRecorder.ts:703-708, 716-721`; `PcmMicRecorderGroup.ts:245` | low | — |
 | Browser refresh with unsaved work | the tab is closed | the work is recoverable | **Observed — diverges.** The synchronous recovery buffer runs before the async flush, but it is one global slot and its quota failure is discarded | `src/persistence/save-lifecycle.ts:86-103`; `src/persistence/recoveryBuffer.ts:65-68` | high (F-04) | assert the unload handler surfaces a failed buffer write |
 | Repeated command delivery is non-idempotent without dedup rules | the AI retries an identical automation write | the document does not accumulate duplicates | **Observed — diverges.** The point count and the undo stack both grow | measured §5.2; `src/project-model/automation.ts` (`insertPointSorted`) | medium (F-07) | already measured — assert `lane.points.length` stays 1 and the undo stack does not grow |
+| A host that defers `ctx.execute` | a queued, transactional or collab-backed store | the acknowledgement describes what actually happened | **Observed — diverges (not live today).** The R-02 gate compares the document around the handler; with a deferred execute it answers *"nothing changed"* for a mutation that lands afterwards. All three real hosts are synchronous, but the `void` type does not enforce it | measured §5.3 (T5); `src/mcp/verified-mutation.ts`; hosts at `src/mcp/web-host.ts:77`, `src/mcp/desktop-host.ts:58` | medium (F-26) | assert every registered MCP host applies the command inline |
 
 ---
 
@@ -942,6 +1072,7 @@ product but no probe or test in this audit exercised it.
 |---|---|---|---|
 | `tmp-divergence-probe.mts` (P1–P7) | `vite-node` | **PASS** — executed end-to-end | 7 sub-probes, results below |
 | `tmp-probe/f03.test.ts` (F-03, F-05, F-06, F-06b, F-07) | **vitest** (the repo's own harness) | **PASS — 5/5 tests green** | the MCP ack contract, measured |
+| `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 7/7 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 |
 
 Commands, from the repository root:
 
@@ -1005,7 +1136,64 @@ Renaming a track **to the name it already has** now returns:
 ```
 
 
-### 5.3 Probe results — `tmp-divergence-probe.mts` (`vite-node`)
+### 5.3 Probe results — `tmp-probe/scenarios.test.ts` (vitest, **7/7 green**)
+
+These are the four mission probes the first pass had to report as *not executed*. All four now ran.
+The mock-AudioContext harness is the repository's own (`tests/mixer-audit3.test.ts`) — a recording
+node whose `connect()` is captured, so the **graph topology** is asserted rather than guessed.
+
+**T1 — A/B control equivalence (UI command path vs MCP tool path): PASS.**
+```
+[T1] MCP text: Drums: decay 1.8 → 0.42 — one undo step — read-back verified
+[T1] domain UI  : {"decay":0.42,"predelay":20,"tone":9000,"damping":6000,"diffusion":0.5,"mod":0.35,"mix":0.3}
+[T1] domain MCP : {"decay":0.42,"predelay":20,"tone":9000,"damping":6000,"diffusion":0.5,"mod":0.35,"mix":0.3}
+[T1] dsp UI  : {"fx-a35de65d-…":{"decay":0.42,…,"mix":0.3,"__outputTrimDb":0}}
+[T1] dsp MCP : {"fx-a35de65d-…":{"decay":0.42,…,"mix":0.3,"__outputTrimDb":0}}
+```
+The same effect parameter written through the **human command path** and through the **MCP tool
+path** yields an identical domain map **and** an identical DSP parameter cache (the engine's
+pushed-param map). The probe asserts the cache is non-empty, so the comparison cannot pass
+vacuously. **Invariant I-2 holds at the value level** — this is the product's strongest contract.
+
+**T2 — ordering with a delayed acknowledgement: the semantics are *last-APPLIED-wins*.**
+```
+[T2] B applied: pan=-0.7      →  final gain=0.5 pan=-0.7   (an UNRELATED field survives the late write)
+[T2] B applied: gain=0.9      →  final gain=0.5             (the SAME field is overwritten by the OLDER intent)
+```
+→ **F-25.** The delta snapshot protects different fields; the same field has no ordering guarantee.
+
+**T3 — lifecycle.**
+```
+[T3] document identical after reload : true
+[T3] dsp session: {"fx-c3621a0d-…":{"decay":0.42,…}}
+[T3] dsp loaded : {"fx-c3621a0d-…":{"decay":0.42,…}}      ← identical
+[T3] tuned value lost: 0.42 -> 1.8 ; fxId changed: fx-28ed07b8-… -> fx-d2094d6e-…
+```
+Save → load → rehydrate reproduces **both** the document and the DSP state exactly. But closing and
+reopening a plugin instance resets its parameters to the factory defaults and mints a new id
+→ **F-27**.
+
+**T4 — audio truth for F-10: MEASURED.**
+```
+[T4] fader (doc track.gain)      : 0.8
+[T4] lane value written to DSP  : 0.5
+[T4] fader -> modAutoGain is a SERIES connection: true
+[T4] product (multiplicative)   : 0.4
+[T4] VERDICT: the lane is a MULTIPLY stage in series after the fader — the audible gain is 0.4 while the lane reads 0.5
+```
+→ **F-10 is now Confirmed by measurement**, not by inference.
+
+**T5 — the R-02 gate's hidden synchrony precondition.**
+```
+[T5] text                 : nothing changed (the document is identical); no undo step — reported: Drums: gain 0.500 (-6.0 dB)
+[T5] mutated              : false
+[T5] document changed yet : false
+[T5] commands queued      : 1
+[T5] gain after the flush : 0.5
+```
+→ **F-26.**
+
+### 5.4 Probe results — `tmp-divergence-probe.mts` (`vite-node`)
 
 **P1 — A/B control equivalence (UI command path vs MCP tool path):**
 **SKIPPED** — the `house` template seeds no effect instance, so the effect-parameter comparison had
@@ -1066,7 +1254,7 @@ product finding. It is noted here because it is a minor **API inconsistency** in
 **P7 — Normalisation drift:** `normalizeProject(store.doc) === store.doc : **YES**` — **PASS**. The
 store holds a canonical document; the normaliser is idempotent on it.
 
-### 5.4 Repository suite — NOT EXECUTED
+### 5.5 Repository suite — NOT EXECUTED
 
 `npm run test` (1230 spec files), `npm run typecheck`, `npm run build` were **not run** in this
 session. Consequently:
@@ -1079,18 +1267,22 @@ session. Consequently:
 
 ### 5.6 Not executed, and why it matters
 
-| Probe | Status | Reason | What it would have settled |
+| Probe | Status | Reason | What it settled |
 |---|---|---|---|
-| P1 A/B control equivalence (effect params) | **Not executed** | no effect instance in the fixture | that UI and MCP produce an identical *document* for the same parameter |
-| P6 idempotency (mixer setters) | **Not executed** | same | that a repeated identical MCP write does not grow history |
+| **A/B control equivalence** (effect param, UI path vs MCP path) | **Executed — PASS** (T1) | — | identical domain map **and** identical DSP param cache ✅ |
+| **Ordering** (delayed A acknowledgement) | **Executed** (T2) | — | unrelated field survives; **same field → last-APPLIED-wins** → F-25 |
+| **Lifecycle** — save → load → rehydrate the engine | **Executed — PASS** (T3) | — | identical document **and** identical DSP state ✅ |
+| **Lifecycle** — reopen a plugin instance | **Executed** (T3) | — | parameters reset to factory defaults, id re-minted → F-27 |
+| **Audio truth** — the track-gain lane's composition | **Executed — MEASURED** (T4) | — | the lane is a multiply stage in series → F-10 confirmed |
+| **R-02 gate's synchrony precondition** | **Executed** (T5) | — | the gate answers "nothing changed" for a deferred mutation → F-26 |
 | F-03 rename false-success | **Executed — and now CORRECTED** | — | the R-02 gate works ✅ |
 | F-05 refusal signalling | **Executed — still open** | — | `isError` is absent on the automation refusal ❌ |
 | F-06 idempotency replay staleness | **Executed — still open** | — | stale read-back + contradictory `mutated` ❌ |
 | F-07 automation duplicate points | **Executed — still open** | — | 1→2 points, 1→2 undo entries ❌ |
 | **F-07's other half** — an AI undo deleting the *human's* point | **Not executed** | needs point-**identity** observation, not a JSON diff | the value-addressed undo damage |
+| P6 idempotency of the *mixer* setters | **Not executed** | the fixture had no effect instance for the first pass | that a repeated identical mixer write does not grow history |
 | Undo-inside-a-frame resurrection | **Not executed** | needs a ≥3-command frame | F-22 |
-| Round-trip: serialize → deserialize → rehydrate engine → compare | **Not executed** | needs an `OfflineAudioContext` harness | the export-vs-session invariant at the *audio* level |
-| Audio-truth measurement | **Not executed** | no listening/measurement protocol run | F-09, F-10, F-11, F-17, F-18, F-19 (§10) |
+| **Perceptual** audio truth for the remaining audible claims | **Not executed** | jsdom has no `OfflineAudioContext`; the graph was measured instead | F-09, F-11, F-17, F-18, F-19 (§10) |
 
 ---
 
@@ -1106,18 +1298,21 @@ effort and regression risk.
 | **3** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
 | **4** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. | S + S (one meta-test) | Very low |
 | **5** | **F-06** — idempotent replay serves a stale read-back and escapes the R-02 gate | The root cause is now precise (the replay returns **before** the gate), so the fix is small and provable — but until it is fixed, an agent's retry receives a **wrong current value**. | S | Low |
-| **6** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
-| **7** | **F-07** — automation points addressed by value; identical writes duplicate | Undo can delete the human's point; repeated AI writes duplicate points **and** grow history (measured). | S (cheap variant) / M (id variant) | Low (cheap) / M (id) |
-| **8** | **F-14 + F-13** — recovery writes an unvalidated document; `migrateProject` is not a migration | The two together make the *next* breaking change land in the least visible place available — and a recovered project can vanish at the next boot. | S + M | Low |
-| **9** | **F-10 + F-11** — absolute-vs-multiplicative gain; macro/automation conflict | The two places where the composed signal path is not what the authoring semantics say. | M + M (behavioural) | **Medium — needs a decision and a listening protocol first** |
-| **10** | **F-12** — normalisation silently clamps user intent on every command | A value the user set can be changed without any disclosure; `liveSets` is truncated at 32 and a legacy migration hides inside the normaliser. | S (route clamps into `Command.detail`) | Low |
+| **6** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Now measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
+| **7** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
+| **8** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
+| **9** | **F-07** — automation points addressed by value; identical writes duplicate | Undo can delete the human's point; repeated AI writes duplicate points **and** grow history (measured). | S (cheap variant) / M (id variant) | Low (cheap) / M (id) |
+| **10** | **F-14 + F-13** — recovery writes an unvalidated document; `migrateProject` is not a migration | The two together make the *next* breaking change land in the least visible place available — and a recovered project can vanish at the next boot. | S + M | Low |
 
 *(F-03 — the AI false-success on rename — **left this list**: it was fixed in the working tree by the
 R-02 `verifiedMutation` gate during this audit, and the probe confirms the fix (§5.2). It is
-retained as a worked example in §4 rather than as an open finding. F-15 timestamps, F-16 collab
-normalisation parity, F-17 bypass cold restart, F-18/F-19 fallback honesty, F-20 unit duplication,
-F-21 playhead freeze, F-22 undo-in-frame, F-23 onset cache, F-24 automation ack — all **below the
-top 10**: real, documented, and scheduled for a later wave.)*
+retained as a worked example in §4 rather than as an open finding. **F-26** (the R-02 gate's
+undocumented synchrony precondition — measured, *not* live today), **F-11** (macro and automation
+share one effect AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three
+save timestamps), **F-16** (collab normalisation parity), **F-17** (bypass cold restart),
+**F-18/F-19** (fallback honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22**
+(undo-in-frame), **F-23** (onset cache), **F-24** (automation ack), **F-27** (a reopened instance
+resets to defaults) are all **below the top 10**: real, documented, and scheduled for a later wave.)*
 
 ---
 
@@ -1133,7 +1328,7 @@ impossible rather than per-handler.
 claim, witnessed by the document's own identity. It is also **uncommitted** — it lives in the
 working tree, not on `main`.
 
-**Its perimeter has three gaps, all measured:**
+**Its perimeter has four gaps, all measured:**
 
 1. **Refusals are invisible to it.** `verifiedMutation` returns early when
    `result.mutated !== true` (`src/mcp/verified-mutation.ts:66`). Every refusal is
@@ -1152,6 +1347,15 @@ working tree, not on `main`.
    change (`src/mcp/verified-mutation.ts:95`). A client that reads only `data` never sees the
    verification. **Fix:** mirror the read-back into `data` as well (**F-24** covers the same seam
    from the handler side).
+4. **It silently assumes `ctx.execute` is synchronous.** The gate compares the document from before
+   the handler with the document from after it. If the host defers the command, the two are
+   identical and the gate answers *"nothing changed"* for a mutation that lands afterwards
+   (**F-26**, measured). All three real hosts are synchronous today, but the type contract
+   (`execute(command: Command): void`) does **not** enforce it — TypeScript lets a
+   Promise-returning function satisfy a `void`-returning signature. **Fix:** make the precondition
+   explicit and checked — have `execute` return the committed document revision and compare
+   revisions rather than object identity, or at minimum document it and add a test asserting every
+   registered host applies the command inline.
 
 **Risk:** low–medium. The gate is new and uncommitted, so changing it is cheap — but it is another
 session's work in progress. **Coordinate before editing**; the recommendation here is to widen a
@@ -1231,14 +1435,18 @@ character, the effect algorithms, the automation meaning, the preset format or t
 serialization** — except where explicitly noted (S-3 / F-07, which is a schema change and must be
 scheduled with the `MIGRATIONS` chain).
 
-### Phase 0 — Evidence (no code)
+### Phase 0 — Evidence (no production code)
 
-Re-run the blocked probes under the repo's own vitest harness instead of `vite-node` (which hung);
-add a per-finding reproduction test for each of F-01 … F-08, F-12 … F-15, F-22. Every finding
-below is then guarded by a **failing** test before a line is changed.
+**The probes already exist.** `tmp-probe/f03.test.ts` (5/5 green) and `tmp-probe/scenarios.test.ts`
+(7/7 green) are re-runnable reproductions of F-03, F-05, F-06, F-07, F-10, F-25, F-26 and F-27.
+**Promote them into `tests/`** — they are the regression guards for this whole report, and they cost
+nothing to keep.
 
-*Gate:* each of F-01…F-08 has a red test that reproduces it, and the red test fails for the
-*stated* reason.
+Then add a per-finding reproduction test for each of F-01, F-02, F-04, F-08, F-12 … F-15, F-22, F-24,
+and turn each remaining finding into a **failing** test before a line is changed.
+
+*Gate:* every finding below has a red test that reproduces it, and the red test fails for the
+*stated* reason — not for an incidental reason. The two probes that already exist stay green.
 
 ### Phase 1 — The false-success and refusal layer (smallest change, highest trust return)
 
@@ -1306,7 +1514,7 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 | Document authority | No `doc.<slice> =` outside `ProjectStore`; grep | Yes | search only (this audit) |
 | Command round-trip (undo/redo) | probe P2/P3 battery, dev vs prod | Yes | partially — `tests/undo-roundtrip-sweep.test.ts`, `tests/doc-delta-*.test.ts` |
 | Delta path == dev path | run the battery with the verifier off | Yes | **not covered** — the suite only ever runs the dev path, where the fallback silently repairs a broken delta. This audit measured parity for 4 shapes (P2/P3) and found 0 fallbacks. **2 shapes remain untested.** |
-| Save → load round-trip | serialize → deserialize → normalise → compare | Yes | **PASS (measured, P4)**; `tests/persistence/round-trip-integrity.test.ts` |
+| Save → load round-trip | serialize → deserialize → normalise → compare | Yes | **PASS (measured, P4 + T3)** — the reloaded document is byte-identical **and** rehydrates to an identical DSP state; `tests/persistence/round-trip-integrity.test.ts` |
 | Recovery correctness | broken buffer → recovery must refuse | Yes | no — **F-14** |
 | Recovery isolation | two dirty projects → both buffers survive | Yes | no — **F-04** |
 | Export freshness | edit → export → must refuse | Yes | no — **F-01** |
@@ -1315,7 +1523,11 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 | Automation does not mutate the doc | assert `doc` unchanged during playback | Yes | `tests/scene-packs.test.ts:492` ✅ |
 | Effect param: doc == DSP | instrument the runtime AudioParam vs `fx.params` | Yes | partially — `tests/param-range-coherence.test.ts`, `tests/fxeq-rack-contract.test.ts` |
 | Effect param under automation | assert the *effective* value reaches the DSP | Yes | no — **F-09**, **F-11** |
-| Track-gain lane semantics | measure the rendered channel level | Yes (offline) | no — **F-10** |
+| Track-gain lane semantics | measure the rendered channel level | Yes (offline) | **MEASURED at the graph level (T4)** — the lane is a multiply stage in series; the audible gain is the product. The *decision* about which semantic is intended is still open — **F-10** |
+| A/B control equivalence (UI path vs MCP path) | set the same parameter both ways, compare domain **and** DSP state | Yes | **PASS (measured, T1)** ✅ |
+| Ordering (delayed acknowledgement) | apply A then B with A's ack late; assert the documented precedence | Yes | **MEASURED (T2)** — unrelated field survives; same field → last-APPLIED-wins. **F-25** |
+| Lifecycle — reopen a plugin instance | remove + re-add; assert the parameter state | Yes | **MEASURED (T3)** — resets to factory defaults, id re-minted. **F-27** |
+| MCP host `execute` is synchronous | assert every registered host applies the command inline | Yes | no — the type does not enforce it. **F-26** |
 | MCP ack truthfulness | every mutating tool: does `mutated` match the document? | Yes | **partially ✅** — the R-02 gate covers the dispatch path; **F-06** (the replay) escapes it |
 | MCP refusal detectability | every mutating tool: does a refusal set `isError`? | Yes | no — **F-05** (the meta-test is Phase 1) |
 | MCP stale-id handling | stale track/fx/clip/note/param ids | Yes | partially ✅ (`UNKNOWN_TARGET` in most handlers) |
@@ -1337,10 +1549,15 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 
 ### 10.1 Requires human listening (no automated equality can settle these)
 
-1. **F-10 — track-gain lane semantics.** Measure: fader at 0.8, one lane point at 0.5, render the
-   track offline, measure the channel level. If it is −6 dB (0.5), the lane is absolute and the
-   graph is wrong. If it is ≈ −8 dB (0.4), the lane is a modulation and the **UI, the clamp and the
-   comment** are wrong. **A product decision is required before any code changes.**
+1. **F-10 — track-gain lane semantics: the GRAPH is settled, the PRODUCT DECISION is not.** The
+   measurement is done (§5.3, T4): the lane is a multiply stage in series after the fader, so fader
+   0.8 + lane 0.5 sounds at **0.4**, not 0.5. What listening must settle is which semantic the
+   product *wants*: if the lane should be absolute, then the graph, the lane UI and the clamp comment
+   are all wrong; if the lane is a modulation, the UI and the comment must say so and the lane must
+   stop being labelled in the absolute gain domain. **A product decision is required before any code
+   changes** — and the A/B that a human should perform is: fader at 0.8, one lane point at 0.5, and
+   confirm the channel sits ≈ −8 dB (0.4). If it sits at −6 dB (0.5) instead, the graph has changed
+   since this measurement and the finding must be re-measured.
 2. **F-09 — does the knob lie in practice?** Play an effect with an active lane and move the knob
    by ear: if the knob moves but the sound does not, the gap is user-visible; if the knob is
    already showing the lane value, the finding is cosmetic.
@@ -1387,6 +1604,13 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
     zero fallbacks; **two shapes (entity reordering, instrument creation) were not measured** because
     the probe used wrong command signatures. A CI job that runs the battery with the verifier
     disabled would close this permanently.
+16. **F-25 — which ordering semantics does the product actually want?** The audit measured what
+    *happens* (last-APPLIED-wins on a same-field conflict). Whether the product wants last-ISSUED
+    wins, or wants the conflict surfaced, is a **product decision** — and it is the same decision
+    that determines whether F-25 is a bug or a documented contract.
+17. **F-26 — will any host ever defer `execute`?** Not today; all three are synchronous. The open
+    question is whether a *planned* collab-merged or worker-backed store would — and if so, whether
+    the gate is fixed before that lands.
 
 ---
 
@@ -1403,15 +1627,19 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   grep or file read, and the citation was taken from that verification — not from the delegated
   text. Findings that survived only the delegated reading are labelled **Strongly indicated** and
   are flagged for confirmation.
-- **Two probe harnesses, both executed.** `vite-node` (`tmp-divergence-probe.mts`, 7 sub-probes) and
-  the repository's **vitest** (`tmp-probe/f03.test.ts`, 5 sub-probes, **5/5 green**). An earlier
-  `vite-node` attempt at the second probe hung twice and was abandoned rather than reported as a
-  pass; re-implementing it under vitest loaded the same module graph in 8 seconds.
+- **Three probe harnesses, all executed.** `vite-node` (`tmp-divergence-probe.mts`, 7 sub-probes) and
+  the repository's **vitest** — `tmp-probe/f03.test.ts` (5 sub-probes, **5/5 green**) and
+  `tmp-probe/scenarios.test.ts` (7 sub-probes, **7/7 green**). An earlier `vite-node` attempt at the
+  second probe hung twice and was abandoned rather than reported as a pass; re-implementing it under
+  vitest loaded the same module graph in 8 seconds.
+- **The scenario probes reused the repository's own mock-Web-Audio harness** (`tests/mixer-audit3.test.ts`),
+  whose recording nodes make the **graph topology** assertable rather than inferable — that is how
+  F-10 moved from *strongly indicated* to *confirmed*.
 - **The working tree moved during the audit.** `src/mcp/tools.ts` was edited by another session
-  mid-probe (mtime 11:36:56). The audit therefore **re-measured** rather than trusting its earlier
-  reading: F-03 was found to be fixed, F-05/F-06/F-07 were found to still be open, and both
-  verdicts are reported (§4/F-03, §5.2). Any finding outside `src/mcp/tools.ts` should be
-  re-verified before acting, for the same reason.
+  mid-probe (mtime 11:36:56, and again at 12:01). The audit therefore **re-measured** rather than
+  trusting its earlier reading: F-03 was found to be fixed, F-05/F-06/F-07 were found to still be
+  open, and both verdicts are reported (§4/F-03, §5.2). Any finding outside `src/mcp/tools.ts` should
+  be re-verified before acting, for the same reason.
 - **No test suite, typecheck or build was run** — an explicit evidence limit (§1.4).
 - **Line numbers** were re-verified immediately before writing this file. `src/mcp/tools.ts` was
   under concurrent edit by another session during the audit; a small drift is possible. Where a
