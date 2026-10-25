@@ -1,4 +1,5 @@
 import { McpBridge, type McpBridgeDeps } from "./bridge";
+import { storeRevision } from "./revision";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { mcpRenderAudioPreview } from "../mcp/audio-preview";
@@ -79,6 +80,9 @@ function depsFromServices(services: Services): McpBridgeDeps {
     redo: () => services.store.redo(),
     undoStackLength: () => services.store.undoStackLength,
     historyLabels: () => services.store.history.map((entry) => entry.label),
+    // ADR 0065: the document revision — an agent's declared plan revision
+    // is checked against the live document before a write lands.
+    getRevision: () => storeRevision(services.store),
     isMicRecordingActive,
     transport: services.transport,
     // kyx_meter reads the LIVE engine (null when no audio context is up).

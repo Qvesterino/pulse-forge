@@ -47,6 +47,9 @@ export interface McpBridgeDeps {
   redo(): void;
   undoStackLength(): number;
   historyLabels(): string[];
+  /** ADR 0065: the current document revision (absent → the permission
+   * lattice skips the staleness rule rather than inventing a revision). */
+  getRevision?(): number | null;
   isMicRecordingActive(): boolean;
   transport: McpToolContext["transport"];
   /** Another KYX window took the relay: this window is no longer the executor. */
@@ -159,6 +162,7 @@ export class McpBridge {
         redo: () => this.deps.redo(),
         undoStackLength: () => this.deps.undoStackLength(),
         historyLabels: () => this.deps.historyLabels(),
+        getRevision: this.deps.getRevision != null ? () => this.deps.getRevision!() : undefined,
         isMicRecordingActive: () => this.deps.isMicRecordingActive(),
         transport: this.deps.transport,
         export: this.deps.export,

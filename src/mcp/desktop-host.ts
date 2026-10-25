@@ -1,6 +1,7 @@
 import { executeMcpToolAsync, type McpToolContext, type McpToolResult } from "./tools";
 import { withAgentAttribution } from "./attribution";
 import { mcpAllowDestructive } from "./flags";
+import { storeRevision } from "./revision";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { decodeAudioData } from "../services/audio-decode";
@@ -60,6 +61,9 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     redo: () => services.store.redo(),
     undoStackLength: () => services.store.undoStackLength,
     historyLabels: () => services.store.history.map((entry) => entry.label),
+    // ADR 0065: the document revision, so an agent's declared plan revision
+    // can be checked against the live document.
+    getRevision: () => storeRevision(services.store),
     isMicRecordingActive,
     transport: services.transport,
     // kyx_meter reads the LIVE engine (null when no audio context is up).

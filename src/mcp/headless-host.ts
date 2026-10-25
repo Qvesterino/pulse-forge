@@ -79,6 +79,8 @@ export function createHeadlessMcpHost(options: HeadlessHostOptions): HeadlessHos
     redo: () => store.redo(),
     undoStackLength: () => store.undoStackLength,
     historyLabels: () => store.history.map((entry) => entry.label),
+    // ADR 0065: the document revision (the headless store is a real store).
+    getRevision: () => store.getRevision(),
     isMicRecordingActive: () => false,
     transport,
     // Optional undo-frame contract: the REAL store frames — atomic batches

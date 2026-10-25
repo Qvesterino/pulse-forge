@@ -35,6 +35,13 @@ const COALESCE_WINDOW_MS = 1000;
 
 export class ProjectStore {
   private doc_: ProjectDocument;
+  /**
+   * Monotonic document revision (ADR 0065). Bumped by `afterMutation()` —
+   * the single choke point every applied change passes through. A caller
+   * that computed a plan against revision N and DECLARES it gets a refusal
+   * when the document has moved on since.
+   */
+  private revision_ = 0;
   private listeners = new Set<() => void>();
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
@@ -217,6 +224,13 @@ export class ProjectStore {
   };
 
   getDoc = (): ProjectDocument => this.doc_;
+
+  /**
+   * The current document revision (ADR 0065). Exposed so an agent that
+   * computed a plan can declare the revision it planned against, and be
+   * refused when the document moved on.
+   */
+  getRevision = (): number => this.revision_;
 
   // ─── Fine-grained selectors ──────────────────────────────────────────────
   // Each of these returns the corresponding slice of the document. They
@@ -505,6 +519,10 @@ export class ProjectStore {
   }
 
   private afterMutation(): void {
+    // ADR 0065: every applied change bumps the document revision. This is
+    // the ONE place the counter moves — `afterMutation()` is called by every
+    // path that writes the document (apply, undo, redo, history jump).
+    this.revision_ += 1;
     this.saveStatus_ = "dirty";
     this.emit();
     this.onDocChanged?.(this.doc_);

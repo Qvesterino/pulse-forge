@@ -115,7 +115,8 @@ fails C-1 even once on the golden set does not ship.
 
 **Protocol** (per `AAW_TRAINING_AND_DATA_STRATEGY.md` §6): pairwise, blinded, original included as
 an unlabeled arm, ≥ 30 pairs per claim (≥ 100 for a release-gating claim), CI reported, failure
-cases published.
+cases published. **A panel of 2 produces a DIRECTIONAL read only — it may cancel a capability, never
+certify one** (D-22).
 
 | Metric                               | Threshold                                                                     |
 | ------------------------------------ | ----------------------------------------------------------------------------- |

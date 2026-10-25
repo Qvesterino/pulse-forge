@@ -14,8 +14,13 @@ parity, a hard real-time boundary, typed effect metadata, a deterministic-first 
 local ONNX slot-filler, a local LLM path, deterministic DSP perception, a local preference loop, and
 a vendored (flag-gated) separation model.
 
-**It assumes** it does **not** have: audio understanding, a consent lattice for mutating tools,
-transactional rollback, durable undo, a project-graph planner, or a rate limit.
+**It assumes** it does **not** have: audio understanding, transactional rollback, durable undo, a
+project-graph planner, or a rate limit.
+
+**It assumed** it did **not** have a consent lattice for mutating tools. As of 2026-10-25 that is no
+longer true — the lattice, the scope guard and the revision counter shipped with ADR 0065 (see
+§3.1). What it still does not have is the **per-call** approval surface, the hash-based
+protected-object verifier, and the registry metadata.
 
 **It assumes** the developer is **one primary developer with coding agents**, a 6–16 GB VRAM machine
 and 64 GB RAM for the local tier, and a budget that does not support a 30 B model or a hosted
@@ -134,6 +139,28 @@ capabilities that are already 80 % built._ Nothing in this wave requires a new m
 **Wave 0 exit criterion:** P-3 + P-1 + P-2 shipped, the injection corpus passes at 100 %, and Suite
 C runs at 100 % on the golden set. **Nothing else starts before this.** It is the wave that makes
 every later wave safe.
+
+### 3.1 Wave 0 status (2026-10-25) — what has actually shipped
+
+**Wave 0 has NOT closed.** One of its three items shipped completely; the other two are untouched.
+The table below states the state per item, with the evidence that establishes it. It is written
+against the **committed** tree (`git show HEAD:<path>`), not the working tree.
+
+| Item    | State                       | What exists                                                                                                                                                                                                                                                                                                                                                                                                    | What is still missing                                                                                                                                                                                                                                                 |
+| ------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P-1** | **Shipped (ADR 0065)**      | `src/mcp/permissionLattice.ts` — a pure `decidePermission()` returning `auto` / `confirm` / `forbid`, reusing the existing `ToolRisk` vocabulary; `src/mcp/scope-guard.ts` — declared-scope enforcement before the write lands; a monotonic document revision counter in `ProjectStore`; the MCP write path consults the lattice before it mutates; **29 passing tests** in `tests/permission-lattice.test.ts` | The **per-call** approval UI does not exist — KYX's consent is a **standing** flag (`pf:mcp-allow-mutations`, default OFF), which is strictly weaker than ZYVO's per-call posture. The red-team injection corpus (T-1..T-6) has not been run against the lattice yet. |
+| **P-2** | **Half-shipped (ADR 0065)** | The scope guard verifies the **declared paths and operations** of a write, pre-write and post-write.                                                                                                                                                                                                                                                                                                           | The **hash-based protected-object verifier** — the part that catches a write that mutates an object nobody declared — is **not** implemented. `verifyScope()` reports `verifiable: false` where a hash cannot be computed.                                            |
+| **P-3** | **Not started**             | Nothing.                                                                                                                                                                                                                                                                                                                                                                                                       | A grep for `requiresApproval\|permissionTier\|riskClass\|realtimeSafe` across `src/` returns **0** hits. The registry still carries no `version` / `sideEffects` / `latencyClass` / `undoUnit` metadata.                                                              |
+
+**Consequence for the plan.** The exit criterion above is not met, so **Wave 0 does not close** and
+the next wave does not start. What may proceed in parallel is the part of the program that carries
+**no new AI surface**: the three experiments (E-03, E-06, E-07) and the deterministic capability
+Z-1. The trust argument this program rests on is not yet complete — the gap is named in
+`AAW_DECISION_LOG.md` (D-14, D-21) rather than smoothed over.
+
+**Also decided in this window (2026-10-25), recorded in `AAW_DECISION_LOG.md`:** D-02 → document
+and defer; D-21 → the revision counter lives in the store, not in the document; D-22 → E-07 runs
+with two listeners, directional only.
 
 ---
 

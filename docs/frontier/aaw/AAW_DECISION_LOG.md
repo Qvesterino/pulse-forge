@@ -41,30 +41,40 @@ trust/measurement infrastructure, not AI features).
 
 ## D-02 — The pinned intent model carries a revenue-triggered licence cliff
 
-**Status: Proposed — needs a decision before the next revenue milestone** · **Date: 2026-10-25**
+**Status: Accepted — DOCUMENTED AND DEFERRED (2026-10-25)** · **Revisit: 2028-10-25, or immediately
+before any entity crosses USD 10M annual revenue**
 
 **Context.** The LFM Open License v1.0 §5(a) conditions the commercial-use grant on the using legal
 entity not exceeding **USD 10,000,000 annual revenue**, and §5(b) states that commercial use above
 the Threshold "**is not licensed**". KYX ships and pins `LiquidAI/LFM2.5-1.2B-Instruct` under that
 licence. The audio sibling `LiquidAI/LFM2.5-Audio-1.5B` is under the same licence.
 
-**Decision proposed.** Treat the intent backbone as a **replaceable provider with a permitted
-fallback**, and evaluate an Apache/MIT-licensed alternative (Whisper large-v3 Apache-2.0 for ASR;
-Phi-4-multimodal MIT for understanding; a permissively-licensed text planner) **now**, while the
-decision is cheap. Requirements:
+**Decision (Daniel, 2026-10-25).** **Document and defer.** The working assumption is that the
+shipping entity stays **below USD 10M annual revenue for the next two years**. No Apache/MIT
+fallback backbone is built now.
 
-1. The provider interface carries `version` + `artifactDigest` (already specified in
-   `AAW_AUDIO_MODEL_LANDSCAPE.md` §6).
-2. A second permitted backbone runs the golden intent suite at **≥ parity** — if it cannot, the
-   migration is a legal/business problem, not an engineering one, and must be escalated.
-3. The licence file is **vendored with the model pack**, never fetched at runtime — the licence
-   terminates automatically and immediately on breach (§11), so a runtime fetch is a compliance risk.
+**What deferral does and does not buy.**
 
-**Consequence.** A permanent second backbone to maintain. That cost is accepted deliberately: it is
-insurance priced before the event.
+- **Buys:** zero engineering cost, and the decision stays reversible while it is still cheap.
+- **Does NOT buy:** immunity. The cliff is a property of the _licence_, not of the plan. If the
+  entity crosses the threshold, the shipped intent model becomes unusable, and replacing it is a
+  **licensed migration, not a weight swap** — the model is the pinned, fine-tuned centre of the
+  product.
+- **Therefore the deferral is bounded, and the bound is written down:** the risk is recorded here,
+  the pack ships its licence file **vendored** (the licence terminates automatically on breach —
+  §11 — so a runtime fetch would itself be a compliance failure), and the re-review date is set.
+
+**The cheap hedge that stays available.** The provider interface
+(`AAW_AUDIO_MODEL_LANDSCAPE.md` §6) already carries `version` + `artifactDigest`, so swapping the
+backbone is an adapter change, not a rewrite. `P-8` in the roadmap stays defined and unscheduled —
+**if** the trigger fires, it is a bounded project, not a rebuild.
 
 **Evidence.** `https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct/raw/main/LICENSE` (grade **A**);
 repo pin in `docs/IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md:614`.
+
+**Revisit trigger (any one is sufficient):** (a) the entity's annual revenue approaches USD 10M;
+(b) a distribution decision is made that ships the weights; (c) the licence text changes upstream;
+(d) 2028-10-25, regardless.
 
 ---
 
@@ -271,18 +281,79 @@ automation lanes, legal target resolution) is already exact. A learned embedding
 
 ## D-14 — Port ZYVO's draft-only consent posture to KYX
 
-**Status: Proposed — actionable now** · **Date: 2026-10-25**
+**Status: Accepted — IMPLEMENTED (2026-10-25, ADR 0065)** · **Date: 2026-10-25**
 
 **Context.** ZYVO's external MCP path is **draft-only**; autonomy is not forwarded; acceptance is a
-UI click. KYX's external MCP path lets **21 mutating tools** execute with no per-call approval
-(only 7 destructive tools are gated behind `pf:mcp-allow-destructive`).
+UI click. KYX's external MCP path let **21 mutating tools** execute with no per-call approval
+(only 7 destructive tools were gated behind `pf:mcp-allow-destructive`).
 
-**Decision proposed.** KYX adopts ZYVO's posture as the default for any **external** (non-UI) agent
-transport: proposals are drafted, and acceptance is a user gesture. The internal lattice
-(`AAW_AI_CONTROL_CONTRACTS.md` §4) generalises it for in-product use.
+**Decision.** KYX adopts ZYVO's posture for **external** transports: a mutating call from an
+external agent now needs the user's standing consent (`pf:mcp-allow-mutations`, default OFF). The
+`local` surface — the human in the app, and the in-app intent flow that already previews and
+applies through their own hands — is unchanged.
 
-**Evidence.** `apps/vocalforge-daw/src/agentVoiceManager.ts:5638-5648`;
-`src/mcp/agentTrust.ts:190-193`; `src/mcp/flags.ts:9-17`.
+**What is implemented (ADR 0065).** The permission lattice (`src/mcp/permissionLattice.ts`), the
+scope guard (`src/mcp/scope-guard.ts`), and the document revision counter (`ProjectStore`).
+**29 unit tests** in `tests/permission-lattice.test.ts`.
+
+**What is NOT implemented — the honest gap.** KYX's consent is a **standing** one (a flag), not
+ZYVO's **per-call** one (a UI click). The per-call proposal surface does not exist in KYX yet.
+The standing consent is strictly stronger than the old behaviour and strictly weaker than
+per-call approval. Closing that gap is the next increment of this decision, not a footnote.
+
+**Evidence.** `apps/vocalforge-daw/src/agentVoiceManager.ts:5638-5648` (ZYVO's posture);
+`src/mcp/agentTrust.ts:190-193` + `src/mcp/flags.ts` (KYX's old surface);
+`docs/adr/0065-permission-lattice-and-scope-guard.md` (the decision and its gaps).
+
+---
+
+## D-21 — The revision counter lives in the store, not in the document
+
+**Status: Accepted (2026-10-25, ADR 0065)** · **Date: 2026-10-25**
+
+**Context.** F-25's own commit message says it: _"the document has no revision counter and no
+conflict signal."_ A permission lattice that can refuse a stale plan needs something to compare
+against. Two options: a `revision` field inside the project document (a schema migration), or a
+counter in the store.
+
+**Decision.** The counter lives in `ProjectStore` and moves in **one place** — `afterMutation()`,
+the single choke point every applied change passes through. A command that changes nothing does
+not bump it. The revision is **in memory by design**: a proposal does not survive a reload, so a
+counter that reset with the process cannot create a false "fresh" claim. `McpToolContext.getRevision`
+is optional, and a transport that cannot report one gets `null` — the lattice then **skips** the
+staleness rule rather than inventing a revision.
+
+**Consequence.** The staleness rule is **opt-in**: only a caller that declares a
+`projectRevision` can be refused for staleness. Existing callers are unaffected.
+
+**Revisit if.** Plans become persisted in the project document (the open decision on storing
+plans) — then the revision should travel with them, and the schema bump becomes worth its
+blast radius.
+
+---
+
+## D-22 — E-07 runs on a two-listener panel: directional, not release-gating
+
+**Status: Accepted (2026-10-25)** · **Date: 2026-10-25**
+
+**Context.** E-07 asks whether "more tense" is measurable from the audio. The protocol in
+`AAW_EVALUATION_BENCHMARKS.md` wanted ≥ 30 pairs for a directional read and ≥ 100 for a
+release-gating claim. Daniel can supply **two listeners** (him + one other).
+
+**Decision.** E-07 runs with **two listeners**. Its output is a **directional read, never a release
+gate**, and the protocol says so in the result itself. The kill criterion is unchanged in
+_direction_ (a human win rate below 60 % or a feature accuracy below 55 % means the capability
+ships without the claim) but the **confidence** is materially lower, and the write-up must state
+"n = 2, directional only" in the finding.
+
+**Why this is acceptable.** E-07's job is to **cancel** a feature before it is built, not to
+certify it. A two-listener panel that fails to separate tense from non-tense is still evidence
+that the claim should not be made. A two-listener panel that DOES separate them is evidence to
+_investigate_, not to ship on. The asymmetric cost is acceptable because the downside of the
+feature (shipping a "tension meter" that cannot measure tension) is the whole risk.
+
+**What it forbids.** No release decision may cite E-07's result. Suite D's release gate stays
+closed until a panel of ≥ 3 (preferably ≥ 5) exists.
 
 ---
 
