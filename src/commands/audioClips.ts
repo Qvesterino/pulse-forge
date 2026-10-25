@@ -11,7 +11,12 @@ import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { PPQ } from "../project-model/types";
 import { tempoAtTick } from "../project-model/scene-time";
-import { MAX_ARRANGEMENT_CLIP_BARS, normalizeProject, ticksPerBar } from "../project-model/schema";
+import {
+  MAX_ARRANGEMENT_CLIP_BARS,
+  normalizeProject,
+  sanitizeAudioTakeGroups,
+  ticksPerBar,
+} from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
@@ -480,16 +485,41 @@ export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
   // Group membership dies with the clip; a group down to zero members dies
   // with it (same contract as deleteArrangementClip).
   const clipGroups = clipGroupsWithoutIds(doc.arrangement.clipGroups, [clipId]);
+  const audioClips = (doc.arrangement.audioClips ?? []).filter((c) => c.id !== clipId);
+  // Take groups point AT the deleted clip's take: when the active (or comp)
+  // take loses its LAST clip here, the post-apply normalize pass re-derives
+  // activeTakeId — or drops the comp, or an emptied group — OUTSIDE the
+  // captured undo delta. Undo then restored the clip but kept the promoted
+  // take: the audible mix had changed with no word to the user. Re-deriving
+  // with the normalizer's OWN rule inside the command makes every take-state
+  // change part of `next`, so undo restores it (the same contract as
+  // deleteTrack's cross-reference cleanup).
+  const takeGroups = sanitizeAudioTakeGroups(
+    doc.arrangement.takeGroups,
+    audioClips,
+    new Set(doc.tracks.map((t) => t.id)),
+  );
+  const promoted =
+    doc.arrangement.takeGroups?.some((group) => {
+      const after = takeGroups?.find((item) => item.id === group.id);
+      return after != null && after.activeTakeId !== group.activeTakeId;
+    }) ?? false;
   const next: ProjectDocument = {
     ...doc,
     ...(unlinked !== undefined ? { markers: unlinked } : {}),
     arrangement: {
       ...doc.arrangement,
-      audioClips: (doc.arrangement.audioClips ?? []).filter((c) => c.id !== clipId),
+      audioClips,
       ...(clipGroups !== doc.arrangement.clipGroups ? { clipGroups } : {}),
+      ...(doc.arrangement.takeGroups !== undefined || takeGroups !== undefined ? { takeGroups } : {}),
     },
   };
-  return snapshot("deleteAudioClip", "Delete audio clip", doc, next);
+  return snapshot(
+    "deleteAudioClip",
+    promoted ? "Delete audio clip (active take promoted)" : "Delete audio clip",
+    doc,
+    next,
+  );
 }
 
 /**

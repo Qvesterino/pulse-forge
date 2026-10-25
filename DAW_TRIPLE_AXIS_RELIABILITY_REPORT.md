@@ -337,6 +337,37 @@ told _less_, and what it is told is now expressible.
    (typecheck, format, ratchet, drift), whether the red is owned by an in-flight wave — so V-1 is
    visible in one command instead of re-diagnosed by every session.
 
+## 12a. Addendum — the same session, second half (R-03 + F-07)
+
+Committed after the report's first pass, same session, same method (falsify first, controls stay green):
+
+- **R-03 — the class-ending normalizer guard, SHIPPED (`cc20002e`).** A 33-command removal battery
+  (`tests/normalize-delta-carry.test.ts`) whose every member must restore the document EXACTLY
+  through `execute -> undo` through the real store (normalize included). Teeth proven by mutation:
+  with the deleteTrack cross-reference cleanup removed, exactly the deleteTrack member goes red and
+  the other 32 stay green. Any future command whose normalize pass eats a cross-reference now fails
+  the battery, whatever the field.
+- **F-07 — FIXED (`this commit`).** Both halves re-investigated before fixing:
+  - _Take-clip delete_: the MCP `deleteTake` op's active-comp refusal is explicit policy and stays;
+    the real defect was that the UI/generic path deleted the active take's last clip and let the
+    post-apply normalizer re-derive `activeTakeId` OUTSIDE the undo delta — undo restored the clip
+    while the promoted take stayed active (a silent mix change). `deleteAudioClip` now re-derives
+    the take groups with the normalizer's OWN rule inside the command, so the promotion rides the
+    delta, is named in the label ("active take promoted") and undo restores the original take.
+    Falsified: 3 cases RED pre-fix (incl. a new R-03 battery member), controls (non-active take,
+    multi-clip active take) green throughout.
+  - _Return-bus effects_: the type-level remove already handled returns (fixed by a parallel wave
+    since the 10-23 report), but the per-instance surface (`removeEffect`, `toggleEffectBypass`,
+    `setEffectParam`) resolved owners through `trackEffectsOf`/`withTrackEffects`, which only knew
+    tracks and the master — so removing, bypassing or tuning an effect installed on a RETURN was a
+    silent no-op. The owner pair is now track/return/master-aware; 3 cases RED pre-fix, controls
+    green after.
+- **V-2 closed by the parallel wave** — the `kyx_save` tool-count pin is green (`mcp-tools` 147/147).
+
+The report body above describes the tree at the first pass; §9's backlog rows for R-03 and F-07
+are hereby closed. V-1 (gates red on `main` from concurrent waves) persisted through the session
+and remains the top procedural recommendation.
+
 ## 12. Open questions and residual risk
 
 - **F-07 / F-08** were re-verified open but not re-investigated; both need their own falsification

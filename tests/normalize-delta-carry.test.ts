@@ -46,12 +46,21 @@ import { addMarker, removeMarker } from "../src/commands/markers";
 import { createPattern, deletePattern, clearPattern } from "../src/commands/patterns";
 import { addNote, deleteNote, deleteNotes } from "../src/commands/notes";
 import { addMidiCcMapping, removeMidiCcMapping } from "../src/commands/quantize";
-import { addSceneAutomation, addSceneAutomationPoint, removeSceneAutomation, removeSceneAutomationPoint } from "../src/commands/sceneAutomation";
+import {
+  addSceneAutomation,
+  addSceneAutomationPoint,
+  removeSceneAutomation,
+  removeSceneAutomationPoint,
+} from "../src/commands/sceneAutomation";
 import { createScene, deleteScene } from "../src/commands/scenes";
 import { addArrangementTransition, removeArrangementTransition } from "../src/commands/arrangementShapes";
-import { removeProjectProducerBriefFactCommand, saveProjectProducerBriefCommand } from "../src/commands/producerBriefCommands";
+import {
+  removeProjectProducerBriefFactCommand,
+  saveProjectProducerBriefCommand,
+} from "../src/commands/producerBriefCommands";
 import { setTrackParams } from "../src/commands/project";
-import type { Command, ProjectDocument } from "../src/project-model/types";
+import type { ProjectDocument } from "../src/project-model/types";
+import type { Command } from "../src/commands/types";
 
 /**
  * R-03 — THE CLASS-ENDING GUARD: the post-apply normalizer must not prune
@@ -75,8 +84,7 @@ interface BatteryEntry {
   remove(doc: ProjectDocument): Command;
 }
 
-const instrumentTrackId = (doc: ProjectDocument): string =>
-  doc.tracks.find((track) => track.kind === "instrument")!.id;
+const instrumentTrackId = (doc: ProjectDocument): string => doc.tracks.find((track) => track.kind === "instrument")!.id;
 const drumTrackId = (doc: ProjectDocument): string => doc.tracks.find((track) => track.kind === "drum")!.id;
 
 const gainTarget = (doc: ProjectDocument) => ({ kind: "trackGain" as const, trackId: instrumentTrackId(doc) });
@@ -152,7 +160,7 @@ const BATTERY: BatteryEntry[] = [
     name: "removeInputEffect",
     setup(store) {
       const trackId = instrumentTrackId(store.doc);
-      store.execute(setInputInsertMode(store.doc, trackId, "external"));
+      store.execute(setInputInsertMode(store.doc, trackId, "baked"));
       store.execute(addInputEffect(store.doc, trackId, "eq"));
     },
     remove: (doc) => {
@@ -167,7 +175,7 @@ const BATTERY: BatteryEntry[] = [
     name: "clearInputInsert",
     setup(store) {
       const trackId = instrumentTrackId(store.doc);
-      store.execute(setInputInsertMode(store.doc, trackId, "external"));
+      store.execute(setInputInsertMode(store.doc, trackId, "baked"));
       store.execute(addInputEffect(store.doc, trackId, "eq"));
     },
     remove: (doc) => clearInputInsert(doc, instrumentTrackId(doc)),
@@ -198,6 +206,23 @@ const BATTERY: BatteryEntry[] = [
     remove: (doc) => {
       const clip = doc.arrangement.audioClips?.[0];
       if (!clip) throw new Error("setup: no audio clip");
+      return deleteAudioClip(doc, clip.id);
+    },
+  },
+  {
+    name: "deleteAudioClip (the ACTIVE take's last clip — the promotion must ride the delta)",
+    setup(store) {
+      const trackId = instrumentTrackId(store.doc);
+      store.execute(addAudioTakeClip(store.doc, "group-1", "take-1", trackId, "factory.kick", 0, 4));
+      store.execute(addAudioTakeClip(store.doc, "group-1", "take-2", trackId, "factory.kick", 0, 4));
+      const group = store.doc.arrangement.takeGroups?.find((item) => item.id === "group-1");
+      if (!group || group.activeTakeId !== "take-1") throw new Error("setup: take-1 is not the active take");
+    },
+    remove: (doc) => {
+      const clip = (doc.arrangement.audioClips ?? []).find(
+        (candidate) => candidate.takeGroupId === "group-1" && candidate.takeId === "take-1",
+      );
+      if (!clip) throw new Error("setup: no active-take clip");
       return deleteAudioClip(doc, clip.id);
     },
   },
@@ -378,7 +403,9 @@ const BATTERY: BatteryEntry[] = [
     name: "deleteNotes (two at once)",
     setup(store) {
       store.execute(addNote(store.doc, drumTrackId(store.doc), { pitch: 36, start: 0, duration: 120, velocity: 0.9 }));
-      store.execute(addNote(store.doc, drumTrackId(store.doc), { pitch: 38, start: 480, duration: 120, velocity: 0.8 }));
+      store.execute(
+        addNote(store.doc, drumTrackId(store.doc), { pitch: 38, start: 480, duration: 120, velocity: 0.8 }),
+      );
     },
     remove: (doc) => {
       const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId)!;
@@ -427,12 +454,12 @@ const BATTERY: BatteryEntry[] = [
     },
   },
   {
-    name: "deleteScene (a SECOND scene — the active one stays)",
+    name: "deleteScene (a spare scene — the house scene stays)",
     setup(store) {
       store.execute(createScene(store.doc, "Spare"));
     },
     remove: (doc) => {
-      const scene = doc.scenes.find((candidate) => candidate.id !== doc.activeSceneId);
+      const scene = doc.scenes.find((candidate) => candidate.name === "Spare");
       if (!scene) throw new Error("setup: no spare scene");
       return deleteScene(doc, scene.id);
     },

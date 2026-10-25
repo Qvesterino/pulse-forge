@@ -20,7 +20,7 @@ import { STEP_TICKS } from "../project-model/types";
  * modules would have to import from the barrel, and the barrel imports them - a cycle.
  */
 
-/** Apply `fn` to one track's effect chain, leaving every other track untouched. */
+/** Apply `fn` to one owner's effect chain (track, return or master), leaving every other owner untouched. */
 export function withTrackEffects(
   doc: ProjectDocument,
   trackId: string,
@@ -29,15 +29,26 @@ export function withTrackEffects(
   if (trackId === MASTER_EFFECT_OWNER_ID) {
     return { ...doc, master: { ...doc.master, effects: fn(doc.master.effects ?? []) } };
   }
+  if (doc.returns.some((r) => r.id === trackId)) {
+    // A return bus owns an effect chain too (addEffectToTracks accepts return
+    // ids) — the per-instance surface (remove/bypass/params) must address it
+    // the same way, or removing an effect from a return is a silent no-op.
+    return {
+      ...doc,
+      returns: doc.returns.map((r) => (r.id === trackId ? { ...r, effects: fn(r.effects) } : r)),
+    };
+  }
   return {
     ...doc,
     tracks: doc.tracks.map((t) => (t.id === trackId && "effects" in t ? { ...t, effects: fn(t.effects) } : t)),
   };
 }
 
-/** A track's effect chain, or an empty list for tracks that carry none. */
+/** A track's, return's or master's effect chain, or an empty list for owners that carry none. */
 export function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {
   if (trackId === MASTER_EFFECT_OWNER_ID) return doc.master.effects ?? [];
+  const ret = doc.returns.find((r) => r.id === trackId);
+  if (ret) return ret.effects;
   const track = doc.tracks.find((t) => t.id === trackId);
   return track && "effects" in track ? track.effects : [];
 }
