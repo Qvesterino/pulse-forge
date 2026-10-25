@@ -57,7 +57,8 @@ import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { summarizeDocumentChange } from "./intent-readback";
 import { verifiedMutation } from "./verified-mutation";
-import { guardStaleWrites, WriteConflictError } from "./write-conflict";
+import { guardStaleWrites, describePath, readPath, WriteConflictError } from "./write-conflict";
+import { deepEqualRef, type DeltaPath } from "../commands/docDelta";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import {
@@ -3536,6 +3537,25 @@ export interface McpToolResult {
   stage?: McpCompletionStage;
   /** Per-CALL risk (per-op, not the conservative tool-level annotation). */
   risk?: ToolRisk;
+  /**
+   * P1-B replay, the SECOND channel: what holds NOW for the fields the
+   * ORIGINAL call wrote.
+   *
+   * A replay's own `text` and `data` are the ORIGINAL outcome — a pinned
+   * contract (tests/mcp-idempotency.test.ts), because the requestId names ONE
+   * logical operation and the agent owns undo/redo. A client that needs the
+   * present reads THIS instead. It carries the CHANGED fields only — never the
+   * whole state.
+   */
+  current?: McpCurrentState;
+}
+
+/** What moved since the original call — the fields it wrote, and their values now. */
+export interface McpCurrentState {
+  /** TRUE when at least one written field moved since the original call. */
+  moved: boolean;
+  /** The written fields whose value moved since (empty when nothing moved). */
+  changed: Array<{ path: string; was: unknown; now: unknown }>;
 }
 
 /**
@@ -3585,6 +3605,26 @@ export type McpErrorCode =
  * per-call ledger in `data`). */
 function mcpError(code: McpErrorCode, text: string, overrides?: Partial<McpToolResult>): McpToolResult {
   return { text, mutated: false, isError: true, errorCode: code, ...overrides };
+}
+
+/**
+ * What holds NOW for the fields the ORIGINAL call wrote (audit F-06).
+ *
+ * The replay's own text and data are the original outcome — a pinned contract,
+ * because the requestId names ONE logical operation. This is the SECOND
+ * channel: the fields that moved since, with the value they held then and the
+ * value they hold now. It is deliberately NOT the whole state — only what the
+ * call wrote, and only what actually moved.
+ */
+function replayCurrentState(written: WrittenField[] | undefined, doc: ProjectDocument): McpCurrentState {
+  const changed: McpCurrentState["changed"] = [];
+  for (const field of written ?? []) {
+    const now = readPath(doc, field.path);
+    if (!deepEqualRef(field.value, now)) {
+      changed.push({ path: describePath(field.path, doc), was: field.value, now });
+    }
+  }
+  return { moved: changed.length > 0, changed };
 }
 
 function transportReadback(transport: McpToolContext["transport"], doc: ProjectDocument) {
@@ -4035,7 +4075,22 @@ interface IdempotencyEntry {
   docId: string;
   signature: string;
   result: McpToolResult;
+  /**
+   * The fields this call WROTE (path + the value it wrote). A later replay
+   * uses them to report what holds NOW for those fields — the replay's own
+   * outcome is the original one (a pinned contract).
+   */
+  written?: WrittenField[];
 }
+
+/** One field the original call wrote. */
+interface WrittenField {
+  path: DeltaPath;
+  value: unknown;
+}
+
+/** How many written fields one call may record for a later replay. */
+const MAX_RECORDED_WRITES = 16;
 
 const idempotencyLedger = new Map<string, IdempotencyEntry>();
 interface IdempotencyFlight {
@@ -4449,11 +4504,25 @@ ${preview.text}`,
   // R-02: the undo stack depth BEFORE the handler runs — the only honest
   // witness of whether the tool recorded an undo step of its own.
   const undoDepthBefore = ctx.undoStackLength();
+  // F-06: the fields this call WROTE — a later replay of the same requestId
+  // reports what holds NOW for them (the replay's own outcome is the original
+  // one, which is a pinned contract).
+  const written: WrittenField[] = [];
   let result: McpToolResult;
   try {
     // Audit F-25: every AI write passes the stale-write guard — a field that
     // moved between the tool's read and the apply is refused, not overwritten.
-    result = await executeMcpToolDispatch(guardStaleWrites(ctx, forceWrite), name, args);
+    const recordingCtx: McpToolContext = {
+      ...ctx,
+      execute: (command: Command) => {
+        for (const op of command.ops ?? []) {
+          if (written.length >= MAX_RECORDED_WRITES) break;
+          if (op.k === "set" || op.k === "ins") written.push({ path: op.path, value: op.value });
+        }
+        ctx.execute(command);
+      },
+    };
+    result = await executeMcpToolDispatch(guardStaleWrites(recordingCtx, forceWrite), name, args);
   } catch (error) {
     mcpCallDepth -= 1;
     job?.fail(error);

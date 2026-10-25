@@ -136,7 +136,8 @@ export class PreviewDeck {
    */
   previewInstrumentPreset(trackId: string, preset: InstrumentPreset): void {
     const track = this.deps.doc()?.tracks.find((candidate): candidate is InstrumentTrack => {
-      return candidate.kind === "instrument" && candidate.id === trackId;    });
+      return candidate.kind === "instrument" && candidate.id === trackId;
+    });
     if (!track || preset.instrument !== track.instrument) return;
     const params = { ...track.params };
     for (const [id, value] of Object.entries(preset.params)) {

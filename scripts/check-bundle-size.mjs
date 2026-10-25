@@ -709,6 +709,20 @@ let strunaWorkletKb = 0;
 }
 console.log(`[size-budget] STRUNA worklet: ${strunaWorkletKb.toFixed(0)} KB (budget ${STRUNA_WORKLET_BUDGET_KB})`);
 
+// DYMKA wind worklet: lazy INSTRUMENT module (ADR 0062), loaded only for
+// projects with a DYMKA track. Breath model + biquads; 32 KB ceiling.
+const DYMKA_WORKLET_BUDGET_KB = 32;
+let dymkaWorkletKb = 0;
+{
+  const path = join(dist, "dymka-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing DYMKA worklet: dist/dymka-worklet.js");
+    process.exit(1);
+  }
+  dymkaWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] DYMKA worklet: ${dymkaWorkletKb.toFixed(0)} KB (budget ${DYMKA_WORKLET_BUDGET_KB})`);
+
 // SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
 // (loaded only for projects that use the effect), so it carries its own
 // budget row instead of inflating the core boot bundle. All-pass-only DSP —

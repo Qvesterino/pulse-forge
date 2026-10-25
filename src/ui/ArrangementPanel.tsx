@@ -17,6 +17,12 @@ import { ScenesPanel } from "./arrangement/ScenesPanel";
 import { ArrangementViewControls } from "./arrangement/ArrangementViewControls";
 import { MidiClipLanes } from "./arrangement/MidiClipLanes";
 import { requestMidiClipEditorNavigation } from "./arrangement/midiClipEditorNavigation";
+import {
+  VIEWPORT_COMMIT_QUANTUM_PX,
+  viewportDecision,
+  type ArrangementViewport,
+  type CommittedViewport,
+} from "./arrangement/viewport";
 import { AutomationClipLanes } from "./arrangement/AutomationClipLanes";
 import {
   clearTimelineGroupDragPreview,

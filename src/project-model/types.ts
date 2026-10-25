@@ -104,7 +104,8 @@ export type InstrumentKind =
   | "hlas"
   | "strk"
   | "cink"
-  | "struna";
+  | "struna"
+  | "dymka";
 
 export interface EffectInstance {
   id: ID;

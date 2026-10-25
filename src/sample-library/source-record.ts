@@ -139,8 +139,10 @@ export interface SourceDraft {
  * (It is an identity marker, not a security hash.)
  */
 export function sourceContentHash(pcm: Float32Array, sampleRate: number): string {
-  // Sample the signal at a fixed stride so the hash depends on the AUDIO,
-  // not on the file's length in bytes or the machine that read it.
+  // Sample the signal at a fixed stride so the hash depends on the AUDIO
+  // rather than on the machine that read it. The recording's LENGTH is part
+  // of its identity: a truncated take is a different source, not a weaker
+  // reading of the same one — and the sample rate is part of it too.
   const stride = Math.max(1, Math.floor(pcm.length / 4096));
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193;
@@ -208,7 +210,8 @@ export function markSourceMissing(record: SourceRecord, reason: string): SourceR
  */
 export function describeSourcePitch(pitch: SourcePitch): string {
   if (pitch.rootMidi === null) return "no pitch detected";
-  if (pitch.rootConfidence >= 0.5) return `root MIDI ${pitch.rootMidi} (${(pitch.rootConfidence * 100).toFixed(0)} % sure)`;
+  if (pitch.rootConfidence >= 0.5)
+    return `root MIDI ${pitch.rootMidi} (${(pitch.rootConfidence * 100).toFixed(0)} % sure)`;
   return `root ~MIDI ${pitch.rootMidi} (weak, ${(pitch.rootConfidence * 100).toFixed(0)} % sure)`;
 }
 

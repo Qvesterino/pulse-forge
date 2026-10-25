@@ -141,7 +141,10 @@ describe("forgeCandidates — honesty", () => {
       for (const candidate of set.candidates) {
         expect(candidate.reason.length, `${voice.id}/${candidate.id} must explain itself`).toBeGreaterThan(0);
         if (candidate.rootMidi === null) {
-          expect(candidate.warnings.length, `${voice.id}/${candidate.id} must warn about the missing root`).toBeGreaterThan(0);
+          expect(
+            candidate.warnings.length,
+            `${voice.id}/${candidate.id} must warn about the missing root`,
+          ).toBeGreaterThan(0);
         }
       }
     }

@@ -205,6 +205,22 @@ export function moveTrackAdjacent(
   return snapshot("moveTrackAdjacent", `Move ${moved!.name}`, doc, { ...doc, tracks });
 }
 
+/**
+ * Keyboard/palette reorder: move a track by whole list steps instead of
+ * naming a neighbour. Off the ends of the list this is a NO-OP (returns null)
+ * so an Alt+Shift+Arrow at the top of the stack neither errors nor pushes a
+ * junk undo entry — the caller just does nothing.
+ */
+export function moveTrackBySteps(doc: ProjectDocument, trackId: string, steps: -1 | 1): Command | null {
+  const from = doc.tracks.findIndex((t) => t.id === trackId);
+  if (from === -1) return null;
+  const to = from + steps;
+  if (to < 0 || to >= doc.tracks.length) return null;
+  const neighbor = doc.tracks[to]!;
+  if (!neighbor) return null;
+  return moveTrackAdjacent(doc, trackId, neighbor.id, steps < 0 ? "before" : "after");
+}
+
 export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   if (doc.tracks.length <= 1) throw new Error("Cannot delete the last track");
   const target = doc.tracks.find((t) => t.id === trackId);

@@ -17,6 +17,8 @@ import { createHlasRuntime } from "./hlasNode";
 import { createHlasFallbackRuntime } from "./hlasFallback";
 import { createStrunaRuntime } from "./strunaNode";
 import { createStrunaFallbackRuntime } from "./strunaFallback";
+import { createDymkaRuntime } from "./dymkaNode";
+import { createDymkaFallbackRuntime } from "./dymkaFallback";
 import { createStrkRuntime } from "./strkNode";
 import { createStrkFallbackRuntime } from "./strkFallback";
 import { createCinkRuntime } from "./cinkNode";
@@ -54,6 +56,7 @@ import {
   ladicParams,
   hlasParams,
   strunaParams,
+  dymkaParams,
   strkParams,
   cinkParams,
   WAVE_NAMES,
@@ -7004,6 +7007,36 @@ const struna: InstrumentDefinition = {
 };
 
 /**
+ * DYMKA (ADR 0062) — the breath-driven wind instrument. The worklet runs
+ * the embouchure model (breath → amplitude + brightness + reed noise +
+ * pitch lift); without the module a saw through a bandpass keeps the
+ * track audible.
+ */
+const dymka: InstrumentDefinition = {
+  kind: "dymka",
+  name: "DYMKA",
+  params: dymkaParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("dymka", ctx)) {
+      return createDymkaRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "dymka-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createDymkaFallbackRuntime(ctx, track);
+  },
+};
+
+/**
  * ŠTRK (ADR 0060) — the snare designer: SNAP/BODY/WIRES/SNAPPY layers.
  * Without the module a noise-burst + sine body keeps the track audible.
  */
@@ -7100,6 +7133,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   ladic,
   hlas,
   struna,
+  dymka,
   strk,
   cink,
 };

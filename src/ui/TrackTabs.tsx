@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useSelection, useServices, useTracks } from "./context";
+import { useSelection, useSelectionStore, useServices, useTracks } from "./context";
 import {
   createDrumTrack,
   createGenerativeTrack,
   createGroupTrack,
   createInstrumentTrack,
+  deleteTrack,
+  duplicateTrack,
+  moveTrackBySteps,
   setInstrumentSample,
   setTrackParams,
 } from "../commands/commands";
@@ -45,6 +48,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   strk: "ŠT",
   cink: "CN",
   struna: "ST",
+  dymka: "DM",
 };
 
 export function trackBadge(track: Track): string {
@@ -62,6 +66,7 @@ export function TrackTabs({
   onSelectTrack: (trackId: string, e?: React.MouseEvent) => void;
 }) {
   const selection = useSelection();
+  const selectionStore = useSelectionStore();
   const services = useServices();
   // Fine-grained selector (GOAL 04): TrackTabs only ever reads `tracks`.
   // Subscribing to the whole document via `useDoc()` would re-render every
@@ -73,6 +78,40 @@ export function TrackTabs({
   // Sample drop hover (V4) — which tab is currently under a KYX sample drag.
   const [sampleOver, setSampleOver] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // F-02: the tab IS the track's nameplate — right-click / Menu-key opens the
+  // same actions the Mixer strip owns, so no panel switch is needed. Position
+  // is viewport-fixed (`.fader-menu` is fixed); a keyboard Menu key reports
+  // 0/0, so fall back to the tab's own rect.
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; trackId: string } | null>(null);
+
+  useEffect(() => {
+    if (!tabMenu) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".fader-menu")) return;
+      setTabMenu(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [tabMenu]);
+
+  const menuTrack = tabMenu != null ? (tracks.find((track) => track.id === tabMenu.trackId) ?? null) : null;
+  const openTabMenu = (track: Track, event: { clientX: number; clientY: number; currentTarget: Element }) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX > 0 ? event.clientX : rect.left + rect.width / 2;
+    const y = event.clientY > 0 ? event.clientY : rect.bottom;
+    setTabMenu({ x, y, trackId: track.id });
+  };
+  const moveMenuCommand = (steps: -1 | 1) => (menuTrack != null ? moveTrackBySteps(doc, menuTrack.id, steps) : null);
+  const deleteMenuTrack = () => {
+    if (menuTrack == null) return;
+    const confirmed = window.confirm(
+      `Delete track “${menuTrack.name}”? Ctrl+Z restores it until you leave this project.`,
+    );
+    if (!confirmed) return;
+    services.store.execute(deleteTrack(doc, menuTrack.id));
+    selectionStore.pruneTrack(menuTrack.id);
+  };
 
   const beginRename = (trackId: string, name: string) => {
     setEditingTrackId(trackId);
@@ -130,6 +169,10 @@ export function TrackTabs({
             className={`track-tab${isSelected ? " active" : ""}${sampleOver === track.id ? " drop-target" : ""}`}
             title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}F2 to rename) — Ctrl+click add, Shift+click range${track.kind === "instrument" ? " · drop a sample to load it" : ""}`}
             onClick={(e) => onSelectTrack(track.id, e)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openTabMenu(track, e);
+            }}
             onDoubleClick={() => beginRename(track.id, track.name)}
             onKeyDown={(event) => {
               if (event.key === "F2") {
@@ -163,6 +206,72 @@ export function TrackTabs({
           </button>
         );
       })}
+      {tabMenu != null && menuTrack != null && (
+        <div
+          className="fader-menu"
+          role="menu"
+          aria-label={`Track actions — ${menuTrack.name}`}
+          style={{ left: tabMenu.x, top: tabMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">TRACK</div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              beginRename(menuTrack.id, menuTrack.name);
+              setTabMenu(null);
+            }}
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              services.store.execute(duplicateTrack(doc, menuTrack.id));
+              setTabMenu(null);
+            }}
+          >
+            Duplicate (with FX)
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={tracks.length <= 1}
+            onClick={() => {
+              deleteMenuTrack();
+              setTabMenu(null);
+            }}
+          >
+            Delete…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={moveMenuCommand(-1) == null}
+            onClick={() => {
+              const command = moveMenuCommand(-1);
+              if (command) services.store.execute(command);
+              setTabMenu(null);
+            }}
+          >
+            Move up
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={moveMenuCommand(1) == null}
+            onClick={() => {
+              const command = moveMenuCommand(1);
+              if (command) services.store.execute(command);
+              setTabMenu(null);
+            }}
+          >
+            Move down
+          </button>
+        </div>
+      )}
       <select
         className="fx-add-select track-add"
         value=""

@@ -39,6 +39,9 @@ export type ShortcutKey =
   | "selectTrack9"
   | "toggleMuteTrack"
   | "toggleSoloTrack"
+  | "moveTrackUp"
+  | "moveTrackDown"
+  | "duplicateTrack"
   | "panelMix"
   | "panelFx"
   | "panelArr"
@@ -164,6 +167,23 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "selectTrack9", label: "Select track 9", group: "Tracks", keyHint: "9" },
   { key: "toggleMuteTrack", label: "Mute selected track", group: "Tracks", keyHint: "M", alt: true },
   { key: "toggleSoloTrack", label: "Solo selected track", group: "Tracks", keyHint: "S", alt: true },
+  { key: "moveTrackUp", label: "Move selected track up", group: "Tracks", keyHint: "ArrowUp", alt: true, shift: true },
+  {
+    key: "moveTrackDown",
+    label: "Move selected track down",
+    group: "Tracks",
+    keyHint: "ArrowDown",
+    alt: true,
+    shift: true,
+  },
+  {
+    key: "duplicateTrack",
+    label: "Duplicate selected track (with FX)",
+    group: "Tracks",
+    keyHint: "D",
+    ctrl: true,
+    shift: true,
+  },
 
   { key: "nextPattern", label: "Next pattern", group: "Patterns", keyHint: "PageDown" },
   { key: "prevPattern", label: "Previous pattern", group: "Patterns", keyHint: "PageUp" },

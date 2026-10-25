@@ -57,6 +57,9 @@ import {
   deleteNotes,
   duplicatePattern,
   duplicateTimeRange,
+  duplicateTrack,
+  moveTrackAdjacent,
+  moveTrackBySteps,
   assistFill,
   assistVary,
   setActivePattern,
@@ -793,6 +796,20 @@ export function App({
       case "toggleSoloTrack":
         event?.preventDefault();
         services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }));
+        return;
+      case "moveTrackUp":
+      case "moveTrackDown": {
+        event?.preventDefault();
+        // Off the ends of the track stack the command factory returns null —
+        // an arrow at the boundary is a no-op, not an error or junk undo.
+        const steps = matched === "moveTrackUp" ? (-1 as const) : (1 as const);
+        const command = moveTrackBySteps(doc, track.id, steps);
+        if (command) services.store.execute(command);
+        return;
+      }
+      case "duplicateTrack":
+        event?.preventDefault();
+        services.store.execute(duplicateTrack(doc, track.id));
         return;
       case "panelMix":
       case "panelFx":

@@ -9,6 +9,14 @@ import {
   applyForgeCandidateCommand,
 } from "../commands/commands";
 import { forgeCandidates as forgeCandidateSet, candidateSummary, type ForgeCandidate } from "../tsar/forge-candidates";
+import {
+  buildSourceRecord,
+  describeSourcePitch,
+  describeSourceState,
+  markSourceMissing,
+  sourceContentHash,
+  type SourceRecord,
+} from "../sample-library/source-record";
 import { mutateTsarPatch, mutationReveal, type TsarMutation } from "../tsar/mutations";
 import { TSAR_FACTORY_PRESETS } from "../presets/tsar-factory";
 import { importAudioFile } from "./sample-import";
@@ -240,12 +248,46 @@ export function TsarPanel() {
   const [forgeCandidates, setForgeCandidates] = useState<ForgeCandidate[]>([]);
   const [forgeSampleId, setForgeSampleId] = useState<string | null>(null);
   const [forgeSelected, setForgeSelected] = useState<string | null>(null);
+  /**
+   * The record of the SOURCE the readings came from (roadmap R2).
+   *
+   * The source lives BESIDE the patch: the patch keeps only an id, and this
+   * record says what that id MEANS — its name, its measured root, its
+   * content hash, and whether its bytes are actually here. It is built from
+   * the import, so it describes the sound rather than the patch.
+   */
+  const [forgeSource, setForgeSource] = useState<SourceRecord | null>(null);
+
+  /**
+   * The record of the source the PATCH points at, in the targeted slot.
+   *
+   * This is where the dangling id shows up: a project can reference a sample
+   * the library no longer holds, and the producer must be able to SEE that
+   * (and act on it) instead of hearing silence with no explanation.
+   */
+  const patchSource = ((): SourceRecord | null => {
+    const id = forgeSlot === 0 ? track.sampleId : (track.sampleIdB ?? null);
+    if (!id) return null;
+    const buffer = services.bank.get(id);
+    const record = buildSourceRecord({
+      id,
+      contentHash: "",
+      name: id,
+      fileName: id,
+      origin: id.startsWith("factory.") ? "factory" : "imported",
+      durationSec: buffer?.duration ?? 0,
+      sampleRate: buffer?.sampleRate ?? 0,
+      channels: buffer?.numberOfChannels ?? 0,
+    });
+    return buffer ? record : markSourceMissing(record, "the audio is not in your library");
+  })();
 
   const forgeFromFile = async (file: File) => {
     setForgeStatus(`Reading ${file.name}…`);
     setForgeCandidates([]);
     setForgeSelected(null);
     setForgeSampleId(null);
+    setForgeSource(null);
     try {
       const asset = await importAudioFile(services, file);
       const buffer = services.bank.get(asset.id);
@@ -263,6 +305,31 @@ export function TsarPanel() {
       setForgeSampleId(asset.id);
       const first = set.candidates[0]!;
       setForgeSelected(first.id);
+      // The source gets a record of its own, so the sound is described
+      // independently of the patch that will play it.
+      setForgeSource(
+        buildSourceRecord(
+          {
+            id: asset.id,
+            contentHash: sourceContentHash(buffer.getChannelData(0), buffer.sampleRate),
+            name: asset.name,
+            fileName: asset.fileName,
+            origin: "imported",
+            durationSec: buffer.duration,
+            sampleRate: buffer.sampleRate,
+            channels: buffer.numberOfChannels,
+            ...(asset.bpm !== undefined ? { bpm: asset.bpm } : {}),
+          },
+          {
+            pitch: {
+              rootMidi: set.plan.rootMidi,
+              rootConfidence: set.plan.rootConfidence,
+              rootHz: set.plan.rootHz,
+            },
+            envelope: { attackSec: set.plan.envelope.attackSec, releaseSec: set.plan.envelope.releaseSec },
+          },
+        ),
+      );
       setForgeStatus(
         `${set.candidates.length} candidate${set.candidates.length === 1 ? "" : "s"} from ${file.name} — hear them, then apply.`,
       );
@@ -276,17 +343,14 @@ export function TsarPanel() {
     if (!forgeSampleId) return;
     // A Source B candidate is auditioned with the NEW B source and the
     // track's own A source — that is the patch the candidate would land in.
-    const sources =
-      candidate.slot === 0 ? { sampleId: forgeSampleId } : { sampleIdB: forgeSampleId };
+    const sources = candidate.slot === 0 ? { sampleId: forgeSampleId } : { sampleIdB: forgeSampleId };
     services.engine.previewInstrumentWithSources(track.id, 60, candidate.params, sources);
   };
 
   /** Apply the chosen candidate: ONE undoable command. */
   const applyCandidate = (candidate: ForgeCandidate) => {
     if (!forgeSampleId) return;
-    services.store.execute(
-      applyForgeCandidateCommand(services.store.doc, track.id, forgeSampleId, candidate),
-    );
+    services.store.execute(applyForgeCandidateCommand(services.store.doc, track.id, forgeSampleId, candidate));
     setForgeStatus(
       `Applied ${candidate.label} to source ${candidate.slot === 0 ? "A" : "B"}.${candidate.warnings.length > 0 ? ` — ${candidate.warnings.join("; ")}` : ""}`,
     );
@@ -458,6 +522,24 @@ export function TsarPanel() {
           <div className="tsar-forge-hint">
             Drop a WAV here — one import, several honest readings. Hear them, then apply the one you want.
           </div>
+          {patchSource && (
+            <p className={`tsar-source-line${patchSource.state === "missing" ? " missing" : ""}`}>
+              <span className="tsar-source-line-label">PATCH SOURCE</span>
+              <span className="tsar-source-line-id">{patchSource.id}</span>
+              <span>{describeSourceState(patchSource)}</span>
+            </p>
+          )}
+          {forgeSource && (
+            <p className="tsar-source-line">
+              <span className="tsar-source-line-label">READING SOURCE</span>
+              <span className="tsar-source-line-id">{forgeSource.name}</span>
+              <span>{describeSourcePitch(forgeSource.pitch)}</span>
+              <span>
+                {forgeSource.durationSec.toFixed(2)} s · {(forgeSource.sampleRate / 1000).toFixed(1)} kHz
+              </span>
+              <span className="tsar-source-line-hash">#{forgeSource.contentHash.slice(0, 8)}</span>
+            </p>
+          )}
           {forgeCandidates.length > 0 && (
             <ul className="tsar-candidates" aria-label="Forge candidates">
               {forgeCandidates.map((candidate) => {

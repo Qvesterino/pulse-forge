@@ -187,6 +187,43 @@
   font-size: var(--fs-compact);
 }
 
+/* ── Source lines (roadmap wave 3, plan R2) ─────────────────────────────────
+   The source is described BESIDE the patch: one line for the sound the patch
+   points at (which can be MISSING — that must be visible, not a silent hole),
+   one for the sound the current readings came from. Compact by design: the
+   panel is controls, not an essay. */
+.tsar-source-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
+  color: var(--text-dim);
+  font-size: var(--fs-compact);
+}
+
+.tsar-source-line.missing {
+  color: var(--warning, #e0a34a);
+}
+
+.tsar-source-line-label {
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+
+.tsar-source-line-id {
+  color: var(--text-main);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tsar-source-line-hash {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Forge candidates (roadmap wave 3) ──────────────────────────────────
    Each candidate is a READING of the same sound. The evidence line and the
    reason line are what make the reading honest, so they get real space

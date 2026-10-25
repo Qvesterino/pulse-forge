@@ -140,10 +140,5 @@ export function applyForgeCandidateCommand(
   };
   const targetLabel = slot === 0 ? "A" : "B";
   const rootNote = candidate.rootReliable && candidate.rootMidi !== null ? `root MIDI ${candidate.rootMidi}, ` : "";
-  return snapshot(
-    "applyForgeCandidate",
-    `Forge ${candidate.label}${rootNote}into TSAR ${targetLabel}`,
-    doc,
-    next,
-  );
+  return snapshot("applyForgeCandidate", `Forge ${candidate.label}${rootNote}into TSAR ${targetLabel}`, doc, next);
 }

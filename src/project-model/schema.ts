@@ -203,6 +203,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   strk: "Štrk",
   cink: "Cink",
   struna: "Struna",
+  dymka: "Dymka",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {

@@ -109,6 +109,7 @@ export {
   deleteTrack,
   duplicateTrack,
   moveTrackAdjacent,
+  moveTrackBySteps,
   removeEffectFromTracks,
   removeFromGroup,
   setEffectBypassOnTracks,
