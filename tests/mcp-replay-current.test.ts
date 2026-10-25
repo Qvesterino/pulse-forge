@@ -62,9 +62,7 @@ describe("the replay's second channel — what holds NOW (F-06)", () => {
 
     // THE PINNED CONTRACT — the original outcome, unchanged.
     expect(replay.mutated).toBe(true);
-    expect(replay.text).toBe(
-      `idempotent replay — requestId was already applied; nothing re-executed\n${first.text}`,
-    );
+    expect(replay.text).toBe(`idempotent replay — requestId was already applied; nothing re-executed\n${first.text}`);
     expect(replay.data).toEqual(first.data);
 
     // THE SECOND CHANNEL — what holds now for the field the call wrote.

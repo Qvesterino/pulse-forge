@@ -101,9 +101,7 @@ export function readPath(root: unknown, path: DeltaPath): unknown {
     } else if (typeof segment === "number") {
       node = Array.isArray(node) ? node[segment] : undefined;
     } else {
-      node = Array.isArray(node)
-        ? node.find((item) => isObject(item) && item.id === segment.id)
-        : undefined;
+      node = Array.isArray(node) ? node.find((item) => isObject(item) && item.id === segment.id) : undefined;
     }
   }
   return node;
