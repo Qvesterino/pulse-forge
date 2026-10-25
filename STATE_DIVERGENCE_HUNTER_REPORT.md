@@ -864,6 +864,76 @@ identity half is Confirmed by code reading only
 
 ---
 
+### 4.1 Divergence scenario matrix
+
+The scenario catalogue from the mission brief, each traced request-to-effect. **Observed** means the
+divergence was measured or read directly; **Untested** means the scenario is supported by the
+product but no probe or test in this audit exercised it.
+
+#### A. Human / AI contention
+
+| Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
+|---|---|---|---|---|---|---|
+| Human moves a plugin slider while the AI issues a parameter update | both target the same `fxId` | the later write wins; both writers see the same document | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice | `src/store/ProjectStore.ts` (no revision counter); `src/project-model/types.ts:1444` (`updatedAt` only) | medium | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
+| Two intents target the same track/clip using stale IDs | the human deleted the clip; the AI holds the old id | a typed, machine-detectable refusal | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — typed path at `:10074-10087`; ordinal fallback in the A/B restore and the instance resolvers | high (F-08) | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution |
+| A command acknowledges before the queued audio update is applied | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms) | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1198-1203` | low — *not a defect* | assert the applied value reaches 95 % of the commanded value within 3 × tc |
+| Tool output claims success though the command failed or was rejected | an AI call on a stale target | `isError` + a typed code | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result | `src/mcp/tools.ts:7863`; measured §5.2 | high (F-05) | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy |
+| A human edits between an AI's call and its retry (same `requestId`) | the AI retries a timed-out call | the retry reports the document's current value | **Observed — diverges.** The replay serves the *first* call's read-back | `src/mcp/tools.ts:4377` (returns) vs `:4457` (the gate); measured §5.2 | high (F-06) | edit, retry the same `requestId`, assert the reported value equals the document's current value |
+
+#### B. Editing and history
+
+| Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
+|---|---|---|---|---|---|---|
+| Trim / move / fade followed by undo/redo during playback | the gesture is committed while the transport runs | undo restores every coupled value; the audio follows | **Observed** — the delta round-trip is exact; the engine resyncs on the doc change | probe P2/P3 (4 shapes, 0 fallbacks); `src/commands/docDelta.ts` | low | extend the battery to entity reordering and instrument creation (the 2 shapes this audit could not measure) |
+| Rapid consecutive changes coalesced in history, only partially restored | a drag gesture coalesces within the window | the coalesced entry restores the pre-gesture state | **Observed** — the coalesce branch keeps the original before-snapshot | `src/store/ProjectStore.ts:225-252` | low | coalesce a gesture, undo once, assert the pre-gesture state |
+| Drag preview cancelled or interrupted, leaving domain state modified | the pointer is released outside the target | the domain is untouched | **Untested** — not exercised by this audit | `src/ui/ArrangementPanel.tsx` | medium | cancel a drag mid-flight and assert the document is byte-identical |
+| Track/clip removal while dependent selections or automation references remain | the human deletes a track that has lanes | the references are invalidated cleanly | **Observed** — `deleteTrack` cleans cross-references; the undo round-trips | probe P2 (`deleteTrack`); `tests/delete-track-undo-cross-references.test.ts` | low | — |
+| Undo while a previous write or background load is in flight | undo during an open undo frame | the undone command is not resurrected on redo | **Untested / Strongly indicated** — `undo()` never consults `frameCommands` | `src/store/ProjectStore.ts:333-364, 366-409, 432` | medium (F-22) | build a ≥3-command frame, undo inside it, redo, assert the undone command does not return |
+
+#### C. Audio engine and plugin synchronization
+
+| Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
+|---|---|---|---|---|---|---|
+| Bypass toggled in the UI but not in the DSP | the user clicks bypass | the effect is audibly bypassed | **Observed — diverges in kind.** Bypass is a *structural* removal: the chain rebuilds, so processor state (tails, envelope, filter memory) is lost and the UI says ACTIVE | `src/audio-engine/AudioEngine.ts:1190-1199, 1976-1981, 1364-1373` | medium (F-17) | toggle bypass on a reverb with a long tail; assert the tail survives (listening) |
+| Parameter unit mapping mismatch (0–1 vs dB/Hz/ms/%) | the doc stores a normalized value, the DSP wants a native one | the same intent yields the same sound on every surface | **Observed — two separate owners** for dB→linear, and percent-100 bridges hardcoded in 2 of 4 registered pairs | `src/effects/scale-bridges.ts:32, 75-84` vs `src/effects/registry.ts:161`; `ozvenaNode.ts:143`; `morphDynamicsNode.ts:23` | low today, **high if one is edited** (F-20) | assert every `SCALE_BRIDGES` entry is the function the node actually calls (fails today for ozvena + morphdynamics) |
+| A plugin preset restores UI fields but misses runtime processor values | a preset is applied | the processor holds what the UI shows | **Observed — one candidate left open**: the parameter cache is seeded from the document and only pushes *differences*, so a factory that does not apply every parameter would leave it permanently unsent | `src/audio-engine/AudioEngine.ts:1519, 1620-1625` | medium — **not confirmed**; the shipped factories read appear to apply the full set | for every effect type, assert the runtime holds every document parameter after a rebuild |
+| Reordered effects change the render but the visual order stays stale | the user drags an effect in the chain | the graph order and the visual order agree | **Observed — contract-compliant.** Doc order → signature → rebuild → serial connect | `src/audio-engine/AudioEngine.ts:1420, 1516-1517`; `src/commands/effectParams.ts:326-344` | low | — |
+| The audio thread reads unsafe mutable state | a param change during a render quantum | no torn multi-field transitions | **Observed — clean.** No I/O, logging or unbounded allocation in a processor callback; change-gated `postMessage` | `src/audio-worklets/*`; `src/effects/fxeq-core/**` | low | — |
+
+#### D. Playback, recording and automation
+
+| Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
+|---|---|---|---|---|---|---|
+| Transport state / playhead differs from the engine state | the tab is hidden | the UI reflects the audio clock | **Observed — diverges (display only).** rAF stops in a hidden tab; the transport does not | `src/services/rafLoop.ts:21`; `src/ui/playhead.ts:78-85`; `src/services.ts:1284-1289` | low (F-21) | hide the tab, return, assert the playhead resyncs from the transport clock |
+| Automation lane values disagree with the applied DSP values under playback | a lane is active | the knob shows what is playing | **Observed — diverges.** The knob reads the document; the DSP plays the lane; no "under automation" cue exists | `src/ui/EffectRack.tsx:930, 1270` vs `src/audio-engine/automationBridge.ts:1209` | high (F-09) | assert the effective-value read model returns the lane value while a lane is active |
+| Recording stops unexpectedly while the UI remains armed/recording | a device disconnect, or the transport stops | the indicator reflects reality | **Observed — diverges.** The ⏺ stays lit; `captureTick()` returns `null` while stopped, so notes are silently discarded | `src/ui/TopBar.tsx:158, 613`; `src/midi/patternRecorder.ts:131, 116-120` | high (F-02) | stop the transport, assert the indicator is not in the "recording" state |
+| Async waveform/peak generation renders stale metadata as authoritative | a buffer is replaced under the same id | the drawn peaks match the buffer | **Observed — guarded.** The async result is protected by a `live` flag; the *cache key* is content-blind | `src/ui/ArrangementPanel.tsx:285, 299-303, 7008-7019` | low (F-23, Hypothesis) | replace a buffer's content under an existing id and assert the peaks are invalidated |
+| Automation playback overwrites the persistent baseline | the transport runs over a lane | the document's value survives playback | **Observed — does NOT diverge.** Automation writes runtime only; `automationReset` restores the doc base | `src/audio-engine/deviceLookup.ts:133-156`; `src/audio-engine/automationBridge.ts:1359-1380`; `tests/scene-packs.test.ts:492` | low — *the classic defect is absent* | — |
+| Track-gain lane value vs the gain actually heard | the fader is not at unity | the lane's value is the gain | **Observed — diverges.** The lane is authored absolute but applied multiplicatively | `src/audio-engine/automationBridge.ts:1199-1203` vs `src/audio-engine/AudioEngine.ts:1896-1905` | medium (F-10) | render offline with fader 0.8 + lane 0.5 and measure the channel level; **needs a product decision first** |
+
+#### E. Persistence and recovery
+
+| Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
+|---|---|---|---|---|---|---|
+| Save succeeds before all relevant state is serialized | a save is clicked | "saved" means durably written | **Observed — contract-compliant.** The save captures the exact revision, compares identity after the await, and re-queues rather than reporting a stale revision | `src/services.ts:1153, 1173-1179`; `tests/services-save-drain.test.ts` | low | — |
+| Autosave captures a partial command transaction | a gesture is in flight | the saved doc is a whole state | **Observed — contract-compliant.** Debounce with a `maxDeferMs` / `maxArms` force-flush | `src/persistence/autosave-debouncer.ts:100-129` | low | — |
+| Recovery restores the arrangement but not routing/plugins/automation | the recovery buffer is restored | the same project comes back | **Observed — diverges.** The buffer holds the whole document but it is written **unvalidated and unmigrated**, and a structurally broken buffer becomes invisible in the library | `src/ui/ProjectBrowser.tsx:392-399`; `src/persistence/ProjectRepository.ts:50-62, 69, 96-98, 106-113` | high (F-14) | feed a structurally broken buffer; assert the recovery refuses with a message and the project stays listed |
+| A second dirty project destroys the first's only copy | project A closed dirty, then project B closed dirty | A's uncommitted work survives | **Observed — diverges.** One global slot; the write path is unscoped while the clear path is project-scoped | `src/persistence/recoveryBuffer.ts:25, 62, 116-126` | high (F-04) | write a buffer for A, then for B; assert A's buffer is still readable |
+| Version migrations silently drop or reinterpret parameters | an old project is opened | the migration is explicit and total | **Observed — diverges in kind.** `migrateProject` never branches on the source version; the history is a comment | `src/project-model/schema.ts:3528-3592` | medium (F-13) | migrate from every version ≤ 38; assert the result equals today's `normalizeProject` of the same input |
+| Export uses cached state that diverges from the session | the project changes, then an export runs | the export renders the session | **Observed — diverges.** Stems/tracks capture the document at *render* time and never re-check it; the master path does | `src/ui/ExportPanel.tsx:259, 509-518, 835-872, 874+`; `src/mastering/report.ts:102-107` | **high (F-01)** | edit the arrangement, then export stems; assert the export refuses with the master's message |
+
+#### F. Async and lifecycle hazards
+
+| Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
+|---|---|---|---|---|---|---|
+| An old completion overwrites a newer intent | two async results resolve out of order | the newer result wins | **Observed — guarded** for the async onset path (`live` flag) | `src/ui/ArrangementPanel.tsx:7008-7019` | low | — |
+| Mounted/unmounted UI subscribers miss updates or recreate stale local copies | a panel mounts while the document changes | the panel reads the current document | **Observed — diverges.** Fine-grained subscriptions mean an edit to an *unsubscribed* slice does not re-render the consumer — which is exactly F-01's mechanism | `src/ui/context.ts:85-138`; `src/project-model/schema.ts` (`normalizeProject` structural sharing) | **high (F-01)** | mount `ExportPanel`, edit `doc.arrangement`, assert the panel's captured document is current |
+| Worker restart / IPC interruption / plugin reload | a device is unplugged | the session recovers without lying | **Observed — contract-compliant for recording**: the recorder stops itself on device loss, the group stops every member before invoking `onFailure`, and the UI resets to idle | `src/audio-engine/PcmMicRecorder.ts:703-708, 716-721`; `PcmMicRecorderGroup.ts:245` | low | — |
+| Browser refresh with unsaved work | the tab is closed | the work is recoverable | **Observed — diverges.** The synchronous recovery buffer runs before the async flush, but it is one global slot and its quota failure is discarded | `src/persistence/save-lifecycle.ts:86-103`; `src/persistence/recoveryBuffer.ts:65-68` | high (F-04) | assert the unload handler surfaces a failed buffer write |
+| Repeated command delivery is non-idempotent without dedup rules | the AI retries an identical automation write | the document does not accumulate duplicates | **Observed — diverges.** The point count and the undo stack both grow | measured §5.2; `src/project-model/automation.ts` (`insertPointSorted`) | medium (F-07) | already measured — assert `lane.points.length` stays 1 and the undo stack does not grow |
+
+---
+
 ## 5. Reproduction and test outcomes
 
 ### 5.1 Probes executed
