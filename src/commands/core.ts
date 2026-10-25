@@ -55,12 +55,17 @@ export function snapshot(type: string, label: string, prev: ProjectDocument, nex
       deepEqualRef(applyDocDelta(prev, forward.ops), next) && deepEqualRef(applyDocDelta(next, backward.ops), prev);
     if (!verified) {
       snapshotVerificationFallbacks++;
-      return { type, label, execute: () => next, undo: () => prev };
+      return { type, label, base: prev, ops: forward.ops, execute: () => next, undo: () => prev };
     }
   }
   return {
     type,
     label,
+    // The base and the written paths travel WITH the command so the AI's write
+    // path can detect a stale write: a field that moved between the read and
+    // the apply must not be overwritten silently (audit F-25).
+    base: prev,
+    ops: forward.ops,
     execute: (d) => applyDocDelta(d, forward.ops),
     undo: (d) => applyDocDelta(d, backward.ops),
   };

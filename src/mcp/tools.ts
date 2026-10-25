@@ -57,6 +57,7 @@ import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { summarizeDocumentChange } from "./intent-readback";
 import { verifiedMutation } from "./verified-mutation";
+import { guardStaleWrites, WriteConflictError } from "./write-conflict";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import {
@@ -3557,6 +3558,11 @@ export interface McpToolResult {
  *   POLICY_REFUSED          a gate declined it (destructive ops locked, mic
  *                           take recording, active-comp protection) — ask
  *                           the user, do not retry blind
+ *   WRITE_CONFLICT          the write was STALE: a field the tool was about
+ *                           to write had already moved (a human edited it
+ *                           between the read and the apply). Nothing was
+ *                           written — re-read the value and retry, or pass
+ *                           `force` to overwrite regardless
  */
 export type McpErrorCode =
   | "UNKNOWN_TOOL"
@@ -3569,6 +3575,7 @@ export type McpErrorCode =
   | "POLICY_REFUSED"
   | "REQUEST_ID_CONFLICT"
   | "INVALID_REQUEST_ID"
+  | "WRITE_CONFLICT"
   | "RESOURCE_LIMIT";
 
 /** The single shaped constructor for error results — every `isError`
@@ -4276,6 +4283,9 @@ async function executeMcpToolCore(
 ): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim() : "";
+  // Audit F-25: the escape hatch for a write that genuinely means "overwrite
+  // regardless". Everything else is checked for staleness at the dispatch.
+  const forceWrite = envelope.force === true;
   // Wave 1/A trust layer: every call — all transports, dry-runs and replays —
   // is classified and audited; the audit lives outside the tool surface so it
   // can never change tool behavior.
@@ -4441,10 +4451,13 @@ ${preview.text}`,
   const undoDepthBefore = ctx.undoStackLength();
   let result: McpToolResult;
   try {
-    result = await executeMcpToolDispatch(ctx, name, args);
+    // Audit F-25: every AI write passes the stale-write guard — a field that
+    // moved between the tool's read and the apply is refused, not overwritten.
+    result = await executeMcpToolDispatch(guardStaleWrites(ctx, forceWrite), name, args);
   } catch (error) {
     mcpCallDepth -= 1;
     job?.fail(error);
+    const conflict = error instanceof WriteConflictError ? error : null;
     completeAgentCall({
       agent,
       tool: name,
@@ -4452,13 +4465,22 @@ ${preview.text}`,
       depth,
       mutated: false,
       isError: true,
-      errorCode: "THREW",
+      errorCode: conflict ? "WRITE_CONFLICT" : "THREW",
       durationMs: Date.now() - startedAt,
       docId: docBefore.id,
       docName: docBefore.name,
       ...(prepared.checkpointName != null ? { checkpoint: prepared.checkpointName } : {}),
       ...(summary !== "" ? { summary } : {}),
     });
+    if (conflict) {
+      // Audit F-25: a stale write is REFUSED — nothing was written, and the
+      // answer says so. The agent is told WHAT moved, so it can re-read the
+      // current value and retry; `force` is the deliberate escape hatch.
+      return mcpError(
+        "WRITE_CONFLICT",
+        `${conflict.message}. Nothing was written — re-read the value and retry, or pass force: true to overwrite regardless.`,
+      );
+    }
     throw error;
   }
   mcpCallDepth -= 1;
