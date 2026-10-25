@@ -53,7 +53,7 @@ function laneOf(doc: ProjectDocument, trackId: string): AutomationLane | undefin
 }
 
 describe("an automation undo removes the point it created (F-29)", () => {
-  it("the AI's deferred undo removes the AI's point and leaves the human's", async () => {
+  it("the MCP undo removes its point after a remote insert shifts the lane", async () => {
     const store = new ProjectStore(house());
     const track = store.doc.tracks[0];
     const captured: Command[] = [];
@@ -62,8 +62,10 @@ describe("an automation undo removes the point it created (F-29)", () => {
     store.execute(addAutomationLane(store.doc, { kind: "trackGain", trackId: track.id }));
     const laneId = laneOf(store.doc, track.id)!.id;
 
-    // The AI's write is DISPATCHED but DEFERRED (F-26's shape: the tool read
-    // the document BEFORE the human's edit; the command lands AFTER).
+    // Capture the actual MCP snapshot command without applying it. Apply it
+    // against its base, then simulate a remote merge before its local undo.
+    // This keeps the regression focused on F-29's positional delete rather
+    // than relying on the F-25 stale-write gate to accept an old command.
     await executeMcpTool(ctxCapturing(store, captured, false), "kyx_automation", {
       op: "addPoint",
       trackId: track.id,
@@ -74,20 +76,46 @@ describe("an automation undo removes the point it created (F-29)", () => {
     const aiCommand = captured[0];
     expect(aiCommand).toBeDefined();
 
-    // The HUMAN edits the same lane first — an EARLIER point.
-    store.execute(addAutomationPoint(store.doc, laneId, 0, 0.9));
+    const afterAi = aiCommand.execute(store.doc);
+    expect(laneOf(afterAi, track.id)!.points.length).toBe(1);
 
-    // Now the AI's deferred command LANDS (the lane's array shifts).
-    store.execute(aiCommand);
-    expect(laneOf(store.doc, track.id)!.points.length).toBe(2);
-
-    // Ctrl+Z — the AI's undo.
-    store.undo();
-    const after = laneOf(store.doc, track.id)!.points;
+    // A remote collaborator inserts an EARLIER point after the MCP write.
+    // It is not in this client's undo stack, so the next local undo still
+    // targets the captured MCP command.
+    const withRemotePoint = addAutomationPoint(afterAi, laneId, 0, 0.9).execute(afterAi);
+    const afterUndo = aiCommand.undo(withRemotePoint);
+    const after = laneOf(afterUndo, track.id)!.points;
 
     // THE FIX: the human's point survived, the AI's is gone.
     expect(after.some((p) => p.tick === 0 && p.value === 0.9)).toBe(true);
     expect(after.some((p) => p.tick !== 0 && p.value === 0.5)).toBe(false);
+  });
+
+  it("the F-25 stale-write gate refuses the old deferred scenario", async () => {
+    const store = new ProjectStore(house());
+    const track = store.doc.tracks[0];
+    const captured: Command[] = [];
+
+    store.execute(addAutomationLane(store.doc, { kind: "trackGain", trackId: track.id }));
+    const laneId = laneOf(store.doc, track.id)!.id;
+
+    await executeMcpTool(ctxCapturing(store, captured, false), "kyx_automation", {
+      op: "addPoint",
+      trackId: track.id,
+      param: "gain",
+      bar: 4,
+      value: 0.5,
+    });
+    const aiCommand = captured[0];
+    expect(aiCommand).toBeDefined();
+
+    // The human changes the same lane after the MCP tool read it. F-25 now
+    // refuses this stale write before it can enter history or require undo.
+    store.execute(addAutomationPoint(store.doc, laneId, 0, 0.9));
+    const undoDepth = store.undoStackLength;
+    expect(() => store.execute(aiCommand)).toThrow(/stale write refused/);
+    expect(store.undoStackLength).toBe(undoDepth);
+    expect(laneOf(store.doc, track.id)!.points).toEqual([{ tick: 0, value: 0.9 }]);
   });
 
   it("the plain stack order still undoes in order (the control)", async () => {
@@ -117,9 +145,9 @@ describe("an automation undo removes the point it created (F-29)", () => {
 
     // Ctrl+Z #2 → the AI's command.
     store.undo();
-    expect(
-      laneOf(store.doc, track.id)!.points.some((p) => p.tick === aiPoint.tick && p.value === aiPoint.value),
-    ).toBe(false);
+    expect(laneOf(store.doc, track.id)!.points.some((p) => p.tick === aiPoint.tick && p.value === aiPoint.value)).toBe(
+      false,
+    );
   });
 
   it("the command's own undo removes the point it inserted", () => {
