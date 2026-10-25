@@ -456,7 +456,11 @@ export function AutomationClipLanes({
         const clips = clipsByTarget.get(key) ?? [];
         const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId) ?? doc.patterns[0];
         return (
-          <div className="arr-auto-lane-row" key={key} aria-label={`${automationLaneTitle(doc, target)} automation lane`}>
+          <div
+            className="arr-auto-lane-row"
+            key={key}
+            aria-label={`${automationLaneTitle(doc, target)} automation lane`}
+          >
             <div className="arr-auto-lane-label">
               <span title={automationLaneTitle(doc, target)}>{automationLaneTitle(doc, target)}</span>
               <button
