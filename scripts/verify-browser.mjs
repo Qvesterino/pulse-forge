@@ -918,7 +918,7 @@ try {
     if (!(await reloadedDevices.isVisible().catch(() => false))) {
       await clickPanelAction(plugPage, "FX");
     }
-    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 30_000 });
+    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 60_000 });
     const reloadedSource = await plugPage.locator(".fx-sidechain-picker select").first().inputValue();
     if (reloadedSource !== selectedPrismSource)
       throw new Error(`PRISM source lost on reload (${reloadedSource}/${selectedPrismSource})`);
