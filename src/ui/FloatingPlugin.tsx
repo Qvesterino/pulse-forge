@@ -7,6 +7,7 @@ import { WavetablePanel } from "./WavetablePanel";
 import { GranularPanel } from "./GranularPanel";
 import { ModMatrixRow, isModMatrixParam } from "./ModMatrixRow";
 import { EnvEditor } from "./EnvEditor";
+import { KopaEditor } from "./KopaEditor";
 import { Slider } from "./controls";
 import {
   DRUM_SYNTH_DEFAULTS,
@@ -279,18 +280,11 @@ function InstrumentPluginContent({
           ))}
         </div>
       )}
-      {track.instrument === "kopa" && (
-        <div className="kopa-preview-row">
-          <button
-            type="button"
-            className="btn btn-small"
-            onClick={() => services.engine.previewNote(track.id, 36)}
-            title="Audition the current KOPA sound at C2 without adding a note to the project."
-          >
-            PREVIEW C2
-          </button>
-          <span>Auditions the current kick patch without changing the arrangement.</span>
-        </div>
+      {(!docked || dockPage === "sound") && track.instrument === "kopa" && (
+        // The kick's shape as a graphic (roadmap wave 2). It replaces the bare
+        // PREVIEW C2 button: the audition lives in the editor's A/B row now,
+        // and the graphic shows what the parameters actually do.
+        <KopaEditor track={track} doc={doc} services={services} />
       )}
       {(!docked || dockPage === "engine") && track.instrument === "wavetable" && (
         <WavetablePanel track={track} doc={doc} services={services} />

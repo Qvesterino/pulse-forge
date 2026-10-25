@@ -7,13 +7,14 @@
  * geometry and the pitch envelope, and the DSP's own formulas are mirrored
  * here EXACTLY:
  *
- *  - the layer envelopes are the DSP's one-pole decays. The DSP uses
- *    `coef = min(1, 1/(decaySec * sr * 0.33))` per sample, so the envelope at
- *    time t is `exp(-t / (0.33 * decaySec))` — which is why the DSP's comment
- *    says it "reaches ~5 % after `decaySec`" (exp(-1/0.33) = 0.048).
+ *  - the layer envelopes are the DSP's own one-pole decays. The DSP uses
+ *    `coef = kopaDecayCoef(decaySec, sr)` per sample, so the envelope at
+ *    time t is `(1 - coef)^(t*sr)` — which is why the DSP's comment says it
+ *    "reaches ~5 % after `decaySec`" (exp(-1/0.33) = 0.048).
  *  - the pitch envelope is the DSP's: `t = min(1, samples/(pitchTime*sr))`,
- *    then the curve (exp / lin / snap / hold), then the semitone offset is
- *    `pitchAmount * env`.
+ *    then the curve (exp / lin / snap / hold) — the SHAPE function itself is
+ *    imported from the processor, so the drawn curve and the sound share one
+ *    implementation.
  *  - the SUB layer rides `max(bodyEnv, tailEnv)`, so its length is the LONGER
  *    of the two decays — it has no length of its own and the editor must not
  *    pretend otherwise.
@@ -23,12 +24,11 @@
  * frame — the editor re-renders it on a drag, the tests assert it.
  */
 
+import { kopaDecayCoef, pitchEnvAt } from "./dsp/kopaProcessor";
+
 /** The editor's time axis: a LOG scale, because the layers differ by decades. */
 export const KOPA_TIME_MIN_MS = 1;
 export const KOPA_TIME_MAX_MS = 3000;
-
-/** The DSP's decay constant: the envelope reaches ~5 % after `decaySec`. */
-export const KOPA_DECAY_K = 0.33;
 
 /** A layer of the kick as the editor shows it. */
 export interface KopaLane {
@@ -132,29 +132,23 @@ export function kopaPitchEnvelope(params: Record<string, number>, steps = 48): K
   for (let i = 0; i <= steps; i++) {
     const timeSec_i = (i / steps) * timeSec;
     const t = timeSec > 0 ? Math.min(1, timeSec_i / timeSec) : 1;
-    points.push({ timeSec: timeSec_i, semitones: amount * pitchEnv(t, curve) });
+    points.push({ timeSec: timeSec_i, semitones: amount * pitchEnvAt(t, curve) });
   }
   return points;
-}
-
-/** The DSP's pitch envelope shape, extracted so the model and the DSP agree. */
-export function pitchEnv(t: number, curve: number): number {
-  if (curve === 0) return (1 - t) * (1 - t);
-  if (curve === 1) return 1 - t;
-  if (curve === 2) return t < 0.35 ? 1 : 0;
-  return t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85);
 }
 
 /**
  * The drawn envelope of a layer at time `t` seconds.
  *
- * The DSP decays `env -= env * coef` per sample with `coef = 1/(decay*sr*0.33)`,
- * so the envelope is `exp(-t/(0.33*decay))` — the same function the DSP's
- * "reaches ~5 % after decaySec" comment describes.
+ * This is the DSP's recurrence, not an approximation of it: the processor
+ * decays `env -= env * coef` per sample with `coef = kopaDecayCoef(decaySec,
+ * sr)`, so the envelope after `n` samples is `(1 - coef)^n`. The DSP's comment
+ * ("reaches ~5 % after decaySec") is the same statement.
  */
-export function kopaLayerEnvelope(t: number, decaySec: number): number {
+export function kopaLayerEnvelope(t: number, decaySec: number, sampleRate = 48000): number {
   if (decaySec <= 0) return 0;
-  return Math.exp(-t / (KOPA_DECAY_K * decaySec));
+  const coef = kopaDecayCoef(decaySec, sampleRate);
+  return Math.pow(1 - coef, t * sampleRate);
 }
 
 /** The time-axis position of `ms` — 0 at the axis start, 1 at the axis end. */

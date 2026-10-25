@@ -121,6 +121,18 @@ Implementované ako **ADR 0034 addendum 15** (kontrakt) + `docs/CURRENT-STATE.md
 
 Po dokončení základného editora preveriť ladenie podľa tóniny projektu, BPM/groove-aware dĺžky a presný render velocity → sample. Nový pitch alebo drive DSP pridať iba vtedy, keď zvukové merania a posluch ukážu medzeru, ktorú existujúce vrstvy nepokryjú.
 
+### Stav (2026-10-25) — DODANÉ
+
+Implementované ako **ADR 0062** (kontrakt) + `docs/CURRENT-STATE.md` (popis).
+
+- **Grafika:** jedna **logaritmická** časová os (1 ms → 3 s — 3 ms click a 400 ms tail na jednej osi), PITCH obálka nad vrstvami **CLICK / BODY / SUB / TAIL / HARM**, 10 ťahacích handleov (dĺžka = decay, výška = úroveň, plus pitch amount a pitch time).
+- **Obrázok JE obrázok DSP:** model `src/kopa/layerModel.ts` **importuje** tvar pitch obálky a koeficient decayu z procesora (`pitchEnvAt`, `kopaDecayCoef`) — jedna implementácia, nie dve. Sub je široký ako dlhšia z body/tail (jazdí na `max(bodyEnv, tailEnv)`), body nemá height handle (DSP fixuje jeho mix gain) — grafika ponúka handle len tam, kde parameter existuje.
+- **Táh = JEDNA undo akcia:** `setInstrumentParams` (dávková forma `setInstrumentParam`); počas ťahania sa kreslí lokálne, dokument sa zapíše raz pri pustení myši. EnvEditor, ktorý commituje na každý pointer-move, sa tu neopakoval.
+- **Preview nemení projekt:** `A · SAVED / B · EDIT` prehráva dočasný runtime z draft hodnôt (rovnaká továreň, rovnaké DSP, rovnaká normalizácia ako živý reťazec) — nahradil samostatné tlačidlo „PREVIEW C2“.
+- **Klávesnica a úzky panel:** každý handle je `role="slider"`, focusateľný a riaditeľný šípkami.
+- **Dôkaz (merané, nie tvrdené):** proti **vykreslenému** procesoru — nakreslená obálka body aj nakreslená pitch krivka sedia so zvukom do 8 %; sub sleduje tail v okamžiku, keď body zhasla. `tests/kopa/layer-model.test.ts`, `tests/kopa/editor-command.test.ts`, `tests/ui/KopaEditor.test.tsx`.
+- **Otvorené:** ladenie podľa tóniny projektu a BPM/groove-aware dĺžky (v „neskoršie rozšírenie“).
+
 ## Vlna 3 — TSAR: zdroje a viac možností z Forge
 
 Táto vlna nadväzuje na R2 a R3 v [TSAR pláne](TSAR-IMPLEMENTATION-ROADMAP.md). Pred rozšírením Forge treba určiť, ako vzorka žije nezávisle od konkrétneho patcha.

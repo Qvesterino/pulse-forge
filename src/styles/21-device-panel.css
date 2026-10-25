@@ -351,6 +351,128 @@
   flex: 0 0 auto;
 }
 
+/* KOPA EDITOR — the kick's shape as a graphic (roadmap wave 2). */
+.kopa-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.kopa-editor-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-raise) 30%, transparent);
+  touch-action: none;
+}
+.kopa-editor-svg .kopa-grid {
+  stroke: var(--border-soft);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.kopa-editor-svg .kopa-baseline {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.kopa-editor-svg .kopa-lane-label,
+.kopa-editor-svg .kopa-lane-note,
+.kopa-editor-svg .kopa-axis-label {
+  fill: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+}
+.kopa-editor-svg .kopa-lane-note {
+  fill: var(--text-faint);
+  text-anchor: end;
+  font-style: italic;
+}
+.kopa-editor-svg .kopa-axis-label {
+  text-anchor: middle;
+}
+.kopa-editor-svg .kopa-pitch-curve {
+  fill: none;
+  stroke: #f59e0b;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.kopa-editor-svg .kopa-layer {
+  fill: rgba(120, 170, 255, 0.24);
+  stroke: rgba(120, 170, 255, 0.75);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.kopa-editor-svg .kopa-body {
+  fill: rgba(120, 220, 170, 0.26);
+  stroke: rgba(120, 220, 170, 0.8);
+}
+.kopa-editor-svg .kopa-sub {
+  fill: rgba(200, 150, 255, 0.24);
+  stroke: rgba(200, 150, 255, 0.78);
+}
+.kopa-editor-svg .kopa-tail {
+  fill: rgba(255, 190, 120, 0.22);
+  stroke: rgba(255, 190, 120, 0.78);
+}
+.kopa-editor-svg .kopa-harm {
+  fill: rgba(255, 140, 170, 0.22);
+  stroke: rgba(255, 140, 170, 0.78);
+}
+.kopa-editor-svg .kopa-handle {
+  cursor: grab;
+}
+.kopa-editor-svg .kopa-handle rect {
+  fill: var(--bg-raise);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.kopa-editor-svg .kopa-handle:hover rect,
+.kopa-editor-svg .kopa-handle:focus rect {
+  fill: var(--accent);
+}
+.kopa-editor-svg .kopa-handle:focus {
+  outline: none;
+}
+.kopa-editor-svg .kopa-handle:focus-visible rect {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+.kopa-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.kopa-editor-row .kopa-ab {
+  display: inline-flex;
+  gap: 4px;
+}
+.kopa-editor-state {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.4px;
+  color: var(--text-faint);
+}
+.kopa-notes {
+  font-size: var(--fs-compact);
+  color: var(--text-dim);
+}
+.kopa-notes summary {
+  cursor: pointer;
+  color: var(--text-faint);
+}
+.kopa-notes ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.kopa-notes b {
+  color: var(--text);
+}
+
 .koren-panel {
   display: flex;
   flex-direction: column;

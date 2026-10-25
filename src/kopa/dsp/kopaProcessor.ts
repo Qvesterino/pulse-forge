@@ -106,6 +106,30 @@ function driveCurve(x: number, type: number): number {
   return Math.sin(x * Math.PI); // Fold (bounded by construction)
 }
 
+/**
+ * The pitch envelope shape, exported so the editor's graphic and the DSP
+ * share ONE implementation (the KOPA editor draws this curve — a second copy
+ * in the UI could drift from the sound).
+ *
+ * `t` is the normalized envelope progress (0 at the hit, 1 when the pitch has
+ * fallen), `curve` is the `pitchCurve` parameter (0 exp, 1 lin, 2 snap, 3 hold).
+ */
+export function pitchEnvAt(t: number, curve: number): number {
+  if (curve === 0) return (1 - t) * (1 - t); // exp
+  if (curve === 1) return 1 - t; // lin
+  if (curve === 2) return t < 0.35 ? 1 : 0; // snap
+  return t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85); // hold
+}
+
+/**
+ * The layer decay coefficient: `env -= env * coef` per sample, so the
+ * envelope reaches ~5 % after `decaySec`. Exported for the same reason as
+ * `pitchEnvAt` — the editor draws the layer envelopes from it.
+ */
+export function kopaDecayCoef(decaySec: number, sampleRate: number): number {
+  return Math.min(1, 1 / (decaySec * sampleRate * 0.33));
+}
+
 export class KopaProcessor {
   readonly sampleRate: number;
   private params: Record<string, number> = {};
@@ -342,14 +366,7 @@ export class KopaProcessor {
         // --- PITCH envelope: amount -> 0 over pitchTime ----------------
         voice.pitchT = pitchTimeSec > 0 ? Math.min(1, voice.samples / (pitchTimeSec * sr)) : 1;
         const t = voice.pitchT;
-        let pitchEnv: number;
-        if (pitchCurve === 0)
-          pitchEnv = (1 - t) * (1 - t); // exp
-        else if (pitchCurve === 1)
-          pitchEnv = 1 - t; // lin
-        else if (pitchCurve === 2)
-          pitchEnv = t < 0.35 ? 1 : 0; // snap
-        else pitchEnv = t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85); // hold
+        const pitchEnv = pitchEnvAt(t, pitchCurve);
         const f0 = voice.targetF0 * Math.pow(2, (pitchAmount * pitchEnv) / 12);
 
         // --- layer envelopes ---------------------------------------------

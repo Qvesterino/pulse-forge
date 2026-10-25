@@ -135,11 +135,9 @@ export class PreviewDeck {
    * the preset remains a separate command-owned operation in the UI.
    */
   previewInstrumentPreset(trackId: string, preset: InstrumentPreset): void {
-    const track = this.deps
-      .doc()
-      ?.tracks.find((candidate): candidate is InstrumentTrack => {
-        return candidate.kind === "instrument" && candidate.id === trackId;
-      });
+    const track = this.deps.doc()?.tracks.find((candidate): candidate is InstrumentTrack => {
+      return candidate.kind === "instrument" && candidate.id === trackId;
+    });
     if (!track || preset.instrument !== track.instrument) return;
     const params = { ...track.params };
     for (const [id, value] of Object.entries(preset.params)) {
@@ -159,11 +157,9 @@ export class PreviewDeck {
    * previews is what the track will sound like.
    */
   previewInstrumentWithParams(trackId: string, pitch: number, overrides: Record<string, number>): void {
-    const track = this.deps
-      .doc()
-      ?.tracks.find((candidate): candidate is InstrumentTrack => {
-        return candidate.kind === "instrument" && candidate.id === trackId;
-      });
+    const track = this.deps.doc()?.tracks.find((candidate): candidate is InstrumentTrack => {
+      return candidate.kind === "instrument" && candidate.id === trackId;
+    });
     if (!track) return;
     const params = { ...track.params };
     for (const [id, value] of Object.entries(overrides)) {
@@ -178,8 +174,8 @@ export class PreviewDeck {
   private previewTrackWithParams(
     track: InstrumentTrack,
     params: Record<string, number>,
-    sampleId: string | undefined,
-    presetId: string | undefined,
+    sampleId: string | null | undefined,
+    presetId: string | null | undefined,
     pitch: number,
   ): void {
     this.deps.ensureContext();

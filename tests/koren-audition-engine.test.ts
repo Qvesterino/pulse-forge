@@ -207,21 +207,24 @@ describe("the monitor-only audition never reaches the document", () => {
 
   it("writes the mode to the runtime and leaves the document byte-identical", async () => {
     const engine = await engineWith([fx("fx-grow", "bassHarmonic")]);
-    const before = JSON.stringify(engine.doc);
+    // The engine's document is private — the spec reads it through a cast,
+    // because "the document did not change" is exactly what it must prove.
+    const doc = () => (engine as unknown as { doc: ProjectDocument }).doc;
+    const before = JSON.stringify(doc());
 
     engine.setFxAudition(TRACK_ID, "fx-grow", 2);
     expect(engine.getFxAudition("fx-grow")).toBe(2);
-    expect(JSON.stringify(engine.doc), "the audition leaked into the project document").toBe(before);
+    expect(JSON.stringify(doc()), "the audition leaked into the project document").toBe(before);
 
     // The document has no field for it at all — not even an empty one.
-    const stored = (engine.doc as unknown as { tracks: { effects: { params: Record<string, number> }[] }[] }).tracks[0]
+    const stored = (doc() as unknown as { tracks: { effects: { params: Record<string, number> }[] }[] }).tracks[0]
       ?.effects?.[0]?.params;
     expect(stored).toBeDefined();
     expect(Object.keys(stored!).some((key) => key === "audition")).toBe(false);
 
     engine.setFxAudition(TRACK_ID, "fx-grow", 0);
     expect(engine.getFxAudition("fx-grow")).toBe(0);
-    expect(JSON.stringify(engine.doc)).toBe(before);
+    expect(JSON.stringify(doc())).toBe(before);
     engine.dispose();
   });
 

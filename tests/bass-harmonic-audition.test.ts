@@ -99,7 +99,7 @@ function render(
     proc.process(inputs, [out], params);
     outAll.set(out[0]!.subarray(0, len), offset);
   }
-  return { out: outAll, proc, frames: (proc.port as FakePort).posted };
+  return { out: outAll, proc, frames: (proc.port as FakePort).posted as Record<string, unknown>[] };
 }
 
 /** RMS over a window (seconds). */
