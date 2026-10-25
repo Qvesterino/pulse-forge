@@ -35,6 +35,11 @@ write and its undo, the AI's undo removed the **human's** point and left the AI'
 measured, §5.7. It is a silent loss of authored work, and the window that opens it is F-26's
 unsynchronised dispatch.
 
+**A third, and the most awkward:** F-16. The same command produces **two different documents**
+depending on whether a collab session is open — and the difference lands on the DSP's wet/dry
+(measured, §5.9). It also makes the Critical finding **mode-dependent**: the PRISM write-back is
+discarded solo and lands in collab. **Whoever repairs F-28 has to know that.**
+
 **And the audit corrected itself twice.** A duplicate-guard scan over all 1277 spec files (§5.8)
 showed that **two findings the report had listed as open were already fixed** by a concurrent
 session — F-04 and F-14, whose fix landed *six minutes before this report's own last commit*. A
@@ -205,6 +210,7 @@ Derived from the product's actual contracts, not imposed. Status reflects this a
 | **I-12** | The AI's structured answer agrees with what the document actually contains | MCP ack contract + the R-02 `verifiedMutation` gate | **Holds on the dispatch path** (gate); **breaks** on refusals and on the idempotency replay (F-05, F-06) |
 | **I-13** | There is exactly **one** writer to the authoritative document | `src/commands/*` → `ProjectStore.execute` | **Breaks — MEASURED** (§5.3, T6): the PRISM DSP core is a second writer (its in-plugin undo writes into the document), and the normaliser discards that write — so the audio and the document diverge (F-28) |
 | **I-14** | An undo removes **the entity it created**, not whatever occupies its slot | `src/commands/*` → the command's own `undo` | **Breaks — MEASURED** (§5.7, T7c): an automation point has no identity, so its undo is anchored to a *position*; when the lane shifted, the AI's undo removed the **human's** point and left the AI's (F-29). The sibling command `moveAutomationPoint` already honours this invariant (audit 06 D3) — the add's undo does not |
+| **I-15** | The **same command** produces the **same document** in every store mode (solo, collab) | `src/commands/*` → `ProjectStore.execute` / `YDocStore.executeBuffered` | **Breaks — MEASURED** (§5.9, T10): the collab path skips normalisation, so one command yields `params.globalMix = 1` solo and `30` in a collab session, and normalising on the way out rewrites it (F-16). **It also makes F-28 mode-dependent**: the Critical write-back is discarded solo and lands in collab |
 
 **Deliberately asynchronous contracts (not defects):**
 
@@ -232,8 +238,9 @@ duplicate-guard scan in §5.8, which the report had promised but had not perform
 open**, one of them **Critical** (F-28), and **F-04's second half** — the discarded write result —
 survives its own fix and stays on the list.
 Fourteen are **Confirmed** by code reading that the parent re-verified directly; **nine of those were
-additionally measured** (§5). Two are **Strongly indicated** and are flagged for confirmation
-(F-16, F-22); one is a **Hypothesis** (F-23).
+additionally measured** (§5). **F-16 has been upgraded to Confirmed — MEASURED** (§5.9, probe T10),
+so it is no longer one of the two *Strongly indicated* findings. **F-22 was downgraded to
+*Hypothesis — not reproduced*** by the §5.7 probe. One remains a **Hypothesis** (F-23).
 
 ---
 
@@ -839,18 +846,48 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 
 ### F-16 — Collab local edits skip normalisation (solo ≠ collab document shape)
 
-**Severity:** Low-Medium · **Confidence:** Strongly indicated (not confirmed end-to-end)
+**Severity:** Medium-High (was Low-Medium) · **Confidence:** **Confirmed — MEASURED** (§5.9, probe T10)
 
+- **Affected journey:** two people edit the same project in a collab session; the session ends (or
+  the project is exported); the wet/dry the user hears changes under them.
 - **Observed divergence:** `YDocStore` re-projects with `normalize = false` for local-origin edits
-  (`src/collab/YDocStore.ts:139-143`), while `ProjectStore` normalises after every command
-  (`src/store/ProjectStore.ts:264`). The same command therefore yields a different document shape
-  solo vs collab. `exportProject` writes the raw document; `importProject` validates and migrates
-  (`src/export/project-io.ts:75-83`) — so a collab-exported project re-imports as a *different*
-  project.
-- **Not confirmed** because the Yjs projection path was not traced end-to-end in this audit. The
-  normalisation asymmetry itself was read directly.
-- **Smallest safe repair:** normalise on the collab local-origin path too, or normalise at the
-  export boundary (which fixes the export asymmetry regardless).
+  (`src/collab/YDocStore.ts:139-143` — `this.doc_ = this.readDoc(origin !== this)`), and its
+  `execute()` path never normalises either (`src/collab/YDocStore.ts:391-399` — the command's raw
+  output goes straight into the Y.Doc). `ProjectStore` normalises after every command
+  (`src/store/ProjectStore.ts:264`). **The same command therefore yields a different document shape
+  solo vs collab.**
+- **MEASURED (§5.9, T10).** The same command — `setFxEqParam(..., "globalMix", 30)` — applied to a
+  solo store and to a collab store built from the *same* document:
+  ```
+  [T10a] CONTROL — the Yjs round-trip alone (no command) is identical to the normaliser's output: true
+  [T10b] BEFORE  : {"mix":1,"globalMix":1}
+  [T10b] SOLO    : {"mix":1,"globalMix":1}     ← the write was DISCARDED
+  [T10b] COLLAB  : {"mix":1,"globalMix":30}    ← the write LANDED
+  [T10b] SEMANTIC differences: ["$.tracks[0].effects[0].params.globalMix: solo=1 collab=30"]
+  [T10c] in collab            : {"mix":1,"globalMix":30}
+  [T10c] after leaving collab : {"mix":1,"globalMix":1}
+  [T10c] the document CHANGES when the session ends: true
+  [T10d] a carrier-free command (gain 0.42): differing paths — (none)
+  ```
+  **One field differs, and it is the DSP's wet/dry.** T10a is the control that rules out the Yjs
+  round-trip as the cause, and T10d is the control that shows the divergence is **not generic**: a
+  command whose output is already normalised produces an identical document in both paths.
+- **THE COUPLING TO F-28 IS THE POINT.** In solo, the PRISM write-back is **discarded** by the
+  normaliser (F-28: `normalizePluginParams` keeps `mix` as the source of truth and derives
+  `globalMix` from it — `src/effects/definitions.ts:415-418`). **In collab the same write-back
+  lands**, because the normaliser that discards it never runs. So **the Critical finding F-28
+  behaves differently in the two modes**, and a fix for F-28 that only touches the solo path would
+  leave the collab path untouched — and vice versa. T10c shows the consequence: the document the
+  user sees in a collab session is **not** the document they get when the session ends; the
+  normaliser rewrites it on the way out.
+- **Class:** hard divergence between two control surfaces (solo UI vs a collab session) + **serialization
+  drift** — the value changes across the session boundary, with no report to anyone.
+- **Smallest safe repair:** normalise at the **export boundary** — which fixes the export asymmetry
+  regardless of the store mode — and normalise on the collab local-origin path too, so the session's
+  document and the saved document are the same object. Both are local changes; neither alters the
+  audio character or the schema.
+- **Regression plan:** promote probe T10. Assert (a) the same command produces the same document in
+  a solo store and a collab store, and (b) normalising a collab document is a no-op.
 
 ---
 
@@ -1318,6 +1355,7 @@ product but no probe or test in this audit exercised it.
 | An old completion overwrites a newer intent | two async results resolve out of order | the newer result wins | **Observed — guarded** for the async onset path (`live` flag) | `src/ui/ArrangementPanel.tsx:7008-7019` | low | — |
 | Mounted/unmounted UI subscribers miss updates or recreate stale local copies | a panel mounts while the document changes | the panel reads the current document | **Observed — diverges.** Fine-grained subscriptions mean an edit to an *unsubscribed* slice does not re-render the consumer — which is exactly F-01's mechanism | `src/ui/context.ts:85-138`; `src/project-model/schema.ts` (`normalizeProject` structural sharing) | **high (F-01)** | mount `ExportPanel`, edit `doc.arrangement`, assert the panel's captured document is current |
 | Worker restart / IPC interruption / plugin reload | a device is unplugged | the session recovers without lying | **Observed — contract-compliant for recording**: the recorder stops itself on device loss, the group stops every member before invoking `onFailure`, and the UI resets to idle | `src/audio-engine/PcmMicRecorder.ts:703-708, 716-721`; `PcmMicRecorderGroup.ts:245` | low | — |
+| A collab session's document differs from the saved one | the session ends, or the project is exported | the document the user sees is the document they get | **Observed — diverges.** The collab path re-projects local edits **without** normalisation, so the same command yields `params.globalMix = 1` solo and `30` in collab; normalising on the way out rewrites it. **The difference is the DSP's wet/dry** | `src/collab/YDocStore.ts:139-143, 391-399`; measured §5.9 (T10) | medium-high (F-16) | already measured — assert one command yields one document in both store modes |
 | Browser refresh with unsaved work | the tab is closed | the work is recoverable | **Partly resolved.** The single global slot is gone — the buffer is now keyed per project. What survives: the synchronous recovery write's **result is discarded** at the call site, so a quota failure loses the unload edit with no signal, while the function's own doc comment claims the caller treats it as *"no protection this time"* | `src/persistence/save-lifecycle.ts:86-103`; `src/persistence/recoveryBuffer.ts:73-75, 77`; `src/services.ts:1328` | medium (F-04, second half) | assert the unload handler surfaces a failed buffer write |
 | Repeated command delivery is non-idempotent without dedup rules | the AI retries an identical automation write | the document does not accumulate duplicates | **Observed — diverges.** The point count and the undo stack both grow | measured §5.2; `src/project-model/automation.ts` (`insertPointSorted`) | medium (F-07) | already measured — assert `lane.points.length` stays 1 and the undo stack does not grow |
 | An AI undo removes the **human's** point | the lane shifts between the AI's write and its undo | the undo removes the point the command created | **Observed — diverges.** A point has no identity, so its undo is anchored to a *position*: the AI's undo removed the **human's** point and left the AI's, then the human's own undo became a dead step. The plain stack order is safe; the window is a shift between command and undo | measured §5.7 (T7c/T7d); `src/commands/automation.ts:91-99`; `src/commands/docDelta.ts:309-313` | high (F-29) | already measured — apply audit 06 D3's identity re-anchoring to the add's undo |
@@ -1336,6 +1374,7 @@ product but no probe or test in this audit exercised it.
 | `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 7/7 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 |
 | `tmp-probe/second-writer.test.ts` (T6) | **vitest** | **PASS** | the DSP→document write-back — the audit's first **Critical** finding (F-28) |
 | `tmp-probe/gaps.test.ts` (T7–T9) | **vitest** | **PASS — 7/7 tests green** | the three probes §5.6 had left open: point-identity, mixer idempotency, undo-inside-a-frame — plus **F-29** |
+| `tmp-probe/collab.test.ts` (T10a–T10d) | **vitest** | **PASS — 4/4 green** | the collab-vs-solo document shape — the last finding still resting on code reading alone. **F-16 → Confirmed and measured** |
 | `tmp-probe/guard-scan.mjs` | **node** | **RUN — 1277 spec files scanned** | the duplicate-guard scan §5.5 promised: which of the 29 findings the repository's own tests already pin (§5.8) |
 | `tmp-probe/citation-check.mjs` | **node** | **RUN — 101 citations checked** | every `file:line` in this report, verified against the current tree; two had drifted and were corrected |
 
@@ -1747,6 +1786,60 @@ and the repo's own convention already asks for it.
 
 ---
 
+### 5.9 Probe results — `tmp-probe/collab.test.ts` (vitest, **4/4 green**)
+
+This probe answers the question §10.3 had left open: *"Does a collab-edited project, exported and
+re-imported, really differ from the solo equivalent?"* It also closes **F-16**, which was the last
+finding still resting on code reading alone.
+
+**T10a — CONTROL: the Yjs round-trip is not the cause.**
+```
+[T10a] fx params, projected from Y.Doc  : {"mix":1,"globalMix":1}
+[T10a] fx params, after normalizeProject : {"mix":1,"globalMix":1}
+[T10a] the Yjs round-trip is identical to the normaliser's output: true
+```
+`YDocStore.fromDocument(doc)` → `getDoc()` is already normalised. So any divergence below comes
+from the **command path**, not from the CRDT projection.
+
+**T10b — the same command, two stores.**
+```
+[T10b] BEFORE  : {"mix":1,"globalMix":1}
+[T10b] SOLO    : {"mix":1,"globalMix":1}     ← the write was DISCARDED
+[T10b] COLLAB  : {"mix":1,"globalMix":30}    ← the write LANDED
+[T10b] SEMANTIC differences (deep diff, key order ignored):
+        ["$.tracks[0].effects[0].params.globalMix: solo=1 collab=30"]
+```
+**Exactly one field differs, and it is the DSP's wet/dry.** The deep diff ignores key order — the
+naive `JSON.stringify` comparison is order-sensitive and would have reported a false difference on
+an identical document (which is exactly what T10d then exposed).
+
+**T10c — leaving collab changes the document.**
+```
+[T10c] in collab            : {"mix":1,"globalMix":30}
+[T10c] after leaving collab : {"mix":1,"globalMix":1}
+[T10c] the document CHANGES when the session ends: true
+```
+The document the user sees in a collab session is **not** the document they get when the session
+ends — the normaliser rewrites it on the way out, with no report to anyone.
+
+**T10d — CONTROL: the divergence is not generic.**
+```
+[T10d] solo gain: 0.42   collab gain: 0.42
+[T10d] the two documents are identical: false
+[T10d] differing paths: (none)
+```
+A carrier-free command (`setTrackParams(..., { gain: 0.42 })`) yields **semantically identical**
+documents in both paths — the `false` above is a key-ORDER artefact of `JSON.stringify`, which the
+deep diff corrects. So the divergence appears **only where the normaliser has something to
+rewrite**: a command whose output is already normalised is safe in both paths.
+
+**The consequence that matters: F-28 is mode-dependent.** In solo, the PRISM write-back is
+discarded by the normaliser; **in collab it lands**. The Critical finding therefore does not have
+one behaviour — it has two, depending on whether a session is open. A Phase-1 repair that only
+touches the solo path would leave the collab path untouched.
+
+---
+
 ## 6. TOP 10 hardening priorities
 
 Ranked by **risk of wrong audio / lost work / false success**, then by probability, scope, fix
@@ -1757,13 +1850,13 @@ effort and regression risk.
 | **1** | **F-28** — the PRISM DSP is a **second writer** whose write-back is normalised away | **Critical, and measured.** The DSP holds wet/dry 1.0 while the document and the knob say 0.3; a **save + reload changes what you hear**; the project's undo stack carries a dead step. It breaks the product's central doctrine and its "same project, same sound" contract. The fix is one inverse id map. | S–M (an inverse `toRackId` + value conversion) | Low |
 | **2** | **F-01** — stem/track export renders a stale document | The only finding that can ship **silently wrong output** to a paying user. The master path already proves the guard is cheap. | S (capture at call time + reuse the existing assertion) | Low |
 | **3** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
-| **4** | **F-26** — the R-02 gate silently assumes `ctx.execute` is synchronous | **Measured** (§5.3, T5): the gate answers *"nothing changed"* while the mutation lands afterwards. It is the **window that makes F-29 destructive**, and the MCP host contract (`McpToolContext.execute(command): void`) does not enforce the synchrony it depends on. Today no host defers — so this is a **precondition to fix before the first deferred host ships**, not after. | S (state the precondition; check it) | Low |
-| **5** | **F-29** — the automation-point undo is **positional**, so a shifted lane makes the AI's undo destroy the human's point | **Measured** (§5.7, T7c): the AI's undo removed the **human's** authored point and left the AI's — silent loss of work, followed by a dead undo step. The plain stack order is safe (T7d), so the window is the shift between a command and its undo — which is exactly the window **F-26** opens. The fix pattern already exists in the sibling command (audit 06 D3). | S (verify the slot before splicing) | Low |
-| **6** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. The repo already owns the *other half* of that gate (§5.8). | S + S (one meta-test) | Very low |
-| **7** | **F-06** — the idempotent replay escapes the R-02 gate, so its `mutated` flag contradicts its own text | The stale read-back half is a **pinned contract**, not a defect (§5.8). What survives is the envelope: `mutated: true` on a call that executed nothing, and the disambiguation lives only in prose. | S (force `mutated: false` on the replay path) | Low |
-| **8** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
-| **9** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
-| **10** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
+| **4** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. **Lost work**, live, on the common human/AI path — it outranks every visibility gap. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
+| **5** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. **Wrong audio**, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
+| **6** | **F-26** — the R-02 gate silently assumes `ctx.execute` is synchronous | **Measured** (§5.3, T5): the gate answers *"nothing changed"* while the mutation lands afterwards. It is the **window that makes F-29 destructive**, and the MCP host contract (`McpToolContext.execute(command): void`) does not enforce the synchrony it depends on. Today no host defers — so this is a **precondition to fix before the first deferred host ships**, not after. | S (state the precondition; check it) | Low |
+| **7** | **F-16** — a local collab edit skips normalisation, so the session's document is not the saved document | **Measured** (§5.9, T10): the same command yields `params.globalMix = 1` solo and `30` in collab, and normalising on the way out rewrites it back. **It makes F-28 mode-dependent** — the Critical write-back is discarded solo and lands in collab — so F-28's repair must cover it. | S (normalise at the export boundary + on the local-origin path) | Low |
+| **8** | **F-29** — the automation-point undo is **positional**, so a shifted lane makes the AI's undo destroy the human's point | **Measured** (§5.7, T7c): the AI's undo removed the **human's** authored point and left the AI's — silent loss of work, followed by a dead undo step. The plain stack order is safe (T7d), so the window is the shift between a command and its undo — which is exactly the window **F-26** opens. The fix pattern already exists in the sibling command (audit 06 D3). | S (verify the slot before splicing) | Low |
+| **9** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. The repo already owns the *other half* of that gate (§5.8). | S + S (one meta-test) | Very low |
+| **10** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause — a **visibility gap**, so it ranks below every lost-work and wrong-audio finding above. | M (effective-value read model) | Low–M |
 *(F-03 — the AI false-success on rename — **left this list**: it was fixed in the working tree by the
 R-02 `verifiedMutation` gate during this audit, and the probe confirms the fix (§5.2). It is
 retained as a worked example in §4 rather than as an open finding. **F-07** left this list too:
@@ -1776,7 +1869,9 @@ minutes before this report's last commit — **F-14 left with it**, because the 
 the store. Both are **resolved in the working tree**, not by this audit but by a concurrent one.
 **F-13** (`migrateProject` is not a migration), **F-11** (macro and automation share one effect
 AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three save timestamps),
-**F-16** (collab normalisation parity), **F-17** (bypass cold restart), **F-18/F-19** (fallback
+**F-06** (the idempotency replay escapes the R-02 gate — the stale read-back half is a **pinned
+contract**, §5.8, so what remains is the envelope ambiguity), **F-17** (bypass cold restart),
+**F-18/F-19** (fallback
 honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (undo-in-frame — now
 **Hypothesis: not reproduced** by the §5.7 probe), **F-23**
 (onset cache), **F-24** (automation ack), **F-27** (a reopened instance resets to defaults) are all
@@ -2017,6 +2112,7 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 | Automation undo removes the point it created | write a point, shift the lane, undo; assert the right point went | Yes | **FAIL (measured, T7c)** — the undo is positional and removed the human's point. **F-29** |
 | Undo inside an open frame is atomic | frame with ≥3 commands, undo inside, then the frame's Ctrl+Z | Yes | **PASS (measured, T9)** — the baseline was restored exactly. **F-22 not reproduced** |
 | Repeated identical mixer write is idempotent | write the same value twice; assert the history did not grow | Yes | **PASS (measured, T8)** ✅ |
+| One command, one document — in every store mode | apply the same command to a solo store and to a collab store; assert the documents match | Yes | **FAIL (measured, T10)** — `params.globalMix` = 1 solo, 30 in collab; the difference is the DSP's wet/dry. **F-16** |
 | **Exactly one writer to the document** | every write path lands in the document's canonical id and value | Yes | **MEASURED — FAILS (T6)**: the PRISM DSP write-back is discarded. **F-28** |
 | A plugin's in-plugin undo survives a save + reload | undo in the plugin, reload the project, compare the audible parameter | Yes | no — **F-28** |
 | MCP ack truthfulness | every mutating tool: does `mutated` match the document? | Yes | **partially ✅** — the R-02 gate covers the dispatch path; **F-06** (the replay) escapes it |
@@ -2085,8 +2181,15 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
 
 ### 10.3 Open questions this audit could not close
 
-12. **The collab normalisation asymmetry (F-16)** was read, not traced end-to-end. Does a
-    collab-edited project, exported and re-imported, really differ from the solo equivalent?
+12. ~~**The collab normalisation asymmetry (F-16)** was read, not traced end-to-end. Does a
+    collab-edited project, exported and re-imported, really differ from the solo equivalent?~~
+    **CLOSED — YES, it differs, and the difference is the DSP's wet/dry** (§5.9, probe T10).
+    The same command yields `params.globalMix = 1` solo and `30` in a collab session; normalising
+    the collab document on the way out rewrites it back to `1`. Two controls make the claim tight:
+    the Yjs round-trip alone is already normalised (T10a), and a carrier-free command produces
+    **semantically identical** documents in both paths (T10d). **F-16 is now Confirmed and measured**,
+    and it makes **F-28 mode-dependent** — the Critical write-back is discarded solo and lands in
+    collab.
 13. ~~**Does anything ever write back into the document from the DSP?**~~ **CLOSED — it does.**
     The PRISM core is a second writer: its in-plugin undo writes into the document and the
     normaliser discards the write (**F-28**, measured). The write-back currently exists only in
@@ -2150,6 +2253,11 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   evidence that decays and must be re-verified, not assumed.
 - **The duplicate-guard scan was performed, not promised** (§5.8): 1277 spec files matched against
   all 29 findings, every candidate read and judged.
+- **Documents were compared with a deep diff, not `JSON.stringify`.** The naive comparison is
+  **key-order sensitive**: on the carrier-free command it reported *"not identical"* for two
+  documents that were in fact identical, and it would have produced a false finding. The deep diff
+  (§5.9 T10d) reports the differing **paths**, which is what makes the claim quotable:
+  `$.tracks[0].effects[0].params.globalMix: solo=1 collab=30`.
 - **The scenario probes reused the repository's own mock-Web-Audio harness** (`tests/mixer-audit3.test.ts`),
   whose recording nodes make the **graph topology** assertable rather than inferable — that is how
   F-10 moved from *strongly indicated* to *confirmed*.
