@@ -380,15 +380,17 @@ when the instance was not there before, and keeps the transition form only when 
 existed. A value that _appeared_ (the param was unset before) is reported as "appeared at", not as
 a movement.
 
-**Falsification.** `tests/mcp-verified-mutation.test.ts` (9 cases) was run against a detached
-worktree at `4460e8ec` with only the helper present but **not wired**: **5 cases went red** — the
+**Falsification.** `tests/mcp-verified-mutation.test.ts` (10 cases) was run against a detached
+worktree at `4460e8ec` with only the helper present but **not wired**: **5 of the 8 cases then
+written went red** — the
 mix success carried no read-back, the F-10 read-back claimed the false transition
 ("mix 0.3→0.34 on Drums"), the undo claim of a shrunk stack was wrongly rewritten, the identical
 document stayed a success, and — the case the falsification caught in **this session's own first
 draft** — the "folded into the previous undo step" correction failed, because a global regex
 carries `lastIndex` between `test()` calls and the detection alternated from call to call. The
-detection and the replacement now use two separate constants, and the guard pins it. With the
-fix: **9/9 green**.
+detection and the replacement now use two separate constants, and the guard pins it. Two cases were
+added after that run — a command that RAN and left the document identical (the undo step is real)
+and a tool that writes outside the document — and both are green. With the fix: **10/10 green**.
 
 **Regression surface.** 2 460 tests across MCP, intent, effect, plugin, agent-trust and the
 rezonans goldens: **2 454 green**. The 6 reds are **not** this change's: the SFT pin, the artifact
@@ -511,14 +513,14 @@ worse than no check: it teaches the team to ignore a red. That is why these thre
   over ~2014 s under heavy parallel load.
 - **This session's new coverage** (6 files, 97 cases, each revert-proven):
 
-| Spec                                                | Covers                                                                                                                                                                                                                                          |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/effect-intent-remove-without-knob.test.ts`   | the type-level remove without a knob, through the applier and through MCP; the control that the knob guard still refuses a knob-turning ask                                                                                                     |
-| `tests/param-intent-relative-db-unit-guard.test.ts` | the relative dB ask on a unitless knob; the controls for the dB knob and the percent path                                                                                                                                                       |
-| `tests/delete-track-undo-cross-references.test.ts`  | delete track + undo restores the take lanes and the Live Set routing                                                                                                                                                                            |
-| `tests/effect-word-identity.test.ts`                | every registered effect's own name resolves to THAT effect, the longest match wins, a canonical name beats an alias on a tie (66 cases)                                                                                                         |
-| `tests/effect-primary-knob.test.ts`                 | the primary knob is DECLARED on the effect and the map is derived from the registry; the census that forbids a second effect→knob table (8 cases)                                                                                               |
-| `tests/mcp-verified-mutation.test.ts`               | a mutation becomes a claim only when the document backs it: the undo claim follows the stack, an identical document is not a success, a success without a read-back gets one, a tool that writes outside the document keeps its claim (9 cases) |
+| Spec                                                | Covers                                                                                                                                                                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/effect-intent-remove-without-knob.test.ts`   | the type-level remove without a knob, through the applier and through MCP; the control that the knob guard still refuses a knob-turning ask                                                                                                      |
+| `tests/param-intent-relative-db-unit-guard.test.ts` | the relative dB ask on a unitless knob; the controls for the dB knob and the percent path                                                                                                                                                        |
+| `tests/delete-track-undo-cross-references.test.ts`  | delete track + undo restores the take lanes and the Live Set routing                                                                                                                                                                             |
+| `tests/effect-word-identity.test.ts`                | every registered effect's own name resolves to THAT effect, the longest match wins, a canonical name beats an alias on a tie (66 cases)                                                                                                          |
+| `tests/effect-primary-knob.test.ts`                 | the primary knob is DECLARED on the effect and the map is derived from the registry; the census that forbids a second effect→knob table (8 cases)                                                                                                |
+| `tests/mcp-verified-mutation.test.ts`               | a mutation becomes a claim only when the document backs it: the undo claim follows the stack, an identical document is not a success, a success without a read-back gets one, a tool that writes outside the document keeps its claim (10 cases) |
 
 - **Regression surfaces run after each fix:** `intent-effect-targets`, `param-intent`,
   `mcp-tools` (147), `mcp-flagship-control`, `referential-integrity`, `undo-redo-integrity`,
@@ -675,7 +677,8 @@ falsifiable.
    `verifiedMutation` helper (R-02).~~ **DONE — §4.6.** The param branch was closed by the repo's own
    commit `88cc4524`; the rest of the surface is now covered by one executor-level check
    (`src/mcp/verified-mutation.ts`), and the guard is `tests/mcp-verified-mutation.test.ts`
-   (9 cases, falsified: 5 red against the pre-fix code). _A mutation is reported as a mutation only
+   (10 cases, falsified: 5 of the 8 then written went red against the pre-fix code). _A mutation is
+   reported as a mutation only
    when the document backs it._
 3. **Add the mechanical "normalize must not prune what the delta does not carry" guard** (R-03).
    A spec that deletes a track and asserts that every field the post-apply normalizer touched is
