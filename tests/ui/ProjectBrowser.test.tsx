@@ -197,3 +197,76 @@ describe("ProjectBrowser — import does not overwrite by embedded id", () => {
     expect(await screen.findAllByText(/imported from Cubase/)).toHaveLength(2);
   });
 });
+
+/**
+ * "RECOVER" MUST NOT BECOME "REPLACE WITH SOMETHING UNREADABLE".
+ *
+ * The recovery buffer is untrusted input (a synchronous localStorage write),
+ * `repo.save()` writes the document raw, and `repo.load()` refuses what it
+ * cannot validate. So a buffer we cannot vouch for used to overwrite the one
+ * copy of the user's saved project with something the loader then rejected —
+ * the project was gone, and the crash journal keeps events, not bodies.
+ */
+describe("ProjectBrowser — recovery never destroys the saved project", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  function seedBuffer(doc: unknown): void {
+    window.localStorage.setItem(
+      "kyx:recovery-buffer:v1:p1",
+      JSON.stringify({ v: 1, projectId: "p1", savedAt: new Date().toISOString(), doc }),
+    );
+  }
+
+  it("refuses a malformed buffer: the project is NOT saved and NOT opened", async () => {
+    // The reader accepts it (it is a slot with a project id), but the document
+    // inside is not a project — `repo.save()` would have taken it raw.
+    seedBuffer({ id: "p1", tracks: "not-an-array" });
+    const saved: ProjectDocument[] = [];
+    const onOpen = vi.fn();
+    const core = makeCore(saved);
+
+    render(<ProjectBrowser core={core} onOpen={onOpen} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Recover" }));
+
+    await waitFor(() => expect(screen.getByText(/nothing was overwritten/)).toBeTruthy());
+    expect(core.repo.save, "an unreadable buffer must never reach the repository").not.toHaveBeenCalled();
+    expect(saved).toHaveLength(0);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("refuses a buffer that belongs to a different project", async () => {
+    const other = { ...createProjectFromTemplate("house"), id: "somebody-else" };
+    seedBuffer(other);
+    const onOpen = vi.fn();
+    const core = makeCore([]);
+
+    render(<ProjectBrowser core={core} onOpen={onOpen} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Recover" }));
+
+    await waitFor(() => expect(screen.getByText(/different project/)).toBeTruthy());
+    expect(core.repo.save).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("recovers a valid buffer: one save, and the project opens", async () => {
+    const doc = { ...createProjectFromTemplate("house"), id: "p1", name: "Recovered Beat" };
+    seedBuffer(doc);
+    const saved: ProjectDocument[] = [];
+    const onOpen = vi.fn();
+    const core = makeCore(saved);
+
+    render(<ProjectBrowser core={core} onOpen={onOpen} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Recover" }));
+
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0].id).toBe("p1");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});

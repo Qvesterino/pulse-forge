@@ -11,6 +11,7 @@ import {
   clearRecoveryBuffer,
   isBufferWorthOffering,
   readRecoveryBuffer,
+  recoverProject,
   type RecoveryBuffer,
 } from "../persistence/recoveryBuffer";
 import { uid } from "../shared/ids";
@@ -102,6 +103,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [crashReport, setCrashReport] = useState<CrashJournalReport | null>(null);
   const [crashDismissed, setCrashDismissed] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryBuffer | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [transferImportOpen, setTransferImportOpen] = useState(false);
   const [songStarterGenre, setSongStarterGenre] = useState<TemplateId>("house");
   const [songStarterMood, setSongStarterMood] = useState("all");
@@ -380,7 +382,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     }
     const saved = projects.find((meta) => meta.id === buffer.projectId) ?? null;
     if (!isBufferWorthOffering(buffer, saved?.updatedAt ?? null)) {
-      clearRecoveryBuffer();
+      clearRecoveryBuffer(buffer.projectId);
       setRecovery(null);
       return;
     }
@@ -389,19 +391,32 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
 
   const recover = (buffer: RecoveryBuffer) =>
     guard(async () => {
-      const doc = buffer.doc as ProjectDocument;
+      // The buffer is UNTRUSTED input and the saved project body is the only
+      // copy of the user's work. `repo.save()` writes the document RAW while
+      // `repo.load()` validates it — so a buffer that was malformed, from a
+      // different project, or written by a NEWER app version did not merely
+      // fail to restore: it OVERWROTE the good body with something the loader
+      // then refused, and the project was gone. `recoverProject` validates
+      // first and never writes when it cannot vouch for the document; the
+      // refusal keeps the buffer, so the work is not thrown away either.
+      const outcome = await recoverProject(core.repo, buffer);
+      if (!outcome.ok) {
+        setRecoveryError(outcome.reason);
+        return;
+      }
+      setRecoveryError(null);
       // Commit the recovered document under its own id so "Recover" is a real
       // save, not a one-shot view: a second crash keeps the work.
-      await core.repo.save(doc);
-      clearRecoveryBuffer();
+      clearRecoveryBuffer(buffer.projectId);
       setRecovery(null);
       refresh();
-      enterStudio(doc);
+      enterStudio(outcome.doc);
     });
 
   const dismissRecovery = () => {
-    clearRecoveryBuffer();
+    clearRecoveryBuffer(recovery?.projectId);
     setRecovery(null);
+    setRecoveryError(null);
   };
 
   const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
@@ -433,6 +448,11 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               Uncommitted changes were found from your last session ({formatRelative(recovery.savedAt)}). The tab closed
               before KYX could save them — recover them?
             </span>
+            {recoveryError !== null && (
+              <span className="pb-crash-text" role="alert">
+                {recoveryError}
+              </span>
+            )}
             <button type="button" className="pb-crash-dismiss" onClick={() => recover(recovery)}>
               Recover
             </button>
