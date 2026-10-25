@@ -46,11 +46,11 @@ would have broken it for no reason.
 
 ### 2. A reading the evidence does not support is NOT offered
 
-| Reading | Offered when | Why |
-| --- | --- | --- |
-| **Playable** (sampler) | always | A recording can always be played as it is. |
-| **Tuned** (wavetable) | `rootMidi !== null && rootConfidence >= 0.5` | A wavetable is a PERIODIC table. Without a readable pitch there is nothing to tune to, so offering it would be offering a claim the analysis did not make. |
-| **Texture** (granular) | sustained, **or** `releaseSec >= 0.08 \|\| attackSec >= 0.08` | A 20 ms click has nothing to spread. Grains must fit inside the material. |
+| Reading                | Offered when                                                  | Why                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Playable** (sampler) | always                                                        | A recording can always be played as it is.                                                                                                                 |
+| **Tuned** (wavetable)  | `rootMidi !== null && rootConfidence >= 0.5`                  | A wavetable is a PERIODIC table. Without a readable pitch there is nothing to tune to, so offering it would be offering a claim the analysis did not make. |
+| **Texture** (granular) | sustained, **or** `releaseSec >= 0.08 \|\| attackSec >= 0.08` | A 20 ms click has nothing to spread. Grains must fit inside the material.                                                                                  |
 
 The order is fixed — playable first, because it always works.
 
@@ -120,18 +120,18 @@ ACTIONABLE ("the audio is not in your library") rather than a silent hole.
 `tests/tsar/forge-candidates.test.ts` (17 specs) drives the candidate layer
 with the six deterministic golden voices:
 
-| Check | Result |
-| --- | --- |
-| The playable reading is offered for any audible source | always |
-| The tuned reading is offered only for a source with a readable root | wavetable only when `rootConfidence >= 0.5` |
-| The texture reading is offered for sustained material | granular for sustained / spreadable sources |
-| The readings differ in the PARAMS they write, not only in their labels | 3 distinct overlays |
-| The tuned reading sets the root only when the reading is reliable | a weak root is never written |
-| Determinism | the same PCM gives the same candidates, in the same order |
-| The candidates do not depend on the slot; the PARAMS do | slot prefixes only |
-| Every candidate carries a reason (and a warning when it has no root) | no silent candidate |
-| A one-shot gets `srcASus = 0`; a sustained source gets a hold | envelope follows the measurement |
-| The grain size fits inside the source it reads | `sourceSec / 2`, clamped [0.005, 0.3] |
+| Check                                                                  | Result                                                    |
+| ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| The playable reading is offered for any audible source                 | always                                                    |
+| The tuned reading is offered only for a source with a readable root    | wavetable only when `rootConfidence >= 0.5`               |
+| The texture reading is offered for sustained material                  | granular for sustained / spreadable sources               |
+| The readings differ in the PARAMS they write, not only in their labels | 3 distinct overlays                                       |
+| The tuned reading sets the root only when the reading is reliable      | a weak root is never written                              |
+| Determinism                                                            | the same PCM gives the same candidates, in the same order |
+| The candidates do not depend on the slot; the PARAMS do                | slot prefixes only                                        |
+| Every candidate carries a reason (and a warning when it has no root)   | no silent candidate                                       |
+| A one-shot gets `srcASus = 0`; a sustained source gets a hold          | envelope follows the measurement                          |
+| The grain size fits inside the source it reads                         | `sourceSec / 2`, clamped [0.005, 0.3]                     |
 
 `tests/tsar/forge-candidate-command.test.ts` (8 specs): applying is ONE undo
 step; a Source B reading lands in B and leaves EVERY `srcA*` parameter
@@ -158,6 +158,26 @@ silent source is refused with an explanation and no list of readings; the
 imported sound gets a source record with its measured root and content hash; a
 patch source whose audio is gone is shown as MISSING, with an actionable
 reason.
+
+### Bundle cost (measured, isolated)
+
+Both numbers come from the SAME tree built twice — the direct parent
+`971750b0` and this wave's commit plus its final patch — in two isolated
+worktrees, so a parallel session's concurrent commits cannot contaminate the
+delta.
+
+|                  | Before  | After   | Delta                       |
+| ---------------- | ------- | ------- | --------------------------- |
+| DAW JS sum       | 5666 KB | 5672 KB | **+6 KB** (ceiling 5630 KB) |
+| Studio boot path | 2135 KB | 2135 KB | **+0 KB** (ceiling 2200 KB) |
+
+The DAW-JS gate was **already red by 36 KB before this wave** (measured on the
+direct parent), so this wave accounts for 6 of the 42 KB. The ceiling was not
+raised: the trigger in `scripts/check-bundle-size.mjs` forbids a raise without
+a diet, and wave 2's dead-weight audit (`scripts/audit-dead-weight.mjs`)
+measured 204 of 204 chunks reachable and 0 modules shipped twice in the main
+graph — the sum is shipped product. The decision belongs to the budget owner;
+these numbers are the evidence.
 
 ## What this ADR does NOT change
 
