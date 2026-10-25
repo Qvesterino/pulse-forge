@@ -24,17 +24,17 @@
 > | **F-10** track-gain lane                 | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane) | `6452dadd`, `ca104349`                    |
 > | **F-06** idempotent replay               | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware   | `c050b03f` (partly carried by `4d7bf750`) |
 > | **F-16** collab normalisation            | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                           | `04c41290` (parallel session), `faba6885` |
+> | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one       | `3d59627e`                                |
 > | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                              | —                                         |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 10 resolved, 19 open, 0 Critical.**
+> **29 findings, 11 resolved, 18 open, 0 Critical.**
 >
-> **Still open, and the next wave:** F-09 (the effect rack reads the document
-> while the DSP plays the lane value — the S-5 read model now EXISTS in
-> `src/project-model/effective-values.ts` and the mixer consumes it, but the
-> rack does not yet), F-11 (macro / modulator / lane precedence on effect
-> parameters — a behavioural change, needs an ADR), and the rest of §11.
+> **Still open, and the next wave:** F-11 (macro / modulator / lane precedence
+> on effect parameters — a behavioural change, needs an ADR), the rack's
+> passthrough-runtime badge (a knob whose effect never loaded still shows a
+> value with no effect on the audio), and the rest of §11.
 
 ---
 
@@ -154,7 +154,7 @@ is deliberate rather than accidental.
 | Unload recovery buffer        | `localStorage["kyx:recovery-buffer:v1:<projectId>"]` — one slot **per project**; a legacy single key is migrated        | `services.onUnload` (sync)                             | `ProjectBrowser`                                         | per-project slot; the write result is **discarded**                                                                                                        | localStorage                                                                                    | **a failed write is not surfaced (F-04, second half)**                                   |
 | Project snapshots             | IndexedDB `project-snapshots`                                                                                           | `SnapshotRepository.save`                              | History panel                                            | separate store                                                                                                                                             | IndexedDB                                                                                       | none found                                                                               |
 | Runtime transport cursor      | `Transport`, anchored on the **AudioContext clock** (`src/audio-engine/AudioEngine.ts:545-547` → `src/services.ts:595`) | engine                                                 | UI playhead via shared rAF                               | audio-clock, not wall clock                                                                                                                                | not persisted                                                                                   | UI playhead freezes in a hidden tab (F-21)                                               |
-| Effect parameter (document)   | `EffectInstance.params`                                                                                                 | commands, MCP, plugin panel                            | `EffectRack` (`src/ui/EffectRack.tsx:930, 1270`), engine | `syncFxParams` diff-guarded push (`src/audio-engine/AudioEngine.ts:1620-1625`)                                                                             | with the document                                                                               | **knob ≠ DSP under automation (F-09)**                                                   |
+| Effect parameter (document)   | `EffectInstance.params`                                                                                                 | commands, MCP, plugin panel                            | `EffectRack` (`src/ui/EffectRack.tsx:962, 1303`), engine | `syncFxParams` diff-guarded push (`src/audio-engine/AudioEngine.ts:1620-1625`)                                                                             | with the document                                                                               | **knob ≠ DSP under automation (F-09)**                                                   |
 | Effect parameter (runtime)    | AudioParam in the graph                                                                                                 | `syncFxParams`, automation bridge, macro               | DSP only                                                 | `setTargetAtTime`, tc 20 ms native / instant worklet                                                                                                       | not persisted                                                                                   | macro vs automation conflict (F-11)                                                      |
 | **DSP-side write-back**       | **a second writer — and the only one found**                                                                            | the PRISM core, via `FxEqPanel`'s in-plugin Undo/Redo  | the document, via `setFxEqParam`                         | arrives under the plugin's **internal** id (`globalMix`, 0..100) instead of the project's canonical one (`mix`, 0..1) — so the normaliser discards it      | **not persisted**                                                                               | **F-28 — measured: the audio and the document disagree, and a reload changes the sound** |
 | Track gain                    | `track.gain` (fader) + `modAutoGain` (automation **lane — a multiplier**) + `modMacroGain` (macro — a multiplier)       | commands                                               | mixer UI                                                 | chain `gain → modAutoGain → modAutoPan → modMacroGain` (`AudioEngine.ts:2016-2019`; the return strip is `gain → modAutoGain → modMacroGain`, `:1904-1906`) | with the document                                                                               | **the lane is a multiplier but is labelled and scaled like an absolute "Volume" (F-10)** |
@@ -692,8 +692,9 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   `AudioParam` (DSP).
 - **Expected contract:** the value a control displays is the value in effect (or the difference is
   disclosed).
-- **Observed divergence:** the rack reads the **document** — `src/ui/EffectRack.tsx:930` and `:1270`
-  `values={fx.params}`. Automation writes the **absolute lane value** into the runtime
+- **Observed divergence:** the rack reads the **document** — `src/ui/EffectRack.tsx:962` and
+  `src/ui/EffectRack.tsx:1303` `values={fx.params}`. Automation writes the **absolute lane value**
+  into the runtime
   (`src/audio-engine/automationBridge.ts:1209` → `writeDeviceTargetAt` →
   `src/audio-engine/deviceLookup.ts`). The `param.secondary` affordance
   (`src/effects/types.ts:39`, `src/effects/definitions.ts:937, 948`) is computed from the _same_
@@ -703,7 +704,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   value, and a manual knob edit is overwritten within one scheduler tick (25 ms) while the knob
   keeps displaying the user's number. The user adjusts a knob and hears nothing change — and sees a
   number that is not what they hear.
-- **Evidence:** `src/ui/EffectRack.tsx:930, 1270`; `src/audio-engine/automationBridge.ts:1209`;
+- **Evidence:** `src/ui/EffectRack.tsx:962, 1303`; `src/audio-engine/automationBridge.ts:1209`;
   `src/audio-engine/deviceLookup.ts:144-145`; `src/effects/types.ts:39`.
 - **Root-cause hypothesis:** the document is treated as the only display source. That is correct for
   a DAW _without_ automation, and wrong at exactly the moment automation is running.
@@ -1002,8 +1003,8 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Observed divergence:** `bypassRuntime` is a transparent passthrough that **ignores every**
   `setParameter` (`src/effects/registry.ts:343-358`); several effect types return it when the module
   has not landed (`:1092-1093, 1110-1111`). The rack does surface a badge, but only via a 60 ms poll
-  (`src/ui/EffectRack.tsx:239-249`). The knobs still read the document (`src/ui/EffectRack.tsx:755,
-778`), so the user sees a parameter set that has no effect on the audio.
+  (`src/ui/EffectRack.tsx:242-244`). The knobs still read the document (`src/ui/EffectRack.tsx:962,
+1303`), so the user sees a parameter set that has no effect on the audio.
 - **Smallest safe repair:** when the runtime is a passthrough, disable the knobs and say so in the
   control itself rather than in a polled badge.
 
@@ -1079,7 +1080,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   ```
   The frame's undo restored the baseline **exactly** — no resurrection, no partial revert. The reason
   is visible in the code: `endUndoFrame` computes `grew = undoStack.length − frameOpenDepth`
-  (`src/store/ProjectStore.ts:339`) and the inner undo already reduced that count, so the compound
+  (`src/store/ProjectStore.ts:385`) and the inner undo already reduced that count, so the compound
   was built from a **shorter** command list than the frame recorded. §5.7 T9b confirms the
   underlying mechanism _does_ exist — the compound's undo re-runs a command that was already undone
   inside the frame — but for the commands exercised (snapshot-based) that re-run is idempotent and
@@ -1255,7 +1256,7 @@ is the only finding that breaks the product's own central contract.
   2. `src/effects/fxeqNode.ts:249-250` — the node's own comment states the intent: _"the restored
      entry arrives asynchronously via the callback so the host can write it through."_ The write-back
      is **deliberate design**, not an accident.
-  3. `src/ui/EffectRack.tsx:1076` — `onParam` → `store.execute(setFxEqParam(doc, trackId, fxId, fullId, value))`.
+  3. `src/ui/EffectRack.tsx:1109` — `onParam` → `store.execute(setFxEqParam(doc, trackId, fxId, fullId, value))`.
   4. `src/effects/fxeq-core/core/fxEqProcessor.ts:747-756` — the core's `undo()` **already applied**
      the restored value to the live DSP (`values[entry.id] = entry.value`; and `values["globalMix"]`
      _is_ the audible wet/dry — `:591`), then returned the **core** id (`globalMix`) and the **core**
@@ -1422,7 +1423,7 @@ product but no probe or test in this audit exercised it.
 | Scenario                                                                   | Trigger                                     | Expected invariant                     | Observed / untested                                                                                                                                      | Evidence                                                                                                                      | Risk                                 | Proposed test                                                                                                                                                     |
 | -------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Transport state / playhead differs from the engine state                   | the tab is hidden                           | the UI reflects the audio clock        | **Observed — diverges (display only).** rAF stops in a hidden tab; the transport does not                                                                | `src/services/rafLoop.ts:21`; `src/ui/playhead.ts:78-85`; `src/services.ts:1284-1289`                                         | low (F-21)                           | hide the tab, return, assert the playhead resyncs from the transport clock                                                                                        |
-| Automation lane values disagree with the applied DSP values under playback | a lane is active                            | the knob shows what is playing         | **Observed — diverges.** The knob reads the document; the DSP plays the lane; no "under automation" cue exists                                           | `src/ui/EffectRack.tsx:930, 1270` vs `src/audio-engine/automationBridge.ts:1209`                                              | high (F-09)                          | assert the effective-value read model returns the lane value while a lane is active                                                                               |
+| Automation lane values disagree with the applied DSP values under playback | a lane is active                            | the knob shows what is playing         | **Observed — diverges.** The knob reads the document; the DSP plays the lane; no "under automation" cue exists                                           | `src/ui/EffectRack.tsx:962, 1303` vs `src/audio-engine/automationBridge.ts:1209`                                              | high (F-09)                          | assert the effective-value read model returns the lane value while a lane is active                                                                               |
 | Recording stops unexpectedly while the UI remains armed/recording          | a device disconnect, or the transport stops | the indicator reflects reality         | **Observed — diverges.** The ⏺ stays lit; `captureTick()` returns `null` while stopped, so notes are silently discarded                                  | `src/ui/TopBar.tsx:158, 613`; `src/midi/patternRecorder.ts:131, 116-120`                                                      | high (F-02)                          | stop the transport, assert the indicator is not in the "recording" state                                                                                          |
 | Async waveform/peak generation renders stale metadata as authoritative     | a buffer is replaced under the same id      | the drawn peaks match the buffer       | **Observed — guarded.** The async result is protected by a `live` flag; the _cache key_ is content-blind                                                 | `src/ui/ArrangementPanel.tsx:291, 299-303, 7008-7019`                                                                         | low (F-23, Hypothesis)               | replace a buffer's content under an existing id and assert the peaks are invalidated                                                                              |
 | Automation playback overwrites the persistent baseline                     | the transport runs over a lane              | the document's value survives playback | **Observed — does NOT diverge.** Automation writes runtime only; `automationReset` restores the doc base                                                 | `src/audio-engine/deviceLookup.ts:133-156`; `src/audio-engine/automationBridge.ts:1359-1380`; `tests/scene-packs.test.ts:492` | low — _the classic defect is absent_ | —                                                                                                                                                                 |
