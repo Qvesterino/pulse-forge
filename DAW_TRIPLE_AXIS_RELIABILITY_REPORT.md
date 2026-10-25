@@ -553,6 +553,44 @@ starvation bound, and the future-schema project's "newer version" badge.
 
 ---
 
+## 12b. Addendum — the verifier repair (F-15/F-16 closed, one product bug found)
+
+Committed the same session. The F-15/F-16 repair turned into its own investigation because the two
+verifier flows had drifted from the UI in FOUR places, not two — and the drift hid a real product bug:
+
+- **F-15 — the plugin-workflow check now drives the REAL add-effect flow** (`.fx-add-trigger` →
+  `.fx-add-popover` → the PRISM `.fx-add-device` tile), replacing the `selectOption` against a
+  `<select>` the React tree dropped. Verified end-to-end by a targeted probe (trigger count 1,
+  popover opens, 57 device tiles, PRISM tile 1, `.fx-device` + the PRISM editor mount) — stable
+  across repeated probe runs.
+- **F-16 — the app-boot check now clicks the browser strip's PRESETS view tab** (the views are
+  explicit tabs; nothing auto-switches on track selection) and waits for the lazy preset chunk with
+  a 15 s budget. Measured in-probe: **the panel mounts in 32 ms** once the flow drives the real UI.
+- **A third drift, found by the failing clicks:** the first-run project browser wraps the template
+  grids in collapsed `<details>` disclosures — every locator click on a template died there.
+  The verifier now expands them the way a user does (`openProjectBrowserDisclosures`).
+- **The product bug under the drift:** those `<details>` carried `open={!firstRun}` as a React
+  CONTROLLED attribute — every re-render (project-list recovery, crash-journal probe) re-applied it
+  and **snapped a user-expanded section shut within a second**; on a first-run machine the template
+  section could not be kept open at all. Fixed in `ProjectBrowser.tsx`: the disclosures are
+  uncontrolled, the initial state is applied imperatively once (measured: open-state stays
+  `true,true,true` across a 10 s window where it previously read `false,false,false` throughout).
+- **A fourth drift, from the parallel persistence wave:** two new project-row clicks used
+  `has-text(OPEN)` UNQUOTED, which Playwright rejects outright — it killed the app-boot and plugin
+  flows the moment the else-branch ran. Quoted. The PRISM editor wait also needed a 60 s budget in
+  BOTH legs (the editor mounts only after the flagship's worklet runtime loads).
+
+**Verification honesty.** The two flows that were permanently red are green in the suite runs where
+the machine allowed them (app boot + touch: PASS in the 432/436 run; the plugin flow reached its
+final wait). A clean full-suite number could not be captured this session: of five suite runs, one
+died at a 600 s boot timeout, one lost its browser mid-suite, and the rest ran beside heavy
+parallel sessions (perf renders 1.1–4× over budget, the live↔offline null corpus reporting its
+documented realtime-nondeterminism class). The remaining reds across the last runs — the null
+corpus's 4/66 realtime cases, the perf budgets, the stutter 0/0-silence check, and the fresh
+console-errors assertion flagging OPTIONAL-service intake refusals (already classified as
+non-fatal by `747e7f8c`) plus an aborted landing-video request — are load-correlated or owned by
+the in-flight wave that added the assertion; none is this session's.
+
 ## 12. Open questions and residual risk
 
 - **F-07 / F-08** were re-verified open but not re-investigated; both need their own falsification
