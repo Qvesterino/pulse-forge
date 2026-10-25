@@ -1673,6 +1673,7 @@ A reader about to remediate a finding in those areas must expect those guards to
 | **F-07's other half** — an AI undo deleting the *human's* point | **Executed — MEASURED** (T7a–T7d, §5.7) | — | points carry no identity and the undo delta is positional → the AI's undo removes the human's point when the lane shifted → **F-29** |
 | P6 idempotency of the *mixer* setters | **Executed — PASS** (T8, §5.7) | — | a repeated identical mixer write adds **no** history entry ✅ |
 | Undo-inside-a-frame resurrection | **Executed — NOT REPRODUCED** (T9/T9b, §5.7) | — | the frame's single Ctrl+Z restored the baseline exactly → **F-22 downgraded to Hypothesis** |
+| **Collab vs solo document shape** | **Executed — MEASURED** (T10, §5.9) | — | the same command yields `globalMix` 1 solo and 30 in collab; leaving collab rewrites it → **F-16 confirmed; F-28 is mode-dependent** |
 | **Perceptual** audio truth for the remaining audible claims | **Not executed** | jsdom has no `OfflineAudioContext`; the graph was measured instead | F-09, F-11, F-17, F-18, F-19 (§10) |
 
 ### 5.7 Probe results — `tmp-probe/gaps.test.ts` (vitest, **7/7 green**)
