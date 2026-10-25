@@ -35,6 +35,13 @@ write and its undo, the AI's undo removed the **human's** point and left the AI'
 measured, §5.7. It is a silent loss of authored work, and the window that opens it is F-26's
 unsynchronised dispatch.
 
+**And the audit corrected itself twice.** A duplicate-guard scan over all 1277 spec files (§5.8)
+showed that **two findings the report had listed as open were already fixed** by a concurrent
+session — F-04 and F-14, whose fix landed *six minutes before this report's own last commit*. A
+third, F-06, turned out to be **half a deliberately pinned contract** rather than a defect. Every
+`file:line` in this report was then re-verified mechanically against the current tree (§11). The
+verdict below is stated on the corrected list: **29 findings, 3 resolved, 26 open, 1 Critical.**
+
 What is *not* uniformly sound is everything that **reports** on that state rather than holding it:
 
 | Surface | Verdict |
@@ -43,7 +50,7 @@ What is *not* uniformly sound is everything that **reports** on that state rathe
 | MCP refusal + acknowledgement contract | **Mixed — and improving in the working tree.** The new R-02 `verifiedMutation` gate now corrects false *successes* at one dispatch choke point. It does **not** cover two paths: a refusal that is not flagged as an error, and the idempotency replay, which returns before the gate. |
 | Export paths | **Divergent from each other.** The master export refuses to render a changed project; the stem and track exports do not check at all and can ship a stale arrangement. |
 | Automation / DSP value display | **Divergent.** The knob shows the committed document value while the DSP plays the automated value, with no "under automation" indicator anywhere in the rack. |
-| Persistence recovery | **Weakest area.** The unload recovery buffer is a single global slot — a second dirty project overwrites the first's only copy of uncommitted work. |
+| Persistence recovery | **Much improved in the working tree — it was the weakest area.** The single global recovery slot is gone (per-project slots, `9d2fc17c`), and a malformed, foreign or newer buffer is now **refused** instead of written into the store. One hole survives: a **failed buffer write is still discarded** (`src/services.ts:1328`). |
 
 **The headline risk is not "the DAW loses data on save". It is "the DAW says something that is not
 true"** — in three places where a human can be misled about whether work happened: the REC indicator
@@ -105,16 +112,16 @@ is deliberate rather than accidental.
 | Project document (all slices) | `ProjectStore.doc_` (`src/store/ProjectStore.ts:75, 264`) — replaced, never mutated | `store.execute` / `executeUserEdit` only; `replaceDoc` | UI hooks, engine, scheduler, renderer | command → `execute` → identity guard (`:256-263`) → `normalizeProject` (`:264`) → undo push (`:265`) | IndexedDB `projects`, whole doc, one transaction (`src/persistence/ProjectRepository.ts:50-62`) | none at this layer — verified |
 | Undo / redo history | `ProjectStore.undoStack` / `redoStack` (`:28-29`) | `applyCommand` (`:265`), `undo`/`redo` | UI history panel, `kyx_undo` | delta snapshot (`src/commands/core.ts:34-45`), history capped at 256 (`:269-273`) | not persisted | undo inside an open frame (F-22) |
 | Save status / watermark | `ProjectStore.saveStatus_` / `lastSavedAt_` | `services.doSave` only | TopBar, `kyx_save` | revision-guarded (`src/services.ts:1153, 1173-1179`) | **never persisted** | three notions of "when" (F-15) |
-| Unload recovery buffer | `localStorage["kyx:recovery-buffer:v1"]` | `services.onUnload` (sync) | `ProjectBrowser` | one global slot, overwritten unconditionally | localStorage | **single slot (F-04)** |
+| Unload recovery buffer | `localStorage["kyx:recovery-buffer:v1:<projectId>"]` — one slot **per project**; a legacy single key is migrated | `services.onUnload` (sync) | `ProjectBrowser` | per-project slot; the write result is **discarded** | localStorage | **a failed write is not surfaced (F-04, second half)** |
 | Project snapshots | IndexedDB `project-snapshots` | `SnapshotRepository.save` | History panel | separate store | IndexedDB | none found |
 | Runtime transport cursor | `Transport`, anchored on the **AudioContext clock** (`src/audio-engine/AudioEngine.ts:545-547` → `src/services.ts:588`) | engine | UI playhead via shared rAF | audio-clock, not wall clock | not persisted | UI playhead freezes in a hidden tab (F-21) |
 | Effect parameter (document) | `EffectInstance.params` | commands, MCP, plugin panel | `EffectRack` (`src/ui/EffectRack.tsx:930, 1270`), engine | `syncFxParams` diff-guarded push (`src/audio-engine/AudioEngine.ts:1620-1625`) | with the document | **knob ≠ DSP under automation (F-09)** |
 | Effect parameter (runtime) | AudioParam in the graph | `syncFxParams`, automation bridge, macro | DSP only | `setTargetAtTime`, tc 20 ms native / instant worklet | not persisted | macro vs automation conflict (F-11) |
 | **DSP-side write-back** | **a second writer — and the only one found** | the PRISM core, via `FxEqPanel`'s in-plugin Undo/Redo | the document, via `setFxEqParam` | arrives under the plugin's **internal** id (`globalMix`, 0..100) instead of the project's canonical one (`mix`, 0..1) — so the normaliser discards it | **not persisted** | **F-28 — measured: the audio and the document disagree, and a reload changes the sound** |
 | Track gain | `track.gain` (fader) + `modAutoGain` (automation) + `modMacroGain` (macro) | commands | mixer UI | chain `gain → modAutoGain → modMacroGain` (`AudioEngine.ts:1896-1905`) | with the document | **absolute-vs-multiplicative (F-10)** |
-| Automation lane | `doc.automation` points | commands, MCP | engine (runtime only), arrangement lanes | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1191-1210`) | with the document | points addressed by value (F-07) |
+| Automation lane | `doc.automation` points | commands, MCP | engine (runtime only), arrangement lanes | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1191-1210`) | with the document | points have **no identity** → addressed by value and by position (F-07, F-29) |
 | MCP read model | **none** — tools read `ctx.getDoc()` live | — | all tools | — | — | idempotency ledger replay (F-06) |
-| Session checkpoint / A-B | `masterAbStore`, outside the document (`src/mcp/tools.ts:74`) | MCP session | `kyx_master` | not invalidated on document change | not persisted | stale restore (F-08) |
+| Session checkpoint / A-B | `masterAbStore`, outside the document (`src/mcp/tools.ts:75`) | MCP session | `kyx_master` | not invalidated on document change | not persisted | stale restore (F-08) |
 
 ### 2.2 Propagation graph (one intent → one transition → N representations)
 
@@ -197,6 +204,7 @@ Derived from the product's actual contracts, not imposed. Status reflects this a
 | **I-11** | Transient meter/playhead values may lag within a documented bound, and that lag must not corrupt committed state | scheduler tick 25 ms, lookahead 120 ms, smoothing tc 8–20 ms | **Holds** — the lag is bounded and documented; UI playhead freeze in a hidden tab is a *display* issue (F-21) |
 | **I-12** | The AI's structured answer agrees with what the document actually contains | MCP ack contract + the R-02 `verifiedMutation` gate | **Holds on the dispatch path** (gate); **breaks** on refusals and on the idempotency replay (F-05, F-06) |
 | **I-13** | There is exactly **one** writer to the authoritative document | `src/commands/*` → `ProjectStore.execute` | **Breaks — MEASURED** (§5.3, T6): the PRISM DSP core is a second writer (its in-plugin undo writes into the document), and the normaliser discards that write — so the audio and the document diverge (F-28) |
+| **I-14** | An undo removes **the entity it created**, not whatever occupies its slot | `src/commands/*` → the command's own `undo` | **Breaks — MEASURED** (§5.7, T7c): an automation point has no identity, so its undo is anchored to a *position*; when the lane shifted, the AI's undo removed the **human's** point and left the AI's (F-29). The sibling command `moveAutomationPoint` already honours this invariant (audit 06 D3) — the add's undo does not |
 
 **Deliberately asynchronous contracts (not defects):**
 
@@ -217,8 +225,12 @@ Severity: **Critical** (wrong audio / lost work / false success in the common pa
 Confidence: **Confirmed** (read the code path that proves it, or measured it) · **Strongly indicated** ·
 **Hypothesis** · **Untested**.
 
-**29 findings.** One (F-03) was **resolved in the working tree during this audit** and is retained as
-a worked example rather than an open item; 28 remain open, one of them **Critical** (F-28).
+**29 findings.** **Three** are now **resolved in the working tree** and are retained as worked
+examples rather than open items: **F-03** (fixed by the R-02 `verifiedMutation` gate during this
+audit) and **F-04 + F-14** (fixed by a concurrent persistence commit, `9d2fc17c` — found by the
+duplicate-guard scan in §5.8, which the report had promised but had not performed). **26 remain
+open**, one of them **Critical** (F-28), and **F-04's second half** — the discarded write result —
+survives its own fix and stays on the list.
 Fourteen are **Confirmed** by code reading that the parent re-verified directly; **nine of those were
 additionally measured** (§5). Two are **Strongly indicated** and are flagged for confirmation
 (F-16, F-22); one is a **Hypothesis** (F-23).
@@ -350,30 +362,43 @@ additionally measured** (§5). Two are **Strongly indicated** and are flagged fo
 
 ### F-04 — The unload recovery buffer is a single global slot; a second dirty project destroys the first's only copy
 
-**Severity:** High · **Confidence:** Confirmed
+**Severity:** High (was) · **Status:** **RESOLVED in the working tree** — the slot scoping is fixed and pinned by a spec; **one half remains open** (the discarded write result)
+**Confidence:** Confirmed — and the fix is *measured by the repo's own spec*, not asserted
 
-- **Affected journey:** Edit project A → close it dirty → open/close project B dirty → return to A.
-- **Authoritative state:** `localStorage["kyx:recovery-buffer:v1"]`.
-- **Expected contract:** the recovery buffer protects uncommitted work, per project.
-- **Observed divergence:** `RECOVERY_KEY` is a single constant (`src/persistence/recoveryBuffer.ts:25`)
-  and `writeRecoveryBuffer` overwrites it unconditionally (`:62` `store.setItem(RECOVERY_KEY, payload)`).
-  `clearRecoveryBuffer(projectId)` **is** project-scoped (`:116-126` — it refuses to remove a buffer
-  belonging to another project, `:123`), which shows the author knew a buffer can belong to a
-  different project than the one being cleared. But the *write* path has no such scoping. The file's
-  own comment (`:105`) states: *"`projectId` scopes the clear to ONE project. The buffer holds the
-  ONLY copy…"* — and the write path destroys that copy for project A when project B is closed dirty.
-- **Second defect on the same path:** quota failure returns `false` (`:65-68`) and the caller
-  **ignores the return value** — so for a project large enough to exceed the localStorage quota, the
-  buffer simply does not exist and the unload edit is lost with no signal at all.
-- **Evidence:** `src/persistence/recoveryBuffer.ts:25, 51-69, 105, 116-126`;
-  `src/services.ts` unload handler (return value discarded).
-- **Root-cause hypothesis:** the buffer was designed as a single "most recent dirty project"
-  convenience slot; the project-scoped *clear* was added later without revisiting the *write*.
-- **Smallest safe repair:** key the buffer per project (`kyx:recovery-buffer:v1:<projectId>`), keep a
-  small index of pending project ids, and have the unload handler act on the boolean result —
-  surfacing a failure rather than dropping it.
-- **Regression plan:** a spec that writes a buffer for project A, writes one for project B, and
-  asserts A's buffer is still readable; plus a spec asserting a failed write is reported.
+> **Audit update — duplicate-guard scan (§5.8).** The scan found `tests/recovery-overwrite.test.ts`
+> — a spec whose doc comment reads *"THE RECOVERY MUST NOT BECOME THE DESTRUCTION"*. It pins **one
+> slot per project**, the legacy-key migration and the project-scoped clear. The fix landed in
+> commit `9d2fc17c` *"fix(persistence): recovery must not destroy the saved project (P0 data loss)"*
+> (2026-10-25 **14:19:56**) — **six minutes before this report's own last commit** (`fa9a7d2b`,
+> 14:36:05). That is why this entry was still open when the report was written, and why the
+> top-10 ranking had to change. **The slot defect is closed.**
+
+- **What was wrong (before the fix):** `RECOVERY_KEY` was a single constant
+  (`src/persistence/recoveryBuffer.ts:25`) and `writeRecoveryBuffer` overwrote it unconditionally
+  (`:62` `store.setItem(RECOVERY_KEY, payload)`). `clearRecoveryBuffer(projectId)` **was**
+  project-scoped (`:116-126` — it refuses to remove a buffer belonging to another project, `:123`),
+  which shows the author knew a buffer can belong to a different project than the one being cleared —
+  but the *write* path had no such scoping. The file's own comment (`:105`) stated: *"`projectId`
+  scopes the clear to ONE project. The buffer holds the ONLY copy…"* — and the write path destroyed
+  that copy for project A when project B was closed dirty.
+- **What it is now:** `RECOVERY_KEY_PREFIX = "kyx:recovery-buffer:v1:"` with a per-project
+  `recoveryKey(projectId)` (`src/persistence/recoveryBuffer.ts:37, 57-59`), a legacy single key kept
+  for migration (`:35, 92-93`), and a scoped clear. `writeRecoveryBuffer` returns a **boolean**
+  (`:77`).
+- **THE HALF THAT IS STILL OPEN — and it is the one the original finding was really about.** The
+  write result is still **discarded** at the call site: `writeRecoveryBuffer(store.doc, store.doc.id);`
+  (`src/services.ts:1328`), while the function's own doc comment says *"Returns false when the
+  payload could not be stored (quota, private mode, serialization failure); the caller treats that as
+  'no protection this time', never as an error"* (`src/persistence/recoveryBuffer.ts:73-75`).
+  **The comment describes a caller behaviour that does not exist.** So for a project large enough to
+  exceed the localStorage quota, the buffer silently does not exist and the unload edit is lost with
+  no signal at all — the exact failure this finding named.
+- **Smallest safe repair (the surviving half):** either make the unload handler act on the boolean
+  result and surface a failure, or amend the comment to say the result is deliberately dropped — and
+  then decide deliberately. Right now the code and its own documentation disagree, and only one of
+  them is a decision.
+- **Regression plan:** the repo's own spec already covers the slot scoping; the surviving half needs
+  a spec that asserts a failed write is reported (or, by explicit decision, is deliberately dropped).
 
 ---
 
@@ -422,6 +447,15 @@ additionally measured** (§5). Two are **Strongly indicated** and are flagged fo
 - **Smallest safe repair:** route the automation handler's refusals through
   `mcpError("UNKNOWN_TARGET", …)` / `mcpError("INVALID_ARGUMENTS", …)`. Then add a **meta-test** that
   asserts every mutating tool's refusal path sets `isError` — that prevents the next drift.
+- **AUDIT UPDATE (§5.8) — the repo already owns the OTHER HALF of that gate.** 
+  `tests/mcp-error-codes.test.ts:107-124` carries a gate of exactly this kind:
+  *"GATE: every error result is constructed through mcpError — no un-coded literals"*, asserting that
+  every `isError: true` literal in `src/mcp/tools.ts` carries its own `errorCode`
+  (`expect(unCoded).toBe(0)`). The file states the rationale outright: *"GAP-09 taught this lesson
+  for handlers: coverage without a gate rots."* (`:108`)
+  **F-05 is the missing complementary half of an existing gate, not a new idea:** that gate counts
+  `isError: true` literals, and F-05's refusal is `isError: undefined` — it is not an error at all,
+  so the gate cannot see it. The fix is one more rule in the same file, in the same style.
 - **Regression plan:** the meta-test above, plus per-tool specs asserting `isError` on stale ids.
 
 ---
@@ -439,7 +473,7 @@ additionally measured** (§5). Two are **Strongly indicated** and are flagged fo
 
 - **Affected journey:** an agent retries a call with the same `requestId` after a human has edited
   the same value.
-- **Authoritative state:** the MCP idempotency ledger (`src/mcp/tools.ts:74`).
+- **Authoritative state:** the MCP idempotency ledger (`src/mcp/tools.ts:4033`).
 - **Expected contract:** a replay tells the agent what is true *now*.
 - **Observed divergence:** on a repeated `requestId`, the tool returns the **cached result object**
   (`src/mcp/tools.ts:4357-4382`):
@@ -472,14 +506,36 @@ additionally measured** (§5). Two are **Strongly indicated** and are flagged fo
   Code: `src/mcp/tools.ts` — replay block `:4357-4382` (returns at `:4377`, text at `:4379`), the
   audit log's `mutated: false` at `:4369`, the ledger write at `:4494`, the dispatch at `:4430`, and
   the gate applied at `:4457`.
-- **Root-cause hypothesis:** the ledger was designed to guarantee *exactly-once execution*; it
-  returns the cached *response* as well, and the cached response embeds a point-in-time read-back
-  that is no longer point-in-time.
-- **Smallest safe repair:** on the replay path force `mutated: false`, and either re-read the
-  current value for the read-back portion or label the replayed text explicitly as historical
-  (*"as of the original call"*).
+- **AUDIT CORRECTION (duplicate-guard scan, §5.8) — the stale read-back is a PINNED CONTRACT, not a
+  defect.** `tests/mcp-idempotency.test.ts` asserts the replay's exact text:
+  ```ts
+  expect(second.text).toBe(`idempotent replay — requestId was already applied; nothing re-executed\n${first.text}`);
+  ```
+  (`:94`) — and the spec's contract list states it as an intended property:
+  *"ID1 same requestId twice → applies exactly once; the second call is a replay carrying the
+  ORIGINAL outcome"* (`:16-17`) and *"ID6 undo after a mutation: the replay still returns the
+  original outcome and does NOT re-apply (the agent owns undo/redo)"* (`:22-23`), pinned at
+  `:143-153`. **So "the replay serves a stale read-back" is a DUPLICATE of an existing, deliberate
+  contract, not a discovery.** Whether that contract is *right* — should a retry report the value as
+  of the original call, or the value now? — is a **product judgement**, and it is a different question
+  from the one this finding asked.
+- **What survives, and is a real finding:** the replay's **envelope is ambiguous for a machine
+  client**. `mutated` is spread through from the original call, so it reads `true` on a call that
+  executed nothing; the disambiguation lives only in prose (`replayed: true`,
+  `stage: "replayed"`, the words *"nothing re-executed"*) and in a field (`result.data`) that a
+  client keying on `mutated` never reads. **A client that keys on `mutated` alone gets the opposite
+  of the truth.** That is the mission's *visibility gap* class, and it is aggravated by the fact that
+  the replay returns **before** the R-02 gate — the one mechanism whose whole purpose is to make
+  `mutated` honest.
+- **Root-cause hypothesis:** the ledger was designed to guarantee *exactly-once execution* and it
+  does; it returns the cached *response* as well, and that response carries the original operation's
+  flags. The flags describe the past, the envelope describes the present.
+- **Smallest safe repair:** on the replay path set `mutated: false` and keep `replayed: true` —
+  the original outcome is already preserved in the cached result and in the text. The stale *value*
+  inside the read-back is a separate, contract-level decision (it is pinned today; changing it
+  changes ID1 and ID6).
 - **Regression plan:** apply a change, then replay the same `requestId`; assert `mutated === false`
-  and that the reported value equals the document's current value.
+  and `replayed === true`. The value-freshness half needs a **product decision first**, not a test.
 
 ---
 
@@ -493,6 +549,9 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 > index and never compares the point it carried. **F-29 carries the destructive form** — the AI's
 > undo removes the human's point outright — while F-07 keeps the duplication half. The two share one
 > root cause (an automation point has no identity) and one repair.
+> **The repair already exists in the sibling command:** `moveAutomationPoint` re-anchors by identity
+> then by `(tick, value)` — "Audit 06 D3" (`src/commands/automation.ts:112-115`), pinned by
+> `tests/automation-audit.test.ts:91-110`. `addAutomationPoint.undo` never got it.
 
 > **Measured (§5.2):** the identical write duplicated the point and grew the undo stack.
 > ```
@@ -543,7 +602,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 - **Affected journey:** AI restores an A/B snapshot after a human deleted the saved effect instance
   and added a different one of the same type.
 - **Authoritative state:** `EffectInstance.id`; the A/B snapshot lives *outside* the document
-  (`src/mcp/tools.ts:74`, `masterAbStore`) and is never invalidated when the document changes.
+  (`src/mcp/tools.ts:75`, `masterAbStore`) and is never invalidated when the document changes.
 - **Expected contract:** a write aimed at a specific instance either hits it or fails.
 - **Observed divergence:** the restore resolves the instance by id **with an ordinal fallback**
   (`src/mcp/tools.ts`, `kyx_master` → `op: "ab"` → `restore`):
@@ -726,28 +785,36 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 
 ### F-14 — Recovery writes an unvalidated, un-migrated document into the project store
 
-**Severity:** Medium · **Confidence:** Confirmed
+**Severity:** Medium (was) · **Status:** **RESOLVED in the working tree** · **Confidence:** Confirmed — and the fix is *measured by the repo's own spec*
 
-- **Affected journey:** close the app dirty → reopen → accept the recovery banner.
-- **Authoritative state:** the recovered `ProjectDocument`.
-- **Expected contract:** a recovered document is validated and migrated before it is trusted.
-- **Observed divergence:** the recovery path casts without validating —
-  `const doc = buffer.doc as ProjectDocument` — then writes it straight into the project store and
-  enters the studio with it (`src/ui/ProjectBrowser.tsx:392-399`). `ProjectRepository.save`
-  performs **no shape validation and no migration** (`src/persistence/ProjectRepository.ts:50-62`);
-  migration runs only on load (`:69`). Consequently: (a) the recovered in-memory document keeps its
-  old `schemaVersion` and that stale version is written back to disk verbatim; (b) a buffer that
-  passes the reader's shallow check but is structurally broken is written into the `projects` store
-  and then becomes **invisible** — `listAll` skips records failing `validateProjectShape`
+> **Audit update — duplicate-guard scan (§5.8).** `tests/recovery-overwrite.test.ts` pins this
+> behaviour, and the code now implements it. The fix landed in the same commit as F-04's
+> (`9d2fc17c`, 2026-10-25 14:19:56) — six minutes before this report's own last commit. **All three
+> failure modes this finding named are closed.**
+
+- **What was wrong (before the fix):** the recovery path cast without validating —
+  `const doc = buffer.doc as ProjectDocument` — then wrote it straight into the project store and
+  entered the studio with it (`src/ui/ProjectBrowser.tsx:392-399`). `ProjectRepository.save`
+  performed **no shape validation and no migration** (`src/persistence/ProjectRepository.ts:50-62`);
+  migration ran only on load (`:69`). Consequently: (a) the recovered in-memory document kept its
+  old `schemaVersion` and that stale version was written back to disk verbatim; (b) a buffer that
+  passed the reader's shallow check but was structurally broken was written into the `projects`
+  store and then became **invisible** — `listAll` skips records failing `validateProjectShape`
   (`ProjectRepository.ts:96-98`) and `listIncompatible` only lists `schemaVersion > SCHEMA_VERSION`
-  (`:106-113`). The user is told *"Recovered"*; the project is gone at the next boot.
-- **Evidence:** `src/ui/ProjectBrowser.tsx:392-399`; `src/persistence/ProjectRepository.ts:50-62,
-  69, 96-98, 106-113`; `src/persistence/recoveryBuffer.ts:95`.
-- **Smallest safe repair:** run the recovered document through `validateProjectShape` +
-  `migrateProject` before `repo.save`, and surface a failure to the user instead of claiming a
-  recovery that did not happen.
-- **Regression plan:** a spec that feeds a structurally broken buffer and asserts the recovery is
-  refused with a message, and that the project list still shows the project.
+  (`:106-113`). The user was told *"Recovered"*; the project was gone at the next boot.
+- **What it is now:**
+  - `prepareRecoveredDocument(buffer): RecoveryVerdict` (`src/persistence/recoveryBuffer.ts:267-289`)
+    decides **before** anything is written: it refuses a shape that does not validate (`:268-272`),
+    refuses a buffer belonging to a **different project** (`:275-279`), **migrates** an older schema
+    (`:281-282`), and refuses a document written by a **newer** KYX (`:283-288`).
+  - `recoverProject(target, buffer)` (`:301-304`) returns that verdict and **writes only on
+    `ok`** — and the file states it plainly: *"The refusal path never writes: the saved body stays
+    exactly as it was, and the buffer stays in place so the work is not thrown away"*
+    (`:296-300`).
+  - The verdict carries a **reason string** (`:246`), so the refusal can be shown to the user
+    instead of a silent "Recovered".
+- **Smallest safe repair:** none needed — this is the repair, and it is already in the tree.
+- **Regression plan:** the repo's own spec covers it. Nothing further is required from this audit.
 
 ---
 
@@ -1162,6 +1229,21 @@ is the only finding that breaks the product's own central contract.
   `{tick, value}`, the undo must refuse (and report) rather than splice blindly. That is a local
   change in `src/commands/docDelta.ts` / `src/commands/automation.ts` — no schema change, no audio
   change, no migration.
+- **AUDIT UPDATE (§5.8) — THE FIX PATTERN ALREADY EXISTS IN THIS CODEBASE; ONE PATH WAS MISSED.**
+  The duplicate-guard scan found `tests/automation-audit.test.ts` (audit 06 — *"index-shift-tolerant
+  point ops (D3)"*), which pins that **`moveAutomationPoint` already tolerates a shifted index**:
+  *"move tolerates a shifted index by re-anchoring on the captured point"* (`:91-110`) — a collab peer
+  prepends a point, the captured index shifts, and the move must still move *B*, not the wrong point.
+  The source says why, in the codebase's own words (`src/commands/automation.ts:112-115`):
+  > *Audit 06 D3: re-anchor by IDENTITY, then by (tick, value) — the index was validated against the
+  > FACTORY doc only; a collab peer shifting the array used to make points[index] undefined
+  > (TypeError) or move the WRONG point.*
+
+  **`addAutomationPoint.undo` (`:91-99`) never received that treatment** — it resolves by
+  `(tick, value)` only, with no identity re-anchor and no index check. So F-29 is not a new
+  mechanism and not a new insight: **it is the sibling call that was missed when the first one was
+  fixed.** The repair is to apply D3's re-anchoring to the add's undo — and the regression test
+  already exists in spirit, in the same spec file, for the other command.
 - **Regression plan:** probe T7c is the test. Promote it and assert that the human's point survives
   the AI's undo, and that the AI's point is the one removed.
 
@@ -1224,7 +1306,7 @@ product but no probe or test in this audit exercised it.
 |---|---|---|---|---|---|---|
 | Save succeeds before all relevant state is serialized | a save is clicked | "saved" means durably written | **Observed — contract-compliant.** The save captures the exact revision, compares identity after the await, and re-queues rather than reporting a stale revision | `src/services.ts:1153, 1173-1179`; `tests/services-save-drain.test.ts` | low | — |
 | Autosave captures a partial command transaction | a gesture is in flight | the saved doc is a whole state | **Observed — contract-compliant.** Debounce with a `maxDeferMs` / `maxArms` force-flush | `src/persistence/autosave-debouncer.ts:100-129` | low | — |
-| Recovery restores the arrangement but not routing/plugins/automation | the recovery buffer is restored | the same project comes back | **Observed — diverges.** The buffer holds the whole document but it is written **unvalidated and unmigrated**, and a structurally broken buffer becomes invisible in the library | `src/ui/ProjectBrowser.tsx:392-399`; `src/persistence/ProjectRepository.ts:50-62, 69, 96-98, 106-113` | high (F-14) | feed a structurally broken buffer; assert the recovery refuses with a message and the project stays listed |
+| Recovery restores the arrangement but not routing/plugins/automation | the recovery buffer is restored | the same project comes back | **RESOLVED in the working tree.** The buffer holds the whole document, but it is no longer written unvalidated and unmigrated: `prepareRecoveredDocument` validates the shape, refuses a foreign project, **migrates** an older schema and refuses a newer one; `recoverProject` writes only on `ok` and keeps the buffer on refusal | `src/persistence/recoveryBuffer.ts:267-289, 301-304`; `tests/recovery-overwrite.test.ts` | ~~high (F-14)~~ → **closed** | already covered by the repo's own spec |
 | A second dirty project destroys the first's only copy | project A closed dirty, then project B closed dirty | A's uncommitted work survives | **Observed — diverges.** One global slot; the write path is unscoped while the clear path is project-scoped | `src/persistence/recoveryBuffer.ts:25, 62, 116-126` | high (F-04) | write a buffer for A, then for B; assert A's buffer is still readable |
 | Version migrations silently drop or reinterpret parameters | an old project is opened | the migration is explicit and total | **Observed — diverges in kind.** `migrateProject` never branches on the source version; the history is a comment | `src/project-model/schema.ts:3528-3592` | medium (F-13) | migrate from every version ≤ 38; assert the result equals today's `normalizeProject` of the same input |
 | Export uses cached state that diverges from the session | the project changes, then an export runs | the export renders the session | **Observed — diverges.** Stems/tracks capture the document at *render* time and never re-check it; the master path does | `src/ui/ExportPanel.tsx:259, 509-518, 835-872, 874+`; `src/mastering/report.ts:102-107` | **high (F-01)** | edit the arrangement, then export stems; assert the export refuses with the master's message |
@@ -1236,8 +1318,9 @@ product but no probe or test in this audit exercised it.
 | An old completion overwrites a newer intent | two async results resolve out of order | the newer result wins | **Observed — guarded** for the async onset path (`live` flag) | `src/ui/ArrangementPanel.tsx:7008-7019` | low | — |
 | Mounted/unmounted UI subscribers miss updates or recreate stale local copies | a panel mounts while the document changes | the panel reads the current document | **Observed — diverges.** Fine-grained subscriptions mean an edit to an *unsubscribed* slice does not re-render the consumer — which is exactly F-01's mechanism | `src/ui/context.ts:85-138`; `src/project-model/schema.ts` (`normalizeProject` structural sharing) | **high (F-01)** | mount `ExportPanel`, edit `doc.arrangement`, assert the panel's captured document is current |
 | Worker restart / IPC interruption / plugin reload | a device is unplugged | the session recovers without lying | **Observed — contract-compliant for recording**: the recorder stops itself on device loss, the group stops every member before invoking `onFailure`, and the UI resets to idle | `src/audio-engine/PcmMicRecorder.ts:703-708, 716-721`; `PcmMicRecorderGroup.ts:245` | low | — |
-| Browser refresh with unsaved work | the tab is closed | the work is recoverable | **Observed — diverges.** The synchronous recovery buffer runs before the async flush, but it is one global slot and its quota failure is discarded | `src/persistence/save-lifecycle.ts:86-103`; `src/persistence/recoveryBuffer.ts:65-68` | high (F-04) | assert the unload handler surfaces a failed buffer write |
+| Browser refresh with unsaved work | the tab is closed | the work is recoverable | **Partly resolved.** The single global slot is gone — the buffer is now keyed per project. What survives: the synchronous recovery write's **result is discarded** at the call site, so a quota failure loses the unload edit with no signal, while the function's own doc comment claims the caller treats it as *"no protection this time"* | `src/persistence/save-lifecycle.ts:86-103`; `src/persistence/recoveryBuffer.ts:73-75, 77`; `src/services.ts:1328` | medium (F-04, second half) | assert the unload handler surfaces a failed buffer write |
 | Repeated command delivery is non-idempotent without dedup rules | the AI retries an identical automation write | the document does not accumulate duplicates | **Observed — diverges.** The point count and the undo stack both grow | measured §5.2; `src/project-model/automation.ts` (`insertPointSorted`) | medium (F-07) | already measured — assert `lane.points.length` stays 1 and the undo stack does not grow |
+| An AI undo removes the **human's** point | the lane shifts between the AI's write and its undo | the undo removes the point the command created | **Observed — diverges.** A point has no identity, so its undo is anchored to a *position*: the AI's undo removed the **human's** point and left the AI's, then the human's own undo became a dead step. The plain stack order is safe; the window is a shift between command and undo | measured §5.7 (T7c/T7d); `src/commands/automation.ts:91-99`; `src/commands/docDelta.ts:309-313` | high (F-29) | already measured — apply audit 06 D3's identity re-anchoring to the add's undo |
 | A host that defers `ctx.execute` | a queued, transactional or collab-backed store | the acknowledgement describes what actually happened | **Observed — diverges (not live today).** The R-02 gate compares the document around the handler; with a deferred execute it answers *"nothing changed"* for a mutation that lands afterwards. All three real hosts are synchronous, but the `void` type does not enforce it | measured §5.3 (T5); `src/mcp/verified-mutation.ts`; hosts at `src/mcp/web-host.ts:77`, `src/mcp/desktop-host.ts:58` | medium (F-26) | assert every registered MCP host applies the command inline |
 
 ---
@@ -1253,6 +1336,8 @@ product but no probe or test in this audit exercised it.
 | `tmp-probe/scenarios.test.ts` (T1–T5) | **vitest** | **PASS — 7/7 tests green** | the four mission probes the first pass could not run: A/B equivalence, ordering, lifecycle, and the graph-level audio truth for F-10 |
 | `tmp-probe/second-writer.test.ts` (T6) | **vitest** | **PASS** | the DSP→document write-back — the audit's first **Critical** finding (F-28) |
 | `tmp-probe/gaps.test.ts` (T7–T9) | **vitest** | **PASS — 7/7 tests green** | the three probes §5.6 had left open: point-identity, mixer idempotency, undo-inside-a-frame — plus **F-29** |
+| `tmp-probe/guard-scan.mjs` | **node** | **RUN — 1277 spec files scanned** | the duplicate-guard scan §5.5 promised: which of the 29 findings the repository's own tests already pin (§5.8) |
+| `tmp-probe/citation-check.mjs` | **node** | **RUN — 101 citations checked** | every `file:line` in this report, verified against the current tree; two had drifted and were corrected |
 
 Commands, from the repository root:
 
@@ -1520,11 +1605,16 @@ A reader about to remediate a finding in those areas must expect those guards to
 
 - this report makes **no claim** that the repository is green — and now it says so with a
   measurement instead of an omission;
-- any finding that a test already guards would be a **duplicate**, not a discovery — the reader
-  should check `docs/AGENT-MAP.md`'s invariant register before acting;
+- **the duplicate check has now been performed** (§5.8): 1277 spec files were scanned against all
+  29 findings, and every candidate guard was read and judged. **Two findings were already fixed**
+  (F-04, F-14), **one is half a pinned contract** (F-06), and **two have their fix pattern already
+  in the codebase** (F-05's meta-gate, F-07/F-29's sibling command). A finding the repo's own tests
+  pin is a duplicate, not a discovery — this report now says which ones those were;
 - the "guarded by" test references quoted in this report were read from the **spec source**; the
   baseline confirms which specs are green, but it does not turn a source-read into a measured
-  claim.
+  claim;
+- **every `file:line` in this report was re-verified against the current tree** (§11): all 109
+  citations resolve to the content they claim; the four that had drifted were corrected.
 
 ### 5.6 Not executed, and why it matters
 
@@ -1621,6 +1711,42 @@ not exercised.
 
 ---
 
+### 5.8 Duplicate-guard scan — is any finding already covered by the repository's own tests?
+
+§5.5 promised this check, and it had not been done. The report's own consequence for a reader is:
+*"any finding that a test already guards would be a **duplicate**, not a discovery."* This section
+performs that check, over **1277 spec files** (`tests/` and `src/`), for all 29 findings.
+
+**Method.** `tmp-probe/guard-scan.mjs` walks every `*.test.ts` / `*.spec.ts` in the repository and
+matches each finding against a set of subject patterns, producing **candidate** guards with the
+matching line. Every candidate below was then **read and judged** — a mention is not a guard, and a
+pattern hit is not a verdict. The classifications are therefore judgements over read source, not
+search results.
+
+| Finding | Candidate guard | Verdict |
+|---|---|---|
+| **F-04** | `tests/recovery-overwrite.test.ts` | **RESOLVED — a real guard, for the fixed behaviour.** 11 tests pin one slot per project, the legacy-key migration, the scoped clear, and the file's own motto: *"THE RECOVERY MUST NOT BECOME THE DESTRUCTION"*. The fix landed in `9d2fc17c` at **14:19:56 — six minutes before this report's own last commit**. The finding was open when written; it is closed now. |
+| **F-14** | `tests/recovery-overwrite.test.ts` | **RESOLVED — the same commit.** 6 tests pin that a malformed, foreign or newer buffer is refused **without writing**, and that an old schema is migrated before it is used. All three failure modes this finding named are closed. |
+| **F-05** | `tests/mcp-error-codes.test.ts:107-124` | **PARTIALLY GUARDED — the *other half* of the gate exists.** The repo already gates *un-coded* errors. F-05's refusal is `isError: undefined` — not an error at all — so that gate cannot see it. F-05 is the **missing complementary half of an existing gate**, not a new idea. |
+| **F-06** | `tests/mcp-idempotency.test.ts:16-17, 22-23, 94, 143-153` | **DUPLICATE (the stale read-back) + a real finding (the envelope).** The spec pins the replay's exact text and pins that it survives an undo: *"the replay still returns the original outcome"* (ID6). The stale value is a **deliberate, pinned contract** — a product judgement, not a defect. What survives: the replay returns **before** the R-02 gate, so `mutated: true` contradicts its own text. |
+| **F-07 + F-29** | `tests/automation-audit.test.ts` (audit 06, D3) | **THE FIX PATTERN ALREADY EXISTS — for the sibling command.** The spec pins *"move tolerates a shifted index by re-anchoring on the captured point"* (`:91-110`), and the source names it: *"Audit 06 D3: re-anchor by IDENTITY, then by (tick, value)"* (`src/commands/automation.ts:112-115`). `addAutomationPoint.undo` never got it. **F-29 is the missed sibling, not a new mechanism.** |
+| **F-22** | — | **NOT GUARDED, and not reproducible** (§5.7 T9/T9b). The mechanism exists but is idempotent for the commands exercised. |
+| **F-01** | none | **NOT GUARDED.** The scan's only hit is an unrelated comment (*"The map was never stale"*). **No spec asserts that the stem/track export path checks the document's freshness** — the master path's `assertMasterSourceCurrent` has no sibling on the export side. |
+| **F-28** | `tests/fxeq-host-integration.test.ts`, `tests/ui/fxeq-crossover-numeric-entry.test.tsx` | **NOT GUARDED — and the gap is exactly the seam where the bug lives.** The repo tests both *ends* of the write-back: the worklet→host protocol (`undoParam` posts, the history reply resolves with the restored entry) and the UI→`onParam` write. **Nothing tests the join** — that `onParam`'s value reaches the *document* as the same value, and survives a save + reload. Both ends green, the middle untested: that is F-28. |
+
+**What this changes.** Three findings changed status because of this scan, and **all three changes
+are corrections**: two became **resolved**, one became **narrower**. The audit's §1 claim that its
+findings are discoveries is now properly qualified — **a finding the repo's own tests already pin is
+a duplicate**, and the four cases above are exactly that.
+
+**And the discipline the repo already writes down.** `tests/mcp-error-codes.test.ts:108` states it:
+*"GAP-09 taught this lesson for handlers: coverage without a gate rots."* The same is true of an
+audit. A finding without a test behind it is a claim; a finding with a red test is a fact. **Every
+finding in §4 should leave this report with a red test that reproduces it** — that is Phase 0 (§8),
+and the repo's own convention already asks for it.
+
+---
+
 ## 6. TOP 10 hardening priorities
 
 Ranked by **risk of wrong audio / lost work / false success**, then by probability, scope, fix
@@ -1630,11 +1756,11 @@ effort and regression risk.
 |---|---|---|---|---|
 | **1** | **F-28** — the PRISM DSP is a **second writer** whose write-back is normalised away | **Critical, and measured.** The DSP holds wet/dry 1.0 while the document and the knob say 0.3; a **save + reload changes what you hear**; the project's undo stack carries a dead step. It breaks the product's central doctrine and its "same project, same sound" contract. The fix is one inverse id map. | S–M (an inverse `toRackId` + value conversion) | Low |
 | **2** | **F-01** — stem/track export renders a stale document | The only finding that can ship **silently wrong output** to a paying user. The master path already proves the guard is cheap. | S (capture at call time + reuse the existing assertion) | Low |
-| **3** | **F-04** — recovery buffer is a single global slot | The buffer is the **only** copy of uncommitted work; the loss is silent and permanent. | S–M (per-project key + honour the write result) | Low |
-| **4** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
-| **5** | **F-29** — the automation-point undo is **positional**, so a shifted lane makes the AI's undo destroy the human's point | **Measured** (§5.7, T7c): the AI's undo removed the **human's** authored point and left the AI's — silent loss of work, followed by a dead undo step. The plain stack order is safe (T7d), so the window is the shift between a command and its undo — which is exactly the window **F-26** opens. | S (verify the slot before splicing) | Low |
-| **6** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. | S + S (one meta-test) | Very low |
-| **7** | **F-06** — idempotency replay serves a stale read-back and escapes the R-02 gate | The root cause is now precise (the replay returns **before** the gate), so the fix is small and provable — but until it is fixed, an agent's retry receives a **wrong current value**. | S | Low |
+| **3** | **F-02** — REC indicator lies about capturing | Silent loss of an intended take, with a lit button asserting the opposite. | S (split armed from capturing) | Low |
+| **4** | **F-26** — the R-02 gate silently assumes `ctx.execute` is synchronous | **Measured** (§5.3, T5): the gate answers *"nothing changed"* while the mutation lands afterwards. It is the **window that makes F-29 destructive**, and the MCP host contract (`McpToolContext.execute(command): void`) does not enforce the synchrony it depends on. Today no host defers — so this is a **precondition to fix before the first deferred host ships**, not after. | S (state the precondition; check it) | Low |
+| **5** | **F-29** — the automation-point undo is **positional**, so a shifted lane makes the AI's undo destroy the human's point | **Measured** (§5.7, T7c): the AI's undo removed the **human's** authored point and left the AI's — silent loss of work, followed by a dead undo step. The plain stack order is safe (T7d), so the window is the shift between a command and its undo — which is exactly the window **F-26** opens. The fix pattern already exists in the sibling command (audit 06 D3). | S (verify the slot before splicing) | Low |
+| **6** | **F-05** — refusals are not machine-detectable | Every future tool inherits the ambiguity; a meta-test makes it permanent. It is also a **hole in the new R-02 gate**, which cannot correct a refusal because a refusal is `mutated: false`. The repo already owns the *other half* of that gate (§5.8). | S + S (one meta-test) | Very low |
+| **7** | **F-06** — the idempotent replay escapes the R-02 gate, so its `mutated` flag contradicts its own text | The stale read-back half is a **pinned contract**, not a defect (§5.8). What survives is the envelope: `mutated: true` on a call that executed nothing, and the disambiguation lives only in prose. | S (force `mutated: false` on the replay path) | Low |
 | **8** | **F-10** — the track-gain lane is authored absolute but applied multiplicatively | **Measured** (§5.3, T4): with fader 0.8 and a lane of 0.5 the audible gain is **0.4** while both surfaces read 0.8 and 0.5. Wrong audio, and neither surface tells the user. | M — but **needs a product decision first** | Medium |
 | **9** | **F-09** — knob shows the document value while the DSP plays the automated value | "What you see" ≠ "what you hear" at the most-used control in the app. This is the mission's *audible truth* clause. | M (effective-value read model) | Low–M |
 | **10** | **F-25** — a delayed older write overwrites a newer one (last-APPLIED-wins) | **Measured** (§5.3, T2): the AI's late write silently clobbers the human's newer value on the same field. It is the human/AI contention scenario in its sharpest form. | S for disclosure, M for a revision counter | Low (disclosure) / M (versioning) |
@@ -1643,17 +1769,18 @@ R-02 `verifiedMutation` gate during this audit, and the probe confirms the fix (
 retained as a worked example in §4 rather than as an open finding. **F-07** left this list too:
 it and **F-29** share one root cause — automation points have no identity, so they are addressed by
 value and by position — and **one repair (give the point an identity, or verify the slot before
-splicing) closes both**. **F-14 + F-13** (recovery writes
-an unvalidated document; `migrateProject` is not a migration), **F-26** (the R-02 gate's undocumented
-synchrony precondition — measured, *not* live today, but it is the window that makes F-29
-destructive), **F-11** (macro and automation share one effect
+splicing) closes both**. **F-04** left this list in this pass: the duplicate-guard scan (§5.8) found
+`tests/recovery-overwrite.test.ts`, and the per-project recovery slots landed in `9d2fc17c` six
+minutes before this report's last commit — **F-14 left with it**, because the same commit made
+`recoverProject` refuse an unvalidated, un-migrated or foreign document instead of writing it into
+the store. Both are **resolved in the working tree**, not by this audit but by a concurrent one.
+**F-13** (`migrateProject` is not a migration), **F-11** (macro and automation share one effect
 AudioParam), **F-12** (normalisation clamps without disclosure), **F-15** (three save timestamps),
 **F-16** (collab normalisation parity), **F-17** (bypass cold restart), **F-18/F-19** (fallback
 honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (undo-in-frame — now
 **Hypothesis: not reproduced** by the §5.7 probe), **F-23**
 (onset cache), **F-24** (automation ack), **F-27** (a reopened instance resets to defaults) are all
 **below the top 10**: real, documented, and scheduled for a later wave.)*
-
 ---
 
 ## 7. TOP 5 systemic state architecture improvements
@@ -1684,7 +1811,8 @@ working tree, not on `main`.
    (**F-06**).
 3. **The structural read-back lives in prose, not in the envelope.** When the gate appends a
    read-back, it edits `result.text` only; `result.data` is left untouched when `mutated` did not
-   change (`src/mcp/verified-mutation.ts:95`). A client that reads only `data` never sees the
+   change (`src/mcp/verified-mutation.ts:96-127` — `let text = result.text`, the read-back appended at
+   `:124`, the envelope returned as `{ ...result, text }`). A client that reads only `data` never sees the
    verification. **Fix:** mirror the read-back into `data` as well (**F-24** covers the same seam
    from the handler side).
 4. **It silently assumes `ctx.execute` is synchronous.** The gate compares the document from before
@@ -2012,6 +2140,16 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   a detached checkout of the audited commit with `node_modules` and the gitignored binary assets
   linked in, per `docs/MULTI-AGENT-GUARDRAILS.md` rules 5 and 6. The audited commit and the current
   tip differ in **zero** non-`.md` files, so the baseline measures today's source (§5.5).
+- **Every citation in this report was checked mechanically against the tree.** `tmp-probe/
+  citation-check.mjs` extracts all 109 `file:line` references and prints the content that is
+  actually there now. **All 109 resolve to the content they claim**; the ones that had drifted
+  (the `masterAbStore` line, the idempotency-ledger line and the gate's read-back line) were
+  corrected.
+  This matters because a concurrent session landed a persistence fix **six minutes before this
+  report's last commit** — the tree moves faster than a report can be written, so citations are
+  evidence that decays and must be re-verified, not assumed.
+- **The duplicate-guard scan was performed, not promised** (§5.8): 1277 spec files matched against
+  all 29 findings, every candidate read and judged.
 - **The scenario probes reused the repository's own mock-Web-Audio harness** (`tests/mixer-audit3.test.ts`),
   whose recording nodes make the **graph topology** assertable rather than inferable — that is how
   F-10 moved from *strongly indicated* to *confirmed*.
