@@ -477,8 +477,8 @@ so it is no longer one of the two *Strongly indicated* findings. **F-22 was down
 
 > **This is the second hole in the new R-02 gate, and the more surprising one.**
 > The idempotency-replay path returns **before** the gate is applied. In the current
-> `src/mcp/tools.ts` the replay returns at **line 4377**; the dispatch happens at **line 4430**;
-> and `verifiedMutation` is applied at **line 4457**. The replay never reaches it — which is why
+> `src/mcp/tools.ts` the replay returns at **line 4391**; the dispatch happens at **line 4444**;
+> and `verifiedMutation` is applied at **line 4471**. The replay never reaches it — which is why
 > the probe still measures `mutated: true` and `stage: "replayed"` on a call that changed nothing.
 > A choke point only works if every exit path passes through it, and this one does not.
 
@@ -487,7 +487,7 @@ so it is no longer one of the two *Strongly indicated* findings. **F-22 was down
 - **Authoritative state:** the MCP idempotency ledger (`src/mcp/tools.ts:4033`).
 - **Expected contract:** a replay tells the agent what is true *now*.
 - **Observed divergence:** on a repeated `requestId`, the tool returns the **cached result object**
-  (`src/mcp/tools.ts:4357-4382`):
+  (`src/mcp/tools.ts:4372-4397`):
   ```ts
   const cached = idempotencyLedger.get(requestId);
   …
@@ -514,9 +514,9 @@ so it is no longer one of the two *Strongly indicated* findings. **F-22 was down
   ```
   The replay reports **0.250**; the document holds **0.9**. The replay's own text says *"nothing
   re-executed"* while its `mutated` flag says `true`.
-  Code: `src/mcp/tools.ts` — replay block `:4357-4382` (returns at `:4377`, text at `:4379`), the
-  audit log's `mutated: false` at `:4369`, the ledger write at `:4494`, the dispatch at `:4430`, and
-  the gate applied at `:4457`.
+  Code: `src/mcp/tools.ts` — replay block `:4372-4397` (returns at `:4391`, text at `:4393`), the
+  audit log's `mutated: false` at `:4383`, the ledger write at `:4509`, the dispatch at `:4444`, and
+  the gate applied at `:4471`.
 - **AUDIT CORRECTION (duplicate-guard scan, §5.8) — the stale read-back is a PINNED CONTRACT, not a
   defect.** `tests/mcp-idempotency.test.ts` asserts the replay's exact text:
   ```ts
@@ -1108,7 +1108,9 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   The delta snapshot (`src/commands/core.ts:34-45`) correctly preserves a human edit to a
   **different** field. The exposure is confined to the **same** field, where there is no version,
   no expected-revision guard, and no conflict signal — `ProjectDocument` has no revision field
-  (`src/project-model/types.ts:1444`) and `ProjectStore.execute` takes no expected-version argument.
+  (`src/project-model/types.ts:1405-1445` — the interface ends at `updatedAt`; there is no revision
+  field) and `ProjectStore.execute` takes no expected-version argument
+  (`src/store/ProjectStore.ts:213`).
 - **Root-cause hypothesis:** last-write-wins is the documented design for *field-level* safety, but
   the design never addressed **intent age**. A write that was *issued* first and *applied* last wins,
   and the AI's acknowledgement does not say so.
@@ -1341,12 +1343,12 @@ product but no probe or test in this audit exercised it.
 
 | Scenario | Trigger | Expected invariant | Observed / untested | Evidence | Risk | Proposed test |
 |---|---|---|---|---|---|---|
-| Human moves a plugin slider while the AI issues a parameter update | both target the same `fxId` | the later write wins; both writers see the same document | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice | `src/store/ProjectStore.ts` (no revision counter); `src/project-model/types.ts:1444` (`updatedAt` only) | medium | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
+| Human moves a plugin slider while the AI issues a parameter update | both target the same `fxId` | the later write wins; both writers see the same document | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice | `src/store/ProjectStore.ts:213` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only) | medium | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
 | Two intents target the same track/clip using stale IDs | the human deleted the clip; the AI holds the old id | a typed, machine-detectable refusal | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — typed path at `:10074-10087`; ordinal fallback in the A/B restore and the instance resolvers | high (F-08) | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution |
 | A command acknowledges before the queued audio update is applied | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms) | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1198-1203` | low — *not a defect* | assert the applied value reaches 95 % of the commanded value within 3 × tc |
 | Tool output claims success though the command failed or was rejected | an AI call on a stale target | `isError` + a typed code | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result | `src/mcp/tools.ts:7863`; measured §5.2 | high (F-05) | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy |
-| A human edits between an AI's call and its retry (same `requestId`) | the AI retries a timed-out call | the retry reports the document's current value | **Observed — diverges.** The replay serves the *first* call's read-back | `src/mcp/tools.ts:4377` (returns) vs `:4457` (the gate); measured §5.2 | high (F-06) | edit, retry the same `requestId`, assert the reported value equals the document's current value |
-| The AI's write is acknowledged late, after the human has edited the same field | the AI's command is applied after the human's | the later *intent* wins, or the conflict is reported | **Observed — diverges.** The later-*applied* write wins: the human's 0.9 is overwritten by the AI's older 0.5 | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1444`) | high (F-25) | already measured — assert the documented precedence instead of the accidental one |
+| A human edits between an AI's call and its retry (same `requestId`) | the AI retries a timed-out call | the retry reports the document's current value | **Observed — diverges.** The replay serves the *first* call's read-back | `src/mcp/tools.ts:4391` (returns) vs `:4471` (the gate); measured §5.2 | high (F-06) | edit, retry the same `requestId`, assert the reported value equals the document's current value |
+| The AI's write is acknowledged late, after the human has edited the same field | the AI's command is applied after the human's | the later *intent* wins, or the conflict is reported | **Observed — diverges.** The later-*applied* write wins: the human's 0.9 is overwritten by the AI's older 0.5 | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1405-1445`) | high (F-25) | already measured — assert the documented precedence instead of the accidental one |
 | The AI's write is acknowledged late, after the human edited a *different* field | same, different field | the human's unrelated edit survives | **Observed — holds.** The delta snapshot preserves it | measured §5.3 (T2); `src/commands/core.ts:34-45` | low | — |
 
 #### B. Editing and history
@@ -1421,7 +1423,7 @@ product but no probe or test in this audit exercised it.
 | `tmp-probe/gaps.test.ts` (T7–T9) | **vitest** | **PASS — 7/7 tests green** | the three probes §5.6 had left open: point-identity, mixer idempotency, undo-inside-a-frame — plus **F-29** |
 | `tmp-probe/collab.test.ts` (T10a–T10d) | **vitest** | **PASS — 4/4 green** | the collab-vs-solo document shape — the last finding still resting on code reading alone. **F-16 → Confirmed and measured** |
 | `tmp-probe/guard-scan.mjs` | **node** | **RUN — 1277 spec files scanned** | the duplicate-guard scan §5.5 promised: which of the 29 findings the repository's own tests already pin (§5.8) |
-| `tmp-probe/citation-check.mjs` | **node** | **RUN — 112 citations checked** | every `file:line` in this report, verified against the current tree; four had drifted and were corrected, and the count was re-run after the F-10 correction pass |
+| `tmp-probe/citation-check.mjs` | **node** | **RUN — 113 citations checked** | every `file:line` in this report, verified against the current tree; four had drifted and were corrected, and the count was re-run after the F-10 correction pass |
 
 Commands, from the repository root:
 
@@ -1708,7 +1710,7 @@ A reader about to remediate a finding in those areas must expect those guards to
 - the "guarded by" test references quoted in this report were read from the **spec source**; the
   baseline confirms which specs are green, but it does not turn a source-read into a measured
   claim;
-- **every `file:line` in this report was re-verified against the current tree** (§11): all 112
+- **every `file:line` in this report was re-verified against the current tree** (§11): all 113
   citations resolve to the content they claim; the four that had drifted were corrected.
 
 ### 5.6 Not executed, and why it matters
@@ -1950,7 +1952,7 @@ drawn on the fader's scale, and no surface shows the composed gain) — the same
 impossible rather than per-handler.
 
 **The gate already exists** — `src/mcp/verified-mutation.ts`, applied at the dispatch choke point in
-`src/mcp/tools.ts` (~line 4457). It is the right architecture: one place where a mutation becomes a
+`src/mcp/tools.ts` (~line 4471). It is the right architecture: one place where a mutation becomes a
 claim, witnessed by the document's own identity. It is also **uncommitted** — it lives in the
 working tree, not on `main`.
 
@@ -1964,8 +1966,8 @@ working tree, not on `main`.
    (`src/mcp/tools.ts:3550-3568`) — i.e. route the automation handler's refusals through the
    existing `mcpError(...)` constructor, and add a **meta-test** that every mutating tool's refusal
    sets `isError`.
-2. **The idempotency replay bypasses it entirely.** The replay returns at `src/mcp/tools.ts:4377`;
-   the gate is applied at `:4457`. **Fix:** move the replay inside the dispatch (or apply the gate to
+2. **The idempotency replay bypasses it entirely.** The replay returns at `src/mcp/tools.ts:4391`;
+   the gate is applied at `:4471`. **Fix:** move the replay inside the dispatch (or apply the gate to
    the replay result as well) — a choke point only works if every exit passes through it
    (**F-06**).
 3. **The structural read-back lives in prose, not in the envelope.** When the gate appends a
@@ -2319,13 +2321,21 @@ and offline renders remain identical (`tests/offline-parity.test.ts` stays green
   linked in, per `docs/MULTI-AGENT-GUARDRAILS.md` rules 5 and 6. The audited commit and the current
   tip differ in **zero** non-`.md` files, so the baseline measures today's source (§5.5).
 - **Every citation in this report was checked mechanically against the tree.** `tmp-probe/
-  citation-check.mjs` extracts all 112 `file:line` references and prints the content that is
-  actually there now. **All 112 resolve to the content they claim**; the ones that had drifted
+  citation-check.mjs` extracts all 113 `file:line` references and prints the content that is
+  actually there now. **All 113 resolve to the content they claim**; the ones that had drifted
   (the `masterAbStore` line, the idempotency-ledger line and the gate's read-back line) were
   corrected.
   This matters because a concurrent session landed a persistence fix **six minutes before this
   report's last commit** — the tree moves faster than a report can be written, so citations are
   evidence that decays and must be re-verified, not assumed.
+- **…and the check has a stated limit, which the correction pass exposed.** The script proves that a
+  cited **line exists and is not blank**; it does **not** prove the line says what the report claims.
+  During the F-10 correction pass a concurrent session had shifted `src/mcp/tools.ts` by **+14
+  lines**, so F-06's line references (`4377` → `4391`, `4430` → `4444`, `4457` → `4471`, `4369` →
+  `4383`, `4494` → `4509`) still pointed at *plausible, non-blank* lines and the automated check
+  passed them. They were caught only by **re-reading the source for that claim** and correcting them
+  by hand. **A citation check that verifies existence is not a citation check that verifies content**;
+  every load-bearing citation still needs the reader to open it.
 - **The duplicate-guard scan was performed, not promised** (§5.8): 1277 spec files matched against
   all 29 findings, every candidate read and judged.
 - **Documents were compared with a deep diff, not `JSON.stringify`.** The naive comparison is
