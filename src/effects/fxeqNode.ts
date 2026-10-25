@@ -1,26 +1,21 @@
 import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
-import { mix01ToPercent100 } from "./scale-bridges";
+import { documentValueToCore, toCoreId } from "./fxeq-param-ids";
 import { createLatencyReportReadiness } from "./latencyReadiness";
 
 /**
- * Rack ↔ core parameter-id translation. The rack surface (registry params,
- * stored in documents as instance.params) uses `mix`; the vendored core
- * schema names the same control `globalMix`. Without this map the rack's
- * MIX knob is silently dead — the core drops unknown ids (setParameter
- * routes through schema.routes.get). Add an entry here whenever a rack id
- * diverges from its core id; tests/fxeq-rack-contract.test.ts enforces that
- * every registry param resolves through this map or the schema directly.
+ * Rack ↔ core parameter-id translation lives in `./fxeq-param-ids` — BOTH
+ * directions, one owner. This node is the host → DSP half of it.
+ *
+ * The rack surface (registry params, stored in documents as instance.params)
+ * uses `mix`; the vendored core schema names the same control `globalMix`.
+ * Without this translation the rack's MIX knob is silently dead — the core
+ * drops unknown ids (setParameter routes through schema.routes.get). Add an
+ * entry there whenever a rack id diverges from its core id;
+ * tests/fxeq-rack-contract.test.ts enforces that every registry param
+ * resolves through this map or the schema directly.
  */
-const RACK_TO_CORE: Record<string, string> = {
-  mix: "globalMix",
-};
-
-function toCoreId(id: string): string {
-  return RACK_TO_CORE[id] ?? id;
-}
-
 function normalizeHostValue(id: string, value: number): number {
   if (id === "bandCount") return Math.round(value);
   if (id === "crossoverOrder") return snapCrossoverOrder(value);
@@ -28,8 +23,7 @@ function normalizeHostValue(id: string, value: number): number {
   // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
   // 0..100 — the node bridges at the doc→worklet boundary. Registered as
   // fxeq.mix in src/effects/scale-bridges.ts.
-  if (toCoreId(id) === "globalMix") return mix01ToPercent100(value);
-  return value;
+  return documentValueToCore(id, value);
 }
 
 /** Morph slot index: 0 = A, 1 = B. */

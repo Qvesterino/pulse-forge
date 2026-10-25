@@ -2,6 +2,7 @@ import type { Command } from "./types";
 import type { DeviceState, ProjectDocument } from "../project-model/types";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
+import { coreValueToDocument, isTranslatedId, toRackId } from "../effects/fxeq-param-ids";
 import {
   tryGetParamDef as tryGetUltinaParamDef,
   clampParam as clampUltinaParam,
@@ -23,7 +24,22 @@ import { trackEffectsOf, withTrackEffects } from "./docOps";
  */
 /* ---------------- FXEQ per-band editing + presets ---------------- */
 
-/** Set any fxeq param — including dotted per-band ids ("band2.satDriveDb"). */
+/**
+ * Set any fxeq param — including dotted per-band ids ("band2.satDriveDb").
+ *
+ * The id and the value are CANONICALISED into the document's domain before
+ * anything is written. The rack's `mix` and the core's `globalMix` are the
+ * same control in two scales (document 0..1, core 0..100 percent), and the
+ * document stores the RACK id — `normalizePluginParams` treats `mix` as the
+ * source of truth and re-derives `globalMix` from it. A write under the core
+ * id was therefore silently discarded: the DSP moved while the document did
+ * not, and a save + reload changed the sound (audit F-28).
+ *
+ * A caller may pass either side of a translated pair; both land in the
+ * document under the same canonical id and in the document's scale. The
+ * translation itself lives in `src/effects/fxeq-param-ids.ts` — one owner for
+ * both directions.
+ */
 export function setFxEqParam(
   doc: ProjectDocument,
   trackId: string,
@@ -33,24 +49,42 @@ export function setFxEqParam(
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target || target.type !== "fxeq") throw new Error(`PRISM effect ${fxId} not found`);
-  const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
-  const def = schema.defs.find((d) => d.id === fullId);
-  if (!def) throw new Error(`PRISM param ${fullId} not defined for ${Math.round(target.params.bandCount ?? 6)} bands`);
-  const previous = target.params[fullId] ?? schema.defaultParams[fullId] ?? def.defaultValue;
-  const safeValue = Number.isFinite(value) ? value : previous;
-  const clamped =
-    fullId === "crossoverOrder" || fullId === "crossoverEqualize"
+  const bandCount = Math.round(target.params.bandCount ?? 6);
+  const schema = buildFxEqSchema(bandCount);
+
+  // Canonical document id + document-scale value.
+  const translated = isTranslatedId(fullId);
+  const docId = toRackId(fullId);
+  const docValue = translated ? coreValueToDocument(fullId, value) : value;
+
+  // The def that owns the RANGE: a translated id is clamped in the DOCUMENT
+  // scale (the rack def); every other id is a deep core param, clamped in the
+  // core schema's scale.
+  const coreDef = schema.defs.find((d) => d.id === fullId);
+  const rackDef = translated ? EFFECT_META.fxeq.params.find((p) => p.id === docId) : undefined;
+  if (!coreDef && !rackDef) {
+    throw new Error(`PRISM param ${fullId} not defined for ${bandCount} bands`);
+  }
+
+  const previous = translated
+    ? (target.params[docId] ?? rackDef?.default ?? 1)
+    : (target.params[fullId] ?? schema.defaultParams[fullId] ?? coreDef!.defaultValue);
+  const safeValue = Number.isFinite(docValue) ? docValue : previous;
+  const clamped = rackDef
+    ? Math.max(rackDef.min, Math.min(rackDef.max, safeValue))
+    : fullId === "crossoverOrder" || fullId === "crossoverEqualize"
       ? clampEffectParam("fxeq", fullId, safeValue)
-      : Math.max(def.minValue, Math.min(def.maxValue, safeValue));
+      : Math.max(coreDef!.minValue, Math.min(coreDef!.maxValue, safeValue));
+
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
     );
   return {
     type: "setFxEqParam",
-    label: `PRISM ${fullId}`,
-    execute: (d) => apply(d, { [fullId]: clamped }),
-    undo: (d) => apply(d, { [fullId]: previous }),
+    label: `PRISM ${docId}`,
+    execute: (d) => apply(d, { [docId]: clamped }),
+    undo: (d) => apply(d, { [docId]: previous }),
   };
 }
 
