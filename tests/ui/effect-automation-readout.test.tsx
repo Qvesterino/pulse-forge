@@ -15,12 +15,13 @@
  * engine is playing.
  */
 import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { EffectRack } from "../../src/ui/EffectRack";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { addAutomationLane, addAutomationPoint } from "../../src/commands/automation";
+import type { ProjectDocument } from "../../src/project-model/types";
 
 const FX_ID = "fx-reverb";
 
@@ -36,7 +37,7 @@ function setup(laneValue?: number) {
   }
   const services = mockServices(store.doc);
   renderWithContext(<EffectRack track={track} />, { services });
-  return { track };
+  return { track, services, doc: store.doc };
 }
 
 describe("the effect rack discloses the value in effect (F-09)", () => {
@@ -72,5 +73,35 @@ describe("the effect rack discloses the value in effect (F-09)", () => {
     expect(screen.getByTestId("fx-param-auto-decay")).toBeInTheDocument();
     expect(screen.queryByTestId("fx-param-auto-mix")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fx-param-auto-tone")).not.toBeInTheDocument();
+  });
+
+  it("the readout FOLLOWS the lane — a lane added later appears at once", () => {
+    // The lane slice is subscribed explicitly: a lane arrives in
+    // `doc.automation` and leaves `doc.tracks` untouched, so a rack that only
+    // watched the tracks would keep showing a stale readout until some
+    // unrelated edit happened to redraw it. The tracks slice is deliberately
+    // NOT replaced here — only the lane slice changes, so the re-render can
+    // only come from the lane subscription.
+    const { services, doc, track } = setup();
+    expect(screen.queryByTestId("fx-param-auto-decay")).not.toBeInTheDocument();
+
+    const withLane: ProjectDocument = {
+      ...doc,
+      automation: [
+        {
+          id: "lane-1",
+          target: { kind: "fxParam", trackId: track.id, fxId: FX_ID, paramId: "decay" },
+          points: [{ tick: 0, value: 2.4 }],
+        },
+      ],
+    };
+    const store = services.store as unknown as {
+      _setDoc: (next: ProjectDocument) => void;
+      _emit: () => void;
+    };
+    store._setDoc(withLane);
+    act(() => store._emit());
+
+    expect(screen.getByTestId("fx-param-auto-decay")).toHaveTextContent("2.40 s");
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useServices, useTracks } from "./context";
+import { useServices, useTracks, useAutomation } from "./context";
 import { usePlayheadTick } from "./usePlayheadTick";
 import { effectParamEffectiveValues } from "../project-model/effective-values";
 import { canonicalizeDeprecatedTarget } from "../project-model/targets";
@@ -755,9 +755,16 @@ function Device({
   // The lane's target is canonicalised, so a lane that names a deprecated
   // legacy alias (`eq.midGain`) is credited to the canonical knob the user
   // actually sees (`eq.lowMidGain`).
+  //
+  // The LANE SLICE is subscribed explicitly: `doc` is a plain getter (a plain
+  // getter re-renders nothing), and a lane added — or a point moved — changes
+  // `doc.automation` WITHOUT changing `doc.tracks`. Without this subscription
+  // the badge would keep showing a stale value until some unrelated edit
+  // happened to redraw the rack.
+  const automation = useAutomation();
   const automatedParamKey = useMemo(() => {
     const ids = new Set<string>();
-    for (const lane of doc.automation) {
+    for (const lane of automation) {
       if (lane.points.length === 0) continue;
       const target = lane.target;
       if (target.kind !== "fxParam" || target.fxId !== fx.id || target.trackId !== track.id) continue;
@@ -765,7 +772,7 @@ function Device({
       if (canonical.paramId) ids.add(canonical.paramId);
     }
     return [...ids].sort().join(",");
-  }, [doc, fx.id, track.id]);
+  }, [automation, doc, fx.id, track.id]);
 
   // The value in effect follows the PLAYHEAD — a lane's value is a function of
   // the tick. The subscription only runs for a device that actually has an
@@ -775,9 +782,9 @@ function Device({
   const effectiveValues = useMemo(
     () =>
       automatedParamKey
-        ? effectParamEffectiveValues(doc, track.id, fx.id, automatedParamKey.split(","), playheadTick)
+        ? effectParamEffectiveValues(doc, track.id, fx.id, automatedParamKey.split(","), playheadTick, automation)
         : {},
-    [automatedParamKey, doc, track.id, fx.id, playheadTick],
+    [automatedParamKey, automation, doc, track.id, fx.id, playheadTick],
   );
 
   useEffect(() => setParamPage(0), [fx.id]);

@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMacros, useReturns, useSelection, useSelectionStore, useServices, useTracks } from "./context";
+import {
+  useAutomation,
+  useMacros,
+  useReturns,
+  useSelection,
+  useSelectionStore,
+  useServices,
+  useTracks,
+} from "./context";
 import {
   addEffectToTracks,
   addMacroMapping,
@@ -357,11 +365,20 @@ function ChannelStrip({
   const macros = useMacros();
   const doc = services.store.getDoc();
   // The composed channel gain: the fader × the volume lane (audit F-10).
-  // The lane is a multiplier around unity, so the channel plays at
+  // The lane IS a multiplier around unity, so the channel plays at
   // fader × lane — a number NEITHER the fader nor the lane showed. When no
   // lane drives this track, `automated` is FALSE and the readout is omitted:
   // the fader already IS the value in effect.
-  const composed = useMemo(() => composedTrackGain(doc, track.id, playheadTick), [doc, track.id, playheadTick]);
+  //
+  // The LANE SLICE is subscribed explicitly: `doc` is a plain getter (a plain
+  // getter re-renders nothing), and a lane added — or a point moved — changes
+  // `doc.automation` WITHOUT changing `doc.tracks`. Without this subscription
+  // the strip would keep showing a stale composed gain.
+  const automation = useAutomation();
+  const composed = useMemo(
+    () => composedTrackGain(doc, track.id, playheadTick, automation),
+    [doc, track.id, playheadTick, automation],
+  );
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   // Drag affordance for THIS strip: "group" (the established drop-into-group
   // target), or "before"/"after" (reorder — the pointer's half of the strip

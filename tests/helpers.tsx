@@ -30,7 +30,7 @@ const mockAudioContext = (state: AudioContextState = "suspended"): MockAudioCont
 });
 
 export function mockServices(doc?: ProjectDocument): Services {
-  const project = doc ?? createProjectFromTemplate("house");
+  let project = doc ?? createProjectFromTemplate("house");
   const listeners = new Set<() => void>();
   const latency = new LatencyCalibrationController(null);
   const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
@@ -203,6 +203,16 @@ export function mockServices(doc?: ProjectDocument): Services {
       onDocChanged: null as ((doc: ProjectDocument) => void) | null,
       _emit: () => {
         for (const l of listeners) l();
+      },
+      /**
+       * Swap the document this mock serves. The slice getters close over
+       * `project`, so a test that changes the document must change it HERE:
+       * replacing `store.getDoc` alone leaves every slice on the old
+       * document, and `useSyncExternalStore` has already captured the getter
+       * it was given — so it would never see the change.
+       */
+      _setDoc: (next: ProjectDocument) => {
+        project = next;
       },
     } as any,
     engine: {

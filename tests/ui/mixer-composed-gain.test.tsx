@@ -11,7 +11,7 @@
  * pins the rule AND the surface that consumes it.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
 import { Mixer } from "../../src/ui/Mixer";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -19,6 +19,7 @@ import { ProjectStore } from "../../src/store/ProjectStore";
 import { addAutomationLane, addAutomationPoint } from "../../src/commands/automation";
 import { setTrackParams } from "../../src/commands/project";
 import { composedTrackGain, effectiveParamValue } from "../../src/project-model/effective-values";
+import type { ProjectDocument } from "../../src/project-model/types";
 
 afterEach(() => {
   cleanup();
@@ -110,5 +111,36 @@ describe("the mixer shows the composed gain under the VOL fader (F-10)", () => {
     renderWithContext(<Mixer />, { services: mockServices(doc) });
 
     expect(screen.queryByTestId("mixer-composed-gain")).not.toBeInTheDocument();
+  });
+
+  it("the readout FOLLOWS the lane — a lane added later appears at once", () => {
+    // The lane slice is subscribed explicitly: a lane arrives in
+    // `doc.automation` and leaves `doc.tracks` untouched, so a mixer that only
+    // watched the tracks would keep showing a stale composed gain. The tracks
+    // slice is deliberately NOT replaced here, so the re-render can only come
+    // from the lane subscription.
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    renderWithContext(<Mixer />, { services });
+    expect(screen.queryByTestId("mixer-composed-gain")).not.toBeInTheDocument();
+
+    const withLane: ProjectDocument = {
+      ...doc,
+      automation: [
+        {
+          id: "lane-1",
+          target: { kind: "trackGain", trackId: doc.tracks[0].id },
+          points: [{ tick: 0, value: 0.5 }],
+        },
+      ],
+    };
+    const store = services.store as unknown as {
+      _setDoc: (next: ProjectDocument) => void;
+      _emit: () => void;
+    };
+    store._setDoc(withLane);
+    act(() => store._emit());
+
+    expect(screen.getByTestId("mixer-composed-gain")).toHaveTextContent("×0.50");
   });
 });

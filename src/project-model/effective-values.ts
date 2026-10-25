@@ -97,12 +97,22 @@ function deprecatedAliasesOf(doc: ProjectDocument, target: AutomationTarget): st
   return meta.params.filter((param) => param.deprecated && param.aliasOf === target.paramId).map((param) => param.id);
 }
 
-/** The lane that drives this target, if the project has one. */
-export function automationLaneFor(doc: ProjectDocument, target: AutomationTarget): AutomationLane | undefined {
+/**
+ * The lane that drives this target, if the project has one.
+ *
+ * `lanes` is passed in by callers that SUBSCRIBE to the lane slice — the
+ * document's `automation` array changes without changing `doc.tracks`, so a
+ * surface that only watched the tracks would show a stale value forever.
+ */
+export function automationLaneFor(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  lanes: readonly AutomationLane[] = doc.automation,
+): AutomationLane | undefined {
   const canonical = canonicalizeDeprecatedTarget(doc, target);
   const key = automationTargetKey(canonical);
   // Fast path: the lane names the canonical id.
-  const direct = doc.automation.find((lane) => automationTargetKey(lane.target) === key);
+  const direct = lanes.find((lane) => automationTargetKey(lane.target) === key);
   if (direct) return direct;
   // Legacy path: the lane names a DEPRECATED ALIAS of the canonical param
   // (eq.midGain → eq.lowMidGain). Old documents keep their lanes after an
@@ -112,7 +122,7 @@ export function automationLaneFor(doc: ProjectDocument, target: AutomationTarget
   // costs one scan.
   const aliases = deprecatedAliasesOf(doc, canonical);
   if (aliases.length === 0) return undefined;
-  return doc.automation.find(
+  return lanes.find(
     (lane) =>
       lane.target.kind === "fxParam" &&
       lane.target.trackId === canonical.trackId &&
@@ -145,14 +155,19 @@ export function documentValueFor(doc: ProjectDocument, target: AutomationTarget)
  * With no lane (or an empty one) nothing overrides the document value: the
  * caller gets the document value back, with `source: "document"`.
  */
-export function effectiveParamValue(doc: ProjectDocument, target: AutomationTarget, tick: number): EffectiveValue {
+export function effectiveParamValue(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  tick: number,
+  lanes: readonly AutomationLane[] = doc.automation,
+): EffectiveValue {
   // A deprecated alias resolves to its canonical id first: the document holds
   // the canonical id, so the def, the document value and the lane all have to
   // be looked up under it.
   const canonical = canonicalizeDeprecatedTarget(doc, target);
   const documentValue = documentValueFor(doc, canonical);
   const def = targetParamDef(doc, canonical);
-  const lane = automationLaneFor(doc, canonical);
+  const lane = automationLaneFor(doc, canonical, lanes);
   const hasLane = lane !== undefined && lane.points.length > 0 && def !== null;
   if (!hasLane || documentValue === null) {
     return {
@@ -180,8 +195,13 @@ export function effectiveParamValue(doc: ProjectDocument, target: AutomationTarg
  * This is the number F-10 measured: a fader at 0.8 with a lane at 0.5 plays
  * at 0.4, and before this model no surface showed the 0.4.
  */
-export function composedTrackGain(doc: ProjectDocument, trackId: string, tick: number): EffectiveValue {
-  return effectiveParamValue(doc, { kind: "trackGain", trackId }, tick);
+export function composedTrackGain(
+  doc: ProjectDocument,
+  trackId: string,
+  tick: number,
+  lanes: readonly AutomationLane[] = doc.automation,
+): EffectiveValue {
+  return effectiveParamValue(doc, { kind: "trackGain", trackId }, tick, lanes);
 }
 
 /**
@@ -202,10 +222,11 @@ export function effectParamEffectiveValues(
   fxId: string,
   paramIds: readonly string[],
   tick: number,
+  lanes: readonly AutomationLane[] = doc.automation,
 ): Record<string, number> {
   const effective: Record<string, number> = {};
   for (const paramId of paramIds) {
-    const value = effectiveParamValue(doc, { kind: "fxParam", trackId, fxId, paramId }, tick);
+    const value = effectiveParamValue(doc, { kind: "fxParam", trackId, fxId, paramId }, tick, lanes);
     if (value.automated) effective[paramId] = value.value;
   }
   return effective;
