@@ -1,5 +1,5 @@
 /**
- * bench-hotpath — measures whether the A.3 / A.4 / B.7 / C.5 hot-path
+ * bench-hotpath — measures whether the A.3 / A.4 / B.7 / C.5 / P.1 / P.2 hot-path
  * optimisations actually pay off, using old-vs-new implementations measured
  * side-by-side in the SAME process (same V8, same heap, same JIT state).
  *
@@ -21,9 +21,10 @@ import { normalizeProject } from "../src/project-model/schema";
 import { snapshot } from "../src/commands/commands";
 import { STEP_TICKS, grooveOf } from "../src/project-model/types";
 import { mulberry32 } from "../src/shared/rng";
-import type { DrumTrack, Pattern, ProjectDocument } from "../src/project-model/types";
+import type { DrumTrack, Pattern, ProjectDocument, Track } from "../src/project-model/types";
 import type { DeltaOp, DeltaPath } from "../src/commands/docDelta";
 import { computeDocDelta, applyDocDelta, deepEqualRef } from "../src/commands/docDelta";
+import { soloAudibility } from "../src/project-model/solo-audibility";
 
 const args = process.argv.slice(2);
 function flagValue(name: string, fallback: number): number {
@@ -549,6 +550,89 @@ function benchP1(): Promise<ABLegacy> {
   );
 }
 
+// ─── P.2: the audibility rule's per-track lookup ────────────────────────────
+
+/**
+ * Pre-fix audibility lookup. The rule resolved its track with `tracks.find`
+ * and is consulted once per track on every document change (the mixer, the
+ * drum scheduler and the group commands all read it), so one edit cost O(T²) —
+ * the measured quadratic of the performance-cliff audit. The shared document
+ * index replaced the scan; this A/B is what keeps it replaced.
+ */
+function legacyAudibilityResolve(doc: ProjectDocument): number {
+  const tracks = doc.tracks;
+  const anySolo = tracks.some((t) => t.solo);
+  const soloedGroups = new Set(tracks.filter((t) => t.kind === "group" && t.solo).map((t) => t.id));
+  const groupsWithSoloedChild = new Set<string>();
+  for (const t of tracks) {
+    if (t.kind !== "group" && t.solo && t.groupId) groupsWithSoloedChild.add(t.groupId);
+  }
+  let audible = 0;
+  for (const t of tracks) {
+    const found = tracks.find((x) => x.id === t.id);
+    if (!found) continue;
+    if (found.kind !== "group" && found.groupId) {
+      const g = tracks.find((x) => x.id === found.groupId);
+      if (g && g.mute) continue;
+    }
+    audible++;
+  }
+  return audible;
+}
+
+/**
+ * The current rule — the SAME rule, with a map lookup instead of a scan. The
+ * index is built once per document version and reused, exactly as in
+ * production, where the engine resolves every track out of one document.
+ */
+function currentAudibilityResolve(doc: ProjectDocument): number {
+  const rule = soloAudibility(doc);
+  let audible = 0;
+  for (const t of doc.tracks) if (rule.audible(t.id)) audible++;
+  return audible;
+}
+
+function benchP2(): Promise<ABLegacy> {
+  const N = 256;
+  const base = createProjectFromTemplate("house");
+  const tracks: Track[] = [];
+  const groupCount = Math.max(1, Math.floor(N / 8));
+  for (let g = 0; g < groupCount; g++) {
+    tracks.push({
+      id: `grp-${g}`,
+      kind: "group",
+      name: `Group ${g}`,
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      effects: [],
+      sends: {},
+    });
+  }
+  for (let i = 0; i < N; i++) {
+    tracks.push({
+      id: `t-${i}`,
+      kind: "drum",
+      name: `Track ${i}`,
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      pads: [],
+      effects: [],
+      sends: {},
+      groupId: `grp-${Math.floor(i / 8) % groupCount}`,
+    });
+  }
+  const doc = { ...base, tracks } as unknown as ProjectDocument;
+  return ab(
+    `P.2  audibility rule, ${N} tracks (resolve every track)`,
+    () => currentAudibilityResolve(doc),
+    () => legacyAudibilityResolve(doc),
+  );
+}
+
 // ─── Report ───────────────────────────────────────────────────────────────
 
 function fmt(n: number, digits = 3): string {
@@ -575,7 +659,7 @@ async function main(): Promise<void> {
   console.log(`Measurement noise floor: ${fmtBytes(noise.bytesPerCall)}/call (no-op probe)`);
   console.log("=".repeat(112));
 
-  const benches = [benchB7(), benchA3(), benchA4(), benchC5(), benchP1()];
+  const benches = [benchB7(), benchA3(), benchA4(), benchC5(), benchP1(), benchP2()];
   const results: ABLegacy[] = [];
   for (const p of benches) results.push(await p);
 

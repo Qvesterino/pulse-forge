@@ -59,6 +59,7 @@ import type { Frame, ChannelLevels } from "./metering";
 // and the group commands must all read the SAME rule (see the file's note).
 import { soloAudibility } from "../project-model/solo-audibility";
 export { soloAudibility, type SoloAudibility } from "../project-model/solo-audibility";
+import { getDocIndex } from "../project-model/doc-index";
 
 /**
  * MIXER AUDIT (signal-flow re-run 2026-10): the engine's COMMIT writes used to
@@ -2205,6 +2206,11 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx || !this.doc) return;
     if (this.offlineRenderLocked) return; // a rendering graph must not be mutated
+    // The track lookup is a MAP, not a scan: this method walks the track
+    // nodes and used to resolve each one with `doc.tracks.find(...)`, which
+    // made every document change cost O(T²) twice over. The shared index
+    // keeps the answer identical (first match wins, like `find`).
+    const tracksById = getDocIndex(this.doc).tracksById;
     const chainLatency = (state: FxChainState): number => {
       let total = 0;
       for (const rt of state.runtimes.values()) total += this.callRuntime(() => rt.getLatencySec?.()) ?? 0;
@@ -2215,7 +2221,7 @@ export class AudioEngine {
     let maxEffective = 0;
     const effective = new Map<string, number>();
     for (const [id, nodes] of this.trackNodes) {
-      const track = this.doc.tracks.find((t) => t.id === id);
+      const track = tracksById.get(id);
       const downstream = track && track.kind !== "group" && track.groupId ? (groupLatency.get(track.groupId) ?? 0) : 0;
       const total = chainLatency(nodes.fx) + downstream;
       effective.set(id, total);
@@ -2256,7 +2262,7 @@ export class AudioEngine {
     // latency minus the return's own latency. Group taps sit post-group at
     // exactly maxEffective (downstream 0).
     for (const [id, nodes] of this.trackNodes) {
-      const track = this.doc.tracks.find((t) => t.id === id);
+      const track = tracksById.get(id);
       const downstream = track && track.kind !== "group" && track.groupId ? (groupLatency.get(track.groupId) ?? 0) : 0;
       for (const [returnId, delay] of nodes.sendDelays) {
         writeDelay(delay, sendPdcDelaySec(downstream, returnLatency.get(returnId) ?? 0));

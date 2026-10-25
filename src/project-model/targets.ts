@@ -14,6 +14,7 @@ import { ALL_PARAMS, clampParam as clampUltinaParam } from "../effects/ultina-co
 import { INSTRUMENT_META, clampInstrumentParam } from "../instruments/definitions";
 import { defaultOzvenaStateV1 } from "../effects/ozvena-core/v2/types";
 import { ozvenaParamRange } from "../effects/ozvena-params";
+import { getDocIndex } from "./doc-index";
 
 /** UI/engine-neutral parameter metadata for every valid modulation target. */
 export interface TargetParamDef {
@@ -134,7 +135,12 @@ export function targetOwner(doc: ProjectDocument, trackId: string): EffectTarget
   if (trackId === MASTER_EFFECT_OWNER_ID) {
     return { id: MASTER_EFFECT_OWNER_ID, kind: "master", name: "MASTER", effects: doc.master.effects ?? [] };
   }
-  return doc.tracks?.find((track) => track.id === trackId) ?? doc.returns?.find((ret) => ret.id === trackId);
+  // The shared index replaces two list scans. This function is called per
+  // automation lane per scheduler tick, so the O(T) scan it used to perform
+  // was paid on every tick of every lane. The answer is unchanged: the index
+  // keeps the first match, and a track still wins over a return bus.
+  const index = getDocIndex(doc);
+  return index.tracksById.get(trackId) ?? index.returnsById.get(trackId);
 }
 
 export function targetEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {

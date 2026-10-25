@@ -1,4 +1,5 @@
 import type { ProjectDocument } from "./types";
+import { getDocIndex } from "./doc-index";
 
 /**
  * THE audibility rule — one owner, three consumers.
@@ -34,6 +35,13 @@ export interface SoloAudibility {
 
 export function soloAudibility(doc: ProjectDocument): SoloAudibility {
   const tracks = doc.tracks;
+  // The track lookup is a MAP, not a scan. This rule is consulted once per
+  // track on every document change (the mixer, the drum scheduler and the
+  // group commands all read it), so a `tracks.find` per consultation made
+  // one edit cost O(T²) — the measured quadratic of the performance-cliff
+  // audit. The index keeps the ANSWER identical: `indexById` keeps the first
+  // match, which is exactly what `tracks.find` returned.
+  const tracksById = getDocIndex(doc).tracksById;
   const anySolo = tracks.some((t) => t.solo);
   const soloedGroups = new Set(tracks.filter((t) => t.kind === "group" && t.solo).map((t) => t.id));
   const groupsWithSoloedChild = new Set<string>();
@@ -43,11 +51,11 @@ export function soloAudibility(doc: ProjectDocument): SoloAudibility {
   return {
     anySolo,
     audible(trackId: string): boolean {
-      const t = tracks.find((x) => x.id === trackId);
+      const t = tracksById.get(trackId);
       if (!t) return false;
       // Group mute silences its members — 1 gesture mutes 8 tracks
       if (t.kind !== "group" && t.groupId) {
-        const g = tracks.find((x) => x.id === t.groupId);
+        const g = tracksById.get(t.groupId);
         if (g && g.mute) return false;
       }
       if (t.kind === "group") {
