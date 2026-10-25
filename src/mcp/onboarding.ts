@@ -92,7 +92,7 @@ WORKFLOW: ARRANGEMENT PASS
   {op: add/resize/reorder} -> kyx_clips {op: move/duplicate} ->
   kyx_markers {op: add}.
 
-TOOL INDEX (all 38 — grouped by job)
+TOOL INDEX (all 39 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
                (effects/instruments; subject:instrument returns full knob specs)
                · kyx://project/* resources
@@ -110,7 +110,7 @@ TOOL INDEX (all 38 — grouped by job)
   finish:      kyx_mix · kyx_mix_idea (text→mix) · kyx_master (ZENIT ops) · kyx_audio_preview (listenable
                WAV) · kyx_loudness (BS.1770) · kyx_render_summary
                (per-strip LUFS/peak/crest) · kyx_diagnose_mix (findings +
-               fixes) · kyx_export · kyx_publish_gallery (agent badge)
+               fixes) · kyx_export · kyx_save (persist receipt) · kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)
   transcribe:  kyx_unsuno {action: transcribe, sourceId}; restyle · regen · similarity
@@ -121,8 +121,7 @@ TOKEN ECONOMY (your context is finite)
 - kyx_batch: up to 10 {tool, args} calls folded into ONE undo — use it for
   series of small edits; per-call failures never abort the batch.
 - The kyx://project/* resources are the CHEAPEST way to re-read state.
-- Tool results carry a machine-readable data envelope alongside the text —
-  parse that instead of prose when you need exact values.
+- Tool results carry a machine-readable data envelope; mutated is not saved.
 
 HONEST REFUSALS AND HOW TO REACT
 - "generation requests run inside the KYX app" -> you asked kyx_intent to

@@ -26,6 +26,21 @@ A “document” verification is deliberately not called an audio verification. 
 
 ---
 
+## Implementation follow-up (2026-10-25)
+
+The audit snapshot above is read-only history. The three highest-value actions were implemented in a separate follow-up session:
+
+- **F-01 (destructive generation):** `kyx_generate {replaceMode:"replace"}` now rides the destructive unlock + session checkpoint; `new` stays ungated.
+- **F-02 (truthful intent receipts):** `kyx_intent` now compares the document before/after, returns `mutated:false` + `stage:"noop"` for a no-op, and emits a document read-back for non-param routes instead of “verification: applied”.
+- **F-03 (stale mirrors):** both mirrors were regenerated and `npm run verify:mcp-mirrors` is a dedicated CI hygiene step; the repository currently reports “mirrors in sync”.
+- **F-04 (UN-SUNO transcribe):** `loadSampleMono` is wired in both the web and desktop hosts (bank hit, repository fallback, mono mixdown), with a unit test for the loader.
+- **F-12 (persistence stage + save):** results carry `stage` (`read/runtime/applied/persisted/rendered/dry-run/replayed/noop`); new `kyx_save` force-flushes the autosave pipeline and only reports `stage:"persisted"` after the repository flush resolves.
+- **F-06/F-07 (stable targets):** `kyx_plugin_param`, `kyx_fx` and `kyx_automation` accept a stable `fxId`; `kyx_clips` writes accept a stable `clipId` (anchor bar remains a compatibility fallback).
+
+Verification at the follow-up snapshot: `npx vitest run` over 10 affected MCP/intent files → **359 tests passed**; `npm run verify:mcp-mirrors` → in sync; `npm run typecheck` has no errors in the changed MCP/intent files (pre-existing errors remain in other in-flight work). The report’s findings below should be read with this follow-up in mind.
+
+---
+
 ## 1. Executive summary
 
 **Maturity verdict: KYX has trustworthy document control through a shared command path, but it is not yet a trustworthy autonomous DAW operator.**
@@ -597,16 +612,16 @@ Do not start Phase 2/3 before Phase 0/1: more tools on a stale or overclaiming c
 
 ## 15. Verification log
 
-| Command / check                                                                                                       | Result                                                                                 |
-| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| AST parse of `MCP_TOOLS`                                                                                              | 38 tools; 25 with `outputSchema`; 13 without                                           |
-| `npx vitest run` on 10 MCP/trust/persistence files                                                                    | 9 files passed; `tests/mcp-mirror-sync.test.ts` failed (2/4 tests)                     |
-| `npx vitest run tests/mcp-mirror-sync.test.ts --no-cache`                                                             | Reproduced: 2 failed, 2 passed; diff shows `strk`/`cink` only in source                |
-| `npx vitest run` on 4 intent files                                                                                    | 304 passed; 1 failed (`tests/intent-router-corpus.test.ts:593`, model route gate)      |
-| Disposable headless probe: two identical `kyx_intent` mute calls                                                      | Second call `mutated:true`, text claims “one undo step”, undo depth 1→1; probe deleted |
+| Command / check                                                                                                                   | Result                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AST parse of `MCP_TOOLS`                                                                                                          | 38 tools; 25 with `outputSchema`; 13 without                                                                                                                                             |
+| `npx vitest run` on 10 MCP/trust/persistence files                                                                                | 9 files passed; `tests/mcp-mirror-sync.test.ts` failed (2/4 tests)                                                                                                                       |
+| `npx vitest run tests/mcp-mirror-sync.test.ts --no-cache`                                                                         | Reproduced: 2 failed, 2 passed; diff shows `strk`/`cink` only in source                                                                                                                  |
+| `npx vitest run` on 4 intent files                                                                                                | 304 passed; 1 failed (`tests/intent-router-corpus.test.ts:593`, model route gate)                                                                                                        |
+| Disposable headless probe: two identical `kyx_intent` mute calls                                                                  | Second call `mutated:true`, text claims “one undo step”, undo depth 1→1; probe deleted                                                                                                   |
 | Additional focused recheck: MCP tools/idempotency/undo/batch/agent simulation, intent corpus/parameters, persistence, mirror sync | 9 files; 365 passed, 3 failed. One `intent-router-corpus` model-route-gate assertion failed (expected `effectIntent`, got undefined); desktop and server MCP mirror parity tests failed. |
-| `npm run verify:mcp-mirrors`                                                                                            | Interrupted after startup stalled; termination output also reported drift in `desktop/mcp-tool-defs.cjs` and `server/mcp-core.mjs`. No mirrors were regenerated. |
-| Source trace: `src/mcp/tools.ts`, `src/mcp/agentTrust.ts`, `src/store/ProjectStore.ts`, `src/services.ts`, host files | Confirms command-path convergence, risk model, autosave, transport hooks               |
-| Browser/PCM/human listening                                                                                           | Not run in this audit                                                                  |
+| `npm run verify:mcp-mirrors`                                                                                                      | Interrupted after startup stalled; termination output also reported drift in `desktop/mcp-tool-defs.cjs` and `server/mcp-core.mjs`. No mirrors were regenerated.                         |
+| Source trace: `src/mcp/tools.ts`, `src/mcp/agentTrust.ts`, `src/store/ProjectStore.ts`, `src/services.ts`, host files             | Confirms command-path convergence, risk model, autosave, transport hooks                                                                                                                 |
+| Browser/PCM/human listening                                                                                                       | Not run in this audit                                                                                                                                                                    |
 
 **Files created:** this report only. No production code, schema, dependency, tool contract or UI was changed. One disposable probe file was created under `tests/` and deleted after execution.

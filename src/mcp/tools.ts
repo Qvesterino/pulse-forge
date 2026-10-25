@@ -54,6 +54,7 @@ import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { clarifyMessage } from "../intent/clarify-messages";
 import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
+import { summarizeDocumentChange } from "./intent-readback";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import {
@@ -1534,6 +1535,29 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_save",
+    description:
+      "Force the autosave pipeline to flush the CURRENT project to the repository and " +
+      "report the durable result. Use this before ending an agent session when you need " +
+      "a persistence receipt; `mutated` is false because the document is unchanged. " +
+      "Refused honestly on transports without a repository flush hook.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ok: { type: "boolean" },
+        saveStatus: { type: "string", enum: ["saved", "dirty", "saving", "syncing", "error"] },
+        lastSavedAt: { type: ["string", "null"] },
+        stage: { type: "string", enum: ["persisted"] },
+      },
+      required: ["ok", "saveStatus", "stage"],
+    },
+  },
+  {
     name: "kyx_undo",
     description: "Undo or redo the last N document commands (default 1). Declined " + "while a mic take is recording.",
     inputSchema: {
@@ -1672,7 +1696,9 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_generate",
     description:
       "Generate a new pattern from an intent spec (deterministic engine, " +
-      "one undo step). Returns the pattern name and resolved BPM.",
+      "one undo step). Returns the pattern name and resolved BPM. " +
+      'replaceMode:"replace" overwrites the active pattern and requires the ' +
+      "destructive-operation unlock; the default adds a new pattern.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1794,6 +1820,13 @@ export const MCP_TOOLS: McpToolDef[] = [
           maximum: 128,
           description:
             "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
+        },
+        fxId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description:
+            "Stable effect instance id — preferred over instance for remove/bypass/enable/reorder; survives chain reorder",
         },
         direction: {
           type: "string",
@@ -2136,9 +2169,11 @@ export const MCP_TOOLS: McpToolDef[] = [
       "an absolute NATIVE value (clamped to the registry range; see " +
       "kyx_catalog subject:effect for min/max/default/unit) or list the " +
       "current values of every parameter on the targeted tracks' chains. " +
-      "Targets a trackId or a family; instance picks 1-based among same-type " +
-      "instances (default 1). Missing instances are reported honestly — " +
-      "nothing is auto-inserted (use kyx_fx more for that).",
+      "Targets a trackId or a family; `fxId` (the stable instance id returned " +
+      "by list) is preferred for set because it survives chain reordering; " +
+      "`instance` picks 1-based among same-type instances (default 1). " +
+      "Missing instances are reported honestly — nothing is auto-inserted " +
+      "(use kyx_fx more for that).",
     inputSchema: {
       type: "object",
       properties: {
@@ -2159,6 +2194,12 @@ export const MCP_TOOLS: McpToolDef[] = [
           minLength: 1,
           maxLength: 128,
           description: "Effect type (e.g. reverb, eq) — required for set, filters list when given; see kyx_catalog",
+        },
+        fxId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable effect instance id from list (preferred over instance; survives reorder/replacement)",
         },
         instance: {
           type: "integer",
@@ -2265,6 +2306,12 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           description: "Effect type for fxParam lanes — resolves to the track's 1-based instance (default 1)",
         },
+        fxId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable effect instance id — preferred over instance for fxParam lanes",
+        },
         instance: { type: "integer", minimum: 1, description: "1-based same-type instance index (default 1)" },
         bar: {
           type: "integer",
@@ -2300,7 +2347,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Arrangement AND audio clips: list scene clips (with ids + an audio " +
       "summary), audioList the track-lane waveforms in detail, or edit. " +
-      "Scene ops target the clip COVERING an anchor bar: move/resize/" +
+      "Every write accepts a stable clipId from list/audioList; the legacy " +
+      "anchor-bar form resolves the clip COVERING that bar: move/resize/" +
       "split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple " +
       "which close the gap after the edit the way the UI's RIPPLE toggle " +
       "does, and copy/cut/paste for the clipboard (cut and delete are " +
@@ -2348,6 +2396,12 @@ export const MCP_TOOLS: McpToolDef[] = [
           ],
         },
         bar: { type: "integer", minimum: 1, description: "1-based anchor bar — the clip covering it is the target" },
+        clipId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable clip id from list/audioList — preferred over bar; survives concurrent moves and ripples",
+        },
         toBar: { type: "integer", minimum: 1, description: "For move/audioMove — 1-based destination start bar" },
         bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize — new length in bars" },
         trackId: { type: "string", description: "For audio ops — exact track id" },
@@ -3186,6 +3240,17 @@ export interface McpToolContext {
    * (headless servers have no audio to transcribe).
    */
   loadSampleMono?: (sampleId: string) => Promise<{ mono: Float32Array; sampleRate: number } | null>;
+  /**
+   * kyx_save: force the app's autosave pipeline to flush and return the
+   * observed persistence result. Present on live browser/desktop hosts;
+   * absent on headless/standalone servers, which refuse honestly.
+   */
+  saveNow?: () => Promise<{
+    ok: boolean;
+    saveStatus: "saved" | "dirty" | "saving" | "syncing" | "error";
+    lastSavedAt: string | null;
+    error?: string;
+  }>;
 
   /**
    * P2 transaction support (kyx_batch): fold every mutation executed between
@@ -3240,6 +3305,14 @@ export interface McpToolContext {
   mixPreview?: (request: { idea: string; target?: string }) => Promise<import("./mix-preview").MixPreviewOutcome>;
 }
 
+/**
+ * How far a successful call got. `applied` is a DOCUMENT claim only;
+ * `persisted` means the repository flush resolved; `rendered` means PCM was
+ * produced; `delivered` is reserved for a verified download/network receipt.
+ */
+export type McpCompletionStage =
+  "read" | "runtime" | "applied" | "persisted" | "rendered" | "delivered" | "dry-run" | "replayed" | "noop";
+
 export interface McpToolResult {
   /** Text returned to the MCP client (verification read-back). */
   text: string;
@@ -3276,6 +3349,8 @@ export interface McpToolResult {
    * document — the live store was never touched (`mutated` is false and the
    * text names the commands that WOULD have applied). */
   dryRun?: boolean;
+  /** Completion stage: what was actually proven. Absent on errors. */
+  stage?: McpCompletionStage;
 }
 
 /**
@@ -3731,9 +3806,25 @@ export function resetMcpIdempotencyLedger(): void {
  * write files and network state), so they refuse instead of pretending. */
 const NO_DRYRUN_TOOLS: ReadonlySet<string> = new Set([
   "kyx_transport",
+  "kyx_save",
   "kyx_export",
   "kyx_publish_gallery",
   "kyx_audio_preview",
+]);
+
+/** Tools whose successful result is a runtime/session fact rather than a
+ * document read. Used only to infer the `stage` field when a handler did not
+ * state one explicitly. */
+const RUNTIME_STAGE_TOOLS: ReadonlySet<string> = new Set([
+  "kyx_transport",
+  "kyx_save",
+  "kyx_export",
+  "kyx_audio_preview",
+  "kyx_publish_gallery",
+  "kyx_blind_ab",
+  "kyx_render_summary",
+  "kyx_diagnose_mix",
+  "kyx_meter",
 ]);
 
 function dryRunPolicyRefusal(name: string, args: Record<string, unknown>): string | null {
@@ -4012,6 +4103,7 @@ ${would}
 ${preview.text}`,
       mutated: false,
       dryRun: true,
+      stage: "dry-run",
     };
   }
   if (requestId !== "" && signature !== undefined) {
@@ -4037,6 +4129,7 @@ ${preview.text}`,
           ...cached.result,
           text: `idempotent replay — requestId was already applied; nothing re-executed\n${cached.result.text}`,
           replayed: true,
+          stage: "replayed",
         };
       }
       idempotencyLedger.delete(requestId); // stale project scope — re-bind below
@@ -4117,6 +4210,9 @@ ${preview.text}`,
   // is appended exactly once per execution).
   const sideEffectCommitted = result.idempotencyCommitted === true;
   delete result.idempotencyCommitted;
+  if (result.isError !== true && result.stage == null) {
+    result.stage = result.mutated === true ? "applied" : RUNTIME_STAGE_TOOLS.has(name) ? "runtime" : "read";
+  }
   if (result.mutated === true) {
     // Any non-intent mutation supersedes the remembered fader move; the intent
     // path records/clears itself, and kyx_undo clears when it actually moves.
@@ -4220,6 +4316,35 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       // structured rows, so a mixing agent can diff numbers without parsing
       if (subject === "mixer") return { text, mutated: false, data: mixerSnapshotData(ctx.getDoc()) };
       return { text, mutated: false };
+    }
+    case "kyx_save": {
+      if (ctx.saveNow == null) {
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "save is not available over this MCP transport — open KYX and save from the window",
+        );
+      }
+      try {
+        const saved = await ctx.saveNow();
+        const doc = ctx.getDoc();
+        const savedAt = saved.lastSavedAt != null ? ` at ${saved.lastSavedAt}` : "";
+        if (!saved.ok) {
+          return mcpError("EXECUTION_FAILED", `save failed for "${doc.name}": ${saved.error ?? saved.saveStatus}`);
+        }
+        return {
+          text: `saved "${doc.name}" — status ${saved.saveStatus}${savedAt} (stage: persisted)`,
+          mutated: false,
+          stage: "persisted",
+          data: {
+            ok: true,
+            saveStatus: saved.saveStatus,
+            lastSavedAt: saved.lastSavedAt,
+            stage: "persisted",
+          },
+        };
+      } catch (error) {
+        return mcpError("EXECUTION_FAILED", `save failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     case "kyx_undo": {
       const action = record.action === "redo" ? "redo" : "undo";
@@ -4328,6 +4453,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return executeIntentTool(ctx, String(record.instruction ?? ""), record.dry_run === true);
     case "kyx_generate": {
       const doc = ctx.getDoc();
+      if (record.replaceMode !== undefined && record.replaceMode !== "new" && record.replaceMode !== "replace") {
+        return mcpError("INVALID_ARGUMENTS", 'replaceMode must be "new" or "replace"');
+      }
+      // replaceMode:"replace" overwrites the ACTIVE pattern in place. That is
+      // a destructive edit even though adding a new pattern is not, so it
+      // rides the same D4 gate + session checkpoint as track/effect removal.
+      if (record.replaceMode === "replace" && !destructiveAllowedWithCheckpoint(ctx, "kyx_generate")) {
+        return destructiveRefusal();
+      }
       const bars = record.bars;
       // A bar is the DOCUMENT's bar: 16 steps in 4/4, 12 in 3/4 and 6/8, 32
       // in 4/2. The old "must be a multiple of 16 steps" rule made EVERY bar
@@ -4644,6 +4778,23 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           "fx op failed — instance is only valid for remove, bypass, enable, or reorder",
         );
       }
+      const rawFxId = record.fxId;
+      if (
+        Object.prototype.hasOwnProperty.call(record, "fxId") &&
+        (typeof rawFxId !== "string" || rawFxId.trim() === "" || rawFxId.length > 128)
+      ) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "fx op failed — fxId must be a non-empty string of at most 128 characters",
+        );
+      }
+      const fxId = typeof rawFxId === "string" ? rawFxId.trim() : "";
+      if (fxId !== "" && action !== "remove" && action !== "bypass" && action !== "enable" && action !== "reorder") {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "fx op failed — fxId is only valid for remove, bypass, enable, or reorder",
+        );
+      }
       const hasPercent = Object.prototype.hasOwnProperty.call(record, "percent");
       if (
         hasPercent &&
@@ -4702,19 +4853,37 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
               continue;
             }
             const instances = track.effects.filter((fx) => fx.type === effect);
+            if (fxId !== "") {
+              const named = instances.find((candidate) => candidate.id === fxId);
+              if (named == null) {
+                parts.push(`${track.name}: no ${effect} instance with fxId "${fxId}"`);
+                failed += 1;
+                continue;
+              }
+              if (hasInstance && instances[reorderIndex - 1]?.id !== fxId) {
+                parts.push(`${track.name}: fxId "${fxId}" and instance #${reorderIndex} disagree`);
+                failed += 1;
+                continue;
+              }
+            }
             if (instances.length === 0) {
               parts.push(`${track.name}: no ${effect} instance`);
               failed += 1;
               continue;
             }
-            if (instances.length < reorderIndex) {
+            if (fxId === "" && instances.length < reorderIndex) {
               parts.push(
                 `${track.name}: ${effect} instance #${reorderIndex} does not exist (chain has ${instances.length})`,
               );
               failed += 1;
               continue;
             }
-            const fx = instances[reorderIndex - 1];
+            const fx = fxId !== "" ? instances.find((candidate) => candidate.id === fxId) : instances[reorderIndex - 1];
+            if (fx == null) {
+              parts.push(`${track.name}: no ${effect} instance with fxId "${fxId}"`);
+              failed += 1;
+              continue;
+            }
             const movedFxId = fx.id;
             const fromIndex = track.effects.findIndex((candidate) => candidate.id === movedFxId);
             const toIndex = position == null ? fromIndex + direction : position - 1;
@@ -4757,7 +4926,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           );
         }
       }
-      const perInstance = hasInstance;
+      const perInstance = hasInstance || fxId !== "";
       const instanceWanted = hasInstance ? (record.instance as number) : 1;
       if (action === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
       // eq (and any knob-less effect) has no single "primary knob" — never
@@ -4786,19 +4955,38 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
               continue;
             }
             const instances = track.effects.filter((fx) => fx.type === effect);
+            if (fxId !== "") {
+              const named = instances.find((candidate) => candidate.id === fxId);
+              if (named == null) {
+                parts.push(`${track.name}: no ${effect} instance with fxId "${fxId}"`);
+                failed += 1;
+                continue;
+              }
+              if (hasInstance && instances[instanceWanted - 1]?.id !== fxId) {
+                parts.push(`${track.name}: fxId "${fxId}" and instance #${instanceWanted} disagree`);
+                failed += 1;
+                continue;
+              }
+            }
             if (instances.length === 0) {
               parts.push(`${track.name}: no ${effect} instance`);
               failed += 1;
               continue;
             }
-            if (instances.length < instanceWanted) {
+            if (fxId === "" && instances.length < instanceWanted) {
               parts.push(
                 `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`,
               );
               failed += 1;
               continue;
             }
-            const fx = instances[instanceWanted - 1];
+            const fx =
+              fxId !== "" ? instances.find((candidate) => candidate.id === fxId) : instances[instanceWanted - 1];
+            if (fx == null) {
+              parts.push(`${track.name}: no ${effect} instance with fxId "${fxId}"`);
+              failed += 1;
+              continue;
+            }
             if (action === "remove") {
               next = removeEffect(next, track.id, fx.id).execute(next);
               parts.push(`${track.name}: removed ${effect}#${instanceWanted}`);
@@ -5962,6 +6150,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `export ${format.toUpperCase()} complete — ${exportReport}${fixNote}`,
           mutated,
+          stage: "rendered",
         };
       } catch (error) {
         return mcpError("EXECUTION_FAILED", `export failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -7479,18 +7668,35 @@ function resolveAutomationTarget(doc: ProjectDocument, record: Record<string, un
   }
   const param = typeof record.param === "string" ? record.param.trim() : "";
   const effect = typeof record.effect === "string" ? record.effect.trim() : "";
-  if (effect !== "") {
+  const fxId = typeof record.fxId === "string" ? record.fxId.trim() : "";
+  if (effect !== "" || fxId !== "") {
     const track = doc.tracks.find((t) => t.id === ownerId);
     if (!track) return "fxParam automation needs a TRACK target (returns cannot host effect lanes here)";
-    const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
-    const instances = track.effects.filter((fx) => fx.type === effect);
-    if (instances.length === 0) return `${track.name}: no ${effect} instance (insert via kyx_fx more first)`;
-    if (instances.length < instanceWanted) {
-      return `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`;
+    let fx: Track["effects"][number] | undefined;
+    if (fxId !== "") {
+      fx = track.effects.find((candidate) => candidate.id === fxId);
+      if (fx == null) return `${track.name}: no FX instance with fxId "${fxId}"`;
+      if (effect !== "" && fx.type !== effect) {
+        return `${track.name}: fxId "${fxId}" is ${fx.type}, not ${effect}`;
+      }
+      if (
+        record.instance !== undefined &&
+        Math.max(1, Math.round(Number(record.instance))) !==
+          track.effects.filter((candidate) => candidate.type === fx!.type).indexOf(fx) + 1
+      ) {
+        return `${track.name}: fxId "${fxId}" and instance #${String(record.instance)} disagree`;
+      }
+    } else {
+      const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
+      const instances = track.effects.filter((candidate) => candidate.type === effect);
+      if (instances.length === 0) return `${track.name}: no ${effect} instance (insert via kyx_fx more first)`;
+      if (instances.length < instanceWanted) {
+        return `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`;
+      }
+      fx = instances[instanceWanted - 1];
     }
-    const fx = instances[instanceWanted - 1];
     if (param === "") return "fxParam automation needs param (the effect's paramId — see kyx_catalog subject:effect)";
-    return { kind: "fxParam", trackId: track.id, fxId: fx.id, paramId: param };
+    return { kind: "fxParam", trackId: track.id, fxId: fx!.id, paramId: param };
   }
   if (param === "gain") return { kind: "trackGain", trackId: ownerId };
   if (param === "pan") return { kind: "trackPan", trackId: ownerId };
@@ -7557,6 +7763,17 @@ function clipboardSummary(clipboard: ClipClipboard): string {
 function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const op = String(record.op ?? "");
   const doc = ctx.getDoc();
+  const rawClipId = record.clipId;
+  if (
+    Object.prototype.hasOwnProperty.call(record, "clipId") &&
+    (typeof rawClipId !== "string" || rawClipId.trim() === "" || rawClipId.length > 128)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "clipId must be a non-empty string of at most 128 characters");
+  }
+  const clipId = typeof rawClipId === "string" ? rawClipId.trim() : "";
+  const sceneClipById = clipId !== "" ? doc.arrangement.clips.find((clip) => clip.id === clipId) : undefined;
+  const audioClipById =
+    clipId !== "" ? (doc.arrangement.audioClips ?? []).find((clip) => clip.id === clipId) : undefined;
   const sceneName = (sceneId: string): string => doc.scenes.find((scene) => scene.id === sceneId)?.name ?? sceneId;
   const describeClip = (clip: {
     id: string;
@@ -7584,14 +7801,26 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         return { text: `pasted ${clipboardSummary(mcpClipClipboard)} at ${where} — one undo step`, mutated: true };
       }
 
-      // copy / cut both need a source clip: the arrangement clip covering the
-      // anchor bar, else the audio clip on a named track at that bar.
-      const rawBar = typeof record.bar === "number" ? record.bar : 1;
-      if (!Number.isFinite(rawBar) || rawBar < 1) {
-        return { text: `${op} needs a 1-based anchor bar`, mutated: false };
+      // copy / cut both need a source clip: a stable clipId when given, else
+      // the arrangement clip covering the anchor bar, else the audio clip on a
+      // named track at that bar.
+      const rawBar = typeof record.bar === "number" ? record.bar : null;
+      if (clipId === "") {
+        if (rawBar === null || !Number.isFinite(rawBar) || rawBar < 1) {
+          return { text: `${op} needs clipId or a 1-based anchor bar`, mutated: false };
+        }
       }
-      const sceneClip = clipCoveringBar(doc, Math.round(rawBar));
-      let targets: string[] = sceneClip ? [sceneClip.id] : [];
+      let targets: string[] = [];
+      if (clipId !== "") {
+        if (sceneClipById) targets = [sceneClipById.id];
+        else if (audioClipById) targets = [audioClipById.id];
+        else {
+          return mcpError("UNKNOWN_TARGET", `no scene or audio clip with id "${clipId}" — list first`);
+        }
+      } else {
+        const sceneClip = clipCoveringBar(doc, Math.round(rawBar!));
+        targets = sceneClip ? [sceneClip.id] : [];
+      }
       if (targets.length === 0) {
         // No scene clip there — try the audio lane, using the SAME addressing the
         // audio* ops use (trackId or family + anchor bar).
@@ -7604,7 +7833,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
             if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
             ownerId = ids[0]!;
           }
-          const anchor = Math.round(rawBar) - 1;
+          const anchor = Math.round(rawBar!) - 1;
           const audio = doc.arrangement.audioClips ?? [];
           const audioTarget = audio.find(
             (clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars,
@@ -7614,7 +7843,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       }
       if (targets.length === 0) {
         return {
-          text: `no clip covers bar ${Math.round(rawBar)} — read the layout via op:list`,
+          text: `no clip covers bar ${Math.round(rawBar!)} — read the layout via op:list`,
           mutated: false,
         };
       }
@@ -7702,7 +7931,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   }
 
   if (op.startsWith("audio")) {
-    // Audio ops address a clip by trackId/family + the anchor bar it covers.
+    // Audio ops accept a stable clipId, or trackId/family + the anchor bar.
     const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
     const family = typeof record.family === "string" ? record.family.trim() : "";
     let ownerId: string | null = null;
@@ -7711,26 +7940,49 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       const ids = tracksInFamily(doc, family);
       if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
       ownerId = ids[0];
-    } else {
-      return { text: `audio ops need trackId or family (op ${op})`, mutated: false };
     }
-    const rawAnchor = Number(record.bar);
-    if (!Number.isFinite(rawAnchor) || Math.round(rawAnchor) < 1) {
-      return { text: `a 1-based anchor bar is required for ${op}`, mutated: false };
+    const rawAnchor = record.bar === undefined ? null : Number(record.bar);
+    if (clipId === "" && (rawAnchor === null || !Number.isFinite(rawAnchor) || Math.round(rawAnchor) < 1)) {
+      return { text: `a 1-based anchor bar or clipId is required for ${op}`, mutated: false };
     }
-    const anchor = Math.round(rawAnchor) - 1;
+    if (op === "audioSplit" && (rawAnchor === null || !Number.isFinite(rawAnchor) || Math.round(rawAnchor) < 1)) {
+      return { text: "audioSplit needs a 1-based bar as the split point", mutated: false };
+    }
+    const anchor = rawAnchor !== null && Number.isFinite(rawAnchor) ? Math.round(rawAnchor) - 1 : null;
     const audio = doc.arrangement.audioClips ?? [];
-    const target = audio.find(
-      (clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars,
-    );
-    if (!target) {
+    let target: (typeof audio)[number] | undefined;
+    if (clipId !== "") {
+      target = audioClipById;
+      if (target == null) {
+        return mcpError("UNKNOWN_TARGET", `no audio clip with id "${clipId}" — op:audioList to see the lanes`);
+      }
+      if (ownerId != null && target.trackId !== ownerId) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `clipId "${clipId}" is on ${ownerNameOf(doc, target.trackId)}, not the requested track`,
+        );
+      }
+      if (anchor != null && (anchor < target.startBar || anchor >= target.startBar + target.lengthBars)) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `clipId "${clipId}" does not cover bar ${anchor + 1} (bars ${target.startBar + 1}–${target.startBar + target.lengthBars})`,
+        );
+      }
+    } else {
+      if (ownerId == null) return { text: `audio ops need trackId or family (op ${op})`, mutated: false };
+      target = audio.find(
+        (clip) => clip.trackId === ownerId && anchor! >= clip.startBar && anchor! < clip.startBar + clip.lengthBars,
+      );
+    }
+    if (target == null) {
       return {
-        text: `no audio clip on ${ownerNameOf(doc, ownerId)} covers bar ${anchor + 1} — op:audioList to see the lanes`,
+        text: `no audio clip on ${ownerNameOf(doc, ownerId ?? "")} covers bar ${anchor! + 1} — op:audioList to see the lanes`,
         mutated: false,
       };
     }
+    const splitAnchor = anchor;
     const describe = (): string =>
-      `audio clip ${target.bufferId} on ${ownerNameOf(doc, target.trackId)} bars ${target.startBar + 1}–${target.startBar + target.lengthBars}`;
+      `audio clip ${target!.bufferId} on ${ownerNameOf(doc, target!.trackId)} bars ${target!.startBar + 1}–${target!.startBar + target!.lengthBars}`;
     try {
       if (op === "audioMove") {
         const toBar = Math.round(Number(record.toBar));
@@ -7740,9 +7992,9 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         return { text: `moved ${describe()} → starts at bar ${toBar} — one undo step`, mutated: true };
       }
       if (op === "audioSplit") {
-        const tick = tickAtBar(anchor + 1, doc);
+        const tick = tickAtBar(splitAnchor! + 1, doc);
         ctx.execute(splitAudioClipAtTick(doc, target.id, tick));
-        return { text: `split ${describe()} at bar ${anchor + 1} — one undo step`, mutated: true };
+        return { text: `split ${describe()} at bar ${splitAnchor! + 1} — one undo step`, mutated: true };
       }
       if (op === "audioUpdate") {
         const patch: Record<string, number | boolean> = {};
@@ -7936,19 +8188,34 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     }
   }
 
-  const rawBar = Number(record.bar);
-  if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) {
+  const rawBar = record.bar === undefined ? null : Number(record.bar);
+  const barValue = rawBar !== null && Number.isFinite(rawBar) && Math.round(rawBar) >= 1 ? Math.round(rawBar) : null;
+  if (clipId === "" && barValue === null) {
     return {
-      text: "a 1-based anchor bar is required — the clip covering it is the target (list first)",
+      text: "a 1-based anchor bar or clipId is required — the clip is the target (list first)",
       mutated: false,
     };
   }
-  const clip = clipCoveringBar(doc, Math.round(rawBar));
+  if (op === "split" && barValue === null) {
+    return { text: "split needs a 1-based bar as the split point", mutated: false };
+  }
+  const clip = clipId !== "" ? sceneClipById : clipCoveringBar(doc, barValue!);
   if (!clip) {
-    return {
-      text: `no arrangement clip covers bar ${Math.round(rawBar)} — read the layout via op:list`,
-      mutated: false,
-    };
+    return clipId !== ""
+      ? mcpError("UNKNOWN_TARGET", `no scene clip with id "${clipId}" — read the layout via op:list`)
+      : {
+          text: `no arrangement clip covers bar ${barValue} — read the layout via op:list`,
+          mutated: false,
+        };
+  }
+  if (clipId !== "" && barValue !== null) {
+    const anchor = barValue - 1;
+    if (anchor < clip.startBar || anchor >= clip.startBar + clip.lengthBars) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `clipId "${clipId}" does not cover bar ${barValue} (bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars})`,
+      );
+    }
   }
 
   try {
@@ -7984,9 +8251,9 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       // sample-precise, scene clips split at the bar boundary covering the
       // anchor. The MCP lane can only name a whole bar, so it is the same
       // primitive the grid cut tool uses.
-      const tick = tickAtBar(Math.round(rawBar), doc);
+      const tick = tickAtBar(barValue!, doc);
       ctx.execute(splitArrangementClipAtTick(doc, clip.id, tick));
-      return { text: `split ${describeClip(clip)} at bar ${Math.round(rawBar)} — one undo step`, mutated: true };
+      return { text: `split ${describeClip(clip)} at bar ${barValue} — one undo step`, mutated: true };
     }
     if (op === "delete") {
       if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
@@ -9205,6 +9472,11 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     return mcpError("INVALID_ARGUMENTS", "effect must be a non-empty string of at most 128 characters");
   }
   const effect = typeof rawEffect === "string" ? rawEffect.trim() : "";
+  const rawFxId = record.fxId;
+  if (hasField("fxId") && (typeof rawFxId !== "string" || rawFxId.trim() === "" || rawFxId.length > 128)) {
+    return mcpError("INVALID_ARGUMENTS", "fxId must be a non-empty string of at most 128 characters");
+  }
+  const fxId = typeof rawFxId === "string" ? rawFxId.trim() : "";
   const catalog = effect !== "" ? getEffectCatalogEntry(effect) : null;
   if (effect !== "" && catalog == null) {
     return mcpError("UNKNOWN_TARGET", `unknown effect "${effect}" — see kyx_catalog subject:effects`);
@@ -9335,10 +9607,18 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     );
     for (const track of targets) {
       const matching = installedInstances.filter(
-        (instance) => instance.trackId === track.id && (effect === "" || instance.type === effect),
+        (instance) =>
+          instance.trackId === track.id &&
+          (effect === "" || instance.type === effect) &&
+          (fxId === "" || instance.effectId === fxId),
       );
       if (matching.length === 0) {
-        const reason = effect !== "" ? `no ${effect} instance in the chain` : "no FX";
+        const reason =
+          fxId !== ""
+            ? `no FX instance with fxId "${fxId}"`
+            : effect !== ""
+              ? `no ${effect} instance in the chain`
+              : "no FX";
         unmatched.push({ trackId: track.id, trackName: track.name, reason });
         if (effect !== "" || track.effects.length === 0) lines.push(`${track.name}: ${reason}`);
         continue;
@@ -9399,6 +9679,23 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   let next = doc;
   for (const track of targets) {
     const instances = track.effects.filter((fx) => fx.type === effect);
+    if (fxId !== "") {
+      const named = instances.find((candidate) => candidate.id === fxId);
+      if (named == null) {
+        unmatched.push({
+          trackId: track.id,
+          trackName: track.name,
+          reason: `no ${effect} instance with fxId "${fxId}" on this track`,
+        });
+        continue;
+      }
+      if (hasField("instance") && instances[instanceWanted! - 1]?.id !== fxId) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `fxId "${fxId}" and instance #${instanceWanted} disagree — pass one stable target, not both`,
+        );
+      }
+    }
     if (instances.length === 0) {
       unmatched.push({
         trackId: track.id,
@@ -9407,7 +9704,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       });
       continue;
     }
-    if (instances.length < instanceWanted!) {
+    if (fxId === "" && instances.length < instanceWanted!) {
       unmatched.push({
         trackId: track.id,
         trackName: track.name,
@@ -9415,7 +9712,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       });
       continue;
     }
-    const fx = instances[instanceWanted! - 1];
+    const fx = fxId !== "" ? instances.find((candidate) => candidate.id === fxId) : instances[instanceWanted! - 1];
     if (fx == null) {
       unmatched.push({
         trackId: track.id,
@@ -9477,7 +9774,10 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       trackId: track.id,
       trackName: track.name,
       fxId: fx.id,
-      instance: instanceWanted!,
+      instance:
+        track.effects
+          .filter((candidate) => candidate.type === fx.type)
+          .findIndex((candidate) => candidate.id === fx.id) + 1,
       param: paramId!,
       beforeValue,
       requestedValue: requested,
@@ -9516,6 +9816,9 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
         data,
       },
     );
+  }
+  if (selected.length === 0 && unmatched.length > 0) {
+    return mcpError("UNKNOWN_TARGET", text, { mutated: false, data });
   }
   if (unmatched.length > 0 || readBackMismatch) {
     return mcpError("PARTIAL_FAILURE", text, { mutated, data });
@@ -11672,6 +11975,7 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     if (route.intent.kind === "undo" && ctx.isMicRecordingActive()) {
       return { text: "declined: a mic take is recording — stop it before undo", mutated: false };
     }
+    const docBefore = ctx.getDoc();
     let done = 0;
     for (let i = 0; i < route.intent.steps; i++) {
       const before = ctx.undoStackLength();
@@ -11680,17 +11984,41 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
       if (ctx.undoStackLength() === before) break;
       done += 1;
     }
-    return { text: `${route.intent.kind} ×${done}`, mutated: done > 0 };
+    if (done === 0)
+      return { text: `${route.intent.kind} — nothing to do; no undo step`, mutated: false, stage: "noop" };
+    const summary = summarizeDocumentChange(docBefore, ctx.getDoc());
+    return {
+      text: `${route.intent.kind} ×${done} — read-back: ${summary.lines.join("; ") || "document changed"}`,
+      mutated: true,
+      data: { status: "applied", changed: true, readback: summary.lines },
+    };
   }
   if (route.kind === "sectionTransition") {
     // Structural arrangement repaint — a plain doc mutation, one undo step,
-    // terse read-back (MCP P3): the label IS the summary.
-    const outcome = reviseSectionTransitions(ctx.getDoc(), route.targetRole, route.transition);
+    // with the same document read-back every other route gets.
+    const before = ctx.getDoc();
+    const depthBefore = ctx.undoStackLength();
+    const outcome = reviseSectionTransitions(before, route.targetRole, route.transition);
     if (!outcome.ok || !outcome.command) {
       return { text: outcome.error ?? "transition failed", mutated: false };
     }
     ctx.execute(outcome.command);
-    return { text: outcome.label ?? "transition applied", mutated: true };
+    const after = ctx.getDoc();
+    const changed = after !== before;
+    if (!changed) {
+      return {
+        text: `${outcome.label ?? "transition"} — nothing changed (document identical); no undo step`,
+        mutated: false,
+        stage: "noop",
+      };
+    }
+    const summary = summarizeDocumentChange(before, after);
+    const undo = ctx.undoStackLength() > depthBefore ? "one undo step in KYX" : "folded into the previous undo step";
+    return {
+      text: `${outcome.label ?? "transition applied"} — read-back: ${summary.lines.join("; ")}, ${undo}`,
+      mutated: true,
+      data: { status: "applied", changed: true, readback: summary.lines },
+    };
   }
   if (routeIsDestructive(route) && !destructiveAllowedWithCheckpoint(ctx, "kyx_intent")) return destructiveRefusal();
 
@@ -11713,13 +12041,32 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
 
   try {
     const before = ctx.getDoc();
+    const depthBefore = ctx.undoStackLength();
     const command = intentCommand(before, route);
     if (command == null) {
-      return { text: "intent understood but nothing changed (already matches or no target)", mutated: false };
+      return {
+        text: "intent understood but nothing changed (already matches or no target)",
+        mutated: false,
+        stage: "noop",
+      };
     }
     ctx.execute(command);
     noteAppliedRoute(route, before, ctx.getDoc());
     const after = ctx.getDoc();
+    const changed = after !== before;
+    const undoLine = !changed
+      ? ""
+      : ctx.undoStackLength() > depthBefore
+        ? ", one undo step in KYX"
+        : ", folded into the previous undo step";
+    if (!changed) {
+      return {
+        text: `${command.label} — nothing changed (document identical); no undo step`,
+        mutated: false,
+        stage: "noop",
+        data: { status: "unchanged", changed: false, readback: [] },
+      };
+    }
     // The param branch reads the value BACK. It used to print "verification:
     // applied" with nothing verified — the agent was told a knob moved and
     // never saw the number, the track, or the targets it missed.
@@ -11745,10 +12092,11 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
           ? "read-back confirms the value"
           : "read-back found no value change";
       return {
-        text: `${command.label}${extra} — verification: ${verification}, one undo step in KYX`,
+        text: `${command.label}${extra} — verification: ${verification}${undoLine}`,
         mutated: true,
         data: {
           status: partial ? "partial" : moved ? "applied" : "no_value_moved",
+          changed: true,
           moved: paramReport.moved,
           added: paramReport.added,
           unchanged: paramReport.unchanged,
@@ -11756,7 +12104,16 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
         },
       };
     }
-    return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
+    const summary = summarizeDocumentChange(before, after);
+    const verification =
+      summary.lines.length > 0
+        ? `read-back: ${summary.lines.join("; ")}`
+        : "document changed (read-back summary empty)";
+    return {
+      text: `${command.label}${extra} — verification: ${verification}${undoLine}`,
+      mutated: true,
+      data: { status: "applied", changed: true, readback: summary.lines },
+    };
   } catch (error) {
     // The intent appliers throw on no-target / already-matches — surface as
     // an honest failure instead of letting it kill the relay round-trip.

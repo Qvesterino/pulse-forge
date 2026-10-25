@@ -22,6 +22,11 @@ vi.mock("../src/rendering/wav", () => ({
   downloadWav: (...args: unknown[]) => downloadWav(...args),
 }));
 vi.mock("../src/export/download", () => ({ downloadBlob: (...args: unknown[]) => downloadBlob(...args) }));
+vi.mock("../src/rendering/stems", () => ({
+  buildStemProject: (doc: unknown) => doc,
+  nonEmptyStemGroups: () => [{ id: "drums", label: "Drums", filter: () => true }],
+}));
+vi.mock("../src/export/zip", () => ({ buildZip: () => ({ size: 10 }) }));
 
 import { quickBounceDownload } from "../src/export/quick-bounce";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -65,5 +70,37 @@ describe("quick bounce (shared export pipeline)", () => {
   it("render failures reject (the caller reports the honest error)", async () => {
     renderProject.mockRejectedValue(new Error("no audio context"));
     await expect(quickBounceDownload(fakeDoc("x"), bank, { format: "wav" })).rejects.toThrow("no audio context");
+  });
+
+  /**
+   * STEMS — the same word, two surfaces, two different files.
+   *
+   * The kyx_export schema advertises "stem projects bypass the master chain,
+   * same as the ExportPanel stem flow", and the ExportPanel really does pass
+   * masterProcessing: false. The MCP path did not — the render default is
+   * TRUE — so every stem in an MCP zip carried the master limiter, tape and
+   * glue while the UI's stems did not. The bit depth was hardcoded to 24
+   * while the schema advertises "default 16".
+   */
+  it("stems bypass the master chain, at the export panel's quality tier", async () => {
+    encodeWavAsync.mockResolvedValue({ byteLength: 1000 });
+    await quickBounceDownload(fakeDoc("My Beat"), bank, { format: "wav", stems: "all" });
+    expect(renderProject).toHaveBeenCalledWith(
+      expect.anything(),
+      bank,
+      expect.objectContaining({ masterProcessing: false, quality: "studio" }),
+    );
+  });
+
+  it("stems honor the requested bit depth, and default to the advertised 16", async () => {
+    encodeWavAsync.mockResolvedValue({ byteLength: 1000 });
+    await quickBounceDownload(fakeDoc("My Beat"), bank, { format: "wav", stems: "all", bitDepth: 24 });
+    expect(encodeWavAsync).toHaveBeenCalledWith(buffer, 24, {});
+
+    vi.clearAllMocks();
+    renderProject.mockResolvedValue(buffer);
+    encodeWavAsync.mockResolvedValue({ byteLength: 1000 });
+    await quickBounceDownload(fakeDoc("My Beat"), bank, { format: "wav", stems: "all" });
+    expect(encodeWavAsync).toHaveBeenCalledWith(buffer, 16, {});
   });
 });

@@ -52,6 +52,11 @@ The app enforces the classes, not the agent's goodwill:
    scaler and the hint flag; dynamics report their gain-reduction stages; a
    bypassed or degraded insert honestly says "no telemetry" instead of zeros.
    That is the closed loop: apply → read → decide.
+6. **Persist before you finish.** `mutated: true` means the DOCUMENT changed;
+   it does not mean the project was saved. Call `kyx_save` and require
+   `stage: "persisted"` (and `ok: true`) before ending a session that must
+   survive a reload. A result's `stage` is the truth: `applied` < `persisted`
+   < `rendered`; `delivered` is reserved for a verified download receipt.
 
 ### Worked example A — read-only survey (safe everywhere)
 

@@ -126,7 +126,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", async () => {
-  it("tool surface: the 37 documented tools", async () => {
+  it("tool surface: the 39 documented tools", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_catalog")?.outputSchema).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -175,6 +175,7 @@ describe("mcp tools — headless execution", async () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
+      "kyx_save",
       "kyx_undo",
       "kyx_transport",
       "kyx_export",
@@ -1036,7 +1037,7 @@ describe("mcp audit repairs", async () => {
     await executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 140" });
     const result = await executeMcpTool(ctx, "kyx_intent", { instruction: "undo two steps" });
     // P1-D: every mutating result states which document it landed on.
-    expect(result.text).toMatch(/^undo ×1\nmutated on document "/);
+    expect(result.text).toMatch(/^undo ×1 — read-back: .*\nmutated on document "/);
     expect(result.text).toContain(datasetDoc().name);
     expect(result.mutated).toBe(true);
     expect(result.docId).toBe(datasetDoc().id);

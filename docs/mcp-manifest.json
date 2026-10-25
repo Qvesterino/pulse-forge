@@ -21,6 +21,15 @@
       }
     },
     {
+      "name": "kyx_save",
+      "risk": "runtime",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      }
+    },
+    {
       "name": "kyx_undo",
       "risk": "mutate",
       "annotations": {

@@ -98,6 +98,53 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_save",
+    description:
+      "Force the autosave pipeline to flush the CURRENT project to the repository and report the durable result. Use this before ending an agent session when you need a persistence receipt; `mutated` is false because the document is unchanged. Refused honestly on transports without a repository flush hook.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ok: {
+          type: "boolean",
+        },
+        saveStatus: {
+          type: "string",
+          enum: ["saved", "dirty", "saving", "syncing", "error"],
+        },
+        lastSavedAt: {
+          type: ["string", "null"],
+        },
+        stage: {
+          type: "string",
+          enum: ["persisted"],
+        },
+      },
+      required: ["ok", "saveStatus", "stage"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+  },
+  {
     name: "kyx_undo",
     description: "Undo or redo the last N document commands (default 1). Declined while a mic take is recording.",
     inputSchema: {
@@ -481,7 +528,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_generate",
     description:
-      "Generate a new pattern from an intent spec (deterministic engine, one undo step). Returns the pattern name and resolved BPM.",
+      'Generate a new pattern from an intent spec (deterministic engine, one undo step). Returns the pattern name and resolved BPM. replaceMode:"replace" overwrites the active pattern and requires the destructive-operation unlock; the default adds a new pattern.',
     inputSchema: {
       type: "object",
       properties: {
@@ -838,6 +885,13 @@ const MCP_TOOL_DEFS = [
           maximum: 128,
           description:
             "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
+        },
+        fxId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description:
+            "Stable effect instance id — preferred over instance for remove/bypass/enable/reorder; survives chain reorder",
         },
         direction: {
           type: "string",
@@ -1230,6 +1284,8 @@ const MCP_TOOL_DEFS = [
             "choral",
             "ladic",
             "hlas",
+            "strk",
+            "cink",
           ],
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
@@ -2480,6 +2536,8 @@ const MCP_TOOL_DEFS = [
             "choral",
             "ladic",
             "hlas",
+            "strk",
+            "cink",
           ],
           maxLength: 32,
           description: "Instrument kind for subject:instrument (e.g. kopa or tsar) — see subject:instruments",
@@ -2778,7 +2836,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_plugin_param",
     description:
-      "Precise plugin control on inserted FX instances: set ONE parameter to an absolute NATIVE value (clamped to the registry range; see kyx_catalog subject:effect for min/max/default/unit) or list the current values of every parameter on the targeted tracks' chains. Targets a trackId or a family; instance picks 1-based among same-type instances (default 1). Missing instances are reported honestly — nothing is auto-inserted (use kyx_fx more for that).",
+      "Precise plugin control on inserted FX instances: set ONE parameter to an absolute NATIVE value (clamped to the registry range; see kyx_catalog subject:effect for min/max/default/unit) or list the current values of every parameter on the targeted tracks' chains. Targets a trackId or a family; `fxId` (the stable instance id returned by list) is preferred for set because it survives chain reordering; `instance` picks 1-based among same-type instances (default 1). Missing instances are reported honestly — nothing is auto-inserted (use kyx_fx more for that).",
     inputSchema: {
       type: "object",
       properties: {
@@ -2802,6 +2860,12 @@ const MCP_TOOL_DEFS = [
           minLength: 1,
           maxLength: 128,
           description: "Effect type (e.g. reverb, eq) — required for set, filters list when given; see kyx_catalog",
+        },
+        fxId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable effect instance id from list (preferred over instance; survives reorder/replacement)",
         },
         instance: {
           type: "integer",
@@ -3315,6 +3379,12 @@ const MCP_TOOL_DEFS = [
           type: "string",
           description: "Effect type for fxParam lanes — resolves to the track's 1-based instance (default 1)",
         },
+        fxId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable effect instance id — preferred over instance for fxParam lanes",
+        },
         instance: {
           type: "integer",
           minimum: 1,
@@ -3371,7 +3441,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_clips",
     description:
-      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit. Scene ops target the clip COVERING an anchor bar: move/resize/split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple which close the gap after the edit the way the UI's RIPPLE toggle does, and copy/cut/paste for the clipboard (cut and delete are D4-gated; the MCP clipboard is per-session, never persisted). Audio ops address a track (trackId or family) + the anchor bar its clip covers: audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec - which part of the source plays)/audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate (bufferId + range)/audioCrossfade/audioDelete (D4). Values are native (gain linear, fades in seconds).",
+      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit. Every write accepts a stable clipId from list/audioList; the legacy anchor-bar form resolves the clip COVERING that bar: move/resize/split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple which close the gap after the edit the way the UI's RIPPLE toggle does, and copy/cut/paste for the clipboard (cut and delete are D4-gated; the MCP clipboard is per-session, never persisted). Audio ops address a track (trackId or family) + the anchor bar its clip covers: audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec - which part of the source plays)/audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate (bufferId + range)/audioCrossfade/audioDelete (D4). Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
@@ -3410,6 +3480,12 @@ const MCP_TOOL_DEFS = [
           type: "integer",
           minimum: 1,
           description: "1-based anchor bar — the clip covering it is the target",
+        },
+        clipId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable clip id from list/audioList — preferred over bar; survives concurrent moves and ripples",
         },
         toBar: {
           type: "integer",

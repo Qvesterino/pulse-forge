@@ -6,6 +6,8 @@ import { mcpRenderSummary } from "../mcp/render-summary";
 import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { decodeAudioData } from "../services/audio-decode";
+import { loadUserSampleMono } from "./sample-mono";
+import { flushServicesSave } from "./save-now";
 // Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
 // enabled flag while mounting); the heavy bridge module re-exports it and
 // imports it for local use.
@@ -119,6 +121,11 @@ function depsFromServices(services: Services): McpBridgeDeps {
         return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
       }
     },
+    // kyx_unsuno transcribe: the live user-sample bank (decoded) or the
+    // repository fallback, mixed to mono for the transcription lanes.
+    loadSampleMono: (sampleId) => loadUserSampleMono(services, sampleId),
+    // kyx_save: force the autosave pipeline and report the durable result.
+    saveNow: () => flushServicesSave(services),
     shareToGallery: async ({ title, author, tags, agent }) => {
       const { encodeProjectForGallery, publishBeat } = await import("../gallery/galleryApi");
       const item = await publishBeat({

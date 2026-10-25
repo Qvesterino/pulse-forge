@@ -400,8 +400,8 @@ export function App({
   useEffect(() => startQvesterProfileBus(services).stop, [services]);
   // Desktop MCP (Phase D2): relay main-forwarded tool calls into the
   // deterministic command layer. Browser is a noop (web relay instead).
-  // Desktop MCP + web relay load lazily: the MCP surface (31 tools) is an
-  // opt-in feature and must not sit in the studio boot graph.
+  // Desktop MCP + web relay load lazily: the MCP surface is an opt-in
+  // feature and must not sit in the studio boot graph.
   useEffect(() => {
     let stop: (() => void) | null = null;
     let cancelled = false;

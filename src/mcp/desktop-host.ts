@@ -8,6 +8,8 @@ import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters"
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
 import { mcpRenderAudioPreview } from "./audio-preview";
+import { loadUserSampleMono } from "./sample-mono";
+import { flushServicesSave } from "./save-now";
 import type { Services } from "../services";
 
 /**
@@ -115,6 +117,11 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
         return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
       }
     },
+    // kyx_unsuno transcribe: the live user-sample bank (decoded) or the
+    // repository fallback, mixed to mono for the transcription lanes.
+    loadSampleMono: (sampleId) => loadUserSampleMono(services, sampleId),
+    // kyx_save: force the autosave pipeline and report the durable result.
+    saveNow: () => flushServicesSave(services),
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
     shareToGallery: async ({ title, author, tags, agent }) => {

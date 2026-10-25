@@ -64,6 +64,8 @@ export interface McpBridgeDeps {
   diagnoseMix?: NonNullable<McpToolContext["diagnoseMix"]>;
   mixPreview?: NonNullable<McpToolContext["mixPreview"]>;
   importSamples?: NonNullable<McpToolContext["importSamples"]>;
+  loadSampleMono?: NonNullable<McpToolContext["loadSampleMono"]>;
+  saveNow?: NonNullable<McpToolContext["saveNow"]>;
 }
 
 export class McpBridge {
@@ -170,6 +172,8 @@ export class McpBridge {
         diagnoseMix: this.deps.diagnoseMix,
         mixPreview: this.deps.mixPreview,
         importSamples: this.deps.importSamples,
+        loadSampleMono: this.deps.loadSampleMono,
+        saveNow: this.deps.saveNow,
         allowDestructive: mcpAllowDestructive,
       },
       "web-relay",

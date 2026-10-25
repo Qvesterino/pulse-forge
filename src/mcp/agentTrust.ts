@@ -54,6 +54,7 @@ export const TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   kyx_catalog: "read",
   // ── runtime / side effects on the outside world ──────────────────────────
   kyx_transport: "runtime",
+  kyx_save: "runtime",
   kyx_export: "runtime",
   kyx_audio_preview: "runtime",
   kyx_publish_gallery: "runtime",

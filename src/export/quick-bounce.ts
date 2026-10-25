@@ -45,6 +45,7 @@ export async function quickBounceDownload(
 ): Promise<QuickBounceResult> {
   const baseName = sanitizeFilename(doc.name);
   const sampleRate = options.sampleRate ?? 44100;
+  const bitDepth: WavBitDepth = options.bitDepth ?? 16;
   const { renderProject } = await import("../rendering/renderer");
 
   if (options.stems != null) {
@@ -58,9 +59,21 @@ export async function quickBounceDownload(
     let totalSeconds = 0;
     for (const group of groups) {
       const stemDoc = buildStemProject(doc, group.filter);
-      const buffer = await renderProject(stemDoc, bank, { mode: "song", sampleRate });
+      const buffer = await renderProject(stemDoc, bank, {
+        mode: "song",
+        sampleRate,
+        // Stems are deliverables for re-balancing elsewhere — they must NOT
+        // bake the master limiter/tape/glue into every stem. The render
+        // default is masterProcessing: TRUE, so the promise this module and
+        // the kyx_export schema both make ("stem projects bypass the master
+        // chain, same as the ExportPanel stem flow") only holds when it is
+        // asked for explicitly. The quality tier matches the ExportPanel's
+        // export default, so a stem is the same file from either surface.
+        masterProcessing: false,
+        quality: "studio",
+      });
       totalSeconds = Math.max(totalSeconds, buffer.duration);
-      const bytes = await encodeWavAsync(buffer, 24, {});
+      const bytes = await encodeWavAsync(buffer, bitDepth, {});
       entries.push({ name: `${baseName}-${group.label.toLowerCase()}.wav`, data: new Uint8Array(bytes) });
     }
     const zip = buildZip(entries);
@@ -84,7 +97,6 @@ export async function quickBounceDownload(
     const report = `MP3 exported (${buffer.duration.toFixed(1)}s, 320 kbps, ${(blob.size / 1e6).toFixed(2)} MB) — ${mixCheck}`;
     return { report, health, fix };
   }
-  const bitDepth: WavBitDepth = options.bitDepth ?? 16;
   const wavBytes = await encodeWavAsync(buffer, bitDepth, {});
   downloadWav(wavBytes, `${baseName}-${bitDepth}bit.wav`);
   const report = `WAV exported (${buffer.duration.toFixed(1)}s, ${bitDepth}-bit @ ${sampleRate} Hz, ${(wavBytes.byteLength / 1e6).toFixed(2)} MB) — ${mixCheck}`;

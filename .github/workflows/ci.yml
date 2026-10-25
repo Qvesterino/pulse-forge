@@ -83,6 +83,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
+      # Fast, side-effect-free mirror check. `drift:check` also regenerates
+      # the mirrors as part of its artifact sweep; this step fails on the
+      # first stale mirror instead of waiting for the whole drift run, and it
+      # never writes the working tree.
+      - name: Verify MCP mirrors
+        run: npm run verify:mcp-mirrors
+
   test:
     name: Unit tests (vitest)
     runs-on: ubuntu-latest
