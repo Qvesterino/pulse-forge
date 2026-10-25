@@ -82,13 +82,35 @@ function snappedDelta(tick: number, grid: SnapGridId, free: boolean, barUnitTick
   return Math.round(bars === null ? tick : snapTick(tick, bars, barUnitTicks));
 }
 
-function targetName(doc: ProjectDocument, target: AutomationTarget): string {
+/**
+ * The lane's title.
+ *
+ * Audit F-10: the track-gain lane is a MULTIPLIER on the fader (the engine
+ * chains fader -> lane -> macro), not an absolute gain — "Volume ×" says so
+ * where the old "Volume" read as the fader's own value.
+ */
+export function automationLaneTitle(doc: ProjectDocument, target: AutomationTarget): string {
   const track = doc.tracks.find((candidate) => candidate.id === target.trackId);
   const ret = doc.returns.find((candidate) => candidate.id === target.trackId);
   const owner = track?.name ?? ret?.name ?? "Unknown target";
-  if (target.kind === "trackGain") return `${owner} · Volume`;
+  if (target.kind === "trackGain") return `${owner} · Volume ×`;
   if (target.kind === "trackPan") return `${owner} · Pan`;
   return `${owner} · ${target.paramId ?? target.kind}`;
+}
+
+/**
+ * The y position of the lane's unity line inside the SVG (viewBox 0 0 100 24),
+ * or null when the lane is not a multiplier around 1.0 or unity is outside the
+ * visible range.
+ *
+ * Audit F-10: a modulation lane's neutral point must be VISIBLE. The track-gain
+ * lane multiplies the fader, so 1.0 is its unity — the same 0..1.5 numbers as
+ * the fader, a different meaning.
+ */
+export function unityLineY(range: { min: number; max: number }): number | null {
+  if (!(range.min < 1 && range.max > 1)) return null;
+  const span = range.max - range.min || 1;
+  return 23 - ((1 - range.min) / span) * 21;
 }
 
 function valueRange(
@@ -434,12 +456,12 @@ export function AutomationClipLanes({
         const clips = clipsByTarget.get(key) ?? [];
         const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId) ?? doc.patterns[0];
         return (
-          <div className="arr-auto-lane-row" key={key} aria-label={`${targetName(doc, target)} automation lane`}>
+          <div className="arr-auto-lane-row" key={key} aria-label={`${automationLaneTitle(doc, target)} automation lane`}>
             <div className="arr-auto-lane-label">
-              <span title={targetName(doc, target)}>{targetName(doc, target)}</span>
+              <span title={automationLaneTitle(doc, target)}>{automationLaneTitle(doc, target)}</span>
               <button
                 type="button"
-                aria-label={`Add automation clip for ${targetName(doc, target)}`}
+                aria-label={`Add automation clip for ${automationLaneTitle(doc, target)}`}
                 disabled={!pattern}
                 onClick={() => addForTarget(target, snapped(playheadTick, snapGrid, false, barUnit))}
               >
@@ -469,6 +491,7 @@ export function AutomationClipLanes({
                 const primaryTarget = automationTargetKey(clip.target) === key;
                 const visualClip = automationClipForTarget(doc, clip, target);
                 const range = valueRange(doc, target, visualClip);
+                const unityY = unityLineY(range);
                 const targetKind = targetParamDef(doc, target)?.kind;
                 const stepped = targetKind === "toggle" || targetKind === "enum" || targetKind === "discrete";
                 const phase = clip.phaseOffsetTicks ?? 0;
@@ -500,7 +523,7 @@ export function AutomationClipLanes({
                       width: `${Math.max(8, (lengthTicks / barUnit) * barWidth)}px`,
                       zIndex: selected ? 3 : isWinner ? 2 : undefined,
                     }}
-                    title={`${targetName(doc, target)} · ${lengthTicks} ticks${primaryTarget ? " · primary curve" : " · linked curve"}${overlapping ? (isWinner ? " · playback winner at playhead" : " · overlapped by another clip at playhead") : ""}${clip.locked ? " · locked" : ""}`}
+                    title={`${automationLaneTitle(doc, target)} · ${lengthTicks} ticks${primaryTarget ? " · primary curve" : " · linked curve"}${overlapping ? (isWinner ? " · playback winner at playhead" : " · overlapped by another clip at playhead") : ""}${clip.locked ? " · locked" : ""}`}
                     onPointerDown={(event) => beginDrag(event, clip)}
                     onPointerMove={updateDrag}
                     onPointerUp={finishDrag}
@@ -529,6 +552,15 @@ export function AutomationClipLanes({
                   >
                     <svg className="arr-auto-curve" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
                       <path d={curvePath(displayClip, range, stepped)} />
+                      {/* Audit F-10: the track-gain lane is a MULTIPLIER around
+                          unity 1.0 — the fader's value is multiplied by it, so
+                          1.0 is the lane's neutral point. The line makes that
+                          visible instead of implied (the lane and the fader
+                          share the same 0..1.5 scale but not the same
+                          meaning). */}
+                      {target.kind === "trackGain" && unityY !== null ? (
+                        <line className="arr-auto-unity" x1="0" x2="100" y1={unityY} y2={unityY} />
+                      ) : null}
                       {clip.points.map((point, pointIndex) => {
                         const visibleTick =
                           pointPreview?.clipId === clip.id && pointPreview.pointIndex === pointIndex
@@ -608,7 +640,7 @@ export function AutomationClipLanes({
                     )
                     .map(([key, target]) => (
                       <option key={key} value={key}>
-                        {targetName(doc, target)}
+                        {automationLaneTitle(doc, target)}
                       </option>
                     ))}
                 </select>
@@ -624,7 +656,7 @@ export function AutomationClipLanes({
                     setMenu(null);
                   }}
                 >
-                  Unlink {targetName(doc, target)}
+                  Unlink {automationLaneTitle(doc, target)}
                 </button>
               ))}
               <button

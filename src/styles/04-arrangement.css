@@ -1679,6 +1679,17 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* Audit F-10: the unity line of a MODULATION lane. The track-gain lane is a
+   multiplier around 1.0, so 1.0 is its neutral point — drawn, so the value's
+   meaning is visible instead of implied. */
+.arr-auto-curve line.arr-auto-unity {
+  stroke: #ffd178;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.45;
+  vector-effect: non-scaling-stroke;
+}
+
 .arr-auto-point {
   fill: #fff0ca;
   stroke: #7a5317;
