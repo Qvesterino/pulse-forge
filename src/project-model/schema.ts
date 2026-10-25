@@ -36,7 +36,8 @@ import type {
   AutomationTarget,
   TimeSignature,
 } from "./types";
-import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { BAR_TICKS, PPQ, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { midiPhraseLengthTicks, scenePatternPeriodTicks } from "./midiTime";
 import { tempoAtTick } from "./scene-time";
 import { CHORD_QUALITIES } from "./chords";
 import { sanitizeProjectProducerBrief } from "./producer-brief";
@@ -1720,12 +1721,21 @@ function normalizeArrangementDomain(s: NormalizeState): void {
     .map((clip) => {
       const scene = scenesById.get(clip.sceneId);
       const pattern = scene ? patternsById.get(scene.patternId) : undefined;
-      const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
+      // The scene clip's phase is the position in the scene's LOOP, and the
+      // loop is the scene's TRUE period — the least common multiple of the
+      // step grid (the drums' period) and every melodic track's phrase (the
+      // notes' period). Wrapping it against the GRID alone (what this line
+      // used to do) silently clobbered the phase the commands write whenever
+      // the scene's melody outlived the grid: the command wrote 1920, the
+      // normalizer turned it back into 0, and the region played the wrong
+      // part of the scene. The normalizer is a SECOND authority on the
+      // modulus, and it has to agree with the command layer (finding D4).
+      const periodTicks = pattern ? scenePatternPeriodTicks(pattern) : 0;
       const source = clip as ArrangementClip & { phaseOffsetTicks?: unknown; sceneOffsetTicks?: unknown };
       const rawPhase = source.phaseOffsetTicks;
       const rawSceneOffset = source.sceneOffsetTicks;
       const phase = typeof rawPhase === "number" && Number.isFinite(rawPhase) && rawPhase >= 0 ? rawPhase : 0;
-      const normalizedPhase = patternTicks > 0 ? phase % patternTicks : phase;
+      const normalizedPhase = periodTicks > 0 ? phase % periodTicks : phase;
       const sceneOffset =
         typeof rawSceneOffset === "number" && Number.isFinite(rawSceneOffset) && rawSceneOffset >= 0
           ? Math.min(rawSceneOffset, MAX_ARRANGEMENT_CLIP_BARS * BAR_TICKS)
@@ -1775,12 +1785,23 @@ function normalizeArrangementDomain(s: NormalizeState): void {
         })
         .map((clip) => {
           const pattern = patternsById.get(clip.patternId!);
-          const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
+          // The MIDI phase is the position in the PATTERN'S PHRASE — the
+          // period the notes actually repeat at — not the step grid. Wrapping
+          // it against the grid here silently clobbered the phase the commands
+          // write whenever a note outlived the grid: the command wrote 1920,
+          // the normalizer turned it back into 0, and the wave-1 F4 repair
+          // (the phase must name the period the content repeats at) was
+          // INERT for exactly the case it was made for. The normalizer is a
+          // second authority on the modulus, and it has to agree with the
+          // command layer.
+          const periodTicks = pattern
+            ? midiPhraseLengthTicks(pattern.stepCount, pattern.notes?.[clip.trackId!] ?? [])
+            : 0;
           const startTick = Math.round(clip.startTick!);
           const lengthTicks = Math.round(clip.lengthTicks!);
           const rawPhase = clip.phaseOffsetTicks;
           const phase = typeof rawPhase === "number" && Number.isFinite(rawPhase) ? Math.max(0, rawPhase) : 0;
-          const phaseOffsetTicks = patternTicks > 0 ? Math.round(phase) % patternTicks : 0;
+          const phaseOffsetTicks = periodTicks > 0 ? Math.round(phase) % periodTicks : 0;
           return {
             id: clip.id!,
             trackId: clip.trackId!,

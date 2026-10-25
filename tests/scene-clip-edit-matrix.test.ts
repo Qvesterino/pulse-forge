@@ -29,11 +29,13 @@ import type { ArrangementClip, ProjectDocument } from "../src/project-model/type
  *   - NO OVERLAP. Unlike the audio lane (which LAYERS and sums), the scene
  *     lane refuses a placement that would overlap a neighbour.
  *   - CONTENT CONTINUITY. A scene clip's visible range maps onto the scene's
- *     content through TWO offsets: the pattern phase (wraps modulo the
- *     pattern, because the pattern loops) and the scene-automation offset
- *     (grows without bound, because the intensity curve does not loop). A
- *     trim or a split must advance BOTH, or the continuation replays the
- *     wrong material.
+ *     content through TWO positions that advance TOGETHER: the scene's
+ *     performance offset (grows without bound, because the intensity curve
+ *     does not loop) and the pattern phase (the music's position in the
+ *     scene's loop, wrapped against the scene's true repeat period — the least
+ *     common multiple of the step grid and the melodic phrase, because the
+ *     pattern loops). A trim or a split must advance both by the elapsed
+ *     time, or the continuation replays the wrong material.
  */
 
 const WATCHED = [
@@ -73,11 +75,26 @@ function persistRoundTrip(doc: ProjectDocument): ProjectDocument {
   return normalizeProject(JSON.parse(JSON.stringify(doc)) as ProjectDocument);
 }
 
-/** The pattern length in ticks — the modulus of the phase. */
+/**
+ * The scene's repeat period in ticks — the modulus of the phase. It is the
+ * LEAST COMMON MULTIPLE of the step grid (the drums' period) and every
+ * melodic track's phrase (the notes' period): a pattern whose note outlives
+ * the grid repeats its melody at the phrase, so the phase has to name that
+ * longer period. Computed here independently of the product's helper, so the
+ * matrix can catch a WRONG period and not just a wrong use of the right one.
+ */
 function patternTicks(doc: ProjectDocument, sceneId: string): number {
   const scene = doc.scenes.find((s) => s.id === sceneId)!;
   const pattern = doc.patterns.find((p) => p.id === scene.patternId)!;
-  return pattern.stepCount * 120;
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b;
+  let period = pattern.stepCount * 120;
+  for (const notes of Object.values(pattern.notes ?? {})) {
+    const noteEnd = notes.reduce((max, note) => Math.max(max, note.start + note.duration), 0);
+    const phrase = Math.max(period, Math.ceil(noteEnd / 1920) * 1920);
+    period = lcm(period, phrase);
+  }
+  return period;
 }
 
 describe("the scene-clip matrix — property isolation", () => {
@@ -153,11 +170,11 @@ describe("the scene-clip matrix — content continuity", () => {
     expect(trimmed.lengthBars, "the end edge never moves").toBe(3);
     // The offsets are OMITTED when they are zero (a zero phase is the
     // pattern's own start), so they are read as `?? 0`.
-    expect(trimmed.phaseOffsetTicks ?? 0, "the phase wraps modulo the pattern").toBe(barTicks % mod);
+    expect(trimmed.phaseOffsetTicks ?? 0, "the phase wraps inside the scene's true period").toBe(barTicks % mod);
     expect(trimmed.sceneOffsetTicks ?? 0, "the scene offset grows without bound").toBe(barTicks);
   });
 
-  it("the phase wraps: trimming past the pattern length wraps the phase", () => {
+  it("the phase wraps: trimming past the scene's period wraps the phase", () => {
     const { store, clipId, sceneId } = storeWithSceneClip();
     const mod = patternTicks(store.doc, sceneId);
     const barTicks = ticksPerBar(store.doc);
@@ -179,7 +196,9 @@ describe("the scene-clip matrix — content continuity", () => {
     expect(left.lengthBars).toBe(2);
     expect(right.lengthBars).toBe(2);
     expect(right.startBar).toBe(2);
-    expect(right.phaseOffsetTicks ?? 0, "the right half continues the pattern").toBe((2 * barTicks) % mod);
+    expect(right.phaseOffsetTicks ?? 0, "the right half continues the pattern's loop position").toBe(
+      (2 * barTicks) % mod,
+    );
     expect(right.sceneOffsetTicks ?? 0, "the right half continues the intensity curve").toBe(2 * barTicks);
   });
 

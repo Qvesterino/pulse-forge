@@ -3,14 +3,54 @@
  * and delete it, plus the transition lookup the clip layers read.
  */
 import type { Command } from "./types";
-import type { ArrangementClip, ArrangementTransition, ProjectDocument, SceneRole } from "../project-model/types";
-import { STEP_TICKS } from "../project-model/types";
+import type {
+  ArrangementClip,
+  ArrangementTransition,
+  Pattern,
+  ProjectDocument,
+  SceneRole,
+} from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeArrangementTransitions, ticksPerBar } from "../project-model/schema";
+import { scenePatternPeriodTicks } from "../project-model/midiTime";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { makeSceneVariation } from "./scenes";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
+
+/**
+ * The scene clip's phase after `elapsedTicks` — the music's position inside
+ * the scene's loop.
+ *
+ * A scene clip carries TWO position fields, and they advance TOGETHER:
+ * `phaseOffsetTicks` (where the PATTERN's loop sits under the region) and
+ * `sceneOffsetTicks` (where the INTENSITY curve sits under the region). Both
+ * grow by the elapsed time; only the phase wraps, and it wraps against the
+ * scene's TRUE period (`scenePatternPeriodTicks`: the least common multiple of
+ * the step grid and every melodic track's phrase) — NOT against the step grid
+ * alone, which is what finding D4 was about.
+ *
+ * The two fields advance in step rather than one being derived from the other,
+ * and that is a CONTRACT, not an accident: a document that predates the repair
+ * can carry a phase that does not match its offset, and the audible promise —
+ * "the right half of a split plays exactly what the original played at the
+ * seam" — is about the MUSIC. Deriving the phase from the offset would silently
+ * re-seat such a document's music at the next edit.
+ */
+function scenePhaseAfter(pattern: Pattern | undefined, phase: number, elapsedTicks: number): number {
+  const from = Math.max(0, Math.round(phase));
+  const advanced = from + Math.max(0, Math.round(elapsedTicks));
+  if (!pattern) return advanced;
+  const period = scenePatternPeriodTicks(pattern);
+  if (period <= 0) return advanced;
+  return ((advanced % period) + period) % period;
+}
+
+/** The pattern of the scene a clip plays. */
+function patternOfScene(doc: ProjectDocument, clip: ArrangementClip): Pattern | undefined {
+  const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+  return scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
+}
 
 /* ---------------- arrangement ---------------- */
 
@@ -197,11 +237,16 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
  * attached to the clip stay attached to the continuation of its start; the
  * RIGHT fragment is a fresh clip whose content state continues the seam:
  *
- *  - pattern phase: (phase + leftTicks) % patternTicks — the wrapped pattern
- *    position the right half actually plays from (loops included);
- *  - scene-automation offset: sceneOffset + leftTicks — the intensity curve
- *    does NOT loop, it keeps elapsed time;
+ *  - the scene's performance offset: sceneOffset + leftTicks — the intensity
+ *    curve does NOT loop, it keeps elapsed time;
+ *  - the pattern phase: phase + leftTicks, wrapped against the scene's TRUE
+ *    loop period (the least common multiple of the step grid and every melodic
+ *    track's phrase) — so the right half plays exactly what the original
+ *    played at the seam, and the halves tile the original's attacks;
  *  - the per-clip loop flag carries (duplicateArrangementClip contract).
+ *
+ * The LEFT fragment keeps the original's phase and offset untouched: it is the
+ * original, truncated, so the music under it does not move.
  *
  * The scene-clip system is integer-bar by contract (every move/resize rounds,
  * no-overlap compares integer starts), so the split lands on the LAST bar
@@ -225,22 +270,28 @@ export function splitArrangementClipAtTick(doc: ProjectDocument, clipId: string,
     throw new Error("Scene clips split at bar lines — playhead must leave a whole bar on each side");
   }
   const leftTicks = leftBars * ticksPerBar(doc);
-  const scene = doc.scenes.find((s) => s.id === clip.sceneId);
-  const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
-  const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
-  const phase = clip.phaseOffsetTicks ?? 0;
-  const rightPhase = patternTicks > 0 ? (((phase + leftTicks) % patternTicks) + patternTicks) % patternTicks : phase;
+  const pattern = patternOfScene(doc, clip);
+  // The right half CONTINUES both positions by the left half's elapsed time:
+  // the offset keeps the intensity curve's elapsed time, and the phase is the
+  // music's position in the scene's loop — wrapped against the scene's TRUE
+  // period (the least common multiple of the step grid and every melodic
+  // track's phrase), not against the grid alone (finding D4). The two
+  // fragments therefore tile the original's attacks: before the repair the
+  // phase was wrapped against the step GRID, so a scene whose melody outlived
+  // the grid played a DIFFERENT note at the seam.
+  const rightOffset = (clip.sceneOffsetTicks ?? 0) + leftTicks;
+  const rightPhase = scenePhaseAfter(pattern, clip.phaseOffsetTicks ?? 0, leftTicks);
   const right: ArrangementClip = {
     id: uid("clip"),
     sceneId: clip.sceneId,
     startBar: splitBar,
     lengthBars: rightBars,
     ...(rightPhase > 0 ? { phaseOffsetTicks: rightPhase } : {}),
-    ...((clip.sceneOffsetTicks ?? 0) + leftTicks > 0
-      ? { sceneOffsetTicks: (clip.sceneOffsetTicks ?? 0) + leftTicks }
-      : {}),
+    ...(rightOffset > 0 ? { sceneOffsetTicks: rightOffset } : {}),
     ...(clip.loop ? { loop: clip.loop } : {}),
   };
+  // The left half IS the original, truncated: it keeps the original's phase
+  // and offset untouched, so the music under it does not move.
   const left: ArrangementClip = { ...clip, lengthBars: leftBars };
   const nextClips = doc.arrangement.clips
     .flatMap((c) => (c.id === clipId ? [left, right] : [c]))
@@ -272,7 +323,12 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   let startBar = clip.startBar + clip.lengthBars;
   while (clipsOverlap(doc.arrangement.clips, null, startBar, clip.lengthBars)) startBar += clip.lengthBars;
-  // Carry the per-clip `loop` flag — a fresh literal silently reset it.
+  // Carry the per-clip `loop` flag — a fresh literal silently reset it. A
+  // duplicate is a COPY, not a move: both position fields travel VERBATIM, so
+  // the copy plays the same material as the clip it came from, shifted in time
+  // by the distance between the two. (Re-deriving the phase here would
+  // re-seat a document whose stored phase does not match its offset — the copy
+  // would stop sounding like the original.)
   const copy: ArrangementClip = {
     id: uid("clip"),
     sceneId: clip.sceneId,
@@ -296,15 +352,23 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
  * TRIM the START edge of an arrangement clip (move it right, end stays) —
  * the scene-clip twin of trimAudioClipStart.
  *
- * Trimming the start advances WHERE in the scene's content the clip begins:
- * pattern phase wraps modulo the source pattern (the pattern loops) and the
- * scene-automation offset grows unbounded (intensity does not loop) — the
- * same continuity math splitArrangementClipAtTick applies to its right
- * fragment, so a trim followed by a split and a split followed by a trim
- * land in identical content. Scene clips are integer-bar by contract: the
- * new start is rounded and must land strictly inside the clip, leaving at
- * least one whole bar. The end edge never moves, so the no-overlap contract
- * cannot be violated and transitions referencing the clip stay ordered.
+ * A trim CROPS: the region's music under the region does not change, and the
+ * scene's intensity curve keeps its elapsed time. Both positions advance by
+ * the elapsed time — the offset grows without bound (the curve does not loop),
+ * the phase is the music's position in the scene's loop and is wrapped against
+ * the scene's TRUE period (the least common multiple of the step grid and
+ * every melodic track's phrase), NOT against the step grid alone (finding D4).
+ * Because the region's start moves by exactly the elapsed time and the phase
+ * advances by exactly the same amount, the music under the region does not
+ * move — the trim crops, exactly like the audio, MIDI and automation lanes.
+ * Before the repair the phase was wrapped against the GRID, so a scene whose
+ * melody outlived the grid re-seated the pattern inside the region and the
+ * region's music slid.
+ *
+ * Scene clips are integer-bar by contract: the new start is rounded and must
+ * land strictly inside the clip, leaving at least one whole bar. The end edge
+ * never moves, so the no-overlap contract cannot be violated and transitions
+ * referencing the clip stay ordered.
  */
 export function trimArrangementClipStart(doc: ProjectDocument, clipId: string, newStartBar: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
@@ -318,30 +382,32 @@ export function trimArrangementClipStart(doc: ProjectDocument, clipId: string, n
   }
   if (startBar >= endBar) throw new Error("Trim start must leave at least one whole bar");
   const elapsedTicks = (startBar - clip.startBar) * ticksPerBar(doc);
-  const scene = doc.scenes.find((s) => s.id === clip.sceneId);
-  const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
-  const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
-  const phase = clip.phaseOffsetTicks ?? 0;
-  const phaseOffsetTicks =
-    patternTicks > 0
-      ? (((phase + elapsedTicks) % patternTicks) + patternTicks) % patternTicks
-      : Math.max(0, phase + elapsedTicks);
+  const pattern = patternOfScene(doc, clip);
+  // Both positions advance by the elapsed time: the scene's performance offset
+  // grows without bound, and the pattern's phase — the music's position in the
+  // scene's loop — advances by the same amount, wrapped against the scene's
+  // TRUE period (see scenePhaseAfter). The region's music under the region
+  // therefore does not change — the trim crops, exactly like the audio, MIDI
+  // and automation lanes.
   const sceneOffsetTicks = (clip.sceneOffsetTicks ?? 0) + elapsedTicks;
+  const phaseOffsetTicks = scenePhaseAfter(pattern, clip.phaseOffsetTicks ?? 0, elapsedTicks);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
       ...doc.arrangement,
-      clips: doc.arrangement.clips.map((c) =>
-        c.id === clipId
-          ? {
-              ...c,
-              startBar,
-              lengthBars: endBar - startBar,
-              ...(phaseOffsetTicks > 0 ? { phaseOffsetTicks } : {}),
-              ...(sceneOffsetTicks > 0 ? { sceneOffsetTicks } : {}),
-            }
-          : c,
-      ),
+      clips: doc.arrangement.clips.map((c) => {
+        if (c.id !== clipId) return c;
+        const trimmed: ArrangementClip = { ...c, startBar, lengthBars: endBar - startBar };
+        // A zero phase is the pattern's own start, and the house style omits it
+        // — but the field must be REMOVED, not left as it was. Keeping the old
+        // phase here would re-seat the region's music (this verb owns the
+        // phase), and the trim's own arithmetic had just computed zero.
+        if (phaseOffsetTicks > 0) trimmed.phaseOffsetTicks = phaseOffsetTicks;
+        else delete trimmed.phaseOffsetTicks;
+        if (sceneOffsetTicks > 0) trimmed.sceneOffsetTicks = sceneOffsetTicks;
+        else delete trimmed.sceneOffsetTicks;
+        return trimmed;
+      }),
     },
   };
   return snapshot("trimArrangementClipStart", `Trim clip start to bar ${startBar + 1}`, doc, next);

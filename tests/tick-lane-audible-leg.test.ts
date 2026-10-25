@@ -154,6 +154,30 @@ describe("the MIDI lane — what the clip actually PLAYS", () => {
     ).toBe(false);
   });
 
+  it("the phase SURVIVES the model's normalizer — the period the command uses is the period the model keeps", () => {
+    // THE NORMALIZER IS A SECOND AUTHORITY ON THE PHASE. The commands wrap the
+    // phase against the PHRASE (the wave-1 F4 repair), but the model's
+    // normalizer used to wrap it against the step GRID — so a phase that
+    // reached past the grid was silently turned back into a grid-sized
+    // number, and the F4 repair was INERT for exactly the case it was made
+    // for (a note that outlives the grid). Measured before the repair: the
+    // command wrote 1920 and the model kept 0.
+    const { store, clipId, trackId, patternId } = storeWithMidiClip(GRID_TICKS * 4);
+    const pattern = store.doc.patterns.find((p) => p.id === patternId)!;
+    const phrase = midiPhraseLengthTicks(pattern.stepCount, pattern.notes[trackId] ?? []);
+    expect(phrase, "the phrase must be longer than the grid, or the case cannot show itself").toBeGreaterThan(
+      GRID_TICKS,
+    );
+
+    store.execute(trimMidiClipStart(store.doc, clipId, GRID_TICKS));
+    const trimmed = midiOf(store, clipId);
+    expect(
+      trimmed.phaseOffsetTicks ?? 0,
+      "the phase must survive normalization — the command's phase and the model's phase are one number",
+    ).toBe(GRID_TICKS % phrase);
+    expect(trimmed.phaseOffsetTicks ?? 0, "and it must not have been folded back to the grid").toBeGreaterThan(0);
+  });
+
   it("a head trim cuts the note that was already sounding — the standard DAW trim", () => {
     const { store, clipId } = storeWithMidiClip();
     // n3 sounds from 960 to 1920. Trimming the head to 1200 lands INSIDE it.

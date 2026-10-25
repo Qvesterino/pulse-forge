@@ -89,7 +89,7 @@ interface SceneFixture {
  * kept — only its pattern is swapped — so the fixture rides on a scene that
  * the normalizer already accepts.
  */
-function storeWithScenePattern(stepCount: number, notes: NoteEvent[]): SceneFixture {
+function storeWithScenePattern(stepCount: number, notes: NoteEvent[], phaseOffsetTicks?: number): SceneFixture {
   const base = createProjectFromTemplate("house");
   const track = base.tracks.find((candidate) => candidate.kind === "instrument")!;
   const clip = base.arrangement.clips[0]!;
@@ -101,6 +101,12 @@ function storeWithScenePattern(stepCount: number, notes: NoteEvent[]): SceneFixt
         ? { ...candidate, stepCount, rows: { [track.id]: [] }, notes: { [track.id]: notes } }
         : candidate,
     ),
+    arrangement: {
+      ...base.arrangement,
+      clips: base.arrangement.clips.map((candidate) =>
+        candidate.id === clip.id && phaseOffsetTicks !== undefined ? { ...candidate, phaseOffsetTicks } : candidate,
+      ),
+    },
   };
   const store = new ProjectStore(doc);
   return { store, clipId: clip.id, sceneId: scene.id, patternId: scene.patternId, trackId: track.id };
@@ -124,6 +130,21 @@ function phraseTicks(doc: ProjectDocument, clipId: string): number {
   const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId)!;
   const notes = Object.values(pattern.notes ?? {}).flat();
   return midiPhraseLengthTicks(pattern.stepCount, notes);
+}
+
+/**
+ * The scene's repeat period, computed INDEPENDENTLY of the product's helper:
+ * the least common multiple of the step grid (the drums' period) and the
+ * melodic phrase (the notes' period). The fixture pattern has one melodic
+ * track, so those two periods are the whole story. Computing it here rather
+ * than importing it means the spec can catch a WRONG period, not just a
+ * wrong use of the right one.
+ */
+function expectedPeriodTicks(doc: ProjectDocument, clipId: string): number {
+  const grid = gridTicks(doc, clipId);
+  const phrase = phraseTicks(doc, clipId);
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  return (grid / gcd(grid, phrase)) * phrase;
 }
 
 /** The attacks the clip actually plays, as (absolute tick, pitch) pairs. */
@@ -273,12 +294,14 @@ describe("the scene lane — what the clip actually PLAYS", () => {
 });
 
 describe("the scene lane — the phase and the notes must name the same tick", () => {
-  it("a trim advances the phase modulo the step GRID, and the region's content rides along", () => {
+  it("a trim advances the phase inside the scene's TRUE period, and the region's music is CROPPED", () => {
     const { store, clipId } = storeWithScenePattern(16, GRID_NOTES);
     const barUnit = ticksPerBar(store.doc);
     const grid = gridTicks(store.doc, clipId);
     const phrase = phraseTicks(store.doc, clipId);
+    const period = expectedPeriodTicks(store.doc, clipId);
     expect(phrase, "the fixture's melody must outlive the grid, or the test proves nothing").toBeGreaterThan(grid);
+    expect(period, "the scene's period must be longer than the grid").toBeGreaterThan(grid);
 
     const before = sceneAttacks(store.doc, clipId);
     const beforeRelative = relativeAttacks(store.doc, clipId);
@@ -287,18 +310,45 @@ describe("the scene lane — the phase and the notes must name the same tick", (
     const trimmed = clipOf(store.doc, clipId);
     const after = sceneAttacks(store.doc, clipId);
 
+    expect(trimmed.sceneOffsetTicks ?? 0, "the scene's performance offset grows by the elapsed time").toBe(barUnit);
     expect(
       trimmed.phaseOffsetTicks ?? 0,
-      "the phase is wrapped against the grid — which is the grid, not the phrase",
-    ).toBe(barUnit % grid);
-    expect(
-      relativeAttacks(store.doc, clipId),
-      "the region's content rides along: the same melody, the same place inside the region",
-    ).toEqual(beforeRelative);
+      "the phase advances by the same amount, wrapped against the scene's true period — not against the grid",
+    ).toBe(barUnit % period);
     expect(
       after.map(([tick]) => tick),
-      "the absolute attacks moved with the region — by exactly the trim",
-    ).toEqual(before.map(([tick]) => tick + barUnit));
+      "THE CROP: the music under the region does not change — the same absolute attacks play",
+    ).toEqual(before.filter(([tick]) => tick >= barUnit).map(([tick]) => tick));
+    expect(
+      relativeAttacks(store.doc, clipId),
+      "and the region's own content slides, because the window moved right",
+    ).not.toEqual(beforeRelative);
+  });
+
+  it("a trim that lands the phase on ZERO clears it — the verb owns the phase, it cannot leave the old one", () => {
+    // The trim computes the phase and OMITS it when it is zero (the house
+    // style: a zero phase is the pattern's own start). The field must be
+    // REMOVED, not left as it was — keeping the old phase would re-seat the
+    // region's music at exactly the moment the trim's own arithmetic said
+    // "zero". The fixture's phase is one grid, so a one-bar trim lands it
+    // exactly on zero.
+    const { store, clipId } = storeWithScenePattern(16, GRID_NOTES, 1920);
+    const barUnit = ticksPerBar(store.doc);
+    const period = expectedPeriodTicks(store.doc, clipId);
+    expect((1920 + barUnit) % period, "the fixture must land the phase exactly on zero").toBe(0);
+
+    const before = sceneAttacks(store.doc, clipId);
+    store.execute(trimArrangementClipStart(store.doc, clipId, 1));
+    const trimmed = clipOf(store.doc, clipId);
+
+    expect(
+      trimmed.phaseOffsetTicks ?? 0,
+      "the phase is ZERO after this trim — the old phase must not survive the verb",
+    ).toBe(0);
+    expect(
+      sceneAttacks(store.doc, clipId).map(([tick]) => tick),
+      "and the music under the region is still the crop — the same absolute attacks",
+    ).toEqual(before.filter(([tick]) => tick >= barUnit).map(([tick]) => tick));
   });
 
   it("the trim cuts the note that was sustaining across the trim point — the window decides", () => {
@@ -329,33 +379,31 @@ describe("the scene lane — the phase and the notes must name the same tick", (
 });
 
 /**
- * D4 — THE OPEN FINDING.
+ * D4 — REPAIRED.
  *
- * The scene clip's phase wraps against the step GRID, but the scene's melody
- * repeats at its PHRASE. While the metrical bar is a whole number of grid
- * steps, the phase advance keeps the region's content in place. When it is
- * not, the phase advance re-seats the pattern's step 0 inside the region and
- * the content slides — the region's downbeat loses the pattern's downbeat.
+ * The scene clip's phase used to wrap against the step GRID, while the scene's
+ * melody repeats at its PHRASE. Two things followed from it: a scene whose
+ * grid does not divide the metrical bar re-seated the pattern inside the
+ * region (the split's right half played a DIFFERENT note at the seam), and
+ * the phase could never name the phrase's second half.
  *
- * The MIDI lane had this defect and was repaired in wave 1 (F4): its phase
- * wraps against the phrase. The scene lane still wraps against the grid.
- *
- * THIS SPEC PINS THE CURRENT BEHAVIOUR, not the desired one. It is the
- * executable form of the finding: if the scene lane's phase is ever wrapped
- * against the pattern's full repeat period (the least common multiple of the
- * grid and the phrase), this spec goes RED — which is exactly when the audit
- * report should be updated.
+ * The repair names the phase against the scene's TRUE period (the least common
+ * multiple of the grid and every melodic track's phrase), and the phase
+ * advances TOGETHER with the scene's performance offset — only the phase
+ * wraps. The model's normalizer was a second authority on that modulus and
+ * silently clobbered it; both now agree.
  */
-describe("D4 (open) — the scene lane's phase names the GRID, but the melody repeats at the PHRASE", () => {
-  it("a split of a scene whose grid does not divide the bar plays a DIFFERENT note at the seam", () => {
+describe("D4 (repaired) — the scene lane's phase names the scene's TRUE period", () => {
+  it("a split of a scene whose grid does not divide the bar tiles the original's attacks", () => {
     const { store, clipId } = storeWithScenePattern(12, TRACKED_NOTES);
     const barUnit = ticksPerBar(store.doc);
     const grid = gridTicks(store.doc, clipId);
     const phrase = phraseTicks(store.doc, clipId);
+    const period = expectedPeriodTicks(store.doc, clipId);
     expect(phrase, "the melody must outlive the grid, or the periods cannot be told apart").toBeGreaterThan(grid);
     expect(
       barUnit % grid,
-      "the metrical bar must NOT be a whole number of grid steps, or the finding cannot show itself",
+      "the metrical bar must NOT be a whole number of grid steps, or the repair cannot show itself",
     ).toBeGreaterThan(0);
 
     const original = sceneAttacks(store.doc, clipId);
@@ -368,60 +416,39 @@ describe("D4 (open) — the scene lane's phase names the GRID, but the melody re
 
     expect(
       right.phaseOffsetTicks ?? 0,
-      "the right half's phase really did advance and wrap — the finding needs a moved phase",
-    ).toBe((2 * barUnit) % grid);
-    expect(
-      right.phaseOffsetTicks ?? 0,
-      "the phase must not be zero, or the test cannot tell the worlds apart",
-    ).toBeGreaterThan(0);
+      "the right half's phase is the continued position inside the scene's TRUE period",
+    ).toBe((2 * barUnit) % period);
 
     const originalAtSeam = original.find(([tick]) => tick === seamTick);
     const rightAtSeam = sceneAttacks(store.doc, right.id).find(([tick]) => tick === seamTick);
     expect(originalAtSeam?.[1], "the original played the pattern's first note at the seam").toBe(60);
     expect(
       rightAtSeam?.[1],
-      "D4: the right half plays a DIFFERENT note at the seam — the phase re-seated the pattern",
-    ).toBe(64);
+      "the right half plays the SAME note at the seam — the phase no longer re-seats the pattern",
+    ).toBe(60);
 
     const played = [...sceneAttacks(store.doc, fragments[0]!.id), ...sceneAttacks(store.doc, right.id)];
-    expect(played, "D4: the fragments do NOT tile the original's attacks — the seam changed the music").not.toEqual(
-      original,
-    );
+    expect(played, "the fragments tile the original's attacks — no gap, no double").toEqual(original);
   });
 
-  it("the phase can never name the phrase's second grid — it is confined to the first one", () => {
+  it("the phase can name a position PAST the step grid — the confinement is gone", () => {
     const { store, clipId } = storeWithScenePattern(12, TRACKED_NOTES);
     const barUnit = ticksPerBar(store.doc);
     const grid = gridTicks(store.doc, clipId);
     const phrase = phraseTicks(store.doc, clipId);
-    expect(phrase, "the phrase must be longer than the grid for the confinement to be a loss").toBeGreaterThan(grid);
-
-    // Where in its own phrase the region's melody starts: the region's start
-    // measured against the pattern's cycle.
-    const melodicPhase = (doc: ProjectDocument, id: string): number => {
-      const current = clipOf(doc, id);
-      const start = current.startBar * ticksPerBar(doc);
-      const base = patternBaseTickForClip(current, ticksPerBar(doc));
-      return (((start - base) % phrase) + phrase) % phrase;
-    };
-
-    expect(melodicPhase(store.doc, clipId), "an untouched region starts the melody at the phrase's beginning").toBe(0);
+    const period = expectedPeriodTicks(store.doc, clipId);
+    expect(phrase, "the phrase must be longer than the grid for the confinement to have been a loss").toBeGreaterThan(
+      grid,
+    );
 
     store.execute(trimArrangementClipStart(store.doc, clipId, 1));
     const trimmed = clipOf(store.doc, clipId);
+    expect(trimmed.phaseOffsetTicks ?? 0, "the trim's phase is the position inside the scene's true period").toBe(
+      barUnit % period,
+    );
     expect(
       trimmed.phaseOffsetTicks ?? 0,
-      "the control: the trim really did move the phase, or the confinement below would be vacuous",
-    ).toBe((barUnit % grid) as number);
-    expect(melodicPhase(store.doc, clipId), "the trim moves the melody inside the phrase").toBe(barUnit % grid);
-    expect(melodicPhase(store.doc, clipId), "and it stays inside the phrase's FIRST grid").toBeLessThan(grid);
-
-    store.execute(splitArrangementClipAtTick(store.doc, clipId, 2 * barUnit));
-    const right = [...store.doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[1]!;
-    expect(
-      melodicPhase(store.doc, right.id),
-      "a split's right half also stays inside the phrase's first grid",
-    ).toBeLessThan(grid);
-    expect(phrase - grid, "the cost: this much melodic material can never start a region").toBeGreaterThan(0);
+      "the phase may now sit PAST the step grid — the phrase's second grid is reachable",
+    ).toBeGreaterThanOrEqual(grid);
   });
 });

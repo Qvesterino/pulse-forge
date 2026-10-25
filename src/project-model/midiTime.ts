@@ -1,4 +1,4 @@
-import type { NoteEvent } from "./types";
+import type { NoteEvent, Pattern } from "./types";
 import { PATTERN_TICKS, STEP_TICKS } from "./types";
 
 const noteEndCache = new WeakMap<readonly NoteEvent[], number>();
@@ -30,4 +30,38 @@ export function midiPhraseLengthTicks(stepCount: number, notes: readonly NoteEve
   }
   if (noteEnd <= gridTicks) return gridTicks;
   return Math.max(gridTicks, Math.ceil(noteEnd / PATTERN_TICKS) * PATTERN_TICKS);
+}
+
+/** The least common multiple of two tick counts (both treated as positive). */
+export function lcmTicks(a: number, b: number): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  const left = Math.max(1, Math.round(a));
+  const right = Math.max(1, Math.round(b));
+  const gcd = (x: number, y: number): number => (y === 0 ? x : gcd(y, x % y));
+  return (left / gcd(left, right)) * right;
+}
+
+/**
+ * The TRUE repeat period of a pattern: the least common multiple of the step
+ * grid (the period the DRUMS repeat at) and every melodic track's phrase (the
+ * period its NOTES repeat at).
+ *
+ * A pattern whose note outlives the grid has a phrase LONGER than the grid,
+ * and its content only comes back around after both do — that is the period
+ * any PHASE has to be wrapped against.
+ *
+ * The MIDI lane already wraps its phase against the phrase (the wave-1 F4
+ * repair). The SCENE lane wrapped its phase against the grid alone, so a
+ * scene whose melody outlived the grid re-seated the pattern inside the
+ * region: the split's right half played a different note at the seam, and the
+ * region's music slid by the partial grid. See
+ * `docs/CLIP-EDIT-INTERACTION-AUDIT-2026-10-23.md` §14 (finding D4).
+ */
+export function scenePatternPeriodTicks(pattern: Pick<Pattern, "stepCount" | "notes">): number {
+  const grid = pattern.stepCount * STEP_TICKS;
+  let period = grid > 0 ? grid : 1;
+  for (const notes of Object.values(pattern.notes ?? {})) {
+    period = lcmTicks(period, midiPhraseLengthTicks(pattern.stepCount, notes));
+  }
+  return period;
 }

@@ -628,28 +628,31 @@ the live and offline paths use for a scene region: `patternBaseTickForClip` +
 `drumHitsInWindow`), i.e. `Scheduler.schedulePatternWindow` and
 `renderer.scheduleNotes`.
 
-**WHAT IT PINS.**
+**WHAT IT PINS** (the crop contract of §15 — these are the specs as they read
+AFTER the wave-6 repair):
 
 - A region plays its scene's pattern from its phase.
-- A split continues the phase and the fragments' attacks TILE the original's
-  — no attack lost at the seam, no attack doubled.
+- A split continues the position and the fragments' attacks TILE the
+  original's — no attack lost at the seam, no attack doubled.
 - The scene's INTENSITY curve does not loop: a trim continues it, it does not
   restart it (the offset grows while the phase wraps).
 - The lane refuses an overlapping placement, so two regions can never sum
   their notes into a double hit.
-- A trim advances the phase modulo the step GRID and the region's content
-  rides along: the relative melody is unchanged and the absolute attacks
-  moved by exactly the trim. The trim cuts the note that was sustaining
-  across the trim point.
+- A trim CROPS: the scene's performance offset grows by the elapsed time and
+  the phase advances by the same amount — wrapped against the scene's TRUE
+  period — so the music under the region does not change: the same absolute
+  attacks play. The trim cuts the note that was sustaining across the trim
+  point.
 
-**D4 (OPEN) — THE PHASE NAMES THE GRID, THE MELODY REPEATS AT THE PHRASE.**
+**D4 (OPEN AT THE TIME — REPAIRED IN WAVE 6, §15) — THE PHASE NAMES THE GRID, THE MELODY REPEATS AT THE PHRASE.**
 
 A scene pattern carries two contents on two clocks: the DRUMS repeat at the
 step grid (`pattern.stepCount * STEP_TICKS`), the MELODY repeats at the
 PHRASE (`midiPhraseLengthTicks`), which is longer as soon as one note
-outlives the grid. The scene clip's phase is wrapped against the GRID. The
+outlives the grid. The scene clip's phase was wrapped against the GRID. The
 MIDI lane had exactly this defect and was repaired in wave 1 (F4): its phase
-wraps against the phrase. The scene lane still wraps against the grid.
+wraps against the phrase. The scene lane still wrapped against the grid — and
+that is what wave 6 repaired (§15).
 
 Measured, with a 12-step scene pattern in 4/4 (bar 1920 ticks, grid 1440):
 
@@ -663,14 +666,21 @@ Measured, with a 12-step scene pattern in 4/4 (bar 1920 ticks, grid 1440):
   steps and the content rides along — which is why the hand-written matrix
   never saw it.
 
-**NOT REPAIRED, ON PURPOSE.** The principled fix is to wrap the scene clip's
-phase against the pattern's full repeat period — the least common multiple of
-the grid and the phrase. That is not a "smallest safe fix": it changes a
-contract the tick-lane matrix pins ("the phase wraps modulo the pattern"),
-it moves the base for the scene's AUTOMATION context as well, and it touches
-the persisted `phaseOffsetTicks` semantics. It is a product decision, so the
-finding is reported and pinned, and the specs that carry it are named
-"open" and say so in their failure messages.
+**What it is now (§15):** the phase is named against the pattern's TRUE period
+(the least common multiple of the grid and every melodic track's phrase), the
+region CROPS, and the phase and the performance offset advance together.
+
+**REPORTED, NOT CHANGED — AT THE TIME.** The principled fix is to wrap the scene
+clip's phase against the pattern's full repeat period — the least common
+multiple of the grid and the phrase. That is not a "smallest safe fix": it
+changes a contract the tick-lane matrix pins ("the phase wraps modulo the
+pattern"), it moves the base for the scene's AUTOMATION context as well, and it
+touches the persisted `phaseOffsetTicks` semantics. It is a product decision,
+so the finding was reported and pinned, and the specs that carried it were
+named "open" and said so in their failure messages.
+
+**That decision was taken in wave 6 (§15): the scene lane now CROPS, like every
+other lane, and the phase names the scene's TRUE period.**
 
 ### 14.4 The property-based sweep
 
@@ -736,19 +746,24 @@ way.
 
 ### 14.5 What wave 5 found
 
-| Finding | Kind                                                                                 | Status                                             |
-| ------- | ------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| D4      | The scene lane's phase names the grid, the melody repeats at the phrase              | **OPEN** — a product decision, reported and pinned |
-| D5      | A MIDI resize could make the clip vanish (the normalizer drops an over-ceiling clip) | **REPAIRED** in this wave                          |
-| D6      | An automation resize teleported the clip to tick 0                                   | **REPAIRED** in this wave                          |
+| Finding | Kind                                                                                                                                                     | Status                                                                       |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| D4      | The scene lane's phase names the grid, the melody repeats at the phrase                                                                                  | **REPAIRED** in wave 6 (§15) — the scene lane crops, against the true period |
+| D5      | A MIDI resize could make the clip vanish (the normalizer drops an over-ceiling clip)                                                                     | **REPAIRED** in wave 5                                                       |
+| D6      | An automation resize teleported the clip to tick 0                                                                                                       | **REPAIRED** in wave 5                                                       |
+| D7      | The model's normalizer was a SECOND authority on the phase's modulus — it silently folded the wave-1 F4 repair back to the grid, so the repair was INERT | **REPAIRED** in wave 6 (§15.3)                                               |
+| D8      | A trim that landed the phase on ZERO kept the OLD phase — the verb's own arithmetic was discarded by the spread                                          | **REPAIRED** in wave 6 (§15.4)                                               |
 
-Two behaviours were PINNED rather than changed, because both are the
-product's model and both are stated in the files that measure them:
+One behaviour was PINNED rather than changed, because it is the product's model
+and it is stated in the files that measure it:
 
 - the MIDI lane's split is attack-neutral but NOT sustain-neutral (a 960-tick
-  note leaves 240 ticks audible);
-- the scene region's trim slides the region's content when the metrical bar
-  is not a whole number of the pattern's grid steps — D4's measurable face.
+  note leaves 240 ticks audible).
+
+The second behaviour wave 5 pinned — "the scene region's trim slides the
+region's content when the metrical bar is not a whole number of the pattern's
+grid steps" — was D4's measurable face, and it did not survive wave 6: the
+scene lane now crops, and that slide is gone (§15).
 
 One finding was about the SUITE, not the product, and it is worth writing
 down because it nearly invalidated the whole sweep: the first version of the
@@ -773,3 +788,197 @@ test is not a measurement.
 | The full Vitest suite                              | ✅ green (see the count in `docs/CURRENT-STATE.md`)               |
 | `tsc --noEmit`                                     | ✅ clean for every file in this wave                              |
 | Prettier                                           | ✅ clean                                                          |
+
+---
+
+## 15. Wave 6 — D4: the scene lane crops, against the TRUE period
+
+### 15.1 The decision
+
+D4 was reported in wave 5 (§14.3) as a product decision, not a defect to be
+patched: the scene lane's phase named the step GRID, while the scene's melody
+repeats at its PHRASE. The decision taken now:
+
+**The scene lane CROPS, like every other lane, and the phase names the scene's
+TRUE period.**
+
+- **Crop.** A trim of a scene region's start edge no longer re-seats the
+  pattern inside the region. The music that plays under the region stays the
+  music that was there; the region simply starts later. This is what the
+  audio, MIDI and automation lanes already do, and it is what a user means by
+  "trim".
+- **The true period.** The period the phase wraps against is the scene's TRUE
+  period: the least common multiple of the step grid (the drums' repeat) and
+  every melodic track's phrase (the notes' repeat). A pattern whose note
+  outlives the grid comes back around only after both do, so that — and not
+  the grid — is the period a phase can be wrapped against.
+
+A scene clip carries two positions, and the repair keeps that shape:
+
+- `sceneOffsetTicks` — the scene's performance offset: the intensity curve
+  does NOT loop, so this grows without bound;
+- `phaseOffsetTicks` — the music's position in the scene's loop: it advances
+  with the offset and WRAPS, against the true period.
+
+**Both advance by the elapsed time; only the phase wraps.** That is not a
+detail — it is the part the repo's own older contracts decided, and the first
+implementation of this wave got it wrong. The wave-6 draft derived the phase
+from the offset ("one position"), which reads tidier and is what the first
+draft of this section said. Two executable contracts that PREDATE this audit
+refused it:
+
+- `tests/editor-ultra-hardening.test.ts` — "the seam is content-continuous:
+  pattern phase and scene offset continue at the split": the right half of a
+  split must play EXACTLY what the original played at the seam;
+- `tests/commands.test.ts` — "duplicateArrangementClip places the copy after
+  the original": the copy carries its position fields VERBATIM.
+
+Both fixtures carry a clip whose phase does NOT match its offset (240 vs 480,
+120 vs 240) — deliberately, because that is the shape a document written before
+the repair can have. Deriving one field from the other would re-seat such a
+document's music at its next edit: the split's right half would stop sounding
+like the original it was cut from, and a copy would stop sounding like the
+clip it was copied from.
+
+So the rule is: **the phase and the offset advance together, and the phase is
+wrapped against the scene's true period.** The audible crop follows from it —
+the region's start moves by exactly the elapsed time and the phase advances by
+exactly the same amount, so the music under the region does not move.
+
+### 15.2 What changed
+
+**Command layer** (`src/commands/arrangement.ts`):
+
+- `scenePhaseAfter(pattern, phase, elapsedTicks)` — the music's position in the
+  scene's loop after the elapsed time, wrapped against the true period;
+- `patternOfScene(doc, clip)` — the pattern of the scene a clip plays;
+- `trimArrangementClipStart` — the offset grows by the elapsed time and the
+  phase advances by the same amount (wrapped), so the region crops;
+- `splitArrangementClipAtTick` — the right half continues BOTH positions by the
+  left half's elapsed time; the LEFT half keeps the original's phase and offset
+  untouched (it is the original, truncated);
+- `duplicateArrangementClip` — a copy is a copy: both position fields travel
+  verbatim, so the copy sounds like the clip it came from.
+
+**Model** (`src/project-model/midiTime.ts`): `lcmTicks(a, b)` and
+`scenePatternPeriodTicks(pattern)` — one owner for the modulus.
+
+Measured on the same 12-step fixture that produced the finding (grid 1440,
+phrase 1920, true period 5760):
+
+|                                          | before       | after                                               |
+| ---------------------------------------- | ------------ | --------------------------------------------------- |
+| the split's right half at the seam       | pitch **64** | pitch **60** (the original's)                       |
+| the fragments' attacks vs the original's | did NOT tile | tile **exactly**                                    |
+| the phase's range                        | `[0, 1440)`  | `[0, 5760)` — the phrase's second grid is reachable |
+
+### 15.3 D7 — the normalizer was a SECOND authority
+
+The repair did not take the first time it was written, and the reason is
+worth more than the repair.
+
+The command wrote the phase; the model's NORMALIZER
+(`src/project-model/schema.ts`) folded it back:
+
+- the MIDI phase was folded against the step GRID — the very defect the wave-1
+  F4 repair had just removed from the command layer;
+- the scene phase was folded against the grid as well.
+
+Measured on the MIDI lane: a head trim of one grid in a long-note pattern
+wrote phase **1920**; the normalizer kept **0**. The wave-1 F4 repair was
+INERT for exactly the case it was made for.
+
+And the wave-1 spec did not catch it — NOT because it measured the wrong
+thing. The store DOES normalize every command's result
+(`ProjectStore.applyCommand` → `normalizeProject(applied)`), so the spec saw
+the normalized document all along. It missed the defect because its FIXTURE
+could not show the difference: the house template's pattern has a phrase of
+**1920** ticks and a grid of **1920** ticks — the same number — so "wrap
+against the phrase" and "wrap against the grid" are the SAME OPERATION there.
+Measured on both fixtures:
+
+| fixture                                                    | grid | phrase | phase | old (mod grid) | new (mod phrase)                             |
+| ---------------------------------------------------------- | ---- | ------ | ----- | -------------- | -------------------------------------------- |
+| the wave-1 spec's (house template, trim 240 ticks)         | 1920 | 1920   | 240   | 240            | 240 — identical, the fold CANNOT show itself |
+| the new regression's (a note past the grid, trim one grid) | 1920 | 3840   | 1920  | **0**          | **1920** — the fold bites                    |
+
+> **The normalizer is a second authority. A repair that only touches the
+> command layer is a repair the model can undo. And a regression that only
+> reaches the easy case is a green light for a broken product.**
+
+Both normalizers now read the same period the command layer writes against:
+the MIDI phase against `midiPhraseLengthTicks`, the scene phase against
+`scenePatternPeriodTicks`.
+
+New regression: `tests/tick-lane-audible-leg.test.ts` — "the phase SURVIVES
+the model's normalizer": the phase the command wrote must be the phase that
+is still there after the document has been normalized, measured on a fixture
+whose phrase really does outlive its grid. That suite now has 22 specs.
+
+### 15.4 D8 — a trim that landed on zero KEPT the old phase
+
+Found while writing this wave, and it is the same shape as D7: a second
+authority, this time inside the verb itself.
+
+The trim computes the new phase and OMITS it when it is zero (the house
+style: a zero phase is the pattern's own start). But the clip was rebuilt as
+`{ ...clip, ...(phaseOffsetTicks > 0 ? { phaseOffsetTicks } : {}) }` — so when
+the computed phase was ZERO, the spread kept the OLD phase, and the verb's own
+arithmetic was silently discarded. The region's music stayed at the old place
+in the scene's loop, and the trim that was supposed to crop it did not.
+
+Measured: a clip whose phase is one grid, trimmed by one bar against a scene
+whose true period is 3840 ticks — the trim computes phase **0**, the document
+keeps **1920**. The fix removes the field when the new value is zero (the
+omission is a serialization choice, not a licence to keep a stale value).
+
+The regression that catches it: `tests/scene-clip-audible-leg.test.ts` — "a
+trim that lands the phase on ZERO clears it". Verified by measurement: with
+the `delete` removed, that spec goes red with "expected 1920 to be 0". A green
+spec that does not guard the fix is decoration, and this one was checked.
+
+### 15.5 The honest cost
+
+- **A legacy document's phase is not rewritten — and cannot be.** The repair
+  makes the phase advance content-preservingly (no more sliding) and keeps it
+  inside the true period. It does NOT retroactively fix a phase that was
+  folded against the grid when the document was written: the stored phase is
+  the only record of where the region sat, and re-deriving it from the offset
+  would re-seat that document's music on the next edit — and would break the
+  split's audible seam (§15.1). So a document whose scene's melody outlives
+  its grid keeps whatever phase it was born with. In the common case
+  (phrase == grid) the two periods are the same number and nothing is
+  affected at all.
+- **`SCHEMA_VERSION` did not move.** No field was added or removed; only the
+  modulus the normalizer applies changed. A document written before the repair
+  still loads — the normalizer simply wraps the phase against the wider
+  period.
+- **The scene lane still draws no content.** The region is still a blank box
+  in the arrangement view: the pattern it plays is audible but not visible.
+  That is a separate, larger product step (draw the pattern), not part of
+  this repair.
+
+### 15.6 What did NOT change
+
+- The MIDI lane's split stays attack-neutral but NOT sustain-neutral (a
+  960-tick note leaves 240 ticks audible).
+- The scene's INTENSITY curve still does not loop — it keeps elapsed time.
+- The scene lane still refuses an overlapping placement, so two regions can
+  never sum their notes into a double hit.
+- The phase remains a stored field (not recomputed on read), so the document
+  stays serializable and the phase stays inspectable in the model.
+- The audio, MIDI and automation lanes are untouched by this wave.
+
+### 15.7 The verification record
+
+| Check                                                             | Result                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/scene-clip-audible-leg.test.ts`                            | ✅ green (9 specs) — the three D4 specs rewritten to the new contract, + the D8 regression                                                                                                                                                                                 |
+| `tests/tick-lane-audible-leg.test.ts`                             | ✅ green (22 specs) — +1 "the phase SURVIVES the model's normalizer"                                                                                                                                                                                                       |
+| `tests/scene-clip-edit-matrix.test.ts`                            | ✅ green (14 specs) — the fixture's period computed INDEPENDENTLY of the product's helper                                                                                                                                                                                  |
+| `tests/commands.test.ts` + `tests/editor-ultra-hardening.test.ts` | ✅ green (110 specs) — the two OLDER contracts that corrected this wave's first draft (see §15.1)                                                                                                                                                                          |
+| the thirteen-suite batch                                          | ✅ 324/324                                                                                                                                                                                                                                                                 |
+| `tests/drift-check.test.ts`                                       | ✅ green (7 specs) — the spec-count row resynced to the live index count                                                                                                                                                                                                   |
+| the full Vitest suite                                             | ⚠️ 21 failed files / 23 failed tests — **2 of them were MINE** (`commands.test.ts`, `editor-ultra-hardening.test.ts`, both fixed in this wave); the other 19 files / 21 tests are foreign (KOPA editor, MCP verified mutation, intent model, shortcuts, SamplerMapping, …) |
+| `tsc --noEmit`                                                    | ✅ clean for every file in this wave — the 6 errors on `main` are in a parallel session's `src/presets/struna-factory.ts` and `tests/struna/engine.test.ts`                                                                                                                |
+| Prettier                                                          | ✅ clean for every file in this wave — the committed `docs/CURRENT-STATE.md` still carries a pre-existing table-padding debt from a parallel session (measured: my changes add none)                                                                                       |
