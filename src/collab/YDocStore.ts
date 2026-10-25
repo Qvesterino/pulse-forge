@@ -127,15 +127,13 @@ export class YDocStore {
       void type;
     });
 
-    // Subscribe to Y.Doc changes and re-read the snapshot. LOCAL commands
-    // (origin === this, same trust level as the plain ProjectStore) re-project
-    // without normalization — on large documents the Y.Doc→plain projection
-    // (not normalizeProject itself, which is ~2 ms even on huge docs) makes
-    // every-keystroke re-reads worth skipping where trust allows. REMOTE
-    // merges (foreign origin) and undo/redo re-projections are sanitized:
-    // a peer or an offline merge can inject state the local code cannot use,
-    // e.g. a dangling activePatternId that made getActivePattern() throw on
-    // every scheduler tick.
+    // Subscribe to Y.Doc changes and re-read the snapshot. Local commands
+    // canonicalize their Y.Doc inside the same transaction before this event
+    // fires, so the fast projection is safe. Remote merges (foreign origin)
+    // and undo/redo re-projections are sanitized here: a peer or an offline
+    // merge can inject state the local code cannot use, e.g. a dangling
+    // activePatternId that made getActivePattern() throw on every scheduler
+    // tick.
     this.yDoc.on("update", (_update, origin) => {
       this.doc_ = this.readDoc(origin !== this);
       this.emit();
@@ -396,6 +394,16 @@ export class YDocStore {
           const newDoc = command.execute(this.doc_);
           applyProjectToYMap(this.doc_, newDoc, this.yMap);
         }
+
+        // ProjectStore normalizes every command before committing it. Keep
+        // the CRDT document in the same canonical shape, including commands
+        // that use the Y.Doc fast path. In particular, FXEQ's canonical
+        // `mix` value owns the derived `globalMix` alias; without this pass,
+        // the same write could leave different parameter maps in solo and
+        // collab stores, and a later projection would change the sound.
+        const projected = yDocToProject(this.yMap);
+        const normalized = normalizeProject(projected);
+        if (normalized !== projected) applyProjectToYMap(projected, normalized, this.yMap);
       }, this);
     } catch (err) {
       // A throw from applyToYDoc / command.execute / applyProjectToYMap
