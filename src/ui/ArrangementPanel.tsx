@@ -595,13 +595,21 @@ export function ArrangementPanel() {
    * and renders the whole song — the safe direction, because an unmeasured
    * window must never mean "nothing renders".
    *
-   * The range is QUANTIZED to whole bars on purpose. `scrollLeft` changes on
-   * every pixel of a wheel event, and storing the raw value would re-render the
-   * panel at pixel frequency — trading an O(n) render for an O(1) one plus a
-   * re-render per pixel. Storing the integer bar bounds means at most one
-   * render per bar of travel.
+   * The range is QUANTIZED, so the panel does not re-render at pixel frequency:
+   * `scrollLeft` changes on every pixel of a wheel event, and storing the raw
+   * value would trade an O(n) render for an O(1) one plus a re-render per
+   * pixel.
+   *
+   * The quantum is in PIXELS, not in bars (performance-cliff audit C-2). A bar
+   * is 1.5 px at min zoom and 1200 px at max zoom, so a bar quantum cost up to
+   * 800× more renders per pixel of scroll when the user zoomed out to survey
+   * the song — and each of those renders paid the arrangement's super-linear
+   * per-clip cost. The pixel quantum makes the commit cadence zoom-independent;
+   * `src/ui/arrangement/viewport.ts` owns the decision and the margin that
+   * keeps the visible area rendered while a commit is deferred.
    */
-  const [viewport, setViewport] = useState<{ firstBar: number; lastBar: number } | null>(null);
+  const [viewport, setViewport] = useState<ArrangementViewport | null>(null);
+  const viewportCommitRef = useRef<CommittedViewport | null>(null);
   const measureViewport = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -611,11 +619,17 @@ export function ArrangementPanel() {
     if (width <= 0) return;
     const pxPerBar = BASE_BAR_WIDTH * zoomRef.current;
     if (pxPerBar <= 0) return;
-    const first = Math.floor(el.scrollLeft / pxPerBar) - VIEWPORT_OVERSCAN_BARS;
-    const last = Math.ceil((el.scrollLeft + width) / pxPerBar) + VIEWPORT_OVERSCAN_BARS;
-    setViewport((prev) =>
-      prev && prev.firstBar === first && prev.lastBar === last ? prev : { firstBar: first, lastBar: last },
-    );
+    const decision = viewportDecision({
+      scrollLeft: el.scrollLeft,
+      width,
+      pxPerBar,
+      overscanBars: VIEWPORT_OVERSCAN_BARS,
+      quantumPx: VIEWPORT_COMMIT_QUANTUM_PX,
+      committed: viewportCommitRef.current,
+    });
+    viewportCommitRef.current = decision.committed;
+    if (!decision.changed) return;
+    setViewport(decision.viewport);
   }, []);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [autoArrangeMinutes, setAutoArrangeMinutes] = useState(3);
