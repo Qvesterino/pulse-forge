@@ -37,6 +37,10 @@ registerYDocHelpers({
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
+/** Whether the crash buffer can hold this project. Mirrors `ProjectStore`. */
+export type { RecoveryStatus } from "../store/ProjectStore";
+import type { RecoveryStatus } from "../store/ProjectStore";
+
 /**
  * Pre-first-sync guard window. `YDocStore.empty()` starts with an UNKNOWN
  * room: a command executed before the first sync would either fragment the
@@ -74,6 +78,7 @@ export class YDocStore {
   private listeners = new Set<() => void>();
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
+  private recoveryStatus_: RecoveryStatus = "protected";
   private undoManager: Y.UndoManager;
   private pendingLabel: string | null = null;
   /** Label of the item just moved to the opposite stack by undo()/redo(). */
@@ -290,6 +295,21 @@ export class YDocStore {
   setSaveStatus(status: SaveStatus): void {
     this.saveStatus_ = status;
     if (status === "saved") this.lastSavedAt_ = new Date().toISOString();
+    this.emit();
+  }
+
+  /**
+   * Can the crash buffer hold this project right now?
+   *
+   * Mirrors `ProjectStore` — the collab store is the same surface with a
+   * different writer behind it, and the `ProjectStore | YDocStore` union in
+   * `src/ui/context.ts` only works while both sides expose the same members.
+   */
+  getRecoveryStatus = (): RecoveryStatus => this.recoveryStatus_;
+
+  setRecoveryStatus(status: RecoveryStatus): void {
+    if (status === this.recoveryStatus_) return;
+    this.recoveryStatus_ = status;
     this.emit();
   }
 

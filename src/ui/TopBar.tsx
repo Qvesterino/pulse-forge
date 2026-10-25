@@ -2,7 +2,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { AudioStatusChips } from "./AudioStatusChips";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
-import { useCanRedo, useCanUndo, useLastSavedAt, useSaveStatus, useServices } from "./context";
+import { useCanRedo, useCanUndo, useLastSavedAt, useRecoveryStatus, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
@@ -91,6 +91,7 @@ export function TopBar({
   const doc = services.store.getDoc();
   const saveStatus = useSaveStatus();
   const lastSavedAt = useLastSavedAt();
+  const recoveryStatus = useRecoveryStatus();
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
   const position = useTransportPosition(services.transport, doc);
@@ -901,6 +902,21 @@ export function TopBar({
             {saveStatus === "saving" && "SAVING…"}
             {saveStatus === "error" && "SAVE ERROR — RETRY"}
           </span>
+          {/* Audit S-4: the crash buffer is the only copy of the work that was
+              uncommitted when the tab dies. When it cannot hold this project,
+              the user has to know WHILE they can still save — not after the
+              session is gone. The chip sits next to the save status because
+              that is where "is my work safe" is already answered. */}
+          {recoveryStatus === "unprotected" && (
+            <span
+              className="save-status save-unprotected"
+              role="status"
+              aria-live="polite"
+              title="The crash buffer cannot hold this project: if the tab closes now, the uncommitted work cannot be recovered. Save often."
+            >
+              NOT CRASH-PROTECTED
+            </span>
+          )}
           {visibleToolActions.map((action) => (
             <button
               key={action.id}

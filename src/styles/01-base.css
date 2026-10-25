@@ -533,6 +533,12 @@ button {
   color: var(--stop);
 }
 
+/* Audit S-4: the crash buffer could not hold this project. The uncommitted
+   work is the only copy, so this is a danger state, not a warning. */
+.save-unprotected {
+  color: var(--stop);
+}
+
 .save-status[role="button"] {
   cursor: pointer;
 }

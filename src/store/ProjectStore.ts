@@ -5,6 +5,17 @@ import { computeDocDelta } from "../commands/docDelta";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
+/**
+ * Whether the crash buffer can hold this project.
+ *
+ * - `protected` — the payload fits the storage budget;
+ * - `unprotected` — it does not, so a closed tab cannot be recovered.
+ *
+ * The reason travels with the state: a project that is too large is a
+ * different problem from a browser that refused the write.
+ */
+export type RecoveryStatus = "protected" | "unprotected";
+
 export interface HistoryEntry {
   label: string;
   type: string;
@@ -47,6 +58,7 @@ export class ProjectStore {
   private diffCache = new Map<number, HistoryDiff | undefined>();
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
+  private recoveryStatus_: RecoveryStatus = "protected";
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
   /** Explicit local edits from a human music editor; generated/system commands never call this. */
   onUserPatternEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
@@ -166,6 +178,26 @@ export class ProjectStore {
 
   get lastSavedAt(): string | null {
     return this.lastSavedAt_;
+  }
+
+  /**
+   * Can the crash buffer hold this project right now?
+   *
+   * The buffer is the only copy of the work that was uncommitted when the tab
+   * died, so a project that does not fit is a project whose last session can
+   * be lost with no trace. The answer is knowable long before the tab closes,
+   * which is the whole point: the user can still be told to save.
+   *
+   * An ARROW property, like every sibling getter here (`getSaveStatus`,
+   * `getLastSavedAt`): the selector is handed to `useSyncExternalStore` as a
+   * bare reference, and an unbound method reads `this` off undefined.
+   */
+  getRecoveryStatus = (): RecoveryStatus => this.recoveryStatus_;
+
+  setRecoveryStatus(status: RecoveryStatus): void {
+    if (status === this.recoveryStatus_) return;
+    this.recoveryStatus_ = status;
+    this.emit();
   }
 
   setSaveStatus(status: SaveStatus): void {

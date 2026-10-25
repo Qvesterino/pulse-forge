@@ -9,6 +9,15 @@ import {
 /**
  * D20 recovery buffer. The module is deliberately synchronous end to end —
  * an async write is the exact thing that does not survive unload.
+ *
+ * THE WRITE ANSWERS WITH A RESULT, NOT A BOOLEAN (audit S-4). These cases
+ * used to assert `toBe(true)` / `toBe(false)`, and that bare boolean WAS the
+ * defect: it cannot say WHY a write failed, and the unload handler ignored it
+ * — so a session whose crash buffer could not hold the work ended in silence.
+ * The assertions moved to the structured result and kept their intent: the
+ * round-trip still has to round-trip, a full store still must not throw into
+ * the unload path, and a buffer that was not written still must not be
+ * offered. `tests/recovery-buffer-failure.test.ts` owns the new contract.
  */
 
 const KEY = "kyx:recovery-buffer:v1";
@@ -20,7 +29,7 @@ describe("recovery buffer", () => {
 
   it("round-trips a document with its project id and timestamp", () => {
     const doc = { id: "p1", name: "Beat", patterns: [{ rows: { kick: [1, 0] } }] };
-    expect(writeRecoveryBuffer(doc, "p1")).toBe(true);
+    expect(writeRecoveryBuffer(doc, "p1").ok).toBe(true);
 
     const buffer = readRecoveryBuffer();
     expect(buffer?.projectId).toBe("p1");
@@ -61,7 +70,9 @@ describe("recovery buffer", () => {
       throw new DOMException("quota", "QuotaExceededError");
     });
     try {
-      expect(writeRecoveryBuffer({ id: "p1" }, "p1")).toBe(false);
+      const result = writeRecoveryBuffer({ id: "p1" }, "p1");
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.reason, "the refusal must NAME itself").toBe("quota");
       expect(readRecoveryBuffer()).toBeNull();
     } finally {
       setItem.mockRestore();
@@ -71,7 +82,9 @@ describe("recovery buffer", () => {
   it("survives a document JSON cannot represent", () => {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
-    expect(writeRecoveryBuffer(cyclic, "p1")).toBe(false);
+    const result = writeRecoveryBuffer(cyclic, "p1");
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe("unserializable");
   });
 });
 
@@ -94,7 +107,7 @@ describe("recovery buffer — project scoping", () => {
   });
 
   it("a save of ANOTHER project does not destroy this project's buffer", () => {
-    expect(writeRecoveryBuffer({ id: "p1", note: "uncommitted work" }, "p1")).toBe(true);
+    expect(writeRecoveryBuffer({ id: "p1", note: "uncommitted work" }, "p1").ok).toBe(true);
 
     // Project Q commits a save. Q is not the project the buffer belongs to.
     clearRecoveryBuffer("q-other");
@@ -106,7 +119,7 @@ describe("recovery buffer — project scoping", () => {
   });
 
   it("a save of the SAME project clears its buffer", () => {
-    expect(writeRecoveryBuffer({ id: "p1" }, "p1")).toBe(true);
+    expect(writeRecoveryBuffer({ id: "p1" }, "p1").ok).toBe(true);
 
     clearRecoveryBuffer("p1");
 
@@ -114,7 +127,7 @@ describe("recovery buffer — project scoping", () => {
   });
 
   it("an UNSCOPED clear still removes it (the user dismissed or recovered it)", () => {
-    expect(writeRecoveryBuffer({ id: "p1" }, "p1")).toBe(true);
+    expect(writeRecoveryBuffer({ id: "p1" }, "p1").ok).toBe(true);
     clearRecoveryBuffer();
     expect(readRecoveryBuffer()).toBeNull();
   });
@@ -125,7 +138,7 @@ describe("recovery buffer — project scoping", () => {
   });
 
   it("a scoped clear of one project leaves a buffer written for another alone", () => {
-    expect(writeRecoveryBuffer({ id: "p2" }, "p2")).toBe(true);
+    expect(writeRecoveryBuffer({ id: "p2" }, "p2").ok).toBe(true);
     clearRecoveryBuffer("p1");
     expect(readRecoveryBuffer()?.projectId).toBe("p2");
   });

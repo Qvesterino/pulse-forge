@@ -151,8 +151,8 @@ describe("recovery buffer — one slot per project", () => {
   });
 
   it("a second project's buffer does not destroy the first project's", () => {
-    expect(writeRecoveryBuffer({ id: "p1", note: "work in tab one" }, "p1")).toBe(true);
-    expect(writeRecoveryBuffer({ id: "p2", note: "work in tab two" }, "p2")).toBe(true);
+    expect(writeRecoveryBuffer({ id: "p1", note: "work in tab one" }, "p1").ok).toBe(true);
+    expect(writeRecoveryBuffer({ id: "p2", note: "work in tab two" }, "p2").ok).toBe(true);
 
     expect(readRecoveryBuffer("p1")?.doc).toEqual({ id: "p1", note: "work in tab one" });
     expect(readRecoveryBuffer("p2")?.doc).toEqual({ id: "p2", note: "work in tab two" });

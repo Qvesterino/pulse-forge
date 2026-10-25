@@ -9,10 +9,14 @@ import type { TemplateId } from "../project-model/templates";
 import { stashIntentPrefill, stashSongStarter } from "../landing/handoff";
 import {
   clearRecoveryBuffer,
+  clearStatus,
   isBufferWorthOffering,
+  readFailedStatuses,
   readRecoveryBuffer,
   recoverProject,
+  recoveryFailureMessage,
   type RecoveryBuffer,
+  type RecoveryFailureReason,
 } from "../persistence/recoveryBuffer";
 import { uid } from "../shared/ids";
 import { appUrl } from "../shared/mountBase";
@@ -29,6 +33,21 @@ const TransferCapabilityCard = lazy(() =>
 
 /** One row of the library: openable, or written by a newer app version. */
 type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
+
+/**
+ * A project whose crash buffer could not hold the work.
+ *
+ * This is the notice the next session gets instead of silence: the work that
+ * was uncommitted when the last tab died is gone, and the user is told WHY
+ * it could not be kept.
+ */
+type UnprotectedNotice = {
+  projectId: string;
+  /** The project's name, when the library still knows it. */
+  projectName: string | null;
+  reason: RecoveryFailureReason;
+  at: string;
+};
 
 const STARTER_LOOP_GENRES = new Set<TemplateId>(["house", "techno", "ukg", "trap"]);
 const SONG_STARTER_TEMPLATES = TEMPLATES.filter((template) => STARTER_LOOP_GENRES.has(template.id));
@@ -104,6 +123,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [crashDismissed, setCrashDismissed] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryBuffer | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [unprotected, setUnprotected] = useState<UnprotectedNotice | null>(null);
   const [transferImportOpen, setTransferImportOpen] = useState(false);
   const [songStarterGenre, setSongStarterGenre] = useState<TemplateId>("house");
   const [songStarterMood, setSongStarterMood] = useState("all");
@@ -378,15 +398,32 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     const buffer = readRecoveryBuffer();
     if (!buffer) {
       setRecovery(null);
-      return;
+    } else {
+      const saved = projects.find((meta) => meta.id === buffer.projectId) ?? null;
+      if (!isBufferWorthOffering(buffer, saved?.updatedAt ?? null)) {
+        clearRecoveryBuffer(buffer.projectId);
+        setRecovery(null);
+      } else {
+        setRecovery(buffer);
+      }
     }
-    const saved = projects.find((meta) => meta.id === buffer.projectId) ?? null;
-    if (!isBufferWorthOffering(buffer, saved?.updatedAt ?? null)) {
-      clearRecoveryBuffer(buffer.projectId);
-      setRecovery(null);
-      return;
+    // Audit S-4: when the crash buffer could not hold the work, the session
+    // that died left nothing behind — and the user was never told, because the
+    // failure was discarded. The failure record survives the tab close, so
+    // THIS session can say what happened instead of the work vanishing
+    // without a word.
+    const failure = readFailedStatuses()[0] ?? null;
+    if (failure == null) {
+      setUnprotected(null);
+    } else {
+      const meta = projects.find((candidate) => candidate.id === failure.projectId) ?? null;
+      setUnprotected({
+        projectId: failure.projectId,
+        projectName: meta?.name ?? null,
+        reason: failure.reason ?? "quota",
+        at: failure.lastFailureAt ?? failure.checkedAt,
+      });
     }
-    setRecovery(buffer);
   }, [projects]);
 
   const recover = (buffer: RecoveryBuffer) =>
@@ -417,6 +454,13 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     clearRecoveryBuffer(recovery?.projectId);
     setRecovery(null);
     setRecoveryError(null);
+  };
+
+  const dismissUnprotected = () => {
+    // The user has been told; the note has done its job. The project itself
+    // keeps its own state — only the notice goes.
+    if (unprotected) clearStatus(unprotected.projectId);
+    setUnprotected(null);
   };
 
   const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
@@ -468,6 +512,30 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
             </button>
             <button type="button" className="pb-crash-dismiss" onClick={dismissRecovery}>
               Discard
+            </button>
+          </div>
+        )}
+        {unprotected !== null && (
+          <div className="pb-crash-banner" role="alert">
+            <span className="pb-crash-text">
+              {/* Audit S-4: the failure used to be discarded, so a session whose
+                  crash buffer could not be written ended in silence — the work
+                  was gone and nobody knew why. The record survives the tab
+                  close, so this session says it out loud. Say what is KNOWN:
+                  the buffer was refused and the work was not kept. Do not
+                  claim the work is lost — only that it was not protected. */}
+              Your last session
+              {unprotected.projectName ? ` in "${unprotected.projectName}"` : ""} could not be protected (
+              {formatRelative(unprotected.at)}) — {recoveryFailureMessage(unprotected.reason)}. Uncommitted work from
+              that session was not kept, and it cannot be recovered. Save more often in this project.
+            </span>
+            <button
+              type="button"
+              className="pb-crash-dismiss"
+              onClick={dismissUnprotected}
+              aria-label="Dismiss unprotected notice"
+            >
+              Dismiss
             </button>
           </div>
         )}

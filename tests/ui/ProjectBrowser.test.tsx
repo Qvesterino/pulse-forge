@@ -7,6 +7,7 @@ import { CrashJournalRepository } from "../../src/persistence/crashJournal";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
 import { INTENT_PREFILL_KEY, peekSongStarter, takeIntentPrefill } from "../../src/landing/handoff";
+import { readFailedStatuses, writeStatus } from "../../src/persistence/recoveryBuffer";
 
 /**
  * Import/export robustness audit regression: importing a project file used
@@ -268,5 +269,55 @@ describe("ProjectBrowser — recovery never destroys the saved project", () => {
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0].id).toBe("p1");
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A SESSION THAT COULD NOT BE PROTECTED MUST SAY SO (audit S-4).
+ *
+ * When the crash buffer could not hold the work, the session that died left
+ * nothing behind — and the user was never told, because the failure was
+ * discarded. The record survives the tab close, so the NEXT session can
+ * explain the loss instead of letting the work vanish without a word.
+ */
+describe("ProjectBrowser — a session that could not be protected is announced", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  function seedFailure(): void {
+    writeStatus("p1", {
+      state: "unprotected",
+      checkedAt: new Date().toISOString(),
+      bytes: 4_000_000,
+      reason: "too-large",
+      lastFailureAt: new Date().toISOString(),
+    });
+  }
+
+  it("announces it, and says WHY", async () => {
+    seedFailure();
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText(/could not be protected/)).toBeTruthy());
+    expect(screen.getByText(/too large for the browser/)).toBeTruthy();
+  });
+
+  it("the user can be told once and then let go of it", async () => {
+    seedFailure();
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+
+    const dismiss = await screen.findByRole("button", { name: "Dismiss unprotected notice" });
+    fireEvent.click(dismiss);
+
+    await waitFor(() => expect(screen.queryByText(/could not be protected/)).toBeNull());
+    expect(readFailedStatuses()).toHaveLength(0);
+  });
+
+  it("says nothing when there is no failure", async () => {
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText(/could not be protected/)).toBeNull());
   });
 });

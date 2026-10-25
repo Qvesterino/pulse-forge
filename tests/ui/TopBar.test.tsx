@@ -58,6 +58,25 @@ describe("TopBar", () => {
     expect(screen.queryByRole("button", { name: /save failed/i })).not.toBeInTheDocument();
   });
 
+  /**
+   * Audit S-4: the crash buffer is the only copy of the work that was
+   * uncommitted when the tab dies. When it cannot hold the project, the user
+   * has to know WHILE they can still save — the chip sits next to the save
+   * status because that is where "is my work safe" is already answered.
+   */
+  it("warns that the project is not crash-protected", () => {
+    const services = mockServices();
+    vi.spyOn(services.store, "getRecoveryStatus").mockReturnValue("unprotected");
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    expect(screen.getByText("NOT CRASH-PROTECTED")).toBeInTheDocument();
+  });
+
+  it("says nothing when the project IS crash-protected", () => {
+    renderWithContext(<TopBar {...topBarProps()} />);
+    expect(screen.queryByText("NOT CRASH-PROTECTED")).not.toBeInTheDocument();
+  });
+
   it("renders PROJECTS button", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
     expect(screen.getByText("PROJECTS")).toBeInTheDocument();

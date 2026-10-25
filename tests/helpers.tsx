@@ -178,6 +178,9 @@ export function mockServices(doc?: ProjectDocument): Services {
       getSaveStatus: () => "saved" as const,
       getLastSavedAt: () => null,
       setSaveStatus: vi.fn(),
+      // Recovery WIP added useRecoveryStatus to TopBar — the stub must answer
+      // it or every TopBar render throws (context.ts:159).
+      getRecoveryStatus: () => "protected" as const,
       // Fine-grained slice selectors added with the GOAL 04 follow-up.
       // Mirrors ProjectStore.getScenes/getTracks/... (structural sharing
       // in normalizeProject keeps the same array identity across

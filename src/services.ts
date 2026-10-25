@@ -15,7 +15,12 @@ import { MorphPresetRepository } from "./persistence/MorphPresetRepository";
 import { UltinaPresetRepository } from "./persistence/UltinaPresetRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
 import { CrashJournalRepository } from "./persistence/crashJournal";
-import { clearRecoveryBuffer, writeRecoveryBuffer } from "./persistence/recoveryBuffer";
+import {
+  clearRecoveryBuffer,
+  recoveryCapacityStatus,
+  writeRecoveryBuffer,
+  writeStatus,
+} from "./persistence/recoveryBuffer";
 import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
@@ -1155,6 +1160,24 @@ export async function openProject(
   let saving: Promise<void> | null = null;
   let saveQueued = false;
 
+  // Audit S-4: the crash buffer's capacity is knowable long before the tab
+  // closes, so a project that cannot be protected can say so while the user
+  // can still save. The probe is BOUNDED: the document grows slowly, a save
+  // can land every few seconds in a busy session, and measuring means
+  // serialising the whole project — so the answer is refreshed on a timer,
+  // not on every save.
+  const RECOVERY_CAPACITY_MIN_INTERVAL_MS = 30_000;
+  let lastCapacityCheckAt = 0;
+
+  const checkRecoveryCapacity = (doc: ProjectDocument): void => {
+    const now = Date.now();
+    if (now - lastCapacityCheckAt < RECOVERY_CAPACITY_MIN_INTERVAL_MS) return;
+    lastCapacityCheckAt = now;
+    const status = recoveryCapacityStatus(doc);
+    writeStatus(doc.id, status);
+    store.setRecoveryStatus(status.state);
+  };
+
   const doSave = async (): Promise<void> => {
     // Capture the exact immutable document revision being written. A user
     // can edit while IndexedDB is awaiting; that newer revision must not be
@@ -1186,6 +1209,11 @@ export async function openProject(
         store.setSaveStatus("saved");
         maybeAutoSnapshot("Auto — daily");
       }
+      // Audit S-4: the crash buffer's CAPACITY is knowable long before the tab
+      // closes, so a project that cannot be protected can say so while the
+      // user can still save. This is the early warning; the unload write is
+      // the late confirmation.
+      checkRecoveryCapacity(documentAtStart);
     } catch (err) {
       store.setSaveStatus("error");
       void core.crashJournal.record("save-fail", documentAtStart.id, err instanceof Error ? err.message : String(err));
@@ -1334,7 +1362,18 @@ export async function openProject(
       // An earlier version gated on dirty/error only and therefore wrote
       // NOTHING in the common case, which is exactly the case that loses work.
       if (store.saveStatus === "saved") return;
-      writeRecoveryBuffer(store.doc, store.doc.id);
+      // Audit S-4: the result of this write must NOT be discarded. When the
+      // browser refuses the payload (the per-origin quota) the crash safety
+      // net does not exist for this project — and the user has to learn that
+      // while they can still save, not after the session is gone. The writer
+      // persists the failure record; here the user is told.
+      const result = writeRecoveryBuffer(store.doc, store.doc.id);
+      if (!result.ok) {
+        store.setRecoveryStatus("unprotected");
+        console.warn(
+          `[services] the crash buffer could not be written (${result.reason}, ${result.bytes} chars) — this session's work is not protected`,
+        );
+      }
     },
   });
   document.addEventListener("visibilitychange", onVisibility);
