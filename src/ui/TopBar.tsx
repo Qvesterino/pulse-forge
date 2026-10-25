@@ -19,6 +19,7 @@ import { ScalePanel } from "./ScalePanel";
 import { ThemePanel } from "./ThemePanel";
 import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
+import { saveProjectAsCopy } from "../mcp/save-now";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -108,6 +109,38 @@ export function TopBar({
   const [themeOpen, setThemeOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const [assistOpen, setAssistOpen] = useState(false);
+  const [saveCopyOpen, setSaveCopyOpen] = useState(false);
+  const [saveCopyName, setSaveCopyName] = useState("");
+  const [saveCopyBusy, setSaveCopyBusy] = useState(false);
+  const [saveCopyError, setSaveCopyError] = useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!copyNotice) return;
+    const id = setTimeout(() => setCopyNotice(null), 6000);
+    return () => clearTimeout(id);
+  }, [copyNotice]);
+  const openSaveCopy = () => {
+    setSaveCopyName(`${doc.name} (copy)`);
+    setSaveCopyError(null);
+    setSaveCopyOpen(true);
+  };
+  const submitSaveCopy = async () => {
+    const name = saveCopyName.trim();
+    if (name === "" || saveCopyBusy) return;
+    setSaveCopyBusy(true);
+    setSaveCopyError(null);
+    try {
+      const saved = await saveProjectAsCopy(services, name);
+      if (!saved.ok || saved.projectId == null) {
+        setSaveCopyError(saved.error ?? "the copy could not be written");
+        return;
+      }
+      setSaveCopyOpen(false);
+      setCopyNotice(`Copy saved as “${saved.name ?? name}” — the current project stays open. Find it under PROJECTS.`);
+    } finally {
+      setSaveCopyBusy(false);
+    }
+  };
   const topbarRef = useRef<HTMLElement>(null);
   const overflowButtonRef = useRef<HTMLButtonElement>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
@@ -416,6 +449,16 @@ export function TopBar({
       priority: 38,
       active: ioOpen,
       onClick: onToggleIo,
+    },
+    {
+      id: "save-copy",
+      // Last in the ⋯ overflow: a deliberate, low-frequency lifecycle action.
+      // The dialog names the copy semantics before anything is written.
+      label: "SAVE AS",
+      ariaLabel: "Save a copy of this project",
+      title: "Save a copy of this project under a new name — the current project stays open",
+      priority: 36,
+      onClick: () => openSaveCopy(),
     },
   ];
 
@@ -969,6 +1012,99 @@ export function TopBar({
           <ErrorBoundary panel="assist">
             <AssistPanel onClose={() => setAssistOpen(false)} />
           </ErrorBoundary>
+        </div>
+      )}
+      {saveCopyOpen && (
+        <div
+          role="presentation"
+          style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,0.45)" }}
+          onClick={() => {
+            if (!saveCopyBusy) setSaveCopyOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Save a copy of this project"
+            style={{
+              position: "fixed",
+              top: "72px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              minWidth: 340,
+              maxWidth: "90vw",
+              padding: 16,
+              background: "var(--bg-panel, #12141a)",
+              border: "1px solid var(--border, #2a2e37)",
+              borderRadius: 8,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.48)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitSaveCopy();
+              }}
+            >
+              <label
+                htmlFor="save-copy-name"
+                style={{ display: "block", fontWeight: 700, fontSize: 12, marginBottom: 6 }}
+              >
+                SAVE A COPY
+              </label>
+              <input
+                id="save-copy-name"
+                autoFocus
+                value={saveCopyName}
+                maxLength={120}
+                disabled={saveCopyBusy}
+                aria-describedby="save-copy-hint"
+                onChange={(event) => setSaveCopyName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && !saveCopyBusy) {
+                    event.stopPropagation();
+                    setSaveCopyOpen(false);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  padding: "6px 8px",
+                  background: "var(--bg, #0b0c10)",
+                  border: "1px solid var(--border, #2a2e37)",
+                  borderRadius: 4,
+                  color: "var(--text, #d9dbe1)",
+                }}
+              />
+              <p id="save-copy-hint" style={{ margin: "8px 0 0", fontSize: 11, color: "var(--text-dim, #8d94a2)" }}>
+                Writes a NEW project record under this name. The current project keeps its name and stays open — this is
+                save-as-copy, not a switch.
+              </p>
+              {saveCopyError && (
+                <p role="alert" style={{ margin: "8px 0 0", fontSize: 11, color: "var(--stop, #f87171)" }}>
+                  {saveCopyError}
+                </p>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={saveCopyBusy}
+                  onClick={() => setSaveCopyOpen(false)}
+                >
+                  CANCEL
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={saveCopyBusy || saveCopyName.trim() === ""}>
+                  {saveCopyBusy ? "SAVING…" : "SAVE COPY"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {copyNotice && (
+        <div className="arr-delete-toast" role="status">
+          <span>{copyNotice}</span>
         </div>
       )}
     </>

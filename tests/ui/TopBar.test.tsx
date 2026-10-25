@@ -377,3 +377,72 @@ describe("TopBar — play button freshness", () => {
     expect(screen.getByTitle("Play / Pause (Space)").textContent).toBe("▶");
   });
 });
+
+describe("TopBar — save a copy", () => {
+  function saveCopyServices() {
+    const services = mockServices();
+    const doc = services.store.getDoc();
+    const copy = { ...doc, id: "project-copy-id", name: `${doc.name} (copy)` };
+    (services.repo as any).duplicate = vi.fn(async () => copy);
+    (services.repo as any).rename = vi.fn(async (_id: string, name: string) => ({ ...copy, name }));
+    services.flushSave = vi.fn(async () => {});
+    return { services, doc, copy };
+  }
+
+  async function openSaveCopy(user: ReturnType<typeof userEvent.setup>) {
+    const restore = mockTopBarWidth();
+    try {
+      await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
+      await user.click(screen.getByRole("menuitem", { name: "Save a copy of this project" }));
+    } finally {
+      restore();
+    }
+  }
+
+  it("saves a durable copy and keeps the current project open", async () => {
+    const user = userEvent.setup();
+    const { services, doc, copy } = saveCopyServices();
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    await openSaveCopy(user);
+    const dialog = screen.getByRole("dialog", { name: "Save a copy of this project" });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText("SAVE A COPY")).toHaveValue(`${doc.name} (copy)`);
+
+    await user.click(screen.getByRole("button", { name: "SAVE COPY" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Save a copy of this project" })).not.toBeInTheDocument(),
+    );
+    expect(services.flushSave).toHaveBeenCalled();
+    expect(services.repo.duplicate).toHaveBeenCalledWith(doc.id);
+    expect(services.repo.rename).toHaveBeenCalledWith(copy.id, `${doc.name} (copy)`);
+    expect(await screen.findByText(/Copy saved as/)).toBeInTheDocument();
+  });
+
+  it("shows the repository error inside the dialog and keeps it open", async () => {
+    const user = userEvent.setup();
+    const { services } = saveCopyServices();
+    (services.repo as any).duplicate = vi.fn(async () => null);
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    await openSaveCopy(user);
+    await user.click(screen.getByRole("button", { name: "SAVE COPY" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not be duplicated/i);
+    expect(screen.getByRole("dialog", { name: "Save a copy of this project" })).toBeInTheDocument();
+  });
+
+  it("closes without writing anything on cancel", async () => {
+    const user = userEvent.setup();
+    const { services } = saveCopyServices();
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    await openSaveCopy(user);
+    await user.click(screen.getByRole("button", { name: "CANCEL" }));
+
+    expect(screen.queryByRole("dialog", { name: "Save a copy of this project" })).not.toBeInTheDocument();
+    expect(services.repo.duplicate).not.toHaveBeenCalled();
+    expect(services.repo.rename).not.toHaveBeenCalled();
+  });
+});

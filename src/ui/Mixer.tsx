@@ -54,6 +54,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   const returns = useReturns();
   const doc = services.store.getDoc();
   const selection = useSelection();
+  const selectionStore = useSelectionStore();
   const selectedIds = selection.trackIds;
   // Mixer re-renders on every doc mutation (it is a `useDoc` subscriber).
   // Five separate `tracks.filter(...)` calls per render is wasteful for
@@ -62,6 +63,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   const selectedTracks = useMemo(() => tracks.filter((t) => selectedIds.includes(t.id)), [tracks, selectedIds]);
   const batchCount = selectedTracks.length > 0 ? selectedTracks.length : tracks.length;
   const [batchType, setBatchType] = useState<EffectType>("eq");
+  const [deleteToast, setDeleteToast] = useState<{ label: string; undoDepth: number } | null>(null);
   const soloCount = useMemo(() => tracks.filter((t) => t.solo).length, [tracks]);
   const muteCount = useMemo(() => tracks.filter((t) => t.mute).length, [tracks]);
   const collapsedGroups = useMemo(
@@ -86,6 +88,16 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
       }),
     [tracks, collapsedGroups],
   );
+  useEffect(() => {
+    if (!deleteToast) return;
+    const id = setTimeout(() => setDeleteToast(null), 6000);
+    return () => clearTimeout(id);
+  }, [deleteToast]);
+  const handleTrackDeleted = (track: Track) => {
+    services.store.execute(deleteTrack(doc, track.id));
+    selectionStore.pruneTrack(track.id);
+    setDeleteToast({ label: `Deleted “${track.name}”`, undoDepth: services.store.undoStackLength });
+  };
   return (
     <section className="mixer" aria-label="Mixer">
       <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">
@@ -195,7 +207,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
       <SceneStrip />
       <div className="mixer-strips">
         {visibleTracks.map((track) => (
-          <ChannelStrip key={track.id} track={track} canDelete={tracks.length > 1} />
+          <ChannelStrip key={track.id} track={track} canDelete={tracks.length > 1} onDeleteTrack={handleTrackDeleted} />
         ))}
         {collapsedGroups.size > 0 && (
           <div className="mixer-fold-hint" style={{ fontSize: 10, color: "var(--muted)", padding: "4px 6px" }}>
@@ -246,6 +258,24 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
         ))}
         <MasterStrip />
       </div>
+      {deleteToast && (
+        <div className="arr-delete-toast" role="status">
+          <span>{deleteToast.label}</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => {
+              // Undo only when the delete is still the newest command — a
+              // stale toast (user kept working) must not revert their newer
+              // edit instead of the deletion.
+              if (services.store.undoStackLength === deleteToast.undoDepth) services.store.undo();
+              setDeleteToast(null);
+            }}
+          >
+            UNDO
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -290,7 +320,15 @@ function savePreMeterTracks(ids: string[]): void {
   }
 }
 
-function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }) {
+function ChannelStrip({
+  track,
+  canDelete,
+  onDeleteTrack,
+}: {
+  track: Track;
+  canDelete: boolean;
+  onDeleteTrack: (track: Track) => void;
+}) {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): ChannelStrip needs `tracks` to
   // detect bus groups (the BUS dropdown is only meaningful when at
@@ -634,18 +672,13 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           title="Delete track"
           disabled={!canDelete}
           onClick={() => {
-            services.store.execute(deleteTrack(doc, track.id));
-            // The strip this button lives in is about to unmount, but nothing
-            // else drops the track from the selection — `deleteTrack` is a
-            // pure document command and cannot reach the SelectionStore. A dead
-            // id left behind breaks the "selection names live objects"
-            // invariant that `bounceZoneToClick` relies on: it forwards
-            // `selection.trackIds` into `buildBounceZoneDoc` unfiltered, so a
-            // zone bounced after deleting the selected track renders silence
-            // and still reports success. Same contract as the command itself
-            // stripping the track's own cross-references inside the delta so
-            // undo restores them together with the track.
-            selectionStore.pruneTrack(track.id);
+            // The strip this button lives in is about to unmount, so the
+            // deletion itself (and the toast with its UNDO) is owned by the
+            // Mixer root. `deleteTrack` is a pure document command and cannot
+            // reach the SelectionStore; a dead id left behind breaks the
+            // "selection names live objects" invariant that
+            // `bounceZoneToClick` relies on — the root handler prunes it.
+            onDeleteTrack(track);
           }}
         >
           ×
