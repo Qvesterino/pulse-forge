@@ -24,7 +24,12 @@
  * It MEASURES; it never deletes. The diet is a product decision, and this
  * script only tells you where the weight is.
  *
- * Usage: node scripts/audit-dead-weight.mjs [distDir] [repoRoot]
+ * Usage: node scripts/audit-dead-weight.mjs [distDir] [repoRoot] [sourcemapBuildDir]
+ *   distDir            the production build to audit (default: dist)
+ *   repoRoot           the repository root (default: the cwd)
+ *   sourcemapBuildDir  a `vite build --sourcemap --outDir <dir>` build;
+ *                       without it the source-level census is SKIPPED
+ *                       (the chunk-level answers need no sourcemaps)
  */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
@@ -155,9 +160,11 @@ const inGraph = new Set();
 // maps a source file to a chunk. Without it the source-level answer is
 // unknown, and the honest thing is to say so rather than report 100%
 // "not built".
-const smDir = join(repo, "dist-sm", "assets");
-const haveSourcemaps = existsSync(smDir);
-if (haveSourcemaps) {
+const smCandidates = [process.argv[4], join(repo, "dist-sm"), join(dist, "..", "dist-sm")].filter(Boolean);
+const smRoot = smCandidates.map((p) => resolve(p)).find((p) => existsSync(join(p, "assets")));
+const smDir = smRoot ? join(smRoot, "assets") : null;
+const haveSourcemaps = Boolean(smDir);
+if (smDir) {
   for (const file of readdirSync(smDir)) {
     if (!file.endsWith(".js.map")) continue;
     const map = JSON.parse(readFileSync(join(smDir, file), "utf-8"));
@@ -202,7 +209,7 @@ const notBuilt = srcFiles.filter((f) => !inGraph.has(f));
 if (!haveSourcemaps) {
   console.log(
     "\n[dead-weight] src-file census: SKIPPED — no sourcemap build found.\n" +
-      "             Run: vite build --sourcemap --outDir dist-sm\n" +
+      "             Run: npx vite build --sourcemap --outDir dist-sm\n" +
       "             (the chunk-level answers above need no sourcemaps)",
   );
 } else {
