@@ -986,6 +986,133 @@
   gap: 5px;
 }
 
+.kit-audition {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.kit-audition-heading,
+.kit-audition-card,
+.kit-audition-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kit-audition-heading {
+  justify-content: space-between;
+}
+
+.kit-audition-heading > div,
+.kit-audition-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kit-audition-heading strong {
+  color: var(--accent);
+  font: 9px var(--mono);
+  letter-spacing: 0.09em;
+}
+
+.kit-audition-heading > div > span,
+.kit-audition-hint,
+.kit-audition-copy > span,
+.kit-audition-copy small,
+.kit-audition-live-status {
+  color: var(--text-faint);
+  font: 8px var(--mono);
+  line-height: 1.35;
+}
+
+.kit-audition-heading label {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font: 8px var(--mono);
+}
+
+.kit-audition-heading select {
+  padding: 3px 4px;
+  color: var(--text);
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  font: 9px var(--mono);
+}
+
+.kit-audition-hint {
+  margin: 0;
+}
+
+.kit-audition-list {
+  display: flex;
+  max-height: 178px;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+}
+
+.kit-audition-card {
+  min-width: 0;
+  padding: 5px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+}
+
+.kit-audition-card.auditioning {
+  border-color: var(--accent);
+}
+
+.kit-audition-copy {
+  flex: 1;
+}
+
+.kit-audition-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font: 9px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-audition-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-fit-badge {
+  flex: none;
+  color: var(--accent);
+  font: 7px var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.kit-audition-actions {
+  flex: none;
+}
+
+.kit-audition-playing {
+  color: var(--accent);
+  font: 7px var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.kit-audition-live-status {
+  color: var(--accent);
+}
+
 .sample-list {
   display: flex;
   flex-direction: column;

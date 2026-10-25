@@ -131,6 +131,8 @@ export interface Services {
     project: ProjectDocument | null,
     resumedAudioClipOffsets?: ReadonlyMap<string, number>,
   ): void;
+  /** Install or clear a temporary project view for a live playback audition. */
+  setPlaybackProjectAudition(project: ProjectDocument | null): void;
   /** Install or clear a temporary preset sound on the live instrument track. */
   setInstrumentPresetAuditionProject(project: ProjectDocument | null): void;
   repo: IProjectRepository;
@@ -733,15 +735,22 @@ export async function openProject(
     },
   });
   let liveTakeAuditionActive = false;
-  let instrumentPresetAuditionActive = false;
+  let playbackProjectAuditionActive = false;
+  const setPlaybackProjectAudition = (project: ProjectDocument | null): void => {
+    if (project && !transport.playing) throw new Error("Project playback audition requires active transport playback");
+    if (project && liveTakeAuditionActive) throw new Error("Finish the live take audition before previewing a project");
+    if (!project && !playbackProjectAuditionActive) return;
+
+    playbackProjectAuditionActive = project !== null;
+    scheduler.setPlaybackProjectOverride(project ? { project } : null);
+    engine.setProject(project ?? store.doc);
+  };
+  // Keep the established preset API and its specific errors while sharing the
+  // same runtime-only seam with other live project auditions (e.g. drum kits).
   const setInstrumentPresetAuditionProject = (project: ProjectDocument | null): void => {
     if (project && !transport.playing) throw new Error("Preset playback audition requires active transport playback");
     if (project && liveTakeAuditionActive) throw new Error("Finish the live take audition before previewing a preset");
-    if (!project && !instrumentPresetAuditionActive) return;
-
-    instrumentPresetAuditionActive = project !== null;
-    scheduler.setPlaybackProjectOverride(project ? { project } : null);
-    engine.setProject(project ?? store.doc);
+    setPlaybackProjectAudition(project);
   };
   const setLiveTakeAuditionProject = (
     project: ProjectDocument | null,
@@ -755,7 +764,7 @@ export async function openProject(
     }
     if (!project && !liveTakeAuditionActive) return;
 
-    if (project && instrumentPresetAuditionActive) setInstrumentPresetAuditionProject(null);
+    if (project && playbackProjectAuditionActive) setPlaybackProjectAudition(null);
 
     midiOutput.cancelPending();
     engine.panic();
@@ -818,7 +827,7 @@ export async function openProject(
       patternRecorder.onTransportInterrupted();
     },
     () => {
-      setInstrumentPresetAuditionProject(null);
+      setPlaybackProjectAudition(null);
       setLiveTakeAuditionProject(null);
       capture.pauseLivePads();
       capture.markPause();
@@ -876,7 +885,7 @@ export async function openProject(
         }
         applyTransportState(transport, state, Date.now() / 1000);
         if (!state.playing) {
-          setInstrumentPresetAuditionProject(null);
+          setPlaybackProjectAudition(null);
           setLiveTakeAuditionProject(null);
         }
         if (shouldStartScheduler) {
@@ -1247,8 +1256,8 @@ export async function openProject(
       engine.panic();
       engine.automationReset();
     }
-    if (instrumentPresetAuditionActive) {
-      instrumentPresetAuditionActive = false;
+    if (playbackProjectAuditionActive) {
+      playbackProjectAuditionActive = false;
       scheduler.setPlaybackProjectOverride(null);
     }
     engine.setProject(doc);
@@ -1336,7 +1345,7 @@ export async function openProject(
     closed = true;
     styleObserver.flush();
     styleObserver.dispose();
-    setInstrumentPresetAuditionProject(null);
+    setPlaybackProjectAudition(null);
     setLiveTakeAuditionProject(null);
     noteRepeat.stopAll();
     ghost.stop();
@@ -1413,6 +1422,7 @@ export async function openProject(
     transport,
     scheduler,
     setLiveTakeAuditionProject,
+    setPlaybackProjectAudition,
     setInstrumentPresetAuditionProject,
     sharedTransportReapply,
     bandmate,

@@ -26,6 +26,7 @@ import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { ensureFactorySamples } from "../sample-library/factory";
 import { ensurePianoPackLoaded, isPianoPackSample } from "../presets/piano-pack";
 import type { InstrumentPreset } from "../presets/types";
+import { KitAuditionBrowser } from "./KitAuditionBrowser";
 
 const PresetBrowser = lazy(() => import("./PresetBrowser").then((m) => ({ default: m.PresetBrowser })));
 
@@ -1033,6 +1034,16 @@ export function SampleBrowser({
                 </button>
               </div>
             </div>
+          )}
+          {view === "sounds" && targetTrack?.kind === "drum" && (
+            <KitAuditionBrowser
+              key={targetTrack.id}
+              track={targetTrack}
+              query={query}
+              genre={genre}
+              mood={mood}
+              projectContext={fitContext}
+            />
           )}
           <div className="sample-result-summary">
             <span role="status">

@@ -127,7 +127,10 @@ export function applyKitToDrumTrack(
         ...drum,
         pads: drum.pads.map((pad, idx) => {
           const k = byIdx.get(idx);
-          if (!k || k.assetId === null) return pad;
+          // A null sample with no synth means "leave this pad's sound alone".
+          // A null sample WITH a synth is an intentional synthesized kit voice
+          // (stock kits use this for their compact kick/hat/clap variants).
+          if (!k || (k.assetId === null && !k.synth)) return pad;
           const swapped = k.assetId !== pad.assetId;
           const nextPad = {
             ...pad,
