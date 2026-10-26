@@ -56,6 +56,48 @@ describe("CommandToast", () => {
   });
 });
 
+/**
+ * Audit S-5: an undo with nothing to undo used to vanish without a word.
+ * The store owns the truth and announces it; the toast is where the user
+ * sees it.
+ */
+describe("CommandToast — the store's notice", () => {
+  it("shows the notice and its reason", () => {
+    const services = mockServices();
+    (services.store as any).notice = {
+      text: "Nothing to undo",
+      detail: "The undo history is per-session.",
+      id: 1,
+    };
+    render(
+      <ServicesContext.Provider value={services}>
+        <CommandToast />
+      </ServicesContext.Provider>,
+    );
+    act(() => {
+      (services.store as any)._emit();
+    });
+    expect(screen.getByText("Nothing to undo")).toBeInTheDocument();
+    expect(screen.getByText("The undo history is per-session.")).toBeInTheDocument();
+  });
+
+  it("the notice wins over a stale command label", () => {
+    const services = mockServices();
+    (services.store as any).lastCommandLabel = "Add Track";
+    (services.store as any).undoStackLength = 1;
+    (services.store as any).notice = { text: "Nothing to undo", detail: null, id: 1 };
+    render(
+      <ServicesContext.Provider value={services}>
+        <CommandToast />
+      </ServicesContext.Provider>,
+    );
+    act(() => {
+      (services.store as any)._emit();
+    });
+    expect(screen.getByText("Nothing to undo")).toBeInTheDocument();
+  });
+});
+
 describe("CommandToast consequence detail", () => {
   it("shows the detail line when the last command cleaned something up", () => {
     const services = mockServices();

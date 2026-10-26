@@ -38,8 +38,8 @@ registerYDocHelpers({
 export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
 /** Whether the crash buffer can hold this project. Mirrors `ProjectStore`. */
-export type { RecoveryStatus } from "../store/ProjectStore";
-import type { RecoveryStatus } from "../store/ProjectStore";
+export type { RecoveryStatus, StoreNotice } from "../store/ProjectStore";
+import type { RecoveryStatus, StoreNotice } from "../store/ProjectStore";
 
 /**
  * Pre-first-sync guard window. `YDocStore.empty()` starts with an UNKNOWN
@@ -79,6 +79,8 @@ export class YDocStore {
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
   private recoveryStatus_: RecoveryStatus = "protected";
+  private notice_: StoreNotice | null = null;
+  private noticeId_ = 0;
   private undoManager: Y.UndoManager;
   private pendingLabel: string | null = null;
   /** Label of the item just moved to the opposite stack by undo()/redo(). */
@@ -307,6 +309,21 @@ export class YDocStore {
    */
   getRecoveryStatus = (): RecoveryStatus => this.recoveryStatus_;
 
+  /**
+   * A one-shot notice: the user asked for something and there was nothing to
+   * do. Mirrors `ProjectStore` — the `ProjectStore | YDocStore` union in
+   * `src/ui/context.ts` only works while both expose the same members.
+   */
+  get notice(): StoreNotice | null {
+    return this.notice_;
+  }
+
+  private announceNotice(text: string, detail: string | null = null): void {
+    this.noticeId_ += 1;
+    this.notice_ = { text, detail, id: this.noticeId_ };
+    this.emit();
+  }
+
   setRecoveryStatus(status: RecoveryStatus): void {
     if (status === this.recoveryStatus_) return;
     this.recoveryStatus_ = status;
@@ -493,7 +510,15 @@ export class YDocStore {
   }
 
   undo(): void {
-    if (!this.undoManager.canUndo()) return;
+    if (!this.undoManager.canUndo()) {
+      // Nothing to undo — SAY SO (audit S-5): the history is per-session, and
+      // a silent no-op reads as a broken app rather than an empty history.
+      this.announceNotice(
+        "Nothing to undo",
+        "The undo history is per-session — uncommitted work from the last session is offered on the project screen.",
+      );
+      return;
+    }
     const top = this.undoManager.undoStack[this.undoManager.undoStack.length - 1];
     this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
     this.undoManager.undo();
@@ -506,7 +531,13 @@ export class YDocStore {
   }
 
   redo(): void {
-    if (!this.undoManager.canRedo()) return;
+    if (!this.undoManager.canRedo()) {
+      this.announceNotice(
+        "Nothing to redo",
+        "The undo history is per-session — there is nothing to redo in this session.",
+      );
+      return;
+    }
     const top = this.undoManager.redoStack[this.undoManager.redoStack.length - 1];
     this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
     this.undoManager.redo();

@@ -181,6 +181,10 @@ export function mockServices(doc?: ProjectDocument): Services {
       // Recovery WIP added useRecoveryStatus to TopBar — the stub must answer
       // it or every TopBar render throws (context.ts:159).
       getRecoveryStatus: () => "protected" as const,
+      // Audit S-5: the store's one-shot notice ("you asked for something and
+      // there was nothing to do"). The CommandToast reads it on every store
+      // notification, so the stub must answer it.
+      notice: null as { text: string; detail: string | null; id: number } | null,
       // Fine-grained slice selectors added with the GOAL 04 follow-up.
       // Mirrors ProjectStore.getScenes/getTracks/... (structural sharing
       // in normalizeProject keeps the same array identity across

@@ -6,6 +6,17 @@ import { computeDocDelta } from "../commands/docDelta";
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
 /**
+ * A one-shot notice from the store: the user asked for something and there
+ * was nothing to do. The `id` is the dedupe key — two identical notices in a
+ * row are two different events.
+ */
+export interface StoreNotice {
+  text: string;
+  detail: string | null;
+  id: number;
+}
+
+/**
  * Whether the crash buffer can hold this project.
  *
  * - `protected` — the payload fits the storage budget;
@@ -66,6 +77,8 @@ export class ProjectStore {
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
   private recoveryStatus_: RecoveryStatus = "protected";
+  private notice_: StoreNotice | null = null;
+  private noticeId_ = 0;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
   /** Explicit local edits from a human music editor; generated/system commands never call this. */
   onUserPatternEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
@@ -120,6 +133,21 @@ export class ProjectStore {
    * something up beyond what its label says (see Command.detail). */
   get lastCommandDetail(): string | null {
     return this.undoStack.length > 0 ? (this.undoStack[this.undoStack.length - 1].detail ?? null) : null;
+  }
+
+  /**
+   * A one-shot notice for the UI — "you asked for something and there was
+   * nothing to do".
+   *
+   * Audit S-5: the undo history is per-session (like every DAW — Logic,
+   * Cubase and Ableton all start a fresh history when a project is opened),
+   * so after a reload Ctrl+Z had NOTHING to undo. It did it SILENTLY: the key
+   * press vanished, the app looked broken, and the user could not tell a
+   * limitation from a fault. The id is the dedupe key, because the undo
+   * stack's length does not change when the undo did nothing.
+   */
+  get notice(): StoreNotice | null {
+    return this.notice_;
   }
 
   /** Last N history entries (most recent last). For the undo history panel. */
@@ -412,7 +440,16 @@ export class ProjectStore {
   undo(): void {
     const command = this.undoStack.pop();
     this.timestamps.pop();
-    if (!command) return;
+    if (!command) {
+      // Nothing to undo — SAY SO. The history is per-session, so a project
+      // opened in a new session starts with an empty stack; a silent no-op
+      // there reads as a broken app, not as an empty history (audit S-5).
+      this.announceNotice(
+        "Nothing to undo",
+        "The undo history is per-session — uncommitted work from the last session is offered on the project screen.",
+      );
+      return;
+    }
     let undone: ProjectDocument;
     try {
       undone = command.undo(this.doc_);
@@ -456,7 +493,13 @@ export class ProjectStore {
 
   redo(): void {
     const command = this.redoStack.pop();
-    if (!command) return;
+    if (!command) {
+      this.announceNotice(
+        "Nothing to redo",
+        "The undo history is per-session — there is nothing to redo in this session.",
+      );
+      return;
+    }
     this.doc_ = normalizeProject(command.execute(this.doc_));
     this.undoStack.push(command);
     this.timestamps.push(Date.now());
@@ -516,6 +559,12 @@ export class ProjectStore {
     // so the indicator reflects "we have no durable copy of this doc".
     this.lastSavedAt_ = null;
     this.afterMutation();
+  }
+
+  private announceNotice(text: string, detail: string | null = null): void {
+    this.noticeId_ += 1;
+    this.notice_ = { text, detail, id: this.noticeId_ };
+    this.emit();
   }
 
   private afterMutation(): void {
