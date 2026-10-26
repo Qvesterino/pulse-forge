@@ -28,6 +28,16 @@ function formatClock(iso: string | null): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function hasTransportReachedContent(transport: Services["transport"]): boolean {
+  // Some lightweight test adapters expose only the transport fields they use.
+  // A real Transport always provides this boundary method.
+  return (
+    transport.playing &&
+    typeof transport.anchorTickBeforePreRoll === "function" &&
+    transport.position >= transport.anchorTickBeforePreRoll()
+  );
+}
+
 type TopbarAction = {
   id: string;
   label: string;
@@ -181,15 +191,14 @@ export function TopBar({
   // crossed its count-in/pre-roll boundary. Poll that one boolean on the
   // existing shared rAF so the REC lamp changes at the actual content start.
   const [contentStarted, setContentStarted] = useState(() => {
-    const transport = services.transport;
-    return transport.playing && transport.position >= transport.anchorTickBeforePreRoll();
+    return hasTransportReachedContent(services.transport);
   });
   useEffect(() => {
     const syncTransportState = () => {
       const transport = services.transport;
       const nextPlaying = transport.playing;
       setPlaying(nextPlaying);
-      setContentStarted(nextPlaying && transport.position >= transport.anchorTickBeforePreRoll());
+      setContentStarted(hasTransportReachedContent(transport));
     };
     const unsubscribe = services.playback.subscribe(syncTransportState);
     syncTransportState();
@@ -215,7 +224,7 @@ export function TopBar({
     let last = "";
     registerRaf(loopRafId, () => {
       const t = services.transport;
-      const nextContentStarted = t.playing && t.position >= t.anchorTickBeforePreRoll();
+      const nextContentStarted = hasTransportReachedContent(t);
       setContentStarted((current) => (current === nextContentStarted ? current : nextContentStarted));
       const sig = `${t.loopEnabled}|${t.loopStart}|${t.loopEnd}|${t.metronome ? 1 : 0}`;
       if (sig === last) return;
