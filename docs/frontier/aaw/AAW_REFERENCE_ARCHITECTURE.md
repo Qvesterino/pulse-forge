@@ -361,15 +361,24 @@ adapters, because a beatmaker's "chorus" and a singer's "verse" are not the same
 KYX already exports `.kyxzyvo` (master + stems + the full project JSON + manifest) and ZYVO already
 imports it via `packages/project-format/src/kyxTransfer.ts` — tempo, per-scene tempo map,
 songStructure (role→section), markers, master mix → instrumental bed, stems → aligned muted
-channels. The known gap (per the repo's own plan note): **MIDI/patterns/notes are not transferred.**
+channels — **and editable MIDI**: `convertKyxMidi` turns the embedded source document's patterns into
+playable tracks (`packages/project-format/src/kyxTransfer.ts:486-493`), carrying real notes
+(`startBeat` / `durationBeats` / `pitch` / `velocity`,
+`packages/project-format/src/kyxDocument.ts:576-582`).
+
+> **Correction (2026-10-26).** This section originally stated that "MIDI/patterns/notes are not
+> transferred", citing the repo's own plan note. **That was already false when it was written** — the
+> ZYVO side has carried the MIDI conversion since 2026-09-26 (`9094664c`). A plan note rots exactly
+> like a stale comment does.
 
 **The frontier implication:** a shared _creative-context_ handoff should carry the same class of
 payload as the existing contract §3.2 describes — intent, tempo/key, section map, role labels,
-hard requirements, preserve/avoid, provenance, explicit uncertainty — **and should be able to carry
-the musical material that the current transfer drops.** Concretely: the `.kyxzyvo` transfer is the
-right _vehicle_, and the missing notes/patterns are the right _first fix_. That is a concrete,
-low-risk, high-value increment: **it makes a KYX beat editable in ZYVO rather than a flattened
-render**, and it is the substrate any cross-product AAW feature would need.
+hard requirements, preserve/avoid, provenance, explicit uncertainty. Concretely: the `.kyxzyvo`
+transfer is the right _vehicle_, and the first increment is **not** the notes (those cross, since
+2026-09-26) but the **intent and the provenance** — which today do not: the original KYX JSON
+travels as an opaque payload (`src/export/zyvo-transfer.ts:173,423`), preserved but not translated.
+That is a concrete, low-risk, high-value increment: **it makes a KYX beat editable in ZYVO rather
+than a flattened render**, and it is the substrate any cross-product AAW feature would need.
 
 ---
 

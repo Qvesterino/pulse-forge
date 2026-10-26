@@ -4,6 +4,13 @@
 **Date:** 2026-10-25
 **Companions:** `AAW_REFERENCE_ARCHITECTURE.md`, `AAW_SECURITY_AND_REALTIME_SAFETY.md`, `AAW_DECISION_LOG.md`
 
+> **This document is a TARGET-STATE specification.** The names below — `ActionPlan`,
+> `CommandGateway`, `PreviewArtifact`, `Scope`, `Transaction`, `Receipt`, the rules R-1…R-6, and the
+> capability ids in §7 — are **proposals, not existing code**: a search of `src/` finds no
+> `CommandGateway`, no `ActionPlan` and no `densityFrom`. Where a field points at an implementation,
+> it says so explicitly. _Corrected 2026-10-26: this was not stated anywhere, and the rule table
+> read like a description of the shipped codebase._
+
 ---
 
 ## 0. Purpose and the six rules these contracts enforce
@@ -16,14 +23,14 @@ checks the outcome against what was promised.
 
 ### The six rules
 
-| #       | Rule                                                                                         | Enforced by                                                                     |
-| ------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **R-1** | A model never writes project state. It emits a typed plan; the command gateway owns mutation | `ActionPlan` has no write primitive; `CommandGateway.apply` is the only mutator |
-| **R-2** | Nothing is applied that was not previewed. Preview and commit are the same plan instance     | `PreviewArtifact.planId` is re-validated at commit                              |
-| **R-3** | No operation touches a target outside its declared scope                                     | `Scope` + verifier's protected-content hash comparison                          |
-| **R-4** | Every applied change is exactly one undo unit and carries a receipt                          | `Transaction` + `Receipt`                                                       |
-| **R-5** | The system may abstain, and abstention is a first-class successful outcome                   | `ActionPlan.outcome: "plan" \| "alternatives" \| "abstain"`                     |
-| **R-6** | The real-time audio path never depends on inference, network, or unbounded work              | `CapabilityDescriptor.realtimeSafe` + `riskClass` + the engine audit            |
+| #       | Rule                                                                                         | Enforced by                                                                                                                           |
+| ------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **R-1** | A model never writes project state. It emits a typed plan; the command gateway owns mutation | _target state:_ `ActionPlan` has no write primitive; `CommandGateway.apply` is the only mutator (neither type exists in `src/` today) |
+| **R-2** | Nothing is applied that was not previewed. Preview and commit are the same plan instance     | `PreviewArtifact.planId` is re-validated at commit                                                                                    |
+| **R-3** | No operation touches a target outside its declared scope                                     | `Scope` + verifier's protected-content hash comparison                                                                                |
+| **R-4** | Every applied change is exactly one undo unit and carries a receipt                          | `Transaction` + `Receipt`                                                                                                             |
+| **R-5** | The system may abstain, and abstention is a first-class successful outcome                   | `ActionPlan.outcome: "plan" \| "alternatives" \| "abstain"`                                                                           |
+| **R-6** | The real-time audio path never depends on inference, network, or unbounded work              | `CapabilityDescriptor.realtimeSafe` + `riskClass` + the engine audit                                                                  |
 
 ### Versioning
 
@@ -617,7 +624,11 @@ thing). The plan below resolves it by **offering alternatives**, not by guessing
   "riskClass": "R2",
   "realtimeSafe": false,
   "undoUnit": true,
-  "implementation": { "module": "src/commands/", "export": "arrangement.densityFrom" }
+  "implementation": {
+    "status": "NOT IMPLEMENTED — target state",
+    "module": "src/commands/",
+    "export": "arrangement.densityFrom"
+  }
 }
 ```
 

@@ -190,7 +190,7 @@ regression gates built, because they are cheap, exact, and catch the most damagi
 | **H-6 Model cold start** | first inference after app launch                   | ≤ 8 s (text) / ≤ 20 s (audio model, if opted in)                                     | model-manager timer   |
 | **H-7 Memory**           | added RAM per enabled AI feature                   | ≤ 1.5 GB for the text path; audio model is a **separate, opt-in, explicit** download | process memory        |
 
-**Reference points already in the repo:** the deterministic taste benchmark records **13–104 ms**
+**Reference points already in the repo:** the deterministic taste benchmark records **10–104 ms**
 per prompt (`scripts/data/taste-benchmark.baseline.json`). Any AI path that is _slower than the
 deterministic path_ for the same interaction is a candidate for rejection on latency grounds alone —
 this is the red-team question "what if tool orchestration is slower than manual editing?" answered

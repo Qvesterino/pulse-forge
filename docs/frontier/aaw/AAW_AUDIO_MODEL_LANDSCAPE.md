@@ -164,7 +164,7 @@ Q4 decoder + Q4 vocoder, plus transformers.js Spaces using it. So a **browser-re
 is a demonstrated fact, not a wish** — but the payload is ~2.1 GB, which is 2,000× KYX's 1,070 KB
 entry budget. It therefore cannot be a boot-path dependency; it can only be an **explicit,
 user-initiated, cached download** — the same pattern KYX already uses for its ONNX intent model
-(`pf:intent-model`, ~6.75 MB). The gap between 6.75 MB and 2.1 GB is the real engineering problem.
+(`pf:intent-model`, ~2.6 MB — INT8 since 2026-10-14, commit `71ab4daa`; the manifest pins `model.bytes = 2,601,522`). The gap between 2.6 MB and 2.1 GB is the real engineering problem.
 
 ### 1.6 Measured performance — what exists, and what it does not
 
@@ -463,11 +463,11 @@ which are unusable commercially anyway.
 
 ### 3.6 F — Small task-specific models
 
-| Item                                     | Role                                 | Notes                                                                                                             | Evidence     |
-| ---------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------ |
-| KYX browser ONNX intent model            | slot-filling / intent classification | ~6.75 MB multi-head ONNX; **already shipped in-repo**; its `valHeadAccuracyMean` is _not_ a musical-quality score | repo (audit) |
-| KYX LFM SFT (`kyx-intent-v30-q8`)        | LoRA-tuned intent→plan               | Ollama, Q8_0, ~1.16 GB; pinned eval reports in `scripts/data/intent-sft/`                                         | repo (audit) |
-| Silero VAD, small classifiers, rerankers | utility                              | cheap, replaceable                                                                                                | **U**        |
+| Item                                     | Role                                 | Notes                                                                                                                                               | Evidence     |
+| ---------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| KYX browser ONNX intent model            | slot-filling / intent classification | ~2.60 MB multi-head ONNX (INT8, `model.bytes = 2,601,522`); **already shipped in-repo**; its `valHeadAccuracyMean` is _not_ a musical-quality score | repo (audit) |
+| KYX LFM SFT (`kyx-intent-v30-q8`)        | LoRA-tuned intent→plan               | Ollama, Q8_0, ~1.16 GB; pinned eval reports in `scripts/data/intent-sft/`                                                                           | repo (audit) |
+| Silero VAD, small classifiers, rerankers | utility                              | cheap, replaceable                                                                                                                                  | **U**        |
 
 ### 3.7 G — Multimodal planners / tool users
 
@@ -505,11 +505,11 @@ weaker local model can be _refused_ safely.
 
 ### A. Local-first (primary)
 
-| Tier                           | Hardware                                       | Stack                                                                                                                                                                                                    | Fits?                                                                                               |
-| ------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Development tier (assumed)** | 6–16 GB VRAM, 64 GB RAM, 1 dev + coding agents | Whisper-turbo (CT2/ONNX, CPU int8) for Slovak ASR; LFM2.5-Audio Q4_0 (llama.cpp) for English ASR/voice-chat experiments; LFM2.5-1.2B-Instruct (Ollama, Q8) for intent→plan; ONNX intent model in browser | **Yes**, comfortably: ~1.1 GB ASR + ~1.2 GB LLM + ~6.75 MB browser model; CPU-only ASR at RTF 0.077 |
-| **Aspirational tier**          | 24–48 GB VRAM, 128 GB RAM, team                | + local music-generation stack (ACE-Step-class), larger audio LLM, larger rerankers                                                                                                                      | **Conditional** on §7 experiments; not a prerequisite for the foundation                            |
-| **Browser-resident**           | user's WebGPU device                           | LFM2.5-Audio-1.5B-ONNX Q4 (~2.14 GB) for ASR/TTS                                                                                                                                                         | **Feasible but heavy**: user-initiated download only, never boot path                               |
+| Tier                           | Hardware                                       | Stack                                                                                                                                                                                                    | Fits?                                                                                              |
+| ------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Development tier (assumed)** | 6–16 GB VRAM, 64 GB RAM, 1 dev + coding agents | Whisper-turbo (CT2/ONNX, CPU int8) for Slovak ASR; LFM2.5-Audio Q4_0 (llama.cpp) for English ASR/voice-chat experiments; LFM2.5-1.2B-Instruct (Ollama, Q8) for intent→plan; ONNX intent model in browser | **Yes**, comfortably: ~1.1 GB ASR + ~1.2 GB LLM + ~2.6 MB browser model; CPU-only ASR at RTF 0.077 |
+| **Aspirational tier**          | 24–48 GB VRAM, 128 GB RAM, team                | + local music-generation stack (ACE-Step-class), larger audio LLM, larger rerankers                                                                                                                      | **Conditional** on §7 experiments; not a prerequisite for the foundation                           |
+| **Browser-resident**           | user's WebGPU device                           | LFM2.5-Audio-1.5B-ONNX Q4 (~2.14 GB) for ASR/TTS                                                                                                                                                         | **Feasible but heavy**: user-initiated download only, never boot path                              |
 
 ### B. Hybrid
 

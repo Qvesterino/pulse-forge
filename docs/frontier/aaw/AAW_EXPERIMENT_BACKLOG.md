@@ -120,17 +120,17 @@
 
 ### E-04 — Can a 2.1 GB speech model live in a browser?
 
-|                       |                                                                                                                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Question**          | Liquid documents running LFM2.5-Audio-1.5B in-browser with WebGPU. Does it work on **Windows Chrome/Edge** and **Safari**, at what first-audio latency, and what memory ceiling?        |
-| **Hypothesis**        | It works in Chromium with WebGPU; first-audio latency is 5–20 s after a 2.1 GB download; Safari's WebGPU is weaker and likely out.                                                      |
-| **Method**            | The published `onnxruntime-web` WebGPU example with the Q4 decoder + Q4 vocoder; measure download, load, first-audio latency, sustained RTF, and peak memory. Test Chromium and Safari. |
-| **Metric**            | First-audio latency; RTF; peak memory; download size                                                                                                                                    |
-| **Baseline**          | The browser ONNX intent model already shipped (~6.75 MB) — the _download-budget_ comparison is the real one                                                                             |
-| **Accept**            | RTF < 1 in Chromium **and** first-audio < 10 s after download → a browser speech feature is feasible as an **opt-in, explicit download**                                                |
-| **Kill**              | RTF > 1 in Chromium, or the download exceeds a user tolerance threshold → the speech model is desktop-only (or not at all)                                                              |
-| **Effort / hardware** | **M** · 16 GB RAM, WebGPU-capable GPU                                                                                                                                                   |
-| **Changes**           | Whether KYX Web can host a speech model — and therefore whether the product's AI story is browser-only or desktop-only                                                                  |
+|                       |                                                                                                                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Question**          | Liquid documents running LFM2.5-Audio-1.5B in-browser with WebGPU. Does it work on **Windows Chrome/Edge** and **Safari**, at what first-audio latency, and what memory ceiling?                  |
+| **Hypothesis**        | It works in Chromium with WebGPU; first-audio latency is 5–20 s after a 2.1 GB download; Safari's WebGPU is weaker and likely out.                                                                |
+| **Method**            | The published `onnxruntime-web` WebGPU example with the Q4 decoder + Q4 vocoder; measure download, load, first-audio latency, sustained RTF, and peak memory. Test Chromium and Safari.           |
+| **Metric**            | First-audio latency; RTF; peak memory; download size                                                                                                                                              |
+| **Baseline**          | The browser ONNX intent model already shipped (~2.60 MB, INT8 since 2026-10-14 — the earlier "~6.75 MB" figure predates the INT8 quantisation) — the _download-budget_ comparison is the real one |
+| **Accept**            | RTF < 1 in Chromium **and** first-audio < 10 s after download → a browser speech feature is feasible as an **opt-in, explicit download**                                                          |
+| **Kill**              | RTF > 1 in Chromium, or the download exceeds a user tolerance threshold → the speech model is desktop-only (or not at all)                                                                        |
+| **Effort / hardware** | **M** · 16 GB RAM, WebGPU-capable GPU                                                                                                                                                             |
+| **Changes**           | Whether KYX Web can host a speech model — and therefore whether the product's AI story is browser-only or desktop-only                                                                            |
 
 ### E-05 — Can a speech model call a DAW's tools?
 
