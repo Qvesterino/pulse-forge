@@ -1,12 +1,18 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Inspector } from "../../src/ui/Inspector";
+import { SampleBrowser } from "../../src/ui/SampleBrowser";
 import { createInstrumentTrack } from "../../src/commands/commands";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { UserSampleAsset } from "../../src/persistence/UserSampleRepository";
 import type { InstrumentTrack } from "../../src/project-model/types";
 import { mockServices, renderWithContext } from "../helpers";
+
+// The drop → propose → apply flow moved from the Inspector into the sample
+// browser (BrowserStrip lazy chunk) — the contract under test follows it.
+vi.mock("../../src/ui/IntakeTray", () => ({
+  IntakeTray: () => null,
+}));
 
 vi.mock("../../src/ui/FreesoundSection", () => ({
   FreesoundSection: () => null,
@@ -70,7 +76,9 @@ describe("Sampler AutoMap UI contract", () => {
     const user = userEvent.setup();
     const { track, doc } = samplerDoc();
     const services = mockServices(doc);
-    renderWithContext(<Inspector track={track} selectedPadId="pad-1" />, { services });
+    renderWithContext(<SampleBrowser assets={[]} currentId={null} showDropZone targetTrack={track} />, {
+      services,
+    });
 
     await user.click(screen.getByRole("button", { name: "Mock multi-sample drop" }));
     expect(services.store.execute).not.toHaveBeenCalled();
@@ -90,7 +98,9 @@ describe("Sampler AutoMap UI contract", () => {
     const user = userEvent.setup();
     const { track, doc } = samplerDoc();
     const services = mockServices(doc);
-    renderWithContext(<Inspector track={track} selectedPadId="pad-1" />, { services });
+    renderWithContext(<SampleBrowser assets={[]} currentId={null} showDropZone targetTrack={track} />, {
+      services,
+    });
 
     await user.click(screen.getByRole("button", { name: "Mock multi-sample drop" }));
     await user.click(screen.getByRole("button", { name: "CANCEL" }));

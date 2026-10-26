@@ -282,7 +282,9 @@ describe("ContextMenu — zone duplicate failure routing", () => {
       { services },
     );
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+    // The label carries the shortcut hint since the hint-unification wave
+    // ("Duplicate (Ctrl+D)") — anchor instead of exact equality.
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Duplicate/ }));
 
     // The failure is surfaced in the range editor (which accepts an adjusted
     // range for retry) instead of an unhandled throw from the click handler.

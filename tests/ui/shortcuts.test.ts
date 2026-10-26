@@ -104,8 +104,15 @@ describe("shortcut bindings", () => {
     });
     expect(global).toMatchObject({ ok: false, message: expect.stringContaining("Redo") });
 
-    const editor = setShortcutBinding("playPause", {
-      keyHint: "v",
+    // The editor-action collision: every Ctrl+Shift+letter chord is owned by
+    // a global shortcut or browser-reserved today, so the editor branch is
+    // only reachable through the self-skip — rebinding `ungroupClips` onto
+    // Ctrl+Shift+G skips the global list's own entry and lands on the
+    // "Group / ungroup the selected clips" editor action. (playPause →
+    // Ctrl+Shift+V used to probe this until "Vary active pattern" took the
+    // chord and the global check began answering first.)
+    const editor = setShortcutBinding("ungroupClips", {
+      keyHint: "g",
       ctrl: true,
       shift: true,
       alt: false,
