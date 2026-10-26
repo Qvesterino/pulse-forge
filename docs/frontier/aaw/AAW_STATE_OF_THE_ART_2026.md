@@ -307,6 +307,11 @@ The brief allows new tracks only when justified. Five qualify:
    files — **no agent-path check for rehearsal/gig mode**. _Caveat, stated honestly:_ the audit did
    **not** prove that the Live window's modality makes this unreachable; that is a **runtime check
    that has not been done**.
+   _Update 2026-10-26 (measured, then wired):_ the branch was measured **unreachable in the app** —
+   the `autoApplyProposal` dep never reached the host the app actually uses — so the hazard was
+   **latent, not live**. It was then **wired on purpose** (T1), with a show lock already in front of
+   it; the lock is now a **constructor rule** and the auto-apply does fire. See
+   `AAW_DECISION_LOG.md` D-15 and `AAW_SECURITY_AND_REALTIME_SAFETY.md` H4.
 2. **H5 — a contract-truth defect.** `packages/command-core/src/registry.ts:43-46` still asserts that
    _"the transport MAY apply in command mode"_. The enforced behaviour is the **opposite**:
    `agentVoiceManager.ts:5638-5648` deliberately does not forward autonomy, and the MCP server header
