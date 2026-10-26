@@ -470,7 +470,13 @@ export class TriggerEngine {
     const nodes = this.deps.trackNodes.get(clip.trackId) ?? this.deps.groupNodes.get(clip.trackId);
     if (!nodes) return;
     const srcBuffer = this.deps.bank()?.get(clip.bufferId);
-    if (!srcBuffer) return;
+    if (!srcBuffer) {
+      // Audit E-02: a clip whose asset is missing is DROPPED. The drum path
+      // below reports the same kind of miss — one mechanism, so the export can
+      // see both instead of guessing which sounds the file silently lost.
+      this.deps.missAsset(clip.bufferId);
+      return;
+    }
 
     const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
     const reverse = clip.reverse;

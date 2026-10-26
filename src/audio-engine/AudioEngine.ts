@@ -1105,6 +1105,39 @@ export class AudioEngine {
     return ctx.createGain();
   }
 
+  /**
+   * The last project-sync failure (audit E-03).
+   *
+   * `setProject` catches a thrown body so a hostile document cannot break the
+   * app — but a half-built graph must not be INVISIBLE. The console keeps the
+   * first trace; this record is the queryable fact the export path consults,
+   * so a failed sync can never end in "exported".
+   */
+  private lastProjectSyncFailure: { message: string; at: number } | null = null;
+
+  /**
+   * The last project-sync failure, or null when the graph is whole.
+   *
+   * Audit E-03: a thrown project body leaves the graph half-built. The export
+   * renders whatever the graph holds and reports success — this is the fact
+   * that lets the export refuse instead.
+   */
+  get projectSyncFailure(): { message: string; at: number } | null {
+    return this.lastProjectSyncFailure;
+  }
+
+  /**
+   * Resolves once the queued project body has settled — synced or failed.
+   *
+   * The body runs inside a promise, so a failure is recorded in a MICROTASK:
+   * right after `setProject` returns, the record is not there yet. A caller
+   * that has to act on the outcome (the export) must await this first.
+   */
+  async whenProjectSettled(): Promise<void> {
+    const pending = this.projectPromise;
+    if (pending) await pending;
+  }
+
   setProject(doc: ProjectDocument): void {
     // `this.doc = doc` MUST be synchronous — the offline renderer and the
     // surrounding UI read `engine.doc` immediately after this returns, so
@@ -1132,6 +1165,9 @@ export class AudioEngine {
       }
       if (this.ctx) {
         this.syncProject(target);
+        // The graph is whole again — a failure recorded for an earlier project
+        // must not be read as this one's (audit E-03).
+        this.lastProjectSyncFailure = null;
         this.queueInstrumentWorkletLoad(this.ctx, target);
       }
     };
@@ -1151,6 +1187,10 @@ export class AudioEngine {
         // the console, never as an unhandled rejection. The graph may be
         // half-synced — the next setProject re-syncs (queueFxRebuild guards
         // the same hazard on its own path).
+        this.lastProjectSyncFailure = {
+          message: err instanceof Error ? err.message : String(err),
+          at: Date.now(),
+        };
         console.error("[audio-engine] setProject body failed:", err);
       } finally {
         this.projectPromise = null;

@@ -28,6 +28,7 @@ import { computeSceneIntensity } from "../project-model/intensity";
 import { scenePerformanceOf, type ScenePerformance } from "../project-model/scene-performance";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
+import { soloAudibility } from "../project-model/solo-audibility";
 import { automationClipForTarget, automationTargetsOfClip, targetParamDef } from "../project-model/targets";
 
 export type ExportQuality = "live" | "studio";
@@ -141,6 +142,67 @@ export function assertGenerativeExportSources(doc: ProjectDocument, bank: Sample
       }
     }
   }
+}
+
+/**
+ * Audit E-02: an export must not silently lose a sound.
+ *
+ * A clip whose audio asset is missing is DROPPED by the trigger engine, the
+ * render completes, the file is written, and the status says "exported" — a
+ * master that quietly lost a part, with nothing to notice it.
+ *
+ * The check is DOCUMENT-driven, not "whatever the engine reported", because
+ * the engine's list cannot say whether the lost sound was AUDIBLE: a clip on a
+ * muted (or soloed-out) track is silent in the mix anyway, and refusing that
+ * export would block a legitimate file. `soloAudibility` is the one owner of
+ * "is this track audible" — the mixer, the drum scheduler and the group
+ * commands all read the same rule, so the export cannot disagree with them.
+ *
+ * Pattern mode renders no arrangement audio at all, so it has nothing to lose.
+ */
+export function assertExportAssetsPresent(doc: ProjectDocument, bank: SampleBank, mode: PlayMode): void {
+  if (mode !== "song") return;
+  const solo = soloAudibility(doc);
+  const missing: Array<{ assetId: string; clipId: string; trackName: string }> = [];
+  for (const clip of audioClipsForPlayback(doc.arrangement)) {
+    if (!solo.audible(clip.trackId)) continue;
+    if (bank.has(clip.bufferId)) continue;
+    missing.push({
+      assetId: clip.bufferId,
+      clipId: clip.id,
+      trackName: doc.tracks.find((track) => track.id === clip.trackId)?.name ?? clip.trackId,
+    });
+  }
+  if (missing.length === 0) return;
+  const listed = missing
+    .slice(0, 5)
+    .map((entry) => `"${entry.assetId}" (clip ${entry.clipId} on "${entry.trackName}")`)
+    .join(", ");
+  const more = missing.length > 5 ? ` and ${missing.length - 5} more` : "";
+  const plural = missing.length === 1;
+  throw new Error(
+    `${missing.length} audio asset${plural ? "" : "s"} this export needs ${plural ? "is" : "are"} missing: ${listed}${more}. ` +
+      `Restore the sample${plural ? "" : "s"} or remove the clip${plural ? "" : "s"}, then export again — ` +
+      `the file would otherwise be written without ${plural ? "it" : "them"}.`,
+  );
+}
+
+/**
+ * Audit E-03: the export must not render a HALF-BUILT graph.
+ *
+ * A thrown project body leaves the audio graph half-synced. The engine
+ * swallows the throw so a hostile document cannot break the app — but the
+ * render would then produce a file that does not match the project, write it,
+ * and report "exported". The console was the only signal; this is the one
+ * the export acts on.
+ */
+export function assertProjectGraphBuilt(failure: { message: string } | null): void {
+  if (!failure) return;
+  throw new Error(
+    `The audio graph could not be built for this project (${failure.message}). ` +
+      `The export was not written — it would have rendered a half-built graph. ` +
+      `Fix the offending effect or instrument, then export again.`,
+  );
 }
 
 /** @throws AbortError when the export was cancelled during setup. */
@@ -500,6 +562,10 @@ export async function renderProject(
   // `user.*` buffers — and a freeze would persist that silence permanently.
   await userSamplesReadyWithin(bank, 4000);
   throwIfAborted(options.signal);
+  // Audit E-02: the export must not write a file that quietly lost a sound.
+  // AFTER the readiness waits — a user sample that is still hydrating is not
+  // a missing asset, and the guard must not fire on it.
+  assertExportAssetsPresent(doc, bank, options.mode);
   const tail = options.tailSeconds ?? resolveRenderTailSeconds(doc);
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const barUnit = ticksPerBar(doc);
@@ -561,6 +627,12 @@ export async function renderProject(
       engine.setProject(renderDoc);
       if (options.masterBypassed === true) engine.setMasterBypassed(true, true);
     }
+
+    // Audit E-03: the project body runs in a promise, so a failure is
+    // recorded a MICROTASK later — settle before the render starts, and
+    // refuse to write a file rendered from a half-built graph.
+    await engine.whenProjectSettled();
+    assertProjectGraphBuilt(engine.projectSyncFailure);
 
     // Global Live/Export quality switch (opt-in): push the runtime quality
     // bumps AFTER the project sync so they win over the document values
