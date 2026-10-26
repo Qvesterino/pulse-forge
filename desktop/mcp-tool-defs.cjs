@@ -3626,13 +3626,13 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_automation",
     description:
-      "Automation lanes on the project timeline: add a point (lane is created on demand — one undo step for both), delete the point nearest a bar, clear a lane, or remove a lane (clear/remove are destructive-gated). Targets: trackId or family + param — 'gain' or 'pan' for track lanes, or effect+param for FX-parameter lanes (see kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, fx params per their registry range); out-of-range values are clamped. Read the lanes first via kyx_state subject:automation.",
+      "Inspect real inserted effect targets with listTargets, or edit automation lanes on the project timeline: add a point or bounded two-point ramp (each is one undo step), created on demand — one undo step for both), delete the point nearest a bar, clear a lane, or remove a lane (clear/remove are destructive-gated). Targets: trackId or family + param — 'gain' or 'pan' for track lanes, or effect+param for FX-parameter lanes (see kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, fx params per their registry range); out-of-range values are clamped. Read the lanes first via kyx_state subject:automation.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["addPoint", "movePoint", "deletePoint", "clearLane", "removeLane"],
+          enum: ["listTargets", "addPoint", "addRamp", "movePoint", "deletePoint", "clearLane", "removeLane"],
         },
         trackId: {
           type: "string",
@@ -3668,6 +3668,18 @@ const MCP_TOOL_DEFS = [
           maximum: 8192,
           description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
         },
+        startBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8192,
+          description: "For addRamp — 1-based start bar (inclusive)",
+        },
+        endBar: {
+          type: "integer",
+          minimum: 2,
+          maximum: 8192,
+          description: "For addRamp — 1-based end bar (exclusive boundary)",
+        },
         newBar: {
           type: "integer",
           minimum: 1,
@@ -3689,6 +3701,14 @@ const MCP_TOOL_DEFS = [
         value: {
           type: "number",
           description: "NATIVE value for addPoint (clamped into the target's range)",
+        },
+        fromValue: {
+          type: "number",
+          description: "NATIVE start value for addRamp; must be within the target range",
+        },
+        toValue: {
+          type: "number",
+          description: "NATIVE end value for addRamp; must be within the target range",
         },
         requestId: {
           type: "string",
@@ -3738,6 +3758,14 @@ const MCP_TOOL_DEFS = [
             additionalProperties: true,
           },
           maxItems: 4096,
+        },
+        targets: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 64,
         },
       },
       required: ["status", "stage"],

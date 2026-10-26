@@ -867,7 +867,8 @@ export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], inte
  *
  * `moved`     — the value landed and changed ("808 reverb.decay 1.80 s→2.50 s").
  * `added`     — the effect instance was created by this apply (a track that
- *               had no such effect now has one); the value may be the default.
+ *               had no such effect now has one); the entry names the param
+ *               and the value it landed at ("808 delay.time=375 ms").
  * `unchanged` — the target resolved and already held the value.
  * `skipped`   — the target resolved to NOTHING in this project.
  *
@@ -950,8 +951,15 @@ export function paramReadbackReport(
     if (beforeValue === afterValue) {
       // No value move — but the effect may have been CREATED by this apply,
       // which is a real change that must not be reported as "nothing happened".
-      if (!beforeInstance && afterInstance) report.added.push(entry.trackName);
-      else report.unchanged.push(entry.trackName);
+      // F-18: the entry names the param and the landed value ("808
+      // delay.time=375 ms"), not just the track — a fresh add that lands at
+      // the registry default (delay.time IS 375 ms) must still tell the
+      // agent WHICH param came to exist and at WHICH value.
+      if (!beforeInstance && afterInstance) {
+        report.added.push(`${entry.trackName} ${intent.effectType}.${intent.paramId}=${fmt(afterValue)}`);
+      } else {
+        report.unchanged.push(entry.trackName);
+      }
       continue;
     }
     // The effect type belongs in the name: "decay" exists on reverb AND on
