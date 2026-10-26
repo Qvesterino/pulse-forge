@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
 import { createDrumTrackModel, normalizeProject } from "../src/project-model/schema";
 import { EFFECT_DEFS } from "../src/effects/registry";
-import type { EffectRuntime, ProjectDocument, EffectInstance } from "../src/project-model/types";
+import type { ProjectDocument, EffectInstance } from "../src/project-model/types";
+import type { EffectRuntime } from "../src/effects/types";
 
 /**
  * A BYPASS TOGGLE IS A PARAMETER WRITE, NOT A CHAIN REBUILD (ADR 0068).
