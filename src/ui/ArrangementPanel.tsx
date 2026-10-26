@@ -1783,7 +1783,14 @@ export function ArrangementPanel() {
             addRecordedAudioClips(currentDoc, routing.destinations, bufferId, startBar, lengthBars, patch),
           );
         }
-        const routingWarnings = [
+        const takeWarnings = [
+          // Audit R-1: the frame count was the only gate, so a take that
+          // captured nothing at all (muted input, a device that delivered
+          // nothing) was placed and shown like any other take. The take stays
+          // — it is the user's audio — but the app SAYS that it is silent.
+          ...(take.silence.silent
+            ? ["This take is SILENT — no audio was captured. It was placed and saved as it is."]
+            : []),
           ...(routing.unavailableChannels.length
             ? [
                 `Captured channel${routing.unavailableChannels.length > 1 ? "s" : ""} ${routing.unavailableChannels.map((channel) => channel + 1).join(", ")} unavailable; remaining channel audio was placed.`,
@@ -1798,8 +1805,7 @@ export function ArrangementPanel() {
             ? ["The saved channel map was unavailable; the complete take was restored on its primary track."]
             : []),
         ];
-        if (routingWarnings.length)
-          persistenceWarning = [persistenceWarning, ...routingWarnings].filter(Boolean).join(" ");
+        if (takeWarnings.length) persistenceWarning = [persistenceWarning, ...takeWarnings].filter(Boolean).join(" ");
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         persistenceWarning = [

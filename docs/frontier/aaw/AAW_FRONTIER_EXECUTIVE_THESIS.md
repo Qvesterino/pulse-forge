@@ -98,12 +98,17 @@ AI parts acceptable at all. **Wave 0 is blocking, not parallel.**
 **Bet 2 — Perception stays deterministic (DSP/MIR + commercially-licensed embeddings) and becomes a
 cache, not a stage.**
 KYX has excellent classical DSP perception (transients, impulse-train tempo, Goertzel chroma +
-Krumhansl key with honest evidence floors, RMS-energy sections, BS.1770-4 loudness) and **no** audio
-embeddings, **no** tagging, **no** audio-LLM — verified by exhaustive search of `src/`. The
-landscape says close that gap with **embeddings and cached, revision-keyed analysis artifacts**,
-not with a frontier audio-LM: the strong ones are non-commercial or server-class. Keyed by
-`(projectRevision, artifactId, algoVersion)`, so perception is **reproducible** and the verifier's
-claims stay checkable.
+Krumhansl key with honest evidence floors, RMS-energy sections, BS.1770-4 loudness) **and an
+AudioSet/AST tagger** that classifies every sample and drives a reference→intent path.
+**Correction (2026-10-26):** this program originally wrote that KYX has "**no** audio embeddings,
+**no** tagging, **no** audio-LLM — verified by exhaustive search of `src/`". The _tagging_ half was
+**false**: the search used the wrong tokens (`embedAudio` / `audioEmbedding` instead of
+`audio-classification` / `ast-finetuned-audioset`). What stands is **no audio embedding space**
+and **no audio-LLM** — and, more usefully, the tagger is **not exposed on the MCP tool surface**,
+so the product hears and the agent does not. The landscape says close that gap with **embeddings
+and cached, revision-keyed analysis artifacts**, not with a frontier audio-LM: the strong ones are
+non-commercial or server-class. Keyed by `(projectRevision, artifactId, algoVersion)`, so
+perception is **reproducible** and the verifier's claims stay checkable.
 
 **Bet 3 — The category-defining interaction is _situated_, not conversational.**
 Selection-aware, two-variant, instantly switchable, with a **numeric diff** ("+4 ghost notes, −2
@@ -178,13 +183,20 @@ exists and the real risk is overreach.
 **Week 1 — Repository audit and baselines.** The two repository audits in this program are the
 baseline; re-run them against the current tree before touching anything. Confirm the three numbers
 that everything else depends on: the **21 mutating tools that run without consent**, the
-**in-memory undo stack**, and the **absence of any audio embedding path**.
+**in-memory undo stack**, and the **absence of any audio embedding space** (corrected 2026-10-26 —
+tagging _does_ ship; the embedding space does not).
 
 **Week 2 — The three experiments that discriminate.** **E-03** (does the official LFM audio path
 survive a 3-minute song on Windows? — CPU, ~20 GB disk), **E-07** (can any DSP feature separate
 "more tense" from "less tense"? — 60 blind pairs), **E-06** (does embedding retrieval beat metadata
 search? — 100 prompts, human labels). All three are CPU-only, all three can _cancel_ work rather
 than create it, and E-07 alone can cancel the most expensive feature in the program.
+
+**Week 2, added 2026-10-26 — E-14.** This program published a _verified absence_ of audio tagging
+in KYX and was **wrong** (EG-14). The correction is a claim; **E-14** makes it a measurement: how
+accurate is the AudioSet tagger that already ships? **S**, CPU, the model is already local. It
+decides whether K-1 is an AudioSet index plus better queries (weeks) or an audio embedding layer
+(months) — and it is the only experiment here that measures something the user can already hear.
 
 **Week 3 — The blocking wave.** Write the capability-descriptor extension (`version`, `sideEffects`,
 `realtimeSafe`, `latencyClass`, `riskClass`, `undoUnit`) over the 57 effects and 39 tools; write

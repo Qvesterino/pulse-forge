@@ -257,8 +257,10 @@ different decision rule.
 **Honest answer: this is already true.** The verified landscape says the strongest open
 music-understanding models are **non-commercial** (Audio Flamingo: NVIDIA OneWay; MERT, Music2Latent,
 MusicGen, YuE2: CC-BY-NC-4.0) or **server-class** (Qwen3-Omni: 35 B). No open, commercially usable,
-music-understanding model fits a 6–16 GB tier. KYX today has **no** audio embeddings, **no**
-tagging, **no** audio-LLM — verified by exhaustive search of `src/`.
+music-understanding model fits a 6–16 GB tier. KYX today has **no** audio embeddings and **no**
+audio-LLM — and, as of the 2026-10-26 correction, it does **not** lack tagging either: an
+AudioSet/AST tagger ships and is wired into library search and the reference→intent path. What is
+missing is the **embedding space** and any **measured accuracy** for the tagger (→ **E-14**).
 
 **Consequence:** the perception layer must be **deterministic DSP/MIR plus embeddings**, and the
 _tension_ claim must go. → **Changed:** K-6 ships without an emotional claim; E-07 was promoted to
@@ -418,3 +420,9 @@ was rewritten around this, and "Top 5 Things Not to Build Yet" now leads with th
    whether the flagship claim is a measurement or a hope, and can cancel the most expensive feature.
 3. **E-06 — Does embedding retrieval beat metadata search for the library?** (S–M, CPU) — the
    cheapest high-visibility capability, with an immediate ship/kill answer.
+
+**Plus one, because it is nearly free and this program got it wrong once:** **E-14 — how accurate is
+the AudioSet tagger that already ships?** (S, CPU; the model is already local). On 2026-10-25 this
+program published a _verified absence_ of audio tagging in KYX, and it was **false** (EG-14). The
+correction is a claim; **E-14** makes it a measurement — and it decides whether K-1 is an AudioSet
+index plus better queries (weeks) or an audio embedding layer (months).

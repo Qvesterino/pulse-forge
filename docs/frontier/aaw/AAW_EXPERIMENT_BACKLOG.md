@@ -178,6 +178,20 @@
 | **Effort**     | **S–M** · CPU                                                                                                                                                                  |
 | **Changes**    | Whether K-1 is a differentiator or a gimmick — and it is cheap to find out                                                                                                     |
 
+### E-14 — How accurate is the AudioSet tagger that already ships?
+
+|                |                                                                                                                                                                                                                                                                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Question**   | KYX already classifies every sample with an AudioSet/AST tagger (`src/sample-library/audio-index.ts`) and turns a reference track into intent conditioning (`src/intent/audio-reference.ts`). **How accurate is it?**                                                                                                                     |
+| **Hypothesis** | Strong on the drum/bass/perc palette it was chosen for (the AudioSet classes _are_ that palette) and weak on anything textural — so the label-mediated bridge is a good foundation for library search and a bad one for timbral search.                                                                                                   |
+| **Method**     | 120 labelled clips (the factory bank plus reference tracks): human label set vs the top-K AudioSet labels, per-class precision@1/@3; then the end-to-end question — does the current query → label → rank path return the asset the user meant? Report the **search** hit rate separately: that is the number the product actually feels. |
+| **Metric**     | Per-class precision@1/@3; top-1 hit rate on the library query path                                                                                                                                                                                                                                                                        |
+| **Baseline**   | The human label set (ground truth). The shipped path is the **candidate under test**, not the baseline                                                                                                                                                                                                                                    |
+| **Accept**     | Top-1 ≥ 80 % on the drum/bass palette → the tagger is a shipped foundation and K-1 can be built on it                                                                                                                                                                                                                                     |
+| **Kill**       | Top-1 < 60 % → the tagger cannot carry library search; the label-mediated bridge is dropped and E-06 (audio embeddings) becomes a prerequisite rather than an option                                                                                                                                                                      |
+| **Effort**     | **S** · CPU (the model is already local — `npm run audio:fetch`)                                                                                                                                                                                                                                                                          |
+| **Changes**    | Whether K-1 (timbral search) is "an AudioSet index plus better queries" (weeks) or "an audio embedding layer" (months) — and whether this program's perception claims are safe to make in public                                                                                                                                          |
+
 ### E-08 — Preview-to-commit parity under real edits
 
 |                |                                                                                                                                                 |
@@ -228,28 +242,29 @@
 
 ## 6. Experiments deliberately NOT in this backlog
 
-| Idea                                                     | Why not                                                                                                                                                           |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "Does a big LLM write better briefs than the small one?" | The repo already measures 75 % exact-match on the intent corpus; the binding constraint is not brief quality but proposal validity. Revisit only if Suite A fails |
-| "Can we auto-tag our library?"                           | Metadata + embeddings already cover it; tagging is not a user-facing capability                                                                                   |
-| "Train a better embedding model"                         | Not until E-06 shows the _current_ embedding loses to metadata search. No baseline, no training                                                                   |
-| "Compare LFM2.5-24B vs 1.2B for planning"                | The 24B model is 24 GB and needs a server; the product is local-first. The comparison is not affordable at this tier                                              |
-| "Should the browser bundle the intent ONNX model?"       | Already decided by the bundle budget; not an experiment                                                                                                           |
+| Idea                                                     | Why not                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Does a big LLM write better briefs than the small one?" | The repo already measures 75 % exact-match on the intent corpus; the binding constraint is not brief quality but proposal validity. Revisit only if Suite A fails                                                                                                                                                                                     |
+| "Can we auto-tag our library?"                           | **Already shipped** (corrected 2026-10-26): an AudioSet/AST tagger classifies every factory and user sample (`src/sample-library/audio-index.ts`), and the model is fetched locally by `npm run audio:fetch`. The open question is not _whether_ to tag but whether the tagger is **accurate enough** — and no accuracy measurement exists → **E-14** |
+| "Train a better embedding model"                         | Not until E-06 shows the _current_ embedding loses to metadata search. No baseline, no training                                                                                                                                                                                                                                                       |
+| "Compare LFM2.5-24B vs 1.2B for planning"                | The 24B model is 24 GB and needs a server; the product is local-first. The comparison is not affordable at this tier                                                                                                                                                                                                                                  |
+| "Should the browser bundle the intent ONNX model?"       | Already decided by the bundle budget; not an experiment                                                                                                                                                                                                                                                                                               |
 
 ---
 
 ## 7. Execution order
 
-| Slot   | Experiment         | Why this slot                                                               |
-| ------ | ------------------ | --------------------------------------------------------------------------- |
-| **1**  | **E-03**           | Cheapest experiment that can invalidate a capability class                  |
-| **2**  | **E-07**           | Decides whether the flagship capability is a measurement or a claim         |
-| **3**  | **E-06**           | Cheap, high-visibility, and likely to ship                                  |
-| **4**  | **E-01**           | Decides the audio model question (and the licence question)                 |
-| **5**  | **E-11**           | Closes or opens the most expensive architectural idea                       |
-| **6**  | **E-02**           | Needs a consented corpus → start collecting in parallel, run in month 2     |
-| **7**  | **E-08**           | Mechanical; run continuously from Wave 0                                    |
-| **8**  | **E-12**           | The most interesting architectural question; run when the runtime is stable |
-| **9**  | **E-04**           | Decides browser feasibility; needs hardware time                            |
-| **10** | **E-09**, **E-10** | Human-subject work; run once there is a feature worth testing               |
-| **11** | **E-05**, **E-13** | Expensive; run only if their predecessors pass                              |
+| Slot   | Experiment         | Why this slot                                                                |
+| ------ | ------------------ | ---------------------------------------------------------------------------- |
+| **1**  | **E-03**           | Cheapest experiment that can invalidate a capability class                   |
+| **2**  | **E-07**           | Decides whether the flagship capability is a measurement or a claim          |
+| **3**  | **E-06**           | Cheap, high-visibility, and likely to ship                                   |
+| **4**  | **E-14**           | **S**, the model is already local — measures a capability that already ships |
+| **5**  | **E-01**           | Decides the audio model question (and the licence question)                  |
+| **6**  | **E-11**           | Closes or opens the most expensive architectural idea                        |
+| **7**  | **E-02**           | Needs a consented corpus → start collecting in parallel, run in month 2      |
+| **8**  | **E-08**           | Mechanical; run continuously from Wave 0                                     |
+| **9**  | **E-12**           | The most interesting architectural question; run when the runtime is stable  |
+| **10** | **E-04**           | Decides browser feasibility; needs hardware time                             |
+| **11** | **E-09**, **E-10** | Human-subject work; run once there is a feature worth testing                |
+| **12** | **E-05**, **E-13** | Expensive; run only if their predecessors pass                               |

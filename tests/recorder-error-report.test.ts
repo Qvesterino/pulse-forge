@@ -44,7 +44,7 @@ class FakeWorkletNode {
 
 /** A repo whose storage fails on the first block — the take cannot be saved. */
 class FailingRepo extends RecordingRecoveryRepository {
-  override async appendChunk(chunk: Parameters<RecordingRecoveryRepository["appendChunk"]>[0]): Promise<void> {
+  override async appendChunk(_chunk: Parameters<RecordingRecoveryRepository["appendChunk"]>[0]): Promise<void> {
     throw new RecordingStorageQuotaError("Browser storage filled during recording");
   }
 }

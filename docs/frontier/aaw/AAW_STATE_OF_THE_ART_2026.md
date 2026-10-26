@@ -47,10 +47,10 @@ invented.
 | **Live/offline render parity — one engine class**                            | **SHIPS**                         | `src/rendering/renderer.ts:516` (`new OfflineAudioContext`), `:525` (`new AudioEngine()` — _the same class_), `:528` (`engine.useContext(ctx)`), `:523` (`ensureWorkletsForDoc`), `:534` (`unfreezeDoc`), `:559` (`bypassMasterChainForOfflineRender`)                                                                                                                                                                                                                                                                                                                                                                                  |
 | **Preview without touching the live graph**                                  | **SHIPS**                         | `src/mcp/mix-preview.ts:33-48` (before/after docs held in a session lane); `src/rendering/stems.ts:9-50` (`buildStemProject` → a _derived_ document); `src/mcp/mix-diagnosis.ts:30-33` ("Pure read — never mutates")                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **A hard real-time boundary**                                                | **SHIPS (by exhaustive absence)** | **51** `extends AudioWorkletProcessor` classes across **50** files in `src/audio-worklets/`; grep for `fetch(`/`XMLHttpRequest`/`WebSocket` over `src/audio-worklets/**` **and** `src/audio-engine/**` → **no matches**; `src/audio-worklets/rt-monitor-node.ts:1-24` (xrun + heartbeat probe)                                                                                                                                                                                                                                                                                                                                          |
-| **Typed, agent-visible effect metadata**                                     | **SHIPS**                         | `src/effects/types.ts:3-48` (`ParamDef`: id/label/min/max/default/unit/description/kind/step/taper/options/deprecated/aliasOf), `:269-275` (`EffectDefinition`); `src/effects/registry.ts:3936-3993` (**57** effects) exposed via `kyx_catalog subject:effect` (`src/effects/types.ts:11-16`)                                                                                                                                                                                                                                                                                                                                           |
+| **Typed, agent-visible effect metadata**                                     | **SHIPS**                         | `src/effects/types.ts:3-48` (`ParamDef`: id/label/min/max/default/unit/description/kind/step/taper/options/deprecated/aliasOf), `:269-275` (`EffectDefinition`); `src/effects/registry.ts:3936-3993` (**57** effects) exposed via `kyx_catalog subject:effect` (`src/effects/src/project-model/types.ts:11-16`)                                                                                                                                                                                                                                                                                                                         |
 | **Parameter ranges enforced twice** (not just in the UI)                     | **SHIPS**                         | `src/effects/definitions.ts:331-343` (`clampEffectParam`); `src/commands/effectParams.ts:101-105`; `src/audio-engine/AudioEngine.ts:19,73-82,398`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Versioned project schema + real migrations + future-version rejection**    | **SHIPS**                         | `src/project-model/schema.ts:62` (`SCHEMA_VERSION = 38`), `:3549-3554` (`migrateProject`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| **Musical time as integers**                                                 | **SHIPS**                         | `src/project-model/types.ts:1` (`PPQ = 480`); `src/rendering/renderer.ts:504-505`; `src/rendering/tempoMap.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Versioned project schema + real migrations + future-version rejection**    | **SHIPS**                         | `src/project-model/src/project-model/schema.ts:62` (`SCHEMA_VERSION = 38`), `:3549-3554` (`migrateProject`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Musical time as integers**                                                 | **SHIPS**                         | `src/project-model/src/project-model/types.ts:1` (`PPQ = 480`); `src/rendering/renderer.ts:504-505`; `src/rendering/tempoMap.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **A traversable project graph**                                              | **SHIPS**                         | `src/project-model/types.ts:730` (Scene), `:795` (Marker), `:816` (ArrangementClip), `:872` (ArrangementTransition), `:978` (ClipGroup), `:999` (Arrangement), `:1024` (AutomationLane); `src/project-model/targets.ts:202-254` (legal automation targets)                                                                                                                                                                                                                                                                                                                                                                              |
 | **A deterministic-first intent pipeline**                                    | **SHIPS**                         | `src/intent/route.ts:382-410` (`RoutedIntent`), `src/intent/pipeline.ts:75-133`, `src/intent/providers/local.ts:1-18` (deterministic generator + feature ranking + symbolic prior + personal bias), `src/intent/candidate-bank.ts`                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **A typed, dry-run-backed intent plan**                                      | **SHIPS**                         | `src/intent/semantics/intent-plan.ts:66-78` — `{ routeKind, summary, steps, warnings, mutates, executable, commandLabel?, after: ProjectDocument }`; the resulting document is explicitly **not** passed to the store by that module                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -82,25 +82,55 @@ exists and must simply be _used correctly by the new layers_.
 
 ---
 
-## 2. The four structural gaps (verified)
+## 2. The four structural gaps (re-checked 2026-10-26 — one absence claim was false)
 
-### G-A — There is no audio understanding. At all.
+### G-A — There is no audio _understanding_. (Corrected: tagging ships; the embedding space does not.)
 
-> **Verified absence:** no `embedAudio` / `audioEmbedding` / music-tagging / audio-LLM path exists in
-> `src/`. The only transformer in the codebase is a **text** sentence encoder used for intent
-> conditioning (`src/ai/symbolic/prior-features-v3.ts:32`, MiniLM → PCA → 16 dims).
+> **CORRECTION (2026-10-26) — this gap was published as a _verified absence_, and that absence claim
+> was false.** The original text said: _"no `embedAudio` / `audioEmbedding` / music-tagging /
+> audio-LLM path exists in `src/`. The only transformer in the codebase is a text sentence
+> encoder."_ **KYX does ship an audio transformer.** The audit searched for the wrong tokens
+> (`embedAudio`, `audioEmbedding`) instead of `audio-classification` / `ast-finetuned-audioset`.
 
-What exists is a **well-built classical DSP perception layer**: energy-flux transients, impulse-train
-autocorrelation tempo, Goertzel chroma + Krumhansl key with honest evidence floors, RMS-energy
-section segmentation, BS.1770-4 loudness, STFT/spectral flux.
+**What actually ships** — an **Audio Spectrogram Transformer fine-tuned on AudioSet (527 classes)**
+running through transformers.js in a worker, offline-first (`env.allowRemoteModels = false`):
 
-**Why this is the binding constraint.** An AAW that must _talk about sound_ has nothing to call
-except hand-written numeric reports. `kyx_render_summary` and `kyx_diagnose_mix` return LUFS, peak
-and crest per strip; `kyx_audio_preview` returns **base64 WAV bytes**
-(`src/mcp/tools.ts:6568-6580`; `src/mcp/audio-preview.ts:7-22` — ≤ 4 bars, 22.05 kHz, ≤ 3 MB). The
-agent can read the document and receive rendered audio — but the audio arrives as **bytes and
-numbers, never as a semantic description**. Every "is this mix brighter?" question must today be
-answered by a hand-written DSP formula.
+| Layer              | Evidence                                                                                                                                                                                                                          |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model + worker     | `src/ai/audio/audio-worker.ts:19` (`Xenova/ast-finetuned-audioset-10-10-0.4593`), `:21` (top-K 8), `:30` (no CDN fallback), `:32` (dtype q8)                                                                                      |
+| Client + flag      | `src/ai/audio/audio-client.ts:13-20` (`pf:audio-tag`, default **on**), `:106` (`audioTagAvailable` — probes the manifest, latches only a definitive 404), `:124` (`classifyAudio` — degrades to `null`, never throws into the UI) |
+| Library            | `src/sample-library/audio-index.ts:3,9-16,116,224` — every factory **and** user sample is classified; text queries ("tmavý 808") rank by AudioSet labels + the asset name                                                         |
+| Reference → intent | `src/intent/audio-reference.ts:104-126` — a reference track becomes labels → genre/style/tempo/key → a **reference-informed conditioning vector**                                                                                 |
+| UI surface         | `src/ui/intent/AudioRefChip.tsx` (the 🎧 chip), `src/ui/IntentPanel.tsx:102`                                                                                                                                                      |
+| Artifact           | **fetched, never committed** (`.gitignore`: `public/models/audio/`; `scripts/fetch-audio-model.mjs:16`); present in this tree at **88,679 KB**, SHA-256 digests in `public/models/audio/manifest.json`                            |
+| Tests              | `tests/sample-audio-index.test.ts`, `tests/audio-reference.test.ts`, `tests/ai-worker-client-error-listener.test.ts`                                                                                                              |
+
+Also present: **Demucs stem separation** (`public/models/stem/*.onnx`, 4 variants, never committed;
+manifest committed; gate default **OFF** — S-65).
+
+**What is genuinely still absent — and this is the gap that actually binds:**
+
+1. **No audio embedding space.** The audio→text bridge is _label-mediated_: AST labels plus DSP
+   features are rendered into a text string and embedded by the **text** encoder
+   (MiniLM → PCA → 16 dims, `src/ai/symbolic/prior-features-v3.ts:32`). Nothing embeds the audio
+   itself — so there is no CLAP-style audio↔text alignment and no timbral similarity retrieval.
+2. **No audio-LLM.** Nothing reasons over audio in language.
+3. **No measured accuracy for the tagger.** S-70's `RECOMMEND-ON` A/B is about the **text**
+   embedding v3, **not** the tagger. There is no evaluation of AST accuracy in the repo → **E-14**.
+
+Alongside it exists a **well-built classical DSP perception layer**: energy-flux transients,
+impulse-train autocorrelation tempo, Goertzel chroma + Krumhansl key with honest evidence floors,
+RMS-energy section segmentation, BS.1770-4 loudness, STFT/spectral flux.
+
+**Why this is still the binding constraint — but for a sharper reason.** KYX _does_ perceive now,
+and the perception is **not exposed to the agent**: `src/mcp/` carries no reference to the tagger at
+all. The MCP surface still answers in numbers and bytes. `kyx_render_summary` and
+`kyx_diagnose_mix` return LUFS, peak and crest per strip; `kyx_audio_preview` returns **base64 WAV
+bytes** (`src/mcp/tools.ts:6568-6580`; `src/mcp/audio-preview.ts:7-22` — ≤ 4 bars, 22.05 kHz,
+≤ 3 MB). The agent can read the document and receive rendered audio — but the audio arrives as
+**bytes and numbers, never as a semantic description**. The product hears; the agent does not.
+That is the real gap, and it is a **surface** gap, not a **model** gap — which is exactly why it is
+cheap to close.
 
 **The frontier implication.** The perception layer is where the whole category question lives —
 and the landscape says it must be **deterministic DSP/MIR plus embeddings**, not a frontier
@@ -283,7 +313,7 @@ The brief allows new tracks only when justified. Five qualify:
 | **Snapshot undo, FIFO, depth 200**                                                                                                                                    | **SHIPS**                         | `packages/command-core/src/undo.ts:2958` (`maxSize ?? 200`), `:2757` (`UndoEntry`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **Pre/post validation + an audit log**                                                                                                                                | **SHIPS**                         | `packages/command-core/src/registry.ts` (validation), `packages/agent-runtime/src/agentAuditLogger.ts:21-148` (8 log kinds: query / MCP-tool / intent / command / rejection / clarification / rate-limited / proactive)                                                                                                                                                                                                                                                                                                                                                                          |
 | **61 MCP tools; 43 advertise `readOnlyHint`, 18 do not**                                                                                                              | **SHIPS**                         | `apps/vocalforge-daw/electron/generalMcpServer.ts:106` (catalog), `:115-136` (`GENERAL_MCP_NON_READONLY_TOOLS`), `:192-215` (annotation derivation); `generalMcpCatalog.generated.ts:19-82` (61 names)                                                                                                                                                                                                                                                                                                                                                                                           |
-| **🔒 External MCP is **draft-only** — acceptance is a UI click**                                                                                                      | **SHIPS (mandatory)**             | `apps/vocalforge-daw/src/agentVoiceManager.ts:5638-5648` — autonomy is **not** forwarded across the stdio boundary                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **🔒 External MCP is **draft-only** — acceptance is a UI click**                                                                                                      | **SHIPS (mandatory)**             | `apps/vocalforge-daw/src/agentVoiceManager.ts:5671-5679` — autonomy is **not** forwarded across the stdio boundary                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **A live-show MCP attach core: loopback-only, bearer token, constant-time compare, rate-limited, read-only + proposal _delivery_ into the performer's approval card** | **SHIPS**                         | `apps/vocalforge-daw/electron/liveShowMcpAttachCore.ts:11-19` (posture), `:242-269` (validate → deliver → 202/409), `:284-317` (shape + evidence citation)                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **A fail-closed show preflight**                                                                                                                                      | **SHIPS**                         | `packages/project-format/src/liveShowAssessment.ts:34-40` (`FATAL_NATIVE_PLAN_BLOCKERS`: `PLAN_NOT_PLAYABLE`, `NO_AUDIBLE_SOURCES`, `INVALID_DURATION`, `INVALID_SAMPLE_RATE`, `MISSING_MEDIA`); re-validated per setlist entry in `liveShowMcpAttachCore.ts:248-267`                                                                                                                                                                                                                                                                                                                            |
 | **A live/rehearsal/gig state machine with health supervision**                                                                                                        | **SHIPS**                         | `apps/vocalforge-daw/src/liveShowWorkflow.ts:3,44-45` (`idle\|rehearsal\|gig`); `packages/vocal-model/src/liveShowSupervisor.ts:78-81,136-138,245-262` (audio / recording / controller health)                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -298,9 +328,9 @@ The brief allows new tracks only when justified. Five qualify:
 ### 7.2 The gaps — and several are more severe than KYX's
 
 1. **H4 — the in-app agent can change live channel state with no live-show guard.**
-   `packages/agent-runtime/src/audioTools/toolExecution.ts:1093-1126`: in autonomy mode `"command"`,
+   `packages/agent-runtime/src/audioTools/toolExecution.ts:1141-1179`: in autonomy mode `"command"`,
    a proposal whose children are all in `SAFE_AUTO_APPLY_COMMANDS`
-   (`toolExecution.ts:500-508` → `SetChannelGain`, `SetChannelPan`, `SetClipGain`, `SetClipFade`,
+   (`packages/agent-runtime/src/audioTools/authorization.ts:85-106` → `SetChannelGain`, `SetChannelPan`, `SetClipGain`, `SetClipFade`,
    `SetSendLevel`, `SetTempoMap`, `SetAutomationTrackEnabled`) is **accepted immediately**, budget-capped
    (default 10/run, `:1099,1106-1108`), through the same `AcceptProposal` dispatch the UI button uses.
    A grep of `apps/vocalforge-daw/src` for `liveShowActive|activeRunMode` returns **only** `liveShow*`
@@ -312,13 +342,20 @@ The brief allows new tracks only when justified. Five qualify:
    **latent, not live**. It was then **wired on purpose** (T1), with a show lock already in front of
    it; the lock is now a **constructor rule** and the auto-apply does fire. See
    `AAW_DECISION_LOG.md` D-15 and `AAW_SECURITY_AND_REALTIME_SAFETY.md` H4.
-2. **H5 — a contract-truth defect.** `packages/command-core/src/registry.ts:43-46` still asserts that
-   _"the transport MAY apply in command mode"_. The enforced behaviour is the **opposite**:
-   `agentVoiceManager.ts:5638-5648` deliberately does not forward autonomy, and the MCP server header
+2. **H5 — a contract-truth defect — FIXED after the read.** _As read on 2026-10-25:_
+   `packages/command-core/src/registry.ts` still asserted that
+   _"the transport MAY apply in command mode"_. The enforced behaviour was the **opposite**:
+   `agentVoiceManager.ts:5671-5679` deliberately does not forward autonomy, and the MCP server header
    states the transport is draft-only. `AI_CONTROL_COMPLETENESS_AUDIT_REPORT.md:69` claims F-07 is
    _"Fixed"_ — the server header, `docs/MASTERING_MCP.md` and the manifest were updated; **this
    comment was not**. A stale comment that contradicts the enforced contract is a live hazard: it
    tells the next engineer that a dangerous path is sanctioned.
+   _Update, measured 2026-10-25 22:07 (commit `ab0076c2`):_ the comment was **corrected**, and the
+   policy now lives in one place — `packages/command-core/src/authorization.ts:112-115`, where the
+   in-app surface and the external MCP surface have separate grants and the autonomy grant does not
+   cross the boundary. The hazard recorded here is no longer in the code; the finding is kept because
+   a defect that was fixed _after_ a read is exactly the kind of thing an audit must re-check rather
+   than assume.
 3. **H3 — pitch correction adds 83–167 ms.** `docs/LATENCY_AUDIT_2026-09-25.md:16`: Vocallab NIRA
    emits a TD-PSOLA trail of `L = ceil(sr·5/60)+2` = **4002 samples (83 ms)**; ×2 ≈ **167 ms** with
    the ±24 st two-stage chain. For a stage vocal this is the difference between "on the beat" and
@@ -352,7 +389,7 @@ The brief allows new tracks only when justified. Five qualify:
     show**, not a deadline miss.
 13. **Undo does not survive a reload, and there is no agent-writable undo tool.**
 14. **No real-time safety envelope.** The only guard is an _allowlist of command types_
-    (`toolExecution.ts:500-508`) — a coarse proxy. There is no gain-ride limit, no blackout window
+    (`packages/agent-runtime/src/audioTools/authorization.ts:85-106`) — a coarse proxy. There is no gain-ride limit, no blackout window
     around a downbeat, no confidence floor tied to audible consequences.
 
 ### 7.3 The status document, re-verified (6 of 10 claims confirmed)
@@ -391,7 +428,7 @@ archived Revízia 3 (2026-10-04) and is stale relative to code.
 
 > **ZYVO's external-MCP consent model is stronger than KYX's.**
 > ZYVO: external MCP is **draft-only**, autonomy is not forwarded, and acceptance is a UI click
-> (`agentVoiceManager.ts:5638-5648`). KYX: **21 of 39** tools mutate with **no per-call approval**
+> (`agentVoiceManager.ts:5671-5679`). KYX: **21 of 39** tools mutate with **no per-call approval**
 > (only the 7 destructive ones are gated by `pf:mcp-allow-destructive`).
 
 The frontier program's first act should therefore be to **port ZYVO's consent posture to KYX**
@@ -413,4 +450,7 @@ practice becomes the other's default.**
 - It does not claim the absence of audio embeddings is a bug. It is a **fact about today**, and the
   landscape says closing it requires either a non-commercial model, a server-class model, or
   embeddings — not a small open music-understanding model.
+- **Correction (2026-10-26):** an earlier version of this document claimed a _verified absence_ of
+  audio tagging in KYX. That claim was **false** — the repo ships an AudioSet/AST tagger (see §2
+  G-A). The audio-**embedding** absence above stands; the tagging absence does not.
 - It does not claim the MCP transport works end-to-end over HTTP; that was not exercised.
