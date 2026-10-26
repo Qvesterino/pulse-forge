@@ -3,7 +3,13 @@ import { useDoc, useServices, useTracks } from "./context";
 import { Slider } from "./controls";
 import { kopaParams } from "../instruments/definitions";
 import { lowEndPlan } from "../instruments/lowEnd";
-import { forgeKickCommand, forgeLowEndStackCommand, setInstrumentParam } from "../commands/commands";
+import { measureLowEndFit, planBassline, type LowEndFit } from "../instruments/lowEndBass";
+import {
+  forgeKickCommand,
+  forgeLowEndStackCommand,
+  seedBasslineCommand,
+  setInstrumentParam,
+} from "../commands/commands";
 import { forgeKick, type KickForgePlan } from "../kopa/forge";
 import { importAudioFile } from "./sample-import";
 import type { InstrumentTrack } from "../project-model/types";
@@ -81,16 +87,33 @@ function LowEndStackCard() {
   const doc = useDoc();
   const plan = useMemo(() => lowEndPlan(doc), [doc]);
   const [status, setStatus] = useState<string | null>(null);
+  const [fit, setFit] = useState<LowEndFit | null>(null);
 
   const build = () => {
     const d = services.store.doc;
     const p = lowEndPlan(d);
     services.store.execute(forgeLowEndStackCommand(d, { keyRootPc: p.keyRootPc }));
+    setFit(null);
     setStatus(
       p.keyKnown
         ? `Stack built — kick tuned to the tonic (${p.kickTuneSt} st), 808 + sidechain wired`
         : "Stack built — no key set, chromatic C anchor (set the project key to tune to the tonic)",
     );
+  };
+
+  const seed = () => {
+    const d = services.store.doc;
+    const p = planBassline(d, lowEndPlan(d));
+    services.store.execute(seedBasslineCommand(d, {}));
+    setFit(null);
+    const basisLabel =
+      p.basis === "chords" ? "the chord track" : p.basis === "key" ? "the key tonic" : "the chromatic anchor";
+    setStatus(`Bassline seeded: ${p.events.length} notes from ${basisLabel} — edit them in the piano roll.`);
+  };
+
+  const checkFit = () => {
+    const d = services.store.doc;
+    setFit(measureLowEndFit(d, lowEndPlan(d)));
   };
 
   return (
@@ -110,7 +133,33 @@ function LowEndStackCard() {
         <button type="button" className="btn btn-small" onClick={build}>
           {plan.sidechainWired ? "RE-TUNE TO KEY" : "BUILD THE STACK"}
         </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={seed}
+          disabled={!plan.bassTrackId}
+          title={
+            plan.bassTrackId
+              ? "Generate the 808 line from the kick onsets and the chord track"
+              : "Build the stack first — seeding needs the 808 track"
+          }
+        >
+          SEED BASSLINE
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={checkFit}
+          title="Measure rhythm lock, harmonic lock and the kick/bass register gap"
+        >
+          CHECK THE FIT
+        </button>
       </div>
+      {fit && (
+        <div className="tsar-forge-status" role="status">
+          {fit.verdict.toUpperCase()}: {fit.summary}
+        </div>
+      )}
       {status && <div className="tsar-forge-status">{status}</div>}
     </section>
   );

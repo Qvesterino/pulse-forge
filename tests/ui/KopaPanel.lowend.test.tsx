@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { KopaPanel } from "../../src/ui/KopaPanel";
 import { lowEndPlan } from "../../src/instruments/lowEnd";
 import { forgeLowEndStackCommand } from "../../src/commands/instrument";
@@ -78,5 +78,40 @@ describe("the LOW-END STACK card", () => {
     const effects = bassOf(next)!.effects ?? [];
     expect(effects.filter((fx) => fx.type === "sidechain")).toHaveLength(1);
     expect(effects.filter((fx) => fx.type === "bassHarmonic")).toHaveLength(1);
+  });
+
+  it("SEED BASSLINE does nothing without an 808 track and seeds the real line when wired", () => {
+    const bare = docWithKey("C Major");
+    const bareServices = mockServices(bare);
+    renderWithContext(<KopaPanel />, { services: bareServices });
+    // The negative: no bass track → the button is disabled, nothing dispatches.
+    expect(screen.getByRole("button", { name: /SEED BASSLINE/i })).toBeDisabled();
+    expect(bareServices.store.execute).not.toHaveBeenCalled();
+    cleanup();
+
+    const root = parseKey("C Major")?.root ?? 0;
+    const stacked = forgeLowEndStackCommand(docWithKey("C Major"), { keyRootPc: root }).execute(docWithKey("C Major"));
+    const services = mockServices(stacked);
+    renderWithContext(<KopaPanel />, { services });
+    fireEvent.click(screen.getByRole("button", { name: /SEED BASSLINE/i }));
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("seedBassline");
+    const next = command.execute(stacked);
+    const bass = bassOf(next)!;
+    const notes = next.patterns.find((p) => p.id === next.activePatternId)?.notes[bass.id] ?? [];
+    expect(notes.length).toBeGreaterThan(0);
+    // The pitch is the tonic the stack was built for: C Major → C2 = MIDI 36.
+    expect(new Set(notes.map((note) => note.pitch % 12))).toEqual(new Set([0]));
+  });
+
+  it("CHECK THE FIT surfaces the measured verdict, not a guess", () => {
+    const root = parseKey("C Major")?.root ?? 0;
+    const stacked = forgeLowEndStackCommand(docWithKey("C Major"), { keyRootPc: root }).execute(docWithKey("C Major"));
+    const services = mockServices(stacked);
+    renderWithContext(<KopaPanel />, { services });
+    fireEvent.click(screen.getByRole("button", { name: /CHECK THE FIT/i }));
+    const status = screen.getByRole("status");
+    // No bass notes yet → the honest SILENT verdict, with the seed hint.
+    expect(status).toHaveTextContent(/SILENT/i);
   });
 });

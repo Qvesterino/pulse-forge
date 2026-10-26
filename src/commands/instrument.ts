@@ -4,6 +4,8 @@ import { INSTRUMENT_META, clampInstrumentParam, defaultInstrumentParams } from "
 import { createInstrumentTrackModel } from "../project-model/schema";
 import { normalizeProject } from "../project-model/schema";
 import { uid } from "../shared/ids";
+import { planBassline } from "../instruments/lowEndBass";
+import { lowEndPlan } from "../instruments/lowEnd";
 import type { InstrumentPreset } from "../presets/types";
 
 /** Instrument parameters, sample selection and preset application. */
@@ -307,6 +309,42 @@ export function forgeLowEndStackCommand(doc: ProjectDocument, options: { keyRoot
   return {
     type: "forgeLowEndStack",
     label: options.label ?? "Low-end stack — kick + bass + ducking",
+    execute: (d) => apply(d),
+    undo: () => prevDoc,
+  };
+}
+
+/**
+ * LOW-END STACK wave 2: seed the bass. `planBassline` (src/instruments/
+ * lowEndBass.ts) generates the 808 line — rhythm locked to the kick onsets
+ * of the active pattern, pitch following the chord track (key tonic, then
+ * chromatic) — and this command writes it as ONE undoable snapshot,
+ * replacing the bass row of the active pattern (regenerating is
+ * deterministic, so re-seeding with the same document is idempotent by
+ * value). The line is an editable proposal, not law: the piano roll owns
+ * it afterwards.
+ */
+export function seedBasslineCommand(
+  doc: ProjectDocument,
+  options: { style?: "root" | "fifth" | "octave"; gate?: number; label?: string } = {},
+): Command {
+  const prevDoc: ProjectDocument = doc;
+  const plan = lowEndPlan(doc);
+  const bassId = plan.bassTrackId;
+  if (!bassId) throw new Error("No 808 bass track — build the low-end stack first");
+  const patternId = doc.activePatternId;
+  const generated = planBassline(doc, plan, options);
+
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    patterns: d.patterns.map((pattern) =>
+      pattern.id === patternId ? { ...pattern, notes: { ...pattern.notes, [bassId]: generated.events } } : pattern,
+    ),
+  });
+
+  return {
+    type: "seedBassline",
+    label: options.label ?? `Seed bassline — ${generated.events.length} notes (active pattern)`,
     execute: (d) => apply(d),
     undo: () => prevDoc,
   };

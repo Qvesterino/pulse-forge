@@ -763,6 +763,15 @@
       "seamEvent": "fireEvent.click",
       "negativeSpec": "does not duplicate the wiring",
       "note": "LOW-END STACK wave (KOPA+KOREŇ+sidechain): the card renders in the no-KOPA empty state; the dispatched command is executed against the real doc, and a re-click on a wired stack must not accumulate effects."
+    },
+    {
+      "id": "kopa-lowend-seed-bassline",
+      "status": "COVERED",
+      "entryPoint": "src/ui/KopaPanel.tsx LowEndStackCard seed onClick",
+      "spec": "tests/ui/KopaPanel.lowend.test.tsx",
+      "seamEvent": "fireEvent.click",
+      "negativeSpec": "does nothing without an 808 track",
+      "note": "LOW-END STACK wave 2: SEED BASSLINE is disabled without the 808 track; the click dispatches seedBasslineCommand and executing it against the real doc seeds the tonic line. CHECK THE FIT renders the measured verdict (SILENT when the bass is empty)."
     }
   ]
 }

@@ -76,7 +76,7 @@ describe("Sampler AutoMap UI contract", () => {
     const user = userEvent.setup();
     const { track, doc } = samplerDoc();
     const services = mockServices(doc);
-    renderWithContext(<SampleBrowser assets={[]} currentId={null} showDropZone targetTrack={track} />, {
+    renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={() => {}} showDropZone targetTrack={track} />, {
       services,
     });
 
@@ -98,7 +98,7 @@ describe("Sampler AutoMap UI contract", () => {
     const user = userEvent.setup();
     const { track, doc } = samplerDoc();
     const services = mockServices(doc);
-    renderWithContext(<SampleBrowser assets={[]} currentId={null} showDropZone targetTrack={track} />, {
+    renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={() => {}} showDropZone targetTrack={track} />, {
       services,
     });
 
