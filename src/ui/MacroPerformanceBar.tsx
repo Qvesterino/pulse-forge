@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useMacros, useServices } from "./context";
 import { setMacroValue } from "../commands/commands";
 import { Slider } from "./controls";
+import { ModulationOwnerBadge } from "./ModulationOwnerBadge";
+import type { AutomationTarget } from "../project-model/types";
 
 export function formatMacroValue(value: number): string {
   const bipolar = Math.round((value * 2 - 1) * 100);
@@ -72,7 +74,14 @@ export function MacroPerformanceBar() {
               <div className="mixer-macro-control" key={macro.id} title={`Macro ${macro.name} — ${targets} · ${HINT}`}>
                 <div className="mixer-macro-head">
                   <span className="mixer-macro-name">{macro.name}</span>
-                  <span className="mixer-macro-value">{formatMacroValue(macro.value)}</span>
+                  <span className="mixer-macro-tail">
+                    <span className="mixer-macro-value">{formatMacroValue(macro.value)}</span>
+                    <ModulationOwnerBadge
+                      targets={macro.mappings
+                        .map((mapping) => mapping.target)
+                        .filter((target): target is AutomationTarget => Boolean(target))}
+                    />
+                  </span>
                 </div>
                 <Slider
                   compact

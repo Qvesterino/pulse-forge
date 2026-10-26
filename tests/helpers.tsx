@@ -196,6 +196,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       getArrangement: () => project.arrangement,
       getMarkers: () => project.markers,
       getAutomation: () => project.automation,
+      getLfos: () => project.lfos,
       getPatterns: () => project.patterns,
       getMacros: () => project.macros,
       getMaster: () => project.master,

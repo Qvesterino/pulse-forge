@@ -599,6 +599,10 @@ export class AutomationBridge {
         });
       }
     }
+    // The LFO runtimes are current now, so the ownership can be classified:
+    // a follower that got an audio-rate param COMPOSES (it adds), a follower
+    // without one is POLLED (it writes an absolute value) and conflicts.
+    this.refreshModulationOwnership(doc);
   }
 
   /**
@@ -639,12 +643,7 @@ export class AutomationBridge {
    * silently, and a macro move was audible for one scheduler window (25 ms)
    * before the lane overwrote it.
    */
-  private writeModulated(
-    target: AutomationTarget,
-    source: ModulationSource,
-    value: number,
-    when?: number,
-  ): boolean {
+  private writeModulated(target: AutomationTarget, source: ModulationSource, value: number, when?: number): boolean {
     if (!this.mayWrite(target, source)) return false;
     if (source === "automation") this.automationLive = true;
     return this.lookup.writeDeviceTargetAt(target, value, when);

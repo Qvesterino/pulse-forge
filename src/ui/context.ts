@@ -1,6 +1,7 @@
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
+import { modulationOwnership, type ModulationOwnership } from "../project-model/modulation-precedence";
 import type { GenerativeStatus } from "../generative/types";
 import type { LibraryState } from "../persistence/LibraryRepository";
 import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibration";
@@ -136,6 +137,28 @@ export function useMaster(): ProjectDocument["master"] {
 export function useSceneAutomation(): ProjectDocument["sceneAutomation"] {
   const { store } = useServices();
   return useSyncExternalStore(store.subscribe, store.getSceneAutomation, store.getSceneAutomation);
+}
+
+/**
+ * Modulation ownership — who drives which device parameter (ADR 0067).
+ *
+ * The ownership is derived from three slices (automation lanes, LFOs, macros),
+ * so the hook subscribes to exactly those: a lane added or removed has to
+ * re-render the surface that discloses the owner, and an unrelated edit (a
+ * track gain) must not.
+ *
+ * The DOCUMENT itself is read through the plain getter at render time — it is
+ * fresh, because the re-render was triggered by one of the slices above. (A
+ * surface that reads a slice without subscribing to it would show a stale
+ * owner forever — the F-09/F-10 staleness defect.)
+ */
+export function useModulationOwnership(): ModulationOwnership {
+  const { store } = useServices();
+  useSyncExternalStore(store.subscribe, store.getAutomation, store.getAutomation);
+  useSyncExternalStore(store.subscribe, store.getLfos, store.getLfos);
+  useSyncExternalStore(store.subscribe, store.getMacros, store.getMacros);
+  const doc = store.getDoc();
+  return useMemo(() => modulationOwnership(doc), [doc]);
 }
 
 export function useActivePatternId(): ProjectDocument["activePatternId"] {

@@ -274,6 +274,7 @@ export class ProjectStore {
   getArrangement = (): ProjectDocument["arrangement"] => this.doc_.arrangement;
   getMarkers = (): ProjectDocument["markers"] => this.doc_.markers;
   getAutomation = (): ProjectDocument["automation"] => this.doc_.automation;
+  getLfos = (): ProjectDocument["lfos"] => this.doc_.lfos;
   getPatterns = (): ProjectDocument["patterns"] => this.doc_.patterns;
   getMacros = (): ProjectDocument["macros"] => this.doc_.macros;
   getMaster = (): ProjectDocument["master"] => this.doc_.master;

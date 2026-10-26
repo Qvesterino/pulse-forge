@@ -1535,6 +1535,33 @@
   letter-spacing: 0.6px;
 }
 
+/* "KTO RIADI" badge (audit F-11, ADR 0067) — the disclosure of the
+   modulation precedence: a macro mapping that an automation lane or a
+   modulator outranks says so instead of failing silently. Same visual cue
+   as the AUTO badge: the machine is driving this parameter. */
+.mod-owner-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+}
+
+/* The macro value and its ownership badge travel together on the right of
+   the performance strip — the name keeps the left edge. */
+.mixer-macro-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
 .fx-param-auto-value {
   color: var(--text);
   font-variant-numeric: tabular-nums;

@@ -60,6 +60,7 @@ import { StepGridEditor } from "./StepGridEditor";
 import { newModulatorSeed, stealGrooveIntoPattern } from "../commands/commands";
 import type { GroovePoolEntry } from "../persistence/GroovePoolRepository";
 import { formatMacroValue } from "./MacroPerformanceBar";
+import { ModulationOwnerBadge } from "./ModulationOwnerBadge";
 
 const LFO_WAVES: { value: LfoWave; label: string }[] = [
   { value: "sine", label: "Sine" },
@@ -1149,6 +1150,7 @@ function MacroCard({ macro }: { macro: ProjectDocument["macros"][number] }) {
                   ? ` · CC${mapping.ccNumber}${mapping.channel ? ` Ch${mapping.channel}` : ""}`
                   : ""}
               </span>
+              <ModulationOwnerBadge targets={mapping.target ? [mapping.target] : []} />
               <Slider
                 compact
                 label="AMOUNT"
