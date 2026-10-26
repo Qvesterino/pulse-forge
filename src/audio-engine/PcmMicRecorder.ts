@@ -609,7 +609,7 @@ export class PcmMicRecorder {
         throw new Error(`Could not start audio-input capture${error instanceof Error ? `: ${error.message}` : ""}`);
       }
       this.assertStartIsCurrent(token);
-      // Audit R-02: NAME the source that actually captured. The browser path
+      // Audit R-2: NAME the source that actually captured. The browser path
       // honours the selected device; the native WASAPI path opens the Windows
       // endpoint the I/O panel chose and IGNORES the browser device id — so
       // the source is only known here, after the stream was resolved.
@@ -986,7 +986,7 @@ export class PcmMicRecorder {
         console.error(`[recording] cleanup after capture error failed: ${detail}`);
       });
     }
-    // Audit R-04: EVERY error is reported. The old `if (this.errorReported)
+    // Audit R-4: EVERY error is reported. The old `if (this.errorReported)
     // return;` hid a later storage failure behind an earlier "input
     // interrupted" — the take was then explained by the wrong cause, and the
     // reason it is short was never told. The later message carries the
