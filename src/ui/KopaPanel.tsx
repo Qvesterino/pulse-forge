@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from "react";
-import { useServices, useTracks } from "./context";
+import { useDoc, useServices, useTracks } from "./context";
 import { Slider } from "./controls";
 import { kopaParams } from "../instruments/definitions";
-import { forgeKickCommand, setInstrumentParam } from "../commands/commands";
+import { lowEndPlan } from "../instruments/lowEnd";
+import { forgeKickCommand, forgeLowEndStackCommand, setInstrumentParam } from "../commands/commands";
 import { forgeKick, type KickForgePlan } from "../kopa/forge";
 import { importAudioFile } from "./sample-import";
 import type { InstrumentTrack } from "../project-model/types";
@@ -69,6 +70,52 @@ function Row({
   );
 }
 
+/**
+ * The LOW-END STACK card — the system-level builder. It is rendered even
+ * when the project has NO KOPA track (that is the point: one apply creates
+ * the kick, the bass and the wiring), and re-plans from the live doc on
+ * every render so an already-wired stack shows RE-TUNE instead of BUILD.
+ */
+function LowEndStackCard() {
+  const services = useServices();
+  const doc = useDoc();
+  const plan = useMemo(() => lowEndPlan(doc), [doc]);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const build = () => {
+    const d = services.store.doc;
+    const p = lowEndPlan(d);
+    services.store.execute(forgeLowEndStackCommand(d, { keyRootPc: p.keyRootPc }));
+    setStatus(
+      p.keyKnown
+        ? `Stack built — kick tuned to the tonic (${p.kickTuneSt} st), 808 + sidechain wired`
+        : "Stack built — no key set, chromatic C anchor (set the project key to tune to the tonic)",
+    );
+  };
+
+  return (
+    <section className="tsar-section" aria-label="Low-end stack">
+      <h3 className="tsar-section-title">LOW-END STACK</h3>
+      <div className="tsar-forge-hint">
+        {plan.sidechainWired
+          ? "Wired: KOPA kick + 808 bass (KOREŇ) ducking under every kick."
+          : "Binds KOPA + an 808 bass (KOREŇ) + sidechain ducking into one undoable step."}
+      </div>
+      <div className="tsar-forge-hint">
+        {plan.keyKnown
+          ? `Key tonic → kick ${plan.kickTuneSt} st from the C anchor.`
+          : "No key set — the build anchors chromatic (C)."}
+      </div>
+      <div className="tsar-forge-controls">
+        <button type="button" className="btn btn-small" onClick={build}>
+          {plan.sidechainWired ? "RE-TUNE TO KEY" : "BUILD THE STACK"}
+        </button>
+      </div>
+      {status && <div className="tsar-forge-status">{status}</div>}
+    </section>
+  );
+}
+
 export function KopaPanel() {
   const services = useServices();
   const tracks = useTracks();
@@ -86,7 +133,10 @@ export function KopaPanel() {
     return (
       <div className="tsar-panel" role="region" aria-label="KOPA engine">
         <div className="fx-empty">
-          No KOPA track in this project — add an instrument track and pick KOPA to open the kick designer.
+          No KOPA track in this project — build the low-end stack below, or add an instrument track and pick KOPA.
+        </div>
+        <div className="tsar-columns">
+          <LowEndStackCard />
         </div>
       </div>
     );
@@ -150,6 +200,7 @@ export function KopaPanel() {
       </div>
 
       <div className="tsar-columns">
+        <LowEndStackCard />
         <section
           className="tsar-section"
           aria-label="Kick Forge"

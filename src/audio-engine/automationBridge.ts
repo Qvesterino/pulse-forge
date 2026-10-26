@@ -14,6 +14,15 @@ import {
   resolveLfoTarget,
 } from "../project-model/modulators";
 import { automationTargetsOfClip, clampTargetValue, targetParamDef } from "../project-model/targets";
+import {
+  automationOwnedTargets,
+  isSharedDeviceTarget,
+  macroMappedTargets,
+  modulationTargetKey,
+  scheduledModulatorTargets,
+  sourceOutranks,
+  type ModulationSource,
+} from "../project-model/modulation-precedence";
 import { automationClipEventsInWindow } from "../project-model/events";
 import { interpolateAutomationPoints, valueAt } from "../project-model/automation";
 import type { SceneCcOverride, ScenePerformance } from "../project-model/scene-performance";
@@ -225,6 +234,24 @@ export class AutomationBridge {
   private currentSceneCcPins: string[] | null = null;
   /** Live scene CC re-points (mappingId → { ccNumber?, channel? }), null = none. */
   private currentSceneCcOverrides: Record<string, SceneCcOverride> | null = null;
+
+  /**
+   * Modulation precedence (ADR 0067): automation > modulator > macro > midiCC.
+   *
+   * An fx/inst parameter has ONE AudioParam, so four sources used to write it
+   * and the audible result was decided by write order (audit F-11). These
+   * three sets say who owns which parameter; `automationLive` says whether the
+   * automation is actually driving (the stop / seek takeover hands the
+   * parameter back to the macro).
+   */
+  /** Device targets automation owns — doc-derived, refreshed on every doc change. */
+  private automationOwned = new Set<string>();
+  /** Device targets a scheduled modulator owns — doc + runtime, refreshed on every doc change. */
+  private modulatorOwned = new Set<string>();
+  /** Device targets a macro maps — doc-derived, refreshed on every doc change. */
+  private macroOwned = new Set<string>();
+  /** TRUE once the automation phase has written since the last reset. */
+  private automationLive = false;
 
   constructor(
     private readonly deps: AutomationBridgeDeps,
@@ -574,7 +601,81 @@ export class AutomationBridge {
     }
   }
 
+  /**
+   * Recompute who owns which device parameter.
+   *
+   * The ownership is a property of the PROJECT, not of a runtime: a lane, a
+   * scheduled modulator or a macro mapping is declared in the document. It is
+   * refreshed on every document change — `syncMacros` runs right after
+   * `syncLfos`, so the LFO runtime state is current when the followers are
+   * classified as wired (additive) or polled (absolute).
+   */
+  private refreshModulationOwnership(doc: ProjectDocument): void {
+    this.automationOwned = automationOwnedTargets(doc);
+    this.macroOwned = macroMappedTargets(doc);
+    const modulator = scheduledModulatorTargets(doc);
+    // An env follower that could not be wired audio-rate is POLLED: it writes
+    // an absolute value every window, so it conflicts with the macro exactly
+    // like a scheduled modulator. A WIRED follower adds at audio rate — it
+    // composes with the base value and stays out of the ownership set.
+    for (const [id, state] of this.lfos) {
+      if (isOscRuntime(state)) continue;
+      if (state.targetParam || !state.follower) continue;
+      const lfo = doc.lfos.find((candidate) => candidate.id === id);
+      if (!lfo || lfoKind(lfo) !== "envFollower") continue;
+      const target = resolveLfoTarget(lfo);
+      if (!isSharedDeviceTarget(target)) continue;
+      modulator.add(modulationTargetKey(doc, target));
+    }
+    this.modulatorOwned = modulator;
+  }
+
+  /**
+   * The ONE place where a modulation source writes a device parameter.
+   *
+   * A source that is outranked by the owner of the target does not write at
+   * all: the owner's value stays and the lower source stops fighting it.
+   * That fight was audit F-11 — the macro's contribution was dropped
+   * silently, and a macro move was audible for one scheduler window (25 ms)
+   * before the lane overwrote it.
+   */
+  private writeModulated(
+    target: AutomationTarget,
+    source: ModulationSource,
+    value: number,
+    when?: number,
+  ): boolean {
+    if (!this.mayWrite(target, source)) return false;
+    if (source === "automation") this.automationLive = true;
+    return this.lookup.writeDeviceTargetAt(target, value, when);
+  }
+
+  /** May this source write this target right now? */
+  private mayWrite(target: AutomationTarget, source: ModulationSource): boolean {
+    // Track gain/pan own their modulation buses (modAutoGain / modMacroGain)
+    // and compose — the precedence only governs the shared device params.
+    if (!isSharedDeviceTarget(target)) return true;
+    const doc = this.deps.doc();
+    if (!doc) return true;
+    const owner = this.ownerOf(modulationTargetKey(doc, target));
+    if (!owner) return true;
+    return sourceOutranks(source, owner);
+  }
+
+  /** The source that owns a target right now, or null when nothing does. */
+  private ownerOf(key: string): ModulationSource | null {
+    // Automation owns only while it is actually driving: the stop / seek
+    // takeover hands the parameter back to the macro.
+    if (this.automationLive && this.automationOwned.has(key)) return "automation";
+    if (this.modulatorOwned.has(key)) return "modulator";
+    if (this.macroOwned.has(key)) return "macro";
+    return null;
+  }
+
   syncMacros(doc: ProjectDocument): void {
+    // The ownership is a property of the project — refresh it before the
+    // context check, because it must be current even when nothing is written.
+    this.refreshModulationOwnership(doc);
     const ctx = this.deps.ctx();
     if (!ctx) return;
     const next = new Map<string, { gain: number; pan: number }>();
@@ -670,7 +771,7 @@ export class AutomationBridge {
     // overwriting each other in iteration order.
     for (const { target, delta } of deviceOffsets.values()) {
       const base = this.lookup.baseValueForTarget(doc, target);
-      if (base !== null) this.lookup.writeDeviceTargetAt(target, base + delta);
+      if (base !== null) this.writeModulated(target, "macro", base + delta);
     }
     // The live scene-pack override re-asserts itself AFTER the doc
     // composition on every sync, so a param edit landed mid-performance can
@@ -857,7 +958,7 @@ export class AutomationBridge {
       const when = Math.max(ctx.currentTime, Number.isFinite(mappedTime) ? mappedTime : ctx.currentTime);
       for (const { target, delta } of deviceOffsets.values()) {
         const base = this.lookup.baseValueForTarget(doc, target);
-        if (base !== null) this.lookup.writeDeviceTargetAt(target, base + delta, when);
+        if (base !== null) this.writeModulated(target, "macro", base + delta, when);
       }
       // Fxs whose override ended at this point return to their doc state;
       // fxs entering or staying get the pinned pair written at its intensity.
@@ -1137,7 +1238,7 @@ export class AutomationBridge {
             const base = doc ? this.lookup.baseValueForTarget(doc, target) : null;
             if (!def || base === null) return;
             const mapped = base + (def.max - def.min) * 0.5 * value;
-            this.lookup.writeDeviceTargetAt(target, mapped, when);
+            this.writeModulated(target, "modulator", mapped, when);
           } catch {
             /* best effort */
           }
@@ -1206,7 +1307,7 @@ export class AutomationBridge {
       }
       return;
     }
-    this.lookup.writeDeviceTargetAt(target, value, when);
+    this.writeModulated(target, "automation", value, when);
   }
 
   applyAutomation(
@@ -1398,6 +1499,10 @@ export class AutomationBridge {
       // stop; force a fresh composition so stopping automation never erases
       // an intentionally active macro value.
       this.macroCache.clear();
+      // The takeover hands the parameters back: the automation no longer owns
+      // them, so the macro may write again (ADR 0067 — the precedence follows
+      // the owner, and a stopped transport has no owner).
+      this.automationLive = false;
       const doc = this.deps.doc();
       if (doc) this.syncMacros(doc);
     }
@@ -1423,11 +1528,11 @@ export class AutomationBridge {
         break;
       }
       case "fxParam": {
-        this.lookup.writeDeviceTargetAt(target, clamped);
+        this.writeModulated(target, "midiCC", clamped);
         break;
       }
       case "instParam": {
-        this.lookup.writeDeviceTargetAt(target, clamped);
+        this.writeModulated(target, "midiCC", clamped);
         break;
       }
     }

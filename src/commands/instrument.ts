@@ -1,6 +1,9 @@
 import type { Command } from "./types";
-import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
+import type { EffectInstance, InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { INSTRUMENT_META, clampInstrumentParam, defaultInstrumentParams } from "../instruments/definitions";
+import { createInstrumentTrackModel } from "../project-model/schema";
+import { normalizeProject } from "../project-model/schema";
+import { uid } from "../shared/ids";
 import type { InstrumentPreset } from "../presets/types";
 
 /** Instrument parameters, sample selection and preset application. */
@@ -236,5 +239,75 @@ export function forgeKickCommand(
     label: `Kick Forge — ${plan.rootMidi !== null ? `root MIDI ${plan.rootMidi}, ` : ""}fitted patch`,
     execute: (d) => apply(d, nextParams, null),
     undo: (d) => apply(d, prevParams, prevPresetId),
+  };
+}
+
+/**
+ * The LOW-END STACK (the KOPA-family follow-up): find-or-create the kick
+ * (KOPA) and the bass (808 carrying the KOREŇ harmonic engine), tune the
+ * kick to the song's tonic, and wire a sidechain effect on the bass keyed
+ * to the kick — all as ONE undoable snapshot. The pure computation lives
+ * in src/instruments/lowEnd.ts (lowEndPlan); this command materializes it.
+ * A project without a key still gets the wiring — chromatic (C anchor)
+ * with a warning carried in the label context by the caller.
+ */
+export function forgeLowEndStackCommand(doc: ProjectDocument, options: { keyRootPc: number; label?: string }): Command {
+  const prevDoc: ProjectDocument = doc;
+
+  // Find-or-create the kick and the bass (KOPA ADR 0035 §5 model factories,
+  // normalized on materialization like createInstrumentTrack).
+  const findKick = (d: ProjectDocument): InstrumentTrack | undefined =>
+    d.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "kopa");
+  const findBass = (d: ProjectDocument): InstrumentTrack | undefined =>
+    d.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808");
+  const count = (d: ProjectDocument, inst: "kopa" | "808") =>
+    d.tracks.filter((t) => t.kind === "instrument" && t.instrument === inst).length;
+  const kick = findKick(doc) ?? createInstrumentTrackModel("kopa", count(doc, "kopa") + 1);
+  const bass = findBass(doc) ?? createInstrumentTrackModel("808", count(doc, "808") + 1);
+
+  // The tonic, one octave below the default C anchor (C → −12 st).
+  const kickTuneSt = ((options.keyRootPc + 12) % 12) - 12;
+  const kickParams: Record<string, number> = { bodyTune: kickTuneSt, subTune: kickTuneSt };
+
+  const apply = (d: ProjectDocument): ProjectDocument => {
+    // Materialize: append whichever role the executing doc still lacks,
+    // then resolve the real ids from the normalized doc.
+    let tracks = d.tracks;
+    if (!findKick(d)) tracks = [...tracks, kick];
+    if (!findBass(d)) tracks = [...tracks, bass];
+    let next = normalizeProject({ ...d, tracks });
+    const kickId = (findKick(next) ?? kick).id;
+    const bassId = (findBass(next) ?? bass).id;
+
+    // Kick: re-tune body + sub to the tonic (idempotent by value).
+    next = {
+      ...next,
+      tracks: next.tracks.map((t) =>
+        t.kind === "instrument" && t.id === kickId ? { ...t, params: { ...t.params, ...kickParams } } : t,
+      ),
+    };
+    // Bass: carry the KOREŇ harmonic engine + the sidechain keyed to the
+    // kick (idempotent: skip when already present).
+    next = {
+      ...next,
+      tracks: next.tracks.map((t) => {
+        if (t.kind !== "instrument" || t.id !== bassId) return t;
+        const effects = t.effects ?? [];
+        const add: EffectInstance[] = [];
+        if (!effects.some((fx) => fx.type === "bassHarmonic"))
+          add.push({ id: uid("fx"), type: "bassHarmonic", bypassed: false, params: {} });
+        if (!effects.some((fx) => fx.sidechainTrackId === kickId))
+          add.push({ id: uid("fx"), type: "sidechain", bypassed: false, sidechainTrackId: kickId, params: {} });
+        return add.length > 0 ? { ...t, effects: [...effects, ...add] } : t;
+      }),
+    };
+    return next;
+  };
+
+  return {
+    type: "forgeLowEndStack",
+    label: options.label ?? "Low-end stack — kick + bass + ducking",
+    execute: (d) => apply(d),
+    undo: () => prevDoc,
   };
 }
