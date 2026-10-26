@@ -156,6 +156,22 @@ export const RECORDING_OWNER_ID: string = (() => {
  * Finalizing a take atomically moves its metadata into the normal user-sample
  * stores while retaining the same bounded PCM blocks as the library payload.
  */
+/**
+ * Copy the first `frames` of a buffer into a new, shorter buffer.
+ *
+ * The truncation must be VISIBLE: the caller compares the length with the
+ * frames the reference promised, so a partial restore can never pass as the
+ * whole recording.
+ */
+function trimAudioBuffer(context: OfflineAudioContext, buffer: AudioBuffer, frames: number): AudioBuffer {
+  const length = Math.max(0, Math.min(frames, buffer.length));
+  const trimmed = context.createBuffer(buffer.numberOfChannels, length, buffer.sampleRate);
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    trimmed.getChannelData(channel).set(buffer.getChannelData(channel).subarray(0, length));
+  }
+  return trimmed;
+}
+
 export class RecordingRecoveryRepository {
   constructor(private readonly openDatabase: typeof openDb = openDb) {}
 
@@ -364,7 +380,25 @@ export class RecordingRecoveryRepository {
     }
   }
 
-  async materializeStoredSample(reference: PcmRecordingAudioRef): Promise<AudioBuffer> {
+  /**
+   * Materialize a staged PCM recording into an AudioBuffer.
+   *
+   * STRICT by default: a single invalid, missing or out-of-order block
+   * rejects the WHOLE recording. That is the right contract for a promotion
+   * ("write this recording into the library") — a half-written file must not
+   * enter the library as if it were complete.
+   *
+   * TOLERANT (`options.tolerant`) is for the RESTORE path, where the
+   * alternative is not "a slightly wrong file" but "no audio at all": the
+   * valid PREFIX is restored and returned as a shorter buffer, and the caller
+   * can see the truncation in the buffer's own length. A recording that lost
+   * its last two seconds is worth more than silence — but it must be REPORTED,
+   * never passed off as the whole take.
+   */
+  async materializeStoredSample(
+    reference: PcmRecordingAudioRef,
+    options: { tolerant?: boolean } = {},
+  ): Promise<AudioBuffer> {
     if (typeof OfflineAudioContext === "undefined") throw new Error("OfflineAudioContext is unavailable");
     if (
       !Number.isInteger(reference.frames) ||
@@ -389,7 +423,7 @@ export class RecordingRecoveryRepository {
       const detail = error instanceof Error ? `: ${error.message}` : "";
       throw new Error(`Saved recording is too large to restore into memory${detail}`);
     }
-    await this.forEachPcmBlock(
+    const restoredFrames = await this.forEachPcmBlock(
       reference.recordingId,
       reference.chunkCount,
       reference.frames,
@@ -402,8 +436,16 @@ export class RecordingRecoveryRepository {
           buffer.getChannelData(channel).set(new Float32Array(chunk.channels[channel]), offset);
         }
       },
+      { tolerant: options.tolerant === true },
     );
-    return buffer;
+    if (restoredFrames >= reference.frames) return buffer;
+    if (!options.tolerant) {
+      // The strict path already threw inside forEachPcmBlock; this is the
+      // belt to its braces.
+      throw new Error("Recording PCM data is incomplete; the original audio was kept");
+    }
+    // Tolerant: hand back what survived, and let the LENGTH say so.
+    return trimAudioBuffer(context, buffer, restoredFrames);
   }
 
   private async forEachPcmBlock(
@@ -412,8 +454,10 @@ export class RecordingRecoveryRepository {
     expectedFrames: number,
     expectedChannels: number,
     visit: (chunk: RecordingPcmChunk, frameOffset: number) => void,
-  ): Promise<void> {
+    options: { tolerant?: boolean } = {},
+  ): Promise<number> {
     const db = await this.openDatabase();
+    const tolerant = options.tolerant === true;
     let expectedSequence = 0;
     let frameOffset = 0;
     let visitFailure: unknown;
@@ -437,7 +481,10 @@ export class RecordingRecoveryRepository {
           frameOffset + chunk.frames <= expectedFrames;
         if (!chunkValid) {
           visitFailure = new Error("Recording PCM data has an invalid, missing, or out-of-order block");
-          cursorRequest.transaction?.abort();
+          // STRICT: abort, so nothing partial is ever handed out.
+          // TOLERANT: stop the cursor and let the transaction COMMIT — the
+          // valid prefix is real audio and must survive to the caller.
+          if (!tolerant) cursorRequest.transaction?.abort();
           return;
         }
         try {
@@ -447,7 +494,7 @@ export class RecordingRecoveryRepository {
           cursor.continue();
         } catch (error) {
           visitFailure = error;
-          cursorRequest.transaction?.abort();
+          if (!tolerant) cursorRequest.transaction?.abort();
         }
       };
     }).catch((error) => {
@@ -456,8 +503,15 @@ export class RecordingRecoveryRepository {
     });
 
     if (expectedSequence !== expectedChunks || frameOffset !== expectedFrames) {
-      throw new Error("Recording PCM data is incomplete; the original audio was kept");
+      // Tolerant: the prefix that was restored is the answer, and the caller
+      // sees the truncation in the buffer's length. Strict: the whole
+      // recording is rejected — a half-written file must not pass as a whole.
+      if (!tolerant) throw new Error("Recording PCM data is incomplete; the original audio was kept");
+      if (!visitFailure) {
+        visitFailure = new Error("Recording PCM data is incomplete; the original audio was kept");
+      }
     }
+    return frameOffset;
   }
 
   /**

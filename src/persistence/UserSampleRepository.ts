@@ -185,30 +185,93 @@ export function recordedTakeSampleId(recordingId: string): string {
 }
 
 /**
+ * One sample that could not be restored — or only partly restored.
+ *
+ * The failure is REPORTED, never swallowed. A silent skip is what turned a
+ * damaged recording into a permanently silent take with no explanation
+ * (audit S-3): the user pressed play, heard nothing, and had no way to learn
+ * that the app had thrown their audio away.
+ */
+export interface UserSampleRestoreFailure {
+  id: string;
+  /** The sample's name, when the library still knows it. */
+  name: string | null;
+  /** Why it could not be restored. */
+  reason: string;
+  /** True when SOME of the audio survived — a truncated recording. */
+  partial: boolean;
+  /** How much survived, in seconds (partial restores only). */
+  restoredSeconds?: number;
+}
+
+/** What the boot restore managed. */
+export interface UserSampleRestoreReport {
+  /** The samples that came back whole. */
+  restored: string[];
+  /** The samples that did not. */
+  failed: UserSampleRestoreFailure[];
+}
+
+/**
  * Decode persisted user-sample audio back into the SampleBank after a reload.
- * Fire-and-forget: the app runs fine before this completes — samples simply
- * become playable as they finish decoding. Decoding runs on a throwaway
- * OfflineAudioContext so no AudioContext unlock is needed; decoded buffers
- * carry their own sample rate and play correctly from the live engine.
+ * Fire-and-forget for the app (it runs fine before this completes — samples
+ * simply become playable as they finish decoding), but NOT silent: the
+ * outcome is RETURNED, so the caller can tell the user which takes are not
+ * coming back.
+ *
+ * Decoding runs on a throwaway OfflineAudioContext so no AudioContext unlock
+ * is needed; decoded buffers carry their own sample rate and play correctly
+ * from the live engine.
  */
 export async function restoreUserSampleAudio(
   bank: SampleBank,
   decode: (data: ArrayBuffer) => Promise<AudioBuffer> = defaultDecodeAudioBytes,
   restorePcm: (reference: PcmRecordingAudioRef) => Promise<AudioBuffer> = (reference) =>
-    new RecordingRecoveryRepository().materializeStoredSample(reference),
-): Promise<void> {
+    new RecordingRecoveryRepository().materializeStoredSample(reference, { tolerant: true }),
+  options: { only?: string[] } = {},
+): Promise<UserSampleRestoreReport> {
   const repo = new UserSampleRepository();
   const entries = await repo.listAudio();
+  const names = new Map((await repo.list()).map((asset) => [asset.id, asset.name]));
+  const restored: string[] = [];
+  const failed: UserSampleRestoreFailure[] = [];
   for (const { id, data } of entries) {
+    if (options.only && !options.only.includes(id)) continue;
     try {
-      const restored = isPcmRecordingAudio(data)
+      const buffer = isPcmRecordingAudio(data)
         ? await restorePcm(data)
         : await decode(isBlob(data) ? await data.arrayBuffer() : (data as ArrayBuffer));
-      bank.add(id, restored);
+      // A PCM restore can come back SHORT: the tail of the recording did not
+      // survive. The audio that DID survive is still worth playing — but the
+      // truncation must be reported, never passed off as the whole take.
+      if (isPcmRecordingAudio(data) && buffer.length < data.frames) {
+        if (buffer.length <= 0) {
+          failed.push({
+            id,
+            name: names.get(id) ?? null,
+            reason: "the saved recording could not be read back at all",
+            partial: false,
+          });
+          continue;
+        }
+        bank.add(id, buffer);
+        failed.push({
+          id,
+          name: names.get(id) ?? null,
+          reason: "the saved recording is incomplete",
+          partial: true,
+          restoredSeconds: buffer.duration,
+        });
+        continue;
+      }
+      bank.add(id, buffer);
+      restored.push(id);
     } catch (err) {
-      console.warn(`[user-samples] failed to restore ${id}:`, err);
+      const reason = err instanceof Error ? err.message : String(err);
+      failed.push({ id, name: names.get(id) ?? null, reason, partial: false });
     }
   }
+  return { restored, failed };
 }
 
 function isBlob(value: ArrayBuffer | Blob): value is Blob {
@@ -230,15 +293,18 @@ function defaultDecodeAudioBytes(data: ArrayBuffer): Promise<AudioBuffer> {
   return decodeAudioData(data);
 }
 
-const restoreByBank = new WeakMap<object, Promise<void>>();
+const restoreByBank = new WeakMap<object, Promise<UserSampleRestoreReport>>();
 
 /**
  * Fire-and-forget boot restore, memoized per bank: the offline renderer and
  * any future consumer await the SAME in-flight (or completed) work instead of
  * re-listing and re-decoding every sample. A failed memoized run is retried
  * on the next call.
+ *
+ * It is fire-and-forget for the BOOT — the app must not wait for a decode —
+ * but it is NOT silent: the report says which samples did not come back.
  */
-export function restoreUserSampleAudioMemoized(bank: SampleBank): Promise<void> {
+export function restoreUserSampleAudioMemoized(bank: SampleBank): Promise<UserSampleRestoreReport> {
   const key = bank as unknown as object;
   const existing = restoreByBank.get(key);
   if (existing) return existing;
@@ -248,6 +314,22 @@ export function restoreUserSampleAudioMemoized(bank: SampleBank): Promise<void> 
   });
   restoreByBank.set(key, running);
   return running;
+}
+
+/**
+ * Re-try the samples that failed to restore.
+ *
+ * The bytes are still in the store — a failed decode is often transient, and
+ * the staged PCM blocks are skipped past, never deleted. So the user gets a
+ * second chance instead of a silent loss.
+ */
+export async function retryUserSampleRestore(
+  bank: SampleBank,
+  ids: string[],
+  decode: (data: ArrayBuffer) => Promise<AudioBuffer> = defaultDecodeAudioBytes,
+): Promise<UserSampleRestoreReport> {
+  if (ids.length === 0) return { restored: [], failed: [] };
+  return restoreUserSampleAudio(bank, decode, undefined, { only: ids });
 }
 
 /**

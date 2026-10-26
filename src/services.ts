@@ -21,6 +21,7 @@ import {
   writeRecoveryBuffer,
   writeStatus,
 } from "./persistence/recoveryBuffer";
+import { publishUserSampleRestoreReport } from "./persistence/userSampleRestoreStatus";
 import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
@@ -412,9 +413,24 @@ export async function createCoreServices(): Promise<CoreServices> {
   // the app is fully usable while imports stream back in). Memoized per bank:
   // the offline renderer awaits the same promise (bounded) so an export or
   // freeze that races the restore cannot silently bake missing samples.
-  const userSampleHydration = restoreUserSampleAudioMemoized(bank).catch((error) => {
-    console.error("[user-samples] boot restore failed:", error);
-  });
+  //
+  // Audit S-3: it is fire-and-forget, but NOT silent. A sample that could not
+  // be decoded used to be logged and skipped — the recorded take that used it
+  // was permanently silent and the user was never told. The outcome is
+  // published, so the studio can say which takes are not coming back and
+  // offer a retry.
+  const userSampleHydration = restoreUserSampleAudioMemoized(bank)
+    .then((report) => {
+      publishUserSampleRestoreReport(report);
+      if (report.failed.length > 0) {
+        console.warn(
+          `[user-samples] ${report.failed.length} saved sample(s) could not be restored — the takes that use them are silent`,
+        );
+      }
+    })
+    .catch((error) => {
+      console.error("[user-samples] boot restore failed:", error);
+    });
   // Curated factory layer (same-id override): the synthesized kit already
   // sounds; these progressively replace the curated slots as they decode.
   // Export paths await `curatedReady()` so renders use the intended sound.

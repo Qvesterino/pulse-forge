@@ -7,6 +7,11 @@ import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibrat
 import type { ArrangementCaptureSnapshot } from "../arrangement/capture";
 import type { SelectionState } from "../store/SelectionStore";
 import type { RecoveryStatus } from "../store/ProjectStore";
+import {
+  getUserSampleRestoreStatus,
+  subscribeUserSampleRestoreStatus,
+  type UserSampleRestoreStatus,
+} from "../persistence/userSampleRestoreStatus";
 import { SelectionStore } from "../store/SelectionStore";
 import type { Tool } from "../store/ToolStore";
 import { ToolStore } from "../store/ToolStore";
@@ -163,6 +168,18 @@ export function useRecoveryStatus(): RecoveryStatus {
     () => store.getRecoveryStatus(),
     () => store.getRecoveryStatus(),
   );
+}
+
+/**
+ * Which of the user's own saved audio came back after a reload.
+ *
+ * A sample that could not be decoded used to be skipped in silence — the
+ * recorded take that used it was permanently silent and the user was never
+ * told. The state is published by the boot restore, so the UI can say it out
+ * loud and offer a retry.
+ */
+export function useUserSampleRestoreStatus(): UserSampleRestoreStatus {
+  return useSyncExternalStore(subscribeUserSampleRestoreStatus, getUserSampleRestoreStatus, getUserSampleRestoreStatus);
 }
 
 /** True iff the project has at least one command in its undo stack. */

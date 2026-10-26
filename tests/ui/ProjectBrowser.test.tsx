@@ -8,6 +8,7 @@ import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
 import { INTENT_PREFILL_KEY, peekSongStarter, takeIntentPrefill } from "../../src/landing/handoff";
 import { readFailedStatuses, writeStatus } from "../../src/persistence/recoveryBuffer";
+import { publishUserSampleRestoreStatus } from "../../src/persistence/userSampleRestoreStatus";
 
 /**
  * Import/export robustness audit regression: importing a project file used
@@ -269,6 +270,59 @@ describe("ProjectBrowser — recovery never destroys the saved project", () => {
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0].id).toBe("p1");
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A TAKE THAT CAME BACK SILENT MUST SAY SO (audit S-3).
+ *
+ * The boot restore skipped a sample it could not decode IN SILENCE — the
+ * recorded take that used it was permanently silent and the user was never
+ * told. The browser is the first screen, so it is where the news belongs.
+ */
+describe("ProjectBrowser — saved audio that did not come back is announced", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    window.localStorage.clear();
+    publishUserSampleRestoreStatus({ state: "ready", restored: [], failed: [] });
+  });
+
+  it("names the samples and says the takes are silent", async () => {
+    publishUserSampleRestoreStatus({
+      state: "ready",
+      restored: [],
+      failed: [
+        { id: "user.take-3", name: "Take 3", reason: "the decoder said no", partial: false },
+        { id: "user.take-4", name: "Take 4", reason: "the saved recording is incomplete", partial: true },
+      ],
+    });
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText(/saved samples could not be restored/)).toBeTruthy());
+    expect(screen.getByText(/are silent/)).toBeTruthy();
+    expect(screen.getByText(/Take 3, Take 4/)).toBeTruthy();
+  });
+
+  it("offers a retry — the bytes are still in the store", async () => {
+    publishUserSampleRestoreStatus({
+      state: "ready",
+      restored: [],
+      failed: [{ id: "user.take-3", name: "Take 3", reason: "the decoder said no", partial: false }],
+    });
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+
+    const retry = await screen.findByRole("button", { name: "Retry restoring saved audio" });
+    expect(retry).toBeTruthy();
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).not.toBeDisabled());
+  });
+
+  it("says nothing when everything came back", async () => {
+    publishUserSampleRestoreStatus({ state: "ready", restored: ["user.take-3"], failed: [] });
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+
+    await waitFor(() => expect(screen.queryByText(/could not be restored/)).toBeNull());
   });
 });
 

@@ -22,6 +22,8 @@ import { uid } from "../shared/ids";
 import { appUrl } from "../shared/mountBase";
 import { addAudioClip, fittedLoopPlacement } from "../commands/commands";
 import { UserSampleRepository } from "../persistence/UserSampleRepository";
+import { retryFailedUserSampleRestore } from "../persistence/userSampleRestoreStatus";
+import { useUserSampleRestoreStatus } from "./context";
 import { installKyxStarterLoops } from "../sample-library/kyx-starter-loops";
 
 const TransferImportDialog = lazy(() =>
@@ -124,6 +126,10 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [recovery, setRecovery] = useState<RecoveryBuffer | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [unprotected, setUnprotected] = useState<UnprotectedNotice | null>(null);
+  // Audit S-3: the boot restore publishes which of the user's own audio came
+  // back. A sample that did not means a recorded take that is SILENT — and
+  // the user has to be told, with a way to try again.
+  const sampleRestore = useUserSampleRestoreStatus();
   const [transferImportOpen, setTransferImportOpen] = useState(false);
   const [songStarterGenre, setSongStarterGenre] = useState<TemplateId>("house");
   const [songStarterMood, setSongStarterMood] = useState("all");
@@ -463,6 +469,22 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     setUnprotected(null);
   };
 
+  const [retryingSamples, setRetryingSamples] = useState(false);
+  const retrySamples = async () => {
+    if (retryingSamples) return;
+    setRetryingSamples(true);
+    try {
+      await retryFailedUserSampleRestore(
+        core.bank,
+        sampleRestore.failed.map((failure) => failure.id),
+      );
+    } catch (error) {
+      console.error("[ProjectBrowser] the saved-audio retry failed:", error);
+    } finally {
+      setRetryingSamples(false);
+    }
+  };
+
   const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
 
   // The disclosure sections are UNCONTROLLED: the `open` prop must never be
@@ -496,6 +518,35 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       </header>
 
       <div className="pb-body">
+        {sampleRestore.failed.length > 0 && (
+          <div className="pb-crash-banner" role="alert">
+            <span className="pb-crash-text">
+              {/* Audit S-3: the restore used to skip a sample that failed to
+                  decode IN SILENCE — the recorded take that used it was
+                  permanently silent and the user was never told. Say it out
+                  loud, name the samples, and offer the retry: the bytes are
+                  still in the store. */}
+              {sampleRestore.failed.length === 1 ? "1 saved sample" : `${sampleRestore.failed.length} saved samples`}{" "}
+              could not be restored
+              {sampleRestore.failed.some((failure) => failure.partial) ? " (some are incomplete)" : ""} — the recorded
+              takes that use {sampleRestore.failed.length === 1 ? "it" : "them"} are silent.{" "}
+              {sampleRestore.failed
+                .filter((failure) => failure.name != null)
+                .slice(0, 3)
+                .map((failure) => failure.name)
+                .join(", ")}
+            </span>
+            <button
+              type="button"
+              className="pb-crash-dismiss"
+              onClick={() => void retrySamples()}
+              aria-label="Retry restoring saved audio"
+              disabled={retryingSamples}
+            >
+              {retryingSamples ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        )}
         {recovery !== null && (
           <div className="pb-crash-banner" role="alert">
             <span className="pb-crash-text">
