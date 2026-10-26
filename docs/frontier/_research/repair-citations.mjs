@@ -10,8 +10,14 @@
 // was read out of the live source before this script ran.
 //
 // Usage: node docs/frontier/_research/repair-citations.mjs
+//
+// SAFETY: this script WRITES to the frontier documents. It therefore refuses
+// to run when it is merely imported (an accidental `import()` used to rewrite
+// the documents as a side effect of a measurement), and it refuses to apply a
+// replacement that is not idempotent.
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const frontierDir = new URL("../aaw/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
@@ -66,22 +72,33 @@ const REPLACEMENTS = [
 ];
 
 let totalEdits = 0;
-for (const file of readdirSync(frontierDir).filter((f) => f.endsWith(".md"))) {
-  const path = join(frontierDir, file);
-  let text = readFileSync(path, "utf8");
-  const original = text;
-  const applied = [];
-  for (const [oldStr, newStr, why] of REPLACEMENTS) {
-    if (!text.includes(oldStr)) continue;
-    const count = text.split(oldStr).length - 1;
-    text = text.split(oldStr).join(newStr);
-    applied.push(`${count}× "${oldStr}" -> "${newStr}" (${why})`);
-    totalEdits += count;
+const isCli = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (!isCli) {
+  console.error("repair-citations: imported, not run — no documents were written.");
+} else {
+  for (const file of readdirSync(frontierDir).filter((f) => f.endsWith(".md"))) {
+    const path = join(frontierDir, file);
+    let text = readFileSync(path, "utf8");
+    const original = text;
+    const applied = [];
+    for (const [oldStr, newStr, why] of REPLACEMENTS) {
+      if (!text.includes(oldStr)) continue;
+      // IDEMPOTENCE: when the replacement CONTAINS its own search string — a
+      // path is a superstring of its bare filename — a second run would prefix
+      // the path AGAIN ("src/project-model/src/project-model/schema.ts"). If the
+      // corrected form is already present, the remaining bare form is part of
+      // it: skip.
+      if (newStr.includes(oldStr) && text.includes(newStr)) continue;
+      const count = text.split(oldStr).length - 1;
+      text = text.split(oldStr).join(newStr);
+      applied.push(`${count}× "${oldStr}" -> "${newStr}" (${why})`);
+      totalEdits += count;
+    }
+    if (text !== original) {
+      writeFileSync(path, text, "utf8");
+      console.log(`${file}:`);
+      for (const a of applied) console.log(`   ${a}`);
+    }
   }
-  if (text !== original) {
-    writeFileSync(path, text, "utf8");
-    console.log(`${file}:`);
-    for (const a of applied) console.log(`   ${a}`);
-  }
+  console.log(`\ntotal replacements: ${totalEdits}`);
 }
-console.log(`\ntotal replacements: ${totalEdits}`);

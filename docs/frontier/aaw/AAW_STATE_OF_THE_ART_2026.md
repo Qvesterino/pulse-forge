@@ -47,10 +47,10 @@ invented.
 | **Live/offline render parity — one engine class**                            | **SHIPS**                         | `src/rendering/renderer.ts:516` (`new OfflineAudioContext`), `:525` (`new AudioEngine()` — _the same class_), `:528` (`engine.useContext(ctx)`), `:523` (`ensureWorkletsForDoc`), `:534` (`unfreezeDoc`), `:559` (`bypassMasterChainForOfflineRender`)                                                                                                                                                                                                                                                                                                                                                                                  |
 | **Preview without touching the live graph**                                  | **SHIPS**                         | `src/mcp/mix-preview.ts:33-48` (before/after docs held in a session lane); `src/rendering/stems.ts:9-50` (`buildStemProject` → a _derived_ document); `src/mcp/mix-diagnosis.ts:30-33` ("Pure read — never mutates")                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **A hard real-time boundary**                                                | **SHIPS (by exhaustive absence)** | **51** `extends AudioWorkletProcessor` classes across **50** files in `src/audio-worklets/`; grep for `fetch(`/`XMLHttpRequest`/`WebSocket` over `src/audio-worklets/**` **and** `src/audio-engine/**` → **no matches**; `src/audio-worklets/rt-monitor-node.ts:1-24` (xrun + heartbeat probe)                                                                                                                                                                                                                                                                                                                                          |
-| **Typed, agent-visible effect metadata**                                     | **SHIPS**                         | `src/effects/types.ts:3-48` (`ParamDef`: id/label/min/max/default/unit/description/kind/step/taper/options/deprecated/aliasOf), `:269-275` (`EffectDefinition`); `src/effects/registry.ts:3936-3993` (**57** effects) exposed via `kyx_catalog subject:effect` (`src/effects/src/project-model/types.ts:11-16`)                                                                                                                                                                                                                                                                                                                         |
+| **Typed, agent-visible effect metadata**                                     | **SHIPS**                         | `src/effects/types.ts:3-48` (`ParamDef`: id/label/min/max/default/unit/description/kind/step/taper/options/deprecated/aliasOf), `:269-275` (`EffectDefinition`); `src/effects/registry.ts:3936-3993` (**57** effects) exposed via `kyx_catalog subject:effect` (`src/effects/types.ts:11-16`)                                                                                                                                                                                                                                                                                                                                           |
 | **Parameter ranges enforced twice** (not just in the UI)                     | **SHIPS**                         | `src/effects/definitions.ts:331-343` (`clampEffectParam`); `src/commands/effectParams.ts:101-105`; `src/audio-engine/AudioEngine.ts:19,73-82,398`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Versioned project schema + real migrations + future-version rejection**    | **SHIPS**                         | `src/project-model/src/project-model/schema.ts:62` (`SCHEMA_VERSION = 38`), `:3549-3554` (`migrateProject`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Musical time as integers**                                                 | **SHIPS**                         | `src/project-model/src/project-model/types.ts:1` (`PPQ = 480`); `src/rendering/renderer.ts:504-505`; `src/rendering/tempoMap.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Versioned project schema + real migrations + future-version rejection**    | **SHIPS**                         | `src/project-model/schema.ts:68` (`SCHEMA_VERSION = 38`), `:3552-3554` (`migrateProject`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Musical time as integers**                                                 | **SHIPS**                         | `src/project-model/types.ts:1` (`PPQ = 480`); `src/rendering/renderer.ts:504-505`; `src/rendering/tempoMap.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **A traversable project graph**                                              | **SHIPS**                         | `src/project-model/types.ts:730` (Scene), `:795` (Marker), `:816` (ArrangementClip), `:872` (ArrangementTransition), `:978` (ClipGroup), `:999` (Arrangement), `:1024` (AutomationLane); `src/project-model/targets.ts:202-254` (legal automation targets)                                                                                                                                                                                                                                                                                                                                                                              |
 | **A deterministic-first intent pipeline**                                    | **SHIPS**                         | `src/intent/route.ts:382-410` (`RoutedIntent`), `src/intent/pipeline.ts:75-133`, `src/intent/providers/local.ts:1-18` (deterministic generator + feature ranking + symbolic prior + personal bias), `src/intent/candidate-bank.ts`                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **A typed, dry-run-backed intent plan**                                      | **SHIPS**                         | `src/intent/semantics/intent-plan.ts:66-78` — `{ routeKind, summary, steps, warnings, mutates, executable, commandLabel?, after: ProjectDocument }`; the resulting document is explicitly **not** passed to the store by that module                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -68,11 +68,12 @@ invented.
 ### 1.1 The honest counter-reading
 
 Read the table above and the obvious conclusion is: _the hard parts of an AAW are already solved in
-KYX, and the missing part is perception._ That is correct — and it is the most important
-architectural finding in this program. It also means the frontier program should **not** be a
-rewrite. It should be **three things**:
+KYX, and the missing part is perception — as the **agent** sees it._ That is correct, and it is the
+most important architectural finding in this program. It also means the frontier program should
+**not** be a rewrite. It should be **three things**:
 
-1. **A perception layer that can talk about sound** (currently absent).
+1. **A perception layer that can talk about sound** — the product has one (a classical DSP layer
+   plus an AudioSet tagger, §2 G-A); what is absent is the agent's access to it.
 2. **A permission lattice that matches the risk model** (currently: only the 7 destructive tools are
    gated).
 3. **A planner that walks the project graph** (currently: routes are per-clause).
@@ -366,14 +367,30 @@ The brief allows new tracks only when justified. Five qualify:
 5. **No musical time as an addressable position.** _"Trim at bar 3"_ / _"move to bar 5"_ are **not
    expressible**. For an AI that must reason about form, this is fatal — and it is the single
    highest-value missing primitive in ZYVO.
-6. **Vocal-specific measurement that does not exist**: no vibrato rate/extent, no jitter/shimmer,
-   no breathiness or breath-support proxy, no HNR, no intelligibility, no spectral-tilt per take, no
-   stage-noise floor estimate. The existing contour rate (40 ms frame) is adequate to _draw_ a
-   contour and **not** adequate for per-block live control.
+6. **Vocal-specific measurement that is only _partly_ there.** _Corrected 2026-10-26:_ the original
+   claim ("no vibrato rate/extent, no breathiness, no stage-noise floor estimate") was **false**.
+   ZYVO **does** ship vibrato rate and extent, breath candidates and a per-take noise floor:
+   `extractVibrato()` (`packages/analysis-pipeline/src/performanceGenome.ts:185`, `meanRateHz` `:227`,
+   `meanExtentCents` `:229`, built `:464`), breath candidates (`:466-502`), all returned by
+   `extractPerformanceVector` (`:557`) and wired into the app through
+   `apps/vocalforge-daw/src/performanceVectorManager.ts:20,125`; the noise floor is `noiseFloorDb`
+   (`packages/analysis-pipeline/src/cleanupAnalysis.ts:53,113,169`); the vibrato path is tested
+   (`packages/analysis-pipeline/tests/performanceGenome.test.ts:86-93` — rate **and** extent on a
+   synthetic FM tone). **Still absent:** jitter/shimmer, HNR, intelligibility and per-take spectral
+   tilt. The existing contour rate (40 ms frame) is adequate to _draw_ a contour and **not**
+   adequate for per-block live control.
 7. **No measured accuracy anywhere.** No ground-truth benchmark for pitch accuracy, onset accuracy,
    key/tempo detection, or the reference-blueprint adaptations. Rosa's ONNX heads are trained on
    procedural fixtures only, and **no accuracy figure exists in the repo**.
-8. **Coaching is absent.** There is no `*coach*` file anywhere in `apps/` or `packages/`.
+8. **Coaching exists — but not the coaching an AAW needs.** _Corrected 2026-10-26:_ the original
+   claim ("coaching is absent; there is no `*coach*` file anywhere in `apps/` or `packages/`") was
+   **false**: a filename token cannot reveal a feature. ZYVO ships a **Vocal Coach** — an intonation
+   report and card (`apps/vocalforge-daw/src/intonationReport.ts:2,115`,
+   `apps/vocalforge-daw/src/intonationReportCard.ts:2,54`), a live pitch-trace buffer
+   (`apps/vocalforge-daw/src/controller.ts:7580`) and per-gig coach notes
+   (`apps/vocalforge-daw/src/liveShowGigReport.ts:181,449,571-573`). What does **not** exist is
+   **phrase-aware, target-relative coaching**: a coach that compares a take against an _intentional_
+   target rather than against a tonal centre.
 9. **No audio pre-image of a pending proposal.** `RecordProposalRenderReceipt` stores _status_, not
    audio — an AI-assisted live workflow cannot _hear_ a proposal before accepting it.
 10. **No general modulation matrix.** `modRoutes` exist **only** for Morph
@@ -418,7 +435,7 @@ defaults it to **1** and the Steinberg SDK is **vendored** (`vendor/asio/`, 48 f
 `AI_CONTROL_COMPLETENESS_AUDIT_REPORT.md:16` says **282** command types where the code has **283**;
 and `NEXT_GENERATION_CAPABILITY_REVIEW_REPORT.md:223` ("no envelope-follower source") is **stale** —
 the lead-vocal envelope follower is implemented and wired
-(`packages/audio-engine/src/dsp/leadEnvelopeStore.ts`, consumed at `dsp/dspChainRunner.ts:775` and
+(`packages/audio-engine/src/dsp/leadEnvelopeStore.ts`, consumed at `packages/audio-engine/src/dsp/dspChainRunner.ts:775` and
 `mixdown.ts:2035-2041`).
 
 `MCP_AI_CONTROL_MATRIX.md:61` still says _"24 tools"_ while the code has **61** — the matrix is an

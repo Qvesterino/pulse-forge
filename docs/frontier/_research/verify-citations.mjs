@@ -83,6 +83,7 @@ const SKIP_DIRS = new Set([
 function indexRepo(root) {
   const byPath = new Map();
   const byBase = new Map();
+  const topDirs = new Set();
   const walk = (dir) => {
     let entries;
     try {
@@ -104,7 +105,14 @@ function indexRepo(root) {
     }
   };
   walk(root);
-  return { byPath, byBase };
+  // The repo's own top-level directories: a citation may name a file by a
+  // PARTIAL path ("command-core/src/index.ts"), and every top-level dir is
+  // a legitimate prefix for that.
+  for (const rel of byPath.keys()) {
+    const slash = rel.indexOf("/");
+    if (slash > 0) topDirs.add(rel.slice(0, slash));
+  }
+  return { byPath, byBase, topDirs: [...topDirs].sort() };
 }
 
 const KYX = indexRepo(KYX_ROOT);
@@ -129,12 +137,27 @@ function candidates(rawPath) {
     const direct = index.byPath.get(norm);
     if (direct) out.push({ abs: direct, repo });
     // a partial path like `command-core/src/index.ts` -> `packages/command-core/src/index.ts`
-    for (const prefix of ["packages/", "apps/", "src/", "docs/"]) {
-      const abs = index.byPath.get(prefix + norm);
+    for (const prefix of index.topDirs) {
+      if (prefix === norm.split("/")[0]) continue; // already tried as `direct`
+      const abs = index.byPath.get(prefix + "/" + norm);
       if (abs) out.push({ abs, repo });
     }
   }
   return out;
+}
+
+/**
+ * A path that repeats a directory segment cannot exist: the repair script
+ * that once fixed these citations was not idempotent, and a bare-filename
+ * rule hit the wrong file when the same basename lived under a path that
+ * was ALREADY qualified. Both produce exactly this shape.
+ */
+function repeatedSegment(rawPath) {
+  const parts = rawPath.replace(/\\/g, "/").split("/").filter(Boolean);
+  for (let i = 1; i < parts.length; i++) {
+    if (parts[i] === parts[i - 1]) return parts[i];
+  }
+  return null;
 }
 
 /** Bare filename: every file with that name in either repo. */
@@ -171,8 +194,30 @@ for (const doc of docs) {
     seen.add(key);
 
     const hasSlash = rawPath.includes("/");
+
+    // A path whose segments repeat cannot exist. Checked BEFORE resolution,
+    // because resolution is what used to hide it.
+    const repeated = repeatedSegment(rawPath);
+    if (repeated) {
+      problems.push({
+        kind: "IMPOSSIBLE-PATH",
+        doc: docRel,
+        citation: key,
+        note: `the segment "${repeated}" repeats — no such path can exist (a repair script re-prefixed it)`,
+      });
+      continue;
+    }
+
     const direct = candidates(rawPath);
-    let pool = direct.length > 0 ? direct : baseCandidates(rawPath.replace(/\\/g, "/").split("/").pop());
+    // STRICT: a citation that names a PATH (it contains a slash) must
+    // resolve as that path. Falling back to the basename is what let
+    // `src/project-model/src/project-model/schema.ts` "resolve" to
+    // `src/project-model/schema.ts` and pass. Only a BARE filename may
+    // fall back, because a bare filename is not a path claim.
+    let pool = direct;
+    if (pool.length === 0 && !hasSlash) {
+      pool = baseCandidates(rawPath.replace(/\\/g, "/").split("/").pop());
+    }
 
     if (pool.length === 0) {
       problems.push({ kind: "UNRESOLVED", doc: docRel, citation: key, note: "file not found in either repo" });

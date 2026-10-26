@@ -5,6 +5,12 @@
 **Product:** ZYVO — vocal-centric recording, editing, mixing and performance (Electron desktop; native audio I/O; live/show workflows)
 **Companions:** `KYX_FRONTIER_CAPABILITIES.md`, `AAW_SECURITY_AND_REALTIME_SAFETY.md`, `AAW_REFERENCE_ARCHITECTURE.md`
 
+> **Correction (2026-10-26).** Two claims in this document were measured false and are corrected
+> in place, with the correction visible: "coaching is greenfield" — ZYVO **does** ship a Vocal
+> Coach, and Z-2 is an **extension**, not a new product; and the Score column, which carried a
+> second, undocumented scale that contradicted the roadmap. See `AAW_SOURCE_LEDGER.md` S-87 and
+> S-99, and `AAW_DECISION_LOG.md` EG-14.
+
 ---
 
 ## 0. The rule that shapes every ZYVO capability
@@ -44,8 +50,12 @@ This portfolio is written against a **verified** ZYVO baseline, not an impressio
 
 **Four facts that change this portfolio:**
 
-1. **Coaching is greenfield** — there is **no `*coach*` file anywhere** in `apps/` or `packages/`.
-   Z-2 is a new product, not an extension.
+1. **Coaching exists, but not the coaching an AAW needs** — ⚠ _corrected 2026-10-26_: the original
+   claim ("**no `*coach*` file anywhere** in `apps/` or `packages/`") was **false**; a filename token
+   cannot reveal a feature. ZYVO ships a **Vocal Coach** (intonation report + card, live pitch
+   trace, per-gig coach notes — `apps/vocalforge-daw/src/intonationReport.ts:2,115`,
+   `apps/vocalforge-daw/src/liveShowGigReport.ts:181,449`). Z-2 is therefore **an extension, not a
+   new product**: it adds the target-relative, phrase-aware layer the shipped coach does not have.
 2. **Musical time is not addressable** — _"trim at bar 3"_ / _"move to bar 5"_ are **not expressible**.
    An AI that must reason about form has no coordinate system to reason in. This is the single
    highest-value missing primitive in ZYVO, and several items below depend on it.
@@ -64,20 +74,25 @@ per-call approval. It is the model the shared control plane should adopt.
 
 ## 1. The portfolio at a glance
 
-| #        | Capability                                         | Modes          | Verdict                       | Score | The one-line case                                                                   |
-| -------- | -------------------------------------------------- | -------------- | ----------------------------- | ----- | ----------------------------------------------------------------------------------- |
-| **Z-1**  | Take comparison (A/B with measurable diff)         | OFF            | **Build now**                 | 4.5   | Competing takes, compared _quantitatively and audibly_, not by filename             |
-| **Z-2**  | Phrase-aware vocal coaching                        | OFF, REH       | **Build now (deterministic)** | 4.3   | Objective feedback (pitch, timing, breath) against the performer's _own_ target     |
-| **Z-3**  | Context-sensitive vocal effects (scene by section) | OFF, REH, LIVE | **Build now (deterministic)** | 4.2   | The vocal chain follows the song, deterministically                                 |
-| **Z-4**  | Safe pitch-effect control                          | REC, REH, LIVE | **Build now**                 | 4.2   | Bounded, slewed, recoverable pitch correction that cannot artefact                  |
-| **Z-5**  | Word-level lyric/phonetic alignment                | OFF, REC       | **Experiment**                | 3.8   | Needs a Slovak-capable ASR; the alignment quality is the blocker                    |
-| **Z-6**  | Vocal comping assistance                           | OFF            | **Experiment**                | 3.6   | Comp selection is a musical judgement — the model must _propose_, the human decides |
-| **Z-7**  | Expressive automation from performance             | OFF            | **Experiment**                | 3.5   | Derive fader/effect curves from how the performer actually sang                     |
-| **Z-8**  | Performance scene orchestration                    | REH, LIVE      | **Experiment**                | 3.4   | Scene _suggestion_ for section transitions — never automatic in LIVE                |
-| **Z-9**  | Live cue prediction                                | REH, LIVE      | **Research bet**              | 2.7   | The highest-value and highest-risk item in the portfolio                            |
-| **Z-10** | Vocal clarity monitoring                           | REH, LIVE      | **Build now (deterministic)** | 3.9   | Objective intelligibility/level monitoring with a safe envelope                     |
-| **Z-11** | Rehearsal-to-show transfer                         | REH → LIVE     | **Build now (workflow)**      | 3.8   | Make rehearsal _be_ the show config, so the show is a rehearsal of itself           |
-| **Z-12** | Voice identity protection                          | all            | **Build now (policy)**        | 4.0   | Guardrails: no voice cloning without a grant; identity preserved under processing   |
+| #        | Capability                                         | Modes          | Verdict                       | Score | Rank | The one-line case                                                                   |
+| -------- | -------------------------------------------------- | -------------- | ----------------------------- | ----- | ---- | ----------------------------------------------------------------------------------- |
+| **Z-1**  | Take comparison (A/B with measurable diff)         | OFF            | **Build now**                 | 4.86  | 1    | Competing takes, compared _quantitatively and audibly_, not by filename             |
+| **Z-2**  | Phrase-aware vocal coaching                        | OFF, REH       | **Prototype first**           | 4.00  | 23   | Objective feedback (pitch, timing, breath) against the performer's _own_ target     |
+| **Z-3**  | Context-sensitive vocal effects (scene by section) | OFF, REH, LIVE | **Build now (deterministic)** | 4.47  | 9    | The vocal chain follows the song, deterministically                                 |
+| **Z-4**  | Safe pitch-effect control                          | REC, REH, LIVE | **Build now**                 | 4.11  | 21   | Bounded, slewed, recoverable pitch correction that cannot artefact                  |
+| **Z-5**  | Word-level lyric/phonetic alignment                | OFF, REC       | **Experiment**                | 3.01  | 33   | Needs a Slovak-capable ASR; the alignment quality is the blocker                    |
+| **Z-6**  | Vocal comping assistance                           | OFF            | **Experiment**                | 3.38  | 30   | Comp selection is a musical judgement — the model must _propose_, the human decides |
+| **Z-7**  | Expressive automation from performance             | OFF            | **Experiment**                | 3.39  | 29   | Derive fader/effect curves from how the performer actually sang                     |
+| **Z-8**  | Performance scene orchestration                    | REH, LIVE      | **Experiment**                | 3.63  | 25   | Scene _suggestion_ for section transitions — never automatic in LIVE                |
+| **Z-9**  | Live cue prediction                                | REH, LIVE      | **Research bet**              | 2.61  | 36   | The highest-value and highest-risk item in the portfolio                            |
+| **Z-10** | Vocal clarity monitoring                           | REH, LIVE      | **Build now (deterministic)** | 4.13  | 19   | Objective intelligibility/level monitoring with a safe envelope                     |
+| **Z-11** | Rehearsal-to-show transfer                         | REH → LIVE     | **Build now (workflow)**      | 4.63  | 2    | Make rehearsal _be_ the show config, so the show is a rehearsal of itself           |
+| **Z-12** | Voice identity protection                          | all            | **Build now (policy)**        | 4.42  | 10   | Guardrails: no voice cloning without a grant; identity preserved under processing   |
+
+> **The Score and Rank columns are the program's single scale** — `AAW_ROADMAP_2026_2029.md` §2.2,
+> produced by `docs/frontier/_research/score-model.mjs` (base weighting; ranks out of 36). An
+> earlier version of this table carried a second, undocumented scale that contradicted the
+> roadmap (corrected 2026-10-26).
 
 ---
 
@@ -115,7 +130,7 @@ per-call approval. It is the model the shared control plane should adopt.
 | **Risk**                       | Medium: **the pedagogical risk**. Telling a singer they are 18 cents flat on a phrase they sang intentionally is corrosive. Mitigation: confidence thresholds + the ability to mark a phrase as "intentional" + the performer's own take as the baseline.                                     |
 | **Differentiation**            | **Medium-high.** Singing-feedback apps exist, but they are generic pitch trainers. A _project-aware, phrase-level, target-relative_ coach inside the DAW is rare.                                                                                                                             |
 | **Small prototype**            | F0 + DTW alignment + a phrase table; targets from the performer's own best take. **Requires the musical-time primitive first** (see §0.1)                                                                                                                                                     |
-| **Verdict**                    | **Build now (deterministic) — but it is greenfield, and it is blocked on addressable musical time.**                                                                                                                                                                                          |
+| **Verdict**                    | **Prototype first (deterministic) — an _extension_ of the shipped Vocal Coach, not greenfield (corrected 2026-10-26) — and it is blocked on addressable musical time.** Roadmap tier: _research prototype_, score 4.00, rank 23/36.                                                           |
 
 ---
 
