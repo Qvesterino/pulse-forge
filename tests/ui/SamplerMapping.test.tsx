@@ -76,9 +76,12 @@ describe("Sampler AutoMap UI contract", () => {
     const user = userEvent.setup();
     const { track, doc } = samplerDoc();
     const services = mockServices(doc);
-    renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={() => {}} showDropZone targetTrack={track} />, {
-      services,
-    });
+    renderWithContext(
+      <SampleBrowser assets={[]} currentId={null} onSelect={() => {}} showDropZone targetTrack={track} />,
+      {
+        services,
+      },
+    );
 
     await user.click(screen.getByRole("button", { name: "Mock multi-sample drop" }));
     expect(services.store.execute).not.toHaveBeenCalled();
@@ -98,9 +101,12 @@ describe("Sampler AutoMap UI contract", () => {
     const user = userEvent.setup();
     const { track, doc } = samplerDoc();
     const services = mockServices(doc);
-    renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={() => {}} showDropZone targetTrack={track} />, {
-      services,
-    });
+    renderWithContext(
+      <SampleBrowser assets={[]} currentId={null} onSelect={() => {}} showDropZone targetTrack={track} />,
+      {
+        services,
+      },
+    );
 
     await user.click(screen.getByRole("button", { name: "Mock multi-sample drop" }));
     await user.click(screen.getByRole("button", { name: "CANCEL" }));
