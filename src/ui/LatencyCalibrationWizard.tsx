@@ -8,6 +8,7 @@ import {
   type AudioLatencyMeasurement,
 } from "../audio-engine/latencyCalibration";
 import { downloadMobileLatencyReport } from "../mobile/latencyAudit";
+import { listRecordingInputDevices, loadRecordingInputDeviceId } from "../audio-engine/recordingInput";
 import {
   MAX_RECORDING_INPUT_OFFSET_MS,
   MIN_RECORDING_INPUT_OFFSET_MS,
@@ -39,6 +40,34 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
   const [phase, setPhase] = useState<WizardPhase>("intro");
   const [error, setError] = useState("");
   const [testPlaying, setTestPlaying] = useState(false);
+  /**
+   * Which microphone this calibration belongs to.
+   *
+   * Audit R-3: the offset is stored PER INPUT DEVICE, so the user has to be
+   * able to see which one they just calibrated — otherwise "the other
+   * interface is not compensated" has no explanation. The label is only
+   * known after the device list is read (device labels are withheld until
+   * the microphone permission is granted), so it fills in.
+   */
+  const [inputLabel, setInputLabel] = useState<string | null>(null);
+  /**
+   * Read the label of the input this calibration belongs to.
+   *
+   * Device labels are withheld until the user grants the microphone
+   * permission, so this runs again after the probe — the first read can only
+   * say "Audio input 2", the second knows the real name.
+   */
+  const refreshInputLabel = () => {
+    const selected = loadRecordingInputDeviceId();
+    void listRecordingInputDevices().then((devices) => {
+      const match = devices.find((device) => device.deviceId === selected);
+      setInputLabel(match?.label ?? (selected === "" ? "System default input" : "Selected input"));
+    });
+  };
+  useEffect(() => {
+    if (!open) return;
+    refreshInputLabel();
+  }, [open]);
   /** Exact measurement behind the report; null until this run measured. */
   const [lastMeasurement, setLastMeasurement] = useState<AudioLatencyMeasurement | null>(null);
   /** Offset actually applied to recording placement by the last stable measurement
@@ -114,12 +143,23 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
       if (typeof AudioContext === "undefined" || !(context instanceof AudioContext)) {
         throw new AudioLatencyCalibrationError("A live AudioContext is required for calibration.");
       }
-      const measurement = await measureAudioRoundTrip(context, audioAbort.signal, () => {
-        if (token === runTokenRef.current) setPhase("audio");
-      });
+      const measurement = await measureAudioRoundTrip(
+        context,
+        audioAbort.signal,
+        () => {
+          if (token === runTokenRef.current) setPhase("audio");
+        },
+        // Audit R-3: measure the microphone the app will RECORD with, and
+        // store the offset under that same device. Measuring the system
+        // default and filing the result under the selected input is how one
+        // interface's calibration ended up on another.
+        loadRecordingInputDeviceId(),
+      );
       if (token !== runTokenRef.current) return;
       services.latency.setAudioMeasurement(measurement);
       setLastMeasurement(measurement);
+      // The permission is granted now — the input's real label is known.
+      refreshInputLabel();
       // Feed the measured round trip into recording placement (previously
       // display-only): a stable measurement seeds the mic recording offset,
       // which every take compensates via compensateRecordingStartBar.
@@ -226,6 +266,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
             <p className="latency-copy">
               Use speakers or an acoustic loopback. MIDI timing is tuned separately and stays browser-local.
             </p>
+            <InputLabelNote inputLabel={inputLabel} />
             {calibration.audioRoundTripMs !== null && <AudioResult calibration={calibration} />}
             <div className="latency-actions">
               <button type="button" className="btn btn-small active-solo" onClick={() => void runAudioCalibration()}>
@@ -258,6 +299,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
           <div className="latency-body">
             <AudioResult calibration={calibration} />
             <AppliedOffsetNote appliedOffsetMs={appliedOffsetMs} measuredOffsetMs={measuredOffsetMs} />
+            <InputLabelNote inputLabel={inputLabel} />
             <p className="latency-copy">
               This is an audio-path measurement, not the physical latency of a MIDI controller.
             </p>
@@ -327,6 +369,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
                 onChange={(event) => services.latency.setMidiReferenceOffsetMs(Number(event.target.value))}
               />
             </label>
+            <InputLabelNote inputLabel={inputLabel} />
             <label className="latency-offset-control">
               <span>MIC RECORDING OFFSET</span>
               <output>{recordingInputOffsetMs} ms</output>
@@ -341,7 +384,8 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
               />
               <span className="latency-hint">
                 Recording placement correction: positive values move recorded clips earlier. A stable audio test seeds
-                this value; nudge the slider to fine-tune.
+                this value; nudge the slider to fine-tune. The value belongs to one input device — another interface
+                starts at 0 until it is calibrated.
               </span>
             </label>
             <div className="latency-actions">
@@ -378,6 +422,24 @@ function AudioResult({ calibration }: { calibration: ReturnType<typeof useLatenc
         <p>Measurement is unstable. Try quieter surroundings or a clearer acoustic return.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Which input the stored offset belongs to.
+ *
+ * Audit R-3: the offset is stored PER INPUT DEVICE, so the user has to be
+ * able to see which one they just calibrated — otherwise "the other interface
+ * is not compensated" has no explanation. The label is only known after the
+ * device list is read (device labels are withheld until the microphone
+ * permission is granted), so it fills in.
+ */
+function InputLabelNote({ inputLabel }: { inputLabel: string | null }) {
+  if (!inputLabel) return null;
+  return (
+    <p className="latency-hint" data-testid="latency-input-label">
+      Stored for this input: {inputLabel}
+    </p>
   );
 }
 

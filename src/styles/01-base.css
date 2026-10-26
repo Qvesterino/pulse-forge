@@ -222,14 +222,20 @@ button {
   text-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
 }
 
-/* MIDI record arm — red dot, pulses while armed so the state is unmistakable
-   mid-take. */
+/* MIDI record intent and capture are separate: amber means armed but waiting;
+   the red pulse is reserved for notes being captured right now. */
 .btn-record {
   color: #f87171;
   font-size: var(--fs-md);
 }
 
 .btn-record.armed {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+
+.btn-record.recording {
   background: rgba(248, 113, 113, 0.16);
   border-color: #f87171;
   color: #fecaca;

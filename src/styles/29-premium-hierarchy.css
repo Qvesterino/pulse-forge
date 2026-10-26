@@ -523,7 +523,7 @@ h3.panel-title {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn-record.armed {
+  .btn-record.recording {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
   }

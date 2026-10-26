@@ -81,11 +81,20 @@ function pairDetections(scheduledTimes: readonly number[], detections: readonly 
  * Measure the physical output -> microphone -> input path with a short pulse
  * train. The returned value is intentionally an audio-path measurement, not a
  * claim about MIDI hardware latency.
+ *
+ * `deviceId` pins the MICROPHONE the probe listens on — the same input the
+ * recorder uses and the same input the recording offset is stored for
+ * (audit R-3). Without it the probe measured the SYSTEM DEFAULT microphone
+ * while the offset was filed under the SELECTED one, which is the very
+ * mismatch that made one interface's calibration land on another. A device
+ * that is not there FAILS the calibration: measuring a different microphone
+ * and filing the result under the wrong device is worse than no measurement.
  */
 export async function measureAudioRoundTrip(
   ctx: AudioContext,
   signal?: AbortSignal,
   onMicrophoneReady?: () => void,
+  deviceId?: string,
 ): Promise<AudioLatencyMeasurement> {
   if (!ctx.audioWorklet || typeof AudioWorkletNode === "undefined") {
     throw new AudioLatencyCalibrationError("This browser cannot run the audio probe.");
@@ -103,14 +112,25 @@ export async function measureAudioRoundTrip(
 
   try {
     throwIfAborted(signal);
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-      video: false,
-    });
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    };
+    if (deviceId) audioConstraints.deviceId = { exact: deviceId };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: false,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "OverconstrainedError") {
+        throw new AudioLatencyCalibrationError(
+          "The selected audio input is not available — connect it, or choose another input and calibrate again.",
+        );
+      }
+      throw error;
+    }
     throwIfAborted(signal);
     onMicrophoneReady?.();
     // addModule once per context: re-registering "latency-probe-processor"

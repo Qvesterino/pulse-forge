@@ -58,6 +58,54 @@ describe("TopBar", () => {
     expect(screen.queryByRole("button", { name: /save failed/i })).not.toBeInTheDocument();
   });
 
+  it("shows an armed MIDI recorder as waiting, not recording, while the transport is stopped", () => {
+    const services = mockServices();
+    vi.spyOn(services.patternRecorder, "getSnapshot").mockReturnValue({
+      armed: true,
+      mode: "overdub",
+      quantize: "off",
+      strength: 1,
+    });
+    const { container } = renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    const record = screen.getByRole("button", { name: "MIDI recording armed; waiting for playback" });
+    expect(record).toHaveAttribute("aria-pressed", "false");
+    expect(record).toHaveClass("armed");
+    expect(record).not.toHaveClass("recording");
+    expect(screen.getByRole("combobox", { name: "Record mode" })).toBeInTheDocument();
+    expect(container.querySelector('[role="status"]')).toHaveTextContent("armed and waiting");
+  });
+
+  it("turns the REC lamp on only after count-in reaches the content start", async () => {
+    const services = mockServices();
+    vi.spyOn(services.patternRecorder, "getSnapshot").mockReturnValue({
+      armed: true,
+      mode: "overdub",
+      quantize: "off",
+      strength: 1,
+    });
+    const transport = services.transport as unknown as {
+      playing: boolean;
+      position: number;
+      anchorTickBeforePreRoll: () => number;
+    };
+    transport.playing = true;
+    transport.position = 0;
+    transport.anchorTickBeforePreRoll = () => 960;
+
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    const waiting = screen.getByRole("button", { name: "MIDI recording armed; waiting for playback" });
+    expect(waiting).toHaveAttribute("aria-pressed", "false");
+    expect(waiting).not.toHaveClass("recording");
+
+    transport.position = 960;
+    await waitFor(() => {
+      const recording = screen.getByRole("button", { name: "MIDI recording active" });
+      expect(recording).toHaveAttribute("aria-pressed", "true");
+      expect(recording).toHaveClass("recording");
+    });
+  });
+
   /**
    * Audit S-4: the crash buffer is the only copy of the work that was
    * uncommitted when the tab dies. When it cannot hold the project, the user

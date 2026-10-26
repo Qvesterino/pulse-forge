@@ -8,33 +8,33 @@
 
 ---
 
-> ## REMEDIATION STATUS — updated 2026-10-25, after the audit was delivered
+> ## REMEDIATION STATUS — updated 2026-10-27, after the audit was delivered
 >
 > **The audit body below is unchanged.** It records what the read-only audit
 > OBSERVED at that moment, and every finding keeps its original evidence and
 > severity. This block says what has been **repaired since**, so the document
 > never claims a fix is still open when it is not.
 >
-> | Finding                                  | Severity     | Status                                                                                                                                            | Commit                                    |
-> | ---------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-> | **F-28** PRISM write-back — canonical id | **Critical** | **FIXED** — the rack↔core id map is now bidirectional and the command canonicalises the id and the value into the document domain                 | `a53a13a6`                                |
-> | **F-29** automation-point undo           | High         | **FIXED** — the undo verifies the slot before splicing, then re-anchors by identity                                                               | `9c016d92`                                |
-> | **F-25** stale AI write                  | High         | **FIXED** — per-field compare-and-swap: the write is REFUSED with a named conflict instead of overwriting the human's value                       | `5267cb2f`                                |
-> | **F-01** stale export                    | High         | **FIXED** — the stem and track exports capture the document at call time and assert it before and after each render                               | `c0de98ae`                                |
-> | **F-10** track-gain lane                 | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane) | `6452dadd`, `ca104349`                    |
-> | **F-06** idempotent replay               | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware   | `c050b03f` (partly carried by `4d7bf750`) |
-> | **F-16** collab normalisation            | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                           | `04c41290` (parallel session), `faba6885` |
-> | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one       | `3d59627e`                                |
-> | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                              | —                                         |
+> | Finding                                  | Severity     | Status                                                                                                                                                                                                                                                                                  | Commit                                    |
+> | ---------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+> | **F-28** PRISM write-back — canonical id | **Critical** | **FIXED** — the rack↔core id map is now bidirectional and the command canonicalises the id and the value into the document domain                                                                                                                                                       | `a53a13a6`                                |
+> | **F-29** automation-point undo           | High         | **FIXED** — the undo verifies the slot before splicing, then re-anchors by identity                                                                                                                                                                                                     | `9c016d92`                                |
+> | **F-25** stale AI write                  | High         | **FIXED** — per-field compare-and-swap: the write is REFUSED with a named conflict instead of overwriting the human's value                                                                                                                                                             | `5267cb2f`                                |
+> | **F-01** stale export                    | High         | **FIXED** — the stem and track exports capture the document at call time and assert it before and after each render                                                                                                                                                                     | `c0de98ae`                                |
+> | **F-10** track-gain lane                 | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane)                                                                                                                                       | `6452dadd`, `ca104349`                    |
+> | **F-06** idempotent replay               | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware                                                                                                                                         | `c050b03f` (partly carried by `4d7bf750`) |
+> | **F-16** collab normalisation            | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                                                                                                                                                                 | `04c41290` (parallel session), `faba6885` |
+> | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                             | `3d59627e`                                |
+> | **F-11** macro / modulator / lane        | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`) | `64e71cd3` · ADR 0067              |
+> | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                    | —                                         |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 11 resolved, 18 open, 0 Critical.**
+> **29 findings, 12 resolved, 17 open, 0 Critical.**
 >
-> **Still open, and the next wave:** F-11 (macro / modulator / lane precedence
-> on effect parameters — a behavioural change, needs an ADR), the rack's
-> passthrough-runtime badge (a knob whose effect never loaded still shows a
-> value with no effect on the audio), and the rest of §11.
+> **Still open, and the next wave:** the rack's passthrough-runtime badge
+> (a knob whose effect never loaded still shows a value with no effect on
+> the audio), and the rest of §11.
 
 ---
 
@@ -158,7 +158,7 @@ is deliberate rather than accidental.
 | Effect parameter (runtime)    | AudioParam in the graph                                                                                                 | `syncFxParams`, automation bridge, macro               | DSP only                                                 | `setTargetAtTime`, tc 20 ms native / instant worklet                                                                                                       | not persisted                                                                                   | macro vs automation conflict (F-11)                                                      |
 | **DSP-side write-back**       | **a second writer — and the only one found**                                                                            | the PRISM core, via `FxEqPanel`'s in-plugin Undo/Redo  | the document, via `setFxEqParam`                         | arrives under the plugin's **internal** id (`globalMix`, 0..100) instead of the project's canonical one (`mix`, 0..1) — so the normaliser discards it      | **not persisted**                                                                               | **F-28 — measured: the audio and the document disagree, and a reload changes the sound** |
 | Track gain                    | `track.gain` (fader) + `modAutoGain` (automation **lane — a multiplier**) + `modMacroGain` (macro — a multiplier)       | commands                                               | mixer UI                                                 | chain `gain → modAutoGain → modAutoPan → modMacroGain` (`AudioEngine.ts:2016-2019`; the return strip is `gain → modAutoGain → modMacroGain`, `:1904-1906`) | with the document                                                                               | **the lane is a multiplier but is labelled and scaled like an absolute "Volume" (F-10)** |
-| Automation lane               | `doc.automation` points                                                                                                 | commands, MCP                                          | engine (runtime only), arrangement lanes                 | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1191-1210`)                                                                               | with the document                                                                               | points have **no identity** → addressed by value and by position (F-07, F-29)            |
+| Automation lane               | `doc.automation` points                                                                                                 | commands, MCP                                          | engine (runtime only), arrangement lanes                 | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1291-1310`)                                                                               | with the document                                                                               | points have **no identity** → addressed by value and by position (F-07, F-29)            |
 | MCP read model                | **none** — tools read `ctx.getDoc()` live                                                                               | —                                                      | all tools                                                | —                                                                                                                                                          | —                                                                                               | idempotency ledger replay (F-06)                                                         |
 | Session checkpoint / A-B      | `masterAbStore`, outside the document (`src/mcp/tools.ts:75`)                                                           | MCP session                                            | `kyx_master`                                             | not invalidated on document change                                                                                                                         | not persisted                                                                                   | stale restore (F-08)                                                                     |
 
@@ -695,7 +695,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 - **Observed divergence:** the rack reads the **document** — `src/ui/EffectRack.tsx:969` and
   `src/ui/EffectRack.tsx:1310` `values={fx.params}`. Automation writes the **absolute lane value**
   into the runtime
-  (`src/audio-engine/automationBridge.ts:1209` → `writeDeviceTargetAt` →
+  (`src/audio-engine/automationBridge.ts:1309` → `writeDeviceTargetAt` →
   `src/audio-engine/deviceLookup.ts`). The `param.secondary` affordance
   (`src/effects/types.ts:39`, `src/effects/definitions.ts:937, 948`) is computed from the _same_
   document values, so it does not disclose the gap. There is **no "under automation" indicator**
@@ -704,7 +704,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   value, and a manual knob edit is overwritten within one scheduler tick (25 ms) while the knob
   keeps displaying the user's number. The user adjusts a knob and hears nothing change — and sees a
   number that is not what they hear.
-- **Evidence:** `src/ui/EffectRack.tsx:969, 1310`; `src/audio-engine/automationBridge.ts:1209`;
+- **Evidence:** `src/ui/EffectRack.tsx:969, 1310`; `src/audio-engine/automationBridge.ts:1309`;
   `src/audio-engine/deviceLookup.ts:144-145`; `src/effects/types.ts:39`.
 - **Root-cause hypothesis:** the document is treated as the only display source. That is correct for
   a DAW _without_ automation, and wrong at exactly the moment automation is running.
@@ -745,7 +745,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   facts in the source agree, and all three would be meaningless for an absolute gain:
   1. **The modulator composes `1 + v` into the same parameter.** `makeModulatorWriter` clamps a gain
      modulator to `1 + v` (0..1.5) and writes it into the **same** `modAutoGain` param the lane
-     writes (`src/audio-engine/automationBridge.ts:1108-1118`) — the code's own comment: _"Gain
+     writes (`src/audio-engine/automationBridge.ts:1208-1218`) — the code's own comment: _"Gain
      modulators swing the channel multiplier around base 1"_. An absolute-gain param has no base 1.
   2. **A new lane starts at unity.** `targetParamDef` declares `default: 1` for `trackGain`
      (`src/project-model/targets.ts:231`) and the lane editor creates a new lane at that default
@@ -753,7 +753,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
      sound**. Under absolute semantics a new lane would have to start at the fader's value, or adding
      a lane would jump the mix.
   3. **Stop restores unity, not the fader's value.** `automationReset()` writes `1` back into the
-     stage (`src/audio-engine/automationBridge.ts:1326-1353`), and cancels the pending scheduled
+     stage (`src/audio-engine/automationBridge.ts:1426-1453`), and cancels the pending scheduled
      values first — so a stopped lane leaves **no residue**.
   ```
   [T4b] modulator amount 0.2 -> modAutoGain.gain = 1.2   (base 1 + v, clamped 0..1.5)
@@ -765,7 +765,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   comment are wrong"_. **That was wrong, and it would have misled an implementer into "fixing" a
   correct lane.** The clamp, the lane range and the code comment are exactly right for a multiplier:
   0..1.5 bounds the _multiplier_ (up to +3.5 dB) to the same ceiling the fader may legally reach —
-  which is what `automationBridge.ts:1200-1202` says. **The lane is a modulation and the graph is
+  which is what `automationBridge.ts:1300-1302` says. **The lane is a modulation and the graph is
   right.** The finding is re-classified from _wrong audio_ to a **visibility + presentation-semantics
   gap**, and its severity drops from **High to Medium**.
 - **What actually diverges.** The lane's number is a **multiplier**, but:
@@ -780,7 +780,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Root cause:** one parameter definition (`targetParamDef`) serves **two different domains** — an
   absolute fader and a multiplicative lane — so the lane inherits the fader's label and its numeric
   scale while meaning something else.
-- **Evidence:** measurement above; `src/audio-engine/automationBridge.ts:1108-1118, 1191-1210,
+- **Evidence:** measurement above; `src/audio-engine/automationBridge.ts:1208-1218, 1191-1210,
 1326-1353`; `src/audio-engine/AudioEngine.ts:2016-2019, 73-75`;
   `src/project-model/targets.ts:231`; `src/ui/arrangement/AutomationClipLanes.tsx:122, 250`.
   The `mixer-audit3` suite already pins the _clamp_ on this lane (0..1.5) and never the
@@ -810,14 +810,27 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Expected contract:** composed sources sum (or a documented precedence applies).
 - **Observed divergence:** the macro path and the automation path both call
   `this.lookup.writeDeviceTargetAt(target, value, when)` with the _same_ target shape
-  (`{kind:"fxParam", trackId, fxId, paramId}`) — `src/audio-engine/automationBridge.ts:341-342`
-  (macro) and `:1209` (automation). The macro writes `base + delta`; the automation writes the
+  (`{kind:"fxParam", trackId, fxId, paramId}`) — `src/audio-engine/automationBridge.ts:773`
+  (macro) and `:1309` (automation). The macro writes `base + delta`; the automation writes the
   **absolute** lane value; the modulator writes `base + halfRange·value`. There is no composition.
   During playback the scheduler rewrites the parameter every 25 ms, so the macro's contribution to
   an effect parameter is **silently dropped**. (Track-level gain/pan are different — they have a
   dedicated `modMacro` bus and are not affected.)
-- **Evidence:** `src/audio-engine/automationBridge.ts:341-342, 673, 693, 1139-1140, 1209`;
+- **Evidence:** `src/audio-engine/automationBridge.ts:773, 793, 1239-1240, 1309`;
   `src/audio-engine/deviceLookup.ts:59-93`.
+- **CORRECTION (2026-10-27).** Two claims above were wrong; both are corrected here (the rest of
+  the finding is unchanged):
+  1. **The citation.** `automationBridge.ts:341-342` was labelled "the macro path" — those two
+     lines are the **scene-pack** writer (`writeScenePackTargets`). The macro writes at `:773`
+     (the live macro at `:960`).
+  2. **The order.** The finding proposed "automation > macro > modulator" and presented it as the
+     audible outcome. Measured: the scheduler calls `applyAutomation` and then `applyModulators`
+     in the same window, and the modulator's write is scheduled **5 ms later**
+     (`src/scheduler/Scheduler.ts:1200` and `:1250` — the modulator adds
+     `scheduleOffsetSec() + 0.005` where the lane adds `scheduleOffsetSec()`). **The modulator
+     wins that contest today — by scheduling, not by a rule.** ADR 0067 therefore decides
+     **automation > modulator > macro > midiCC**: the lane wins deterministically, which is a
+     deliberate change, not a description of the old behaviour.
 - **Root-cause hypothesis:** track-level parameters were given dedicated modulation buses; effect
   parameters were not, and were later given both a macro source and an automation source without a
   composition layer.
@@ -1390,7 +1403,7 @@ product but no probe or test in this audit exercised it.
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Human moves a plugin slider while the AI issues a parameter update              | both target the same `fxId`                                   | the later write wins; both writers see the same document                  | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice      | `src/store/ProjectStore.ts:245` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only) | medium               | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
 | Two intents target the same track/clip using stale IDs                          | the human deleted the clip; the AI holds the old id           | a typed, machine-detectable refusal                                       | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — typed path at `:10074-10087`; ordinal fallback in the A/B restore and the instance resolvers                | high (F-08)          | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution    |
-| A command acknowledges before the queued audio update is applied                | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms)                   | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1198-1203`                                               | low — _not a defect_ | assert the applied value reaches 95 % of the commanded value within 3 × tc                                                   |
+| A command acknowledges before the queued audio update is applied                | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms)                   | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1298-1303`                                               | low — _not a defect_ | assert the applied value reaches 95 % of the commanded value within 3 × tc                                                   |
 | Tool output claims success though the command failed or was rejected            | an AI call on a stale target                                  | `isError` + a typed code                                                  | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result                                            | `src/mcp/tools.ts:7863`; measured §5.2                                                                                           | high (F-05)          | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy                                     |
 | A human edits between an AI's call and its retry (same `requestId`)             | the AI retries a timed-out call                               | the retry reports the document's current value                            | **Observed — diverges.** The replay serves the _first_ call's read-back                                                          | `src/mcp/tools.ts:4391` (returns) vs `:4471` (the gate); measured §5.2                                                           | high (F-06)          | edit, retry the same `requestId`, assert the reported value equals the document's current value                              |
 | The AI's write is acknowledged late, after the human has edited the same field  | the AI's command is applied after the human's                 | the later _intent_ wins, or the conflict is reported                      | **Observed — diverges.** The later-_applied_ write wins: the human's 0.9 is overwritten by the AI's older 0.5                    | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1405-1445`)                                                   | high (F-25)          | already measured — assert the documented precedence instead of the accidental one                                            |
@@ -1423,11 +1436,11 @@ product but no probe or test in this audit exercised it.
 | Scenario                                                                   | Trigger                                     | Expected invariant                     | Observed / untested                                                                                                                                      | Evidence                                                                                                                      | Risk                                 | Proposed test                                                                                                                                                     |
 | -------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Transport state / playhead differs from the engine state                   | the tab is hidden                           | the UI reflects the audio clock        | **Observed — diverges (display only).** rAF stops in a hidden tab; the transport does not                                                                | `src/services/rafLoop.ts:21`; `src/ui/playhead.ts:78-85`; `src/services.ts:1284-1289`                                         | low (F-21)                           | hide the tab, return, assert the playhead resyncs from the transport clock                                                                                        |
-| Automation lane values disagree with the applied DSP values under playback | a lane is active                            | the knob shows what is playing         | **Observed — diverges.** The knob reads the document; the DSP plays the lane; no "under automation" cue exists                                           | `src/ui/EffectRack.tsx:969, 1310` vs `src/audio-engine/automationBridge.ts:1209`                                              | high (F-09)                          | assert the effective-value read model returns the lane value while a lane is active                                                                               |
+| Automation lane values disagree with the applied DSP values under playback | a lane is active                            | the knob shows what is playing         | **Observed — diverges.** The knob reads the document; the DSP plays the lane; no "under automation" cue exists                                           | `src/ui/EffectRack.tsx:969, 1310` vs `src/audio-engine/automationBridge.ts:1309`                                              | high (F-09)                          | assert the effective-value read model returns the lane value while a lane is active                                                                               |
 | Recording stops unexpectedly while the UI remains armed/recording          | a device disconnect, or the transport stops | the indicator reflects reality         | **Observed — diverges.** The ⏺ stays lit; `captureTick()` returns `null` while stopped, so notes are silently discarded                                  | `src/ui/TopBar.tsx:158, 613`; `src/midi/patternRecorder.ts:131, 116-120`                                                      | high (F-02)                          | stop the transport, assert the indicator is not in the "recording" state                                                                                          |
 | Async waveform/peak generation renders stale metadata as authoritative     | a buffer is replaced under the same id      | the drawn peaks match the buffer       | **Observed — guarded.** The async result is protected by a `live` flag; the _cache key_ is content-blind                                                 | `src/ui/ArrangementPanel.tsx:291, 299-303, 7008-7019`                                                                         | low (F-23, Hypothesis)               | replace a buffer's content under an existing id and assert the peaks are invalidated                                                                              |
-| Automation playback overwrites the persistent baseline                     | the transport runs over a lane              | the document's value survives playback | **Observed — does NOT diverge.** Automation writes runtime only; `automationReset` restores the doc base                                                 | `src/audio-engine/deviceLookup.ts:133-156`; `src/audio-engine/automationBridge.ts:1359-1380`; `tests/scene-packs.test.ts:492` | low — _the classic defect is absent_ | —                                                                                                                                                                 |
-| Track-gain lane value vs the gain actually heard                           | the fader is not at unity                   | the lane's value is the gain           | **Observed — the lane is a _multiplier_, correctly implemented, but labelled and scaled like an absolute "Volume"; no surface shows the composed value** | `src/audio-engine/automationBridge.ts:1108-1118, 1191-1210` vs `src/audio-engine/AudioEngine.ts:2016-2019`                    | medium (F-10)                        | **MEASURED (T4 + T4b)** — the graph is right; the _display_ is wrong. Fix = relabel + unity line + effective-value readout (S-5); **no ADR, no behaviour change** |
+| Automation playback overwrites the persistent baseline                     | the transport runs over a lane              | the document's value survives playback | **Observed — does NOT diverge.** Automation writes runtime only; `automationReset` restores the doc base                                                 | `src/audio-engine/deviceLookup.ts:133-156`; `src/audio-engine/automationBridge.ts:1459-1480`; `tests/scene-packs.test.ts:492` | low — _the classic defect is absent_ | —                                                                                                                                                                 |
+| Track-gain lane value vs the gain actually heard                           | the fader is not at unity                   | the lane's value is the gain           | **Observed — the lane is a _multiplier_, correctly implemented, but labelled and scaled like an absolute "Volume"; no surface shows the composed value** | `src/audio-engine/automationBridge.ts:1208-1218, 1191-1210` vs `src/audio-engine/AudioEngine.ts:2016-2019`                    | medium (F-10)                        | **MEASURED (T4 + T4b)** — the graph is right; the _display_ is wrong. Fix = relabel + unity line + effective-value readout (S-5); **no ADR, no behaviour change** |
 
 #### E. Persistence and recovery
 

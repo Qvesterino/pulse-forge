@@ -177,9 +177,22 @@ export function TopBar({
   // when playback is toggled from elsewhere (Space shortcut, Esc stop…).
   // PlaybackController.notify() fires on every play/pause/stop/seek.
   const [playing, setPlaying] = useState(services.transport.playing);
+  // `armed` is the user's intent; capture starts only when the transport has
+  // crossed its count-in/pre-roll boundary. Poll that one boolean on the
+  // existing shared rAF so the REC lamp changes at the actual content start.
+  const [contentStarted, setContentStarted] = useState(() => {
+    const transport = services.transport;
+    return transport.playing && transport.position >= transport.anchorTickBeforePreRoll();
+  });
   useEffect(() => {
-    const unsubscribe = services.playback.subscribe(() => setPlaying(services.transport.playing));
-    setPlaying(services.transport.playing);
+    const syncTransportState = () => {
+      const transport = services.transport;
+      const nextPlaying = transport.playing;
+      setPlaying(nextPlaying);
+      setContentStarted(nextPlaying && transport.position >= transport.anchorTickBeforePreRoll());
+    };
+    const unsubscribe = services.playback.subscribe(syncTransportState);
+    syncTransportState();
     return unsubscribe;
   }, [services.playback, services.transport]);
 
@@ -189,7 +202,8 @@ export function TopBar({
     services.patternRecorder.getSnapshot,
     services.patternRecorder.getSnapshot,
   );
-  const recording = recordState.armed;
+  const armed = recordState.armed;
+  const recording = armed && playing && contentStarted;
   const recordMode = recordState.mode;
   const recordQuantize = recordState.quantize;
 
@@ -201,6 +215,8 @@ export function TopBar({
     let last = "";
     registerRaf(loopRafId, () => {
       const t = services.transport;
+      const nextContentStarted = t.playing && t.position >= t.anchorTickBeforePreRoll();
+      setContentStarted((current) => (current === nextContentStarted ? current : nextContentStarted));
       const sig = `${t.loopEnabled}|${t.loopStart}|${t.loopEnd}|${t.metronome ? 1 : 0}`;
       if (sig === last) return;
       last = sig;
@@ -654,7 +670,7 @@ export function TopBar({
           )}
           <button
             type="button"
-            className={`btn btn-record${recording ? " armed" : ""}`}
+            className={`btn btn-record${armed ? " armed" : ""}${recording ? " recording" : ""}`}
             onClick={() => {
               if (!services.transport.playing) {
                 // FL-style record+play: arming while stopped starts playback —
@@ -662,16 +678,29 @@ export function TopBar({
                 services.patternRecorder.setArmed(true);
                 services.playback.playPause();
               } else {
-                services.patternRecorder.setArmed(!recording);
+                services.patternRecorder.setArmed(!armed);
               }
             }}
-            title="Record MIDI into the active pattern — OVERDUB merges with existing steps/notes, REPLACE clears them first"
+            title={`${recording ? "Recording MIDI" : armed ? "MIDI recording armed — waiting for content start" : "Record MIDI"} into the active pattern — OVERDUB merges with existing steps/notes, REPLACE clears them first`}
             aria-pressed={recording}
-            aria-label="Record MIDI to pattern"
+            aria-label={
+              recording
+                ? "MIDI recording active"
+                : armed
+                  ? "MIDI recording armed; waiting for playback"
+                  : "Record MIDI to pattern"
+            }
           >
             ⏺
           </button>
-          {recording && (
+          <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {recording
+              ? "MIDI recording is active."
+              : armed
+                ? "MIDI recording is armed and waiting for playback content to begin."
+                : ""}
+          </span>
+          {armed && (
             <>
               <select
                 className="rec-option"
