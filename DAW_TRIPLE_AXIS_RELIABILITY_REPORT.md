@@ -612,6 +612,31 @@ console-errors assertion flagging OPTIONAL-service intake refusals (already clas
 non-fatal by `747e7f8c`) plus an aborted landing-video request — are load-correlated or owned by
 the in-flight wave that added the assertion; none is this session's.
 
+## 12c. Addendum — F-08 closed (`7afc9580`)
+
+The backlog's second P2: `kyx_plugin_param`'s description promised "set ANY parameter of an
+inserted instance" while its `set` resolved ids only against the static rack catalog — a dotted
+path (PRISM's `band1.gainDb`, Ozvena's `convolution.mode`) was refused as "unknown param" although
+the command layer, the automation path and the PRISM editor address exactly those ids. Re-verification
+sharpened the 10-23 finding: the Ultina engine ids were already reachable (they live in the rack
+list); the real gap was **PRISM's band schema**, which depends on the instance's `bandCount` and can
+never be a static list.
+
+The fix resolves a dotted id against the SAME inventory the automation path uses
+(`effectTargetParamDefs`, per instance), routes fxeq through its canonical core-schema writer
+(`setFxEqParam`, translated rack ids keep their document-scale clamps), carries per-instance ranges
+through the read-back envelope, and makes the surface discoverable: the list op reports each
+instance's deep ids, and a refusal names both inventories (rack + deep) so an agent can recover.
+The description now says what the tool does.
+
+Falsified first: 3 cases RED at HEAD (PRISM set / clamp / discovery), controls green. Mirrors
+regenerated; the mcp-tools refusal pin updated. Surfaces 220/220. The four KOREŇ failures visible
+in the same runs were reproduced on a clean detached worktree at HEAD — they belong to the in-flight
+trust-gate wave, not to this change.
+
+F-08 and F-07 are hereby closed from §9's backlog; still open: F-10…F-18 (P3 polish) and the
+carried R-08/R-09.
+
 ## 12. Open questions and residual risk
 
 - **F-07 / F-08** were re-verified open but not re-investigated; both need their own falsification
