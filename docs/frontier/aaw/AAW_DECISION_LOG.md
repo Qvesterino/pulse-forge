@@ -155,9 +155,15 @@ is reviewed for licence **before** it is added.
 
 **Context.** The brief asks how autonomy should be governed. ZYVO already demonstrates the right
 posture externally: autonomy is **not forwarded** across the MCP boundary
-(`agentVoiceManager.ts:5638-5648`); acceptance is a UI click. But ZYVO's _in-app_ agent can
+(`agentVoiceManager.ts:5638-5648`); acceptance is a UI click. But ZYVO's _in-app_ agent **can**
 auto-apply channel gain/pan/send/tempo in `"command"` autonomy mode with no live-show guard (H4),
 and KYX lets **21 of 39** tools mutate with no per-call approval.
+
+> **Correction, measured 2026-10-26:** the H4 branch above is **latent, not live** — the
+> `autoApplyProposal` dep never reaches the host the app actually uses, so the auto-apply cannot
+> fire in ZYVO's app today. The in-app autonomy control is therefore currently without effect. The
+> show lock was built **before** that seam, and a pin now forbids auto-apply without it. See
+> **D-15**.
 
 **Decision.** Autonomy is a **user-side, versioned, per-project policy object**. It can be _raised_
 by the user for R1/R2 classes. It can never be raised by a model, never lower the R2–R4 requirements,
@@ -383,7 +389,7 @@ closed until a panel of ≥ 3 (preferably ≥ 5) exists.
 
 ## D-15 — A show lock is required for the in-app agent
 
-**Status: Accepted — urgent** · **Date: 2026-10-25**
+**Status: Accepted — urgent → Implemented (2026-10-26), with a measured correction** · **Date: 2026-10-25**
 
 **Context (H4).** In autonomy mode `"command"`, a proposal whose children are all in
 `SAFE_AUTO_APPLY_COMMANDS` — including `SetChannelGain`, `SetChannelPan`, `SetSendLevel`,
@@ -396,6 +402,45 @@ permission lattice's R2 class applies to the whole live surface regardless of au
 **Honest caveat.** Whether the Live window's modality already makes this unreachable in the shipped
 UI was **not proven at runtime**. The fix is required either way, because the _code path_ has no
 guard and the next UI change could expose it.
+
+### Correction, measured 2026-10-26 — the hazard is LATENT, not live
+
+The caveat above has now been closed, and **the answer is not the one the context assumed**. H4 was
+**not** shielded by the Live window's modality — it was shielded by a **missing wire**.
+
+Measured, three independent arms:
+
+- The app passes an `autoApplyProposal` dep into `createAgentToolHost`, but the **host object it
+  builds does not carry it** — the property appears only in the deps interface, never on the host.
+- Both real call sites (the in-app LLM tool loop and the MCP direct-call path) pass
+  `host: host.host` — that host, without the dep.
+- The only test asserting an auto-applied change builds a **hand-rolled "production-shaped" host**,
+  not the app's host.
+
+So the executor's graduated-autonomy branch **cannot fire in the app today**. The original H4
+wording overstated it: there is no live path, there is a **latent** one, one wiring step away.
+
+**This does not weaken the decision — it sharpens the sequencing.** A lock written _after_ the
+wiring is a lock written under time pressure. So the lock was built **before** the seam, and a
+doctrine pin now makes "auto-apply without a lock" a test failure rather than a review comment.
+
+**What is implemented (ZYVO, 2026-10-26).** A host-supplied show lock: while the Live Show is in
+its `perform` step (the gig), the agent's auto-apply **and** the agent's undo/redo are refused, and
+the refusal is written into the tool audit trail. The lock reads the **existing** dock status
+(show → main → main renderer), so it needs no new IPC channel and cannot drift from what the
+performer sees. 13 new tests; the pin was falsified (wiring auto-apply without the lock turns the
+suite red) and then removed.
+
+**What is NOT implemented.** The auto-apply seam itself is still **not** wired — deliberately.
+Turning on an autonomy mode that has never run in the app is a separate product decision, and it
+now has a safety precondition in place. The UI's autonomy control is, as of this correction, a
+control with no effect.
+
+**Evidence.** `apps/vocalforge-daw/src/liveShowLock.ts` (the rule),
+`packages/agent-runtime/src/audioTools/toolExecution.ts` (the check),
+`apps/vocalforge-daw/tests/liveShowLock.test.ts` + `packages/agent-runtime/tests/showLockAutoApply.test.ts`
+(the tests and the pin), `docs/AGENT_CONTROL_MODEL.md` §9.3 (the contract),
+`AGENT_WORK_LOG.md` 2026-10-26 (the wave, with its own measurements).
 
 ---
 
@@ -504,17 +549,17 @@ for that product's owner.
 
 ## 4. Evidence gaps this program could not close
 
-| #     | Gap                                                                                                                                                 | Consequence                                                                          |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| EG-1  | **No independent (non-vendor) evaluation** of any frontier audio model was found. Every benchmark quoted is vendor-reported                         | accuracy claims in this program are provisional; E-01/E-02 supply local measurements |
-| EG-2  | **Liquid AI's announced LFM2.5 release date is unverified** (the blog page is JS-rendered); all dates used are HF repository `createdAt` timestamps | dates in this program are repository timestamps, and labelled as such                |
-| EG-3  | **Essentia's _model_ licences are `NOASSERTION`**                                                                                                   | no Essentia model may be redistributed until confirmed (D-05)                        |
-| EG-4  | **`stepfun-ai/Step-Audio-EditX` has no licence tag**; `coqui/XTTS-v2` terms unread (CPML)                                                           | both excluded from any commercial path                                               |
-| EG-5  | **"Qwen3.5-Omni" does not exist on the Hub** as of 2026-10-25 despite a technical report appearing in search                                        | do not plan against it                                                               |
-| EG-6  | **No runtime verification** of either product's AI surface was performed (read-only audits; no builds, no test runs, no listening)                  | every "SHIPS" is a source-level claim                                                |
-| EG-7  | **ZYVO H4 reachability during a modal Live window is unproven**                                                                                     | the fix is required regardless (D-15)                                                |
-| EG-8  | **The Wake-word stub, the Parakeet second capture client, and the VST3 JS-thread entry point** were read but not exercised                          | H6/H7/H2 severity is inferred, not measured                                          |
-| EG-9  | **No measured accuracy exists for ZYVO's vocal analysis** (pitch, onset, key/tempo, reference blueprints)                                           | every vocal-analysis claim is unverified; this is a Portfolio I deliverable          |
-| EG-10 | **ACE-Step 1.5's language list is not enumerated** — Slovak unknown                                                                                 | E-13                                                                                 |
-| EG-11 | **Neither product has a measured, reproducible "tension" or "quality" human-labelled dataset**                                                      | the flagship emotional claims stay unclaimed until E-07                              |
-| EG-12 | **`d1-omni-600M` was 19 days old** at the time of writing; no independent evaluation exists                                                         | E-12 is a research probe, not a plan                                                 |
+| #     | Gap                                                                                                                                                                                                    | Consequence                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| EG-1  | **No independent (non-vendor) evaluation** of any frontier audio model was found. Every benchmark quoted is vendor-reported                                                                            | accuracy claims in this program are provisional; E-01/E-02 supply local measurements                              |
+| EG-2  | **Liquid AI's announced LFM2.5 release date is unverified** (the blog page is JS-rendered); all dates used are HF repository `createdAt` timestamps                                                    | dates in this program are repository timestamps, and labelled as such                                             |
+| EG-3  | **Essentia's _model_ licences are `NOASSERTION`**                                                                                                                                                      | no Essentia model may be redistributed until confirmed (D-05)                                                     |
+| EG-4  | **`stepfun-ai/Step-Audio-EditX` has no licence tag**; `coqui/XTTS-v2` terms unread (CPML)                                                                                                              | both excluded from any commercial path                                                                            |
+| EG-5  | **"Qwen3.5-Omni" does not exist on the Hub** as of 2026-10-25 despite a technical report appearing in search                                                                                           | do not plan against it                                                                                            |
+| EG-6  | **No runtime verification** of either product's AI surface was performed (read-only audits; no builds, no test runs, no listening)                                                                     | every "SHIPS" is a source-level claim                                                                             |
+| EG-7  | **ZYVO H4 reachability was measured on 2026-10-26: the auto-apply is UNREACHABLE in the app** (the dep never reaches the built host) — not because of the Live window's modality, as the audit assumed | the hazard is latent, not live; the show lock was built first, and a pin now forbids auto-apply without it (D-15) |
+| EG-8  | **The Wake-word stub, the Parakeet second capture client, and the VST3 JS-thread entry point** were read but not exercised                                                                             | H6/H7/H2 severity is inferred, not measured                                                                       |
+| EG-9  | **No measured accuracy exists for ZYVO's vocal analysis** (pitch, onset, key/tempo, reference blueprints)                                                                                              | every vocal-analysis claim is unverified; this is a Portfolio I deliverable                                       |
+| EG-10 | **ACE-Step 1.5's language list is not enumerated** — Slovak unknown                                                                                                                                    | E-13                                                                                                              |
+| EG-11 | **Neither product has a measured, reproducible "tension" or "quality" human-labelled dataset**                                                                                                         | the flagship emotional claims stay unclaimed until E-07                                                           |
+| EG-12 | **`d1-omni-600M` was 19 days old** at the time of writing; no independent evaluation exists                                                                                                            | E-12 is a research probe, not a plan                                                                              |
