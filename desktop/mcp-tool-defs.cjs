@@ -1504,6 +1504,7 @@ const MCP_TOOL_DEFS = [
             "strk",
             "cink",
             "struna",
+            "dymka",
           ],
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
@@ -2808,6 +2809,7 @@ const MCP_TOOL_DEFS = [
             "strk",
             "cink",
             "struna",
+            "dymka",
           ],
           maxLength: 32,
           description: "Instrument kind for subject:instrument (e.g. kopa or tsar) — see subject:instruments",
@@ -3106,7 +3108,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_plugin_param",
     description:
-      "Precise plugin control on inserted FX instances: set ONE parameter to an absolute NATIVE value (clamped to the registry range; see kyx_catalog subject:effect for min/max/default/unit) or list the current values of every parameter on the targeted tracks' chains. Targets a trackId or a family; `fxId` (the stable instance id returned by list) is preferred for set because it survives chain reordering; `instance` picks 1-based among same-type instances (default 1). Missing instances are reported honestly — nothing is auto-inserted (use kyx_fx more for that).",
+      "Precise plugin control on inserted FX instances: set ONE parameter to an absolute NATIVE value (clamped to its range) or list the current values of every parameter on the targeted tracks' chains. A param id is either a RACK param (see kyx_catalog subject:effect for min/max/default/unit) or a DEEP/structured param of the instance — PRISM band and crossover ids (band1.gainDb, crossoverFreq2, ...), Ozvena network ids (convolution.mode, ...) — which the list op reports per instance, so discovery does not rely on guessing. Targets a trackId or a family; `fxId` (the stable instance id returned by list) is preferred for set because it survives chain reordering; `instance` picks 1-based among same-type instances (default 1). Missing instances are reported honestly — nothing is auto-inserted (use kyx_fx more for that).",
     inputSchema: {
       type: "object",
       properties: {

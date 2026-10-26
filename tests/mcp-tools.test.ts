@@ -1262,7 +1262,10 @@ describe("mcp P0 wave — self-description + precision", async () => {
     });
     expect(unknownParam.mutated).toBe(false);
     expect(unknownParam.text).toContain('unknown param "quantum"');
-    expect(unknownParam.text).toContain("parameters:");
+    // F-08: the refusal names BOTH inventories — the rack list and the
+    // instance's deep/structured ids (the agent must be able to recover).
+    expect(unknownParam.text).toContain("rack:");
+    expect(unknownParam.text).toContain("deep/structured");
 
     const missingInstance = await executeMcpTool(ctx, "kyx_plugin_param", {
       op: "set",

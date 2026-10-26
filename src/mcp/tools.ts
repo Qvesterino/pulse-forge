@@ -174,6 +174,7 @@ import {
   setSceneRole,
   setTrackSend,
   setEffectParam,
+  setFxEqParam,
   setEffectBypassOnTracks,
   setStepMeta,
   setStepVelocityCommand,
@@ -189,7 +190,12 @@ import {
 // F2 eager diet: intent graph loads with the MCP surface, not at boot.
 import { applyExactIntentCommand } from "../commands/intentRouting";
 import { applyGenerationResultCommand } from "../commands/aiPattern";
-import { clampTargetValue, isAutomationTargetValid, targetParamDef } from "../project-model/targets";
+import {
+  clampTargetValue,
+  effectTargetParamDefs,
+  isAutomationTargetValid,
+  targetParamDef,
+} from "../project-model/targets";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { clampInstrumentParam, INSTRUMENT_ORDER } from "../instruments/registry";
 import {
@@ -2327,9 +2333,13 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_plugin_param",
     description:
       "Precise plugin control on inserted FX instances: set ONE parameter to " +
-      "an absolute NATIVE value (clamped to the registry range; see " +
-      "kyx_catalog subject:effect for min/max/default/unit) or list the " +
-      "current values of every parameter on the targeted tracks' chains. " +
+      "an absolute NATIVE value (clamped to its range) or list the current " +
+      "values of every parameter on the targeted tracks' chains. A param id " +
+      "is either a RACK param (see kyx_catalog subject:effect for " +
+      "min/max/default/unit) or a DEEP/structured param of the instance — " +
+      "PRISM band and crossover ids (band1.gainDb, crossoverFreq2, ...), " +
+      "Ozvena network ids (convolution.mode, ...) — which the list op " +
+      "reports per instance, so discovery does not rely on guessing. " +
       "Targets a trackId or a family; `fxId` (the stable instance id returned " +
       "by list) is preferred for set because it survives chain reordering; " +
       "`instance` picks 1-based among same-type instances (default 1). " +
@@ -3392,6 +3402,13 @@ export interface McpToolContext {
    */
   allowDestructive?: () => boolean;
   /**
+   * ADR 0065: standing consent for an EXTERNAL agent (web relay, desktop
+   * stdio, QMR, headless) to apply mutating calls. Absent → the persisted
+   * flag is consulted. False → the call is refused with a reason the user can
+   * act on. The human working the app is NOT gated by this.
+   */
+  allowMutations?: () => boolean;
+  /**
    * Sample import capability (kyx_import_sfz): present when a live session
    * can decode + persist WAVs into the user library and apply the multisample
    * mapping to a sampler track. Absent → honest refusal (headless servers).
@@ -4372,7 +4389,7 @@ async function executeMcpToolCore(
     const permission = decidePermission({
       risk,
       agentId: ctx.agentId,
-      policy: readAutonomyPolicy(),
+      policy: readAutonomyPolicy(ctx),
       declaredRevision: readDeclaredRevision(envelope),
       currentRevision: ctx.getRevision?.() ?? null,
     });
@@ -4391,10 +4408,7 @@ async function executeMcpToolCore(
         docName: doc.name,
         ...(summary !== "" ? { summary } : {}),
       });
-      return mcpError(
-        permission.decision === "forbid" ? "POLICY_REFUSED" : "CONFIRMATION_REQUIRED",
-        permission.reason,
-      );
+      return mcpError(permission.decision === "forbid" ? "POLICY_REFUSED" : "CONFIRMATION_REQUIRED", permission.reason);
     }
   }
   const invalidRequestId = invalidRequestIdMessage(args);
@@ -10118,19 +10132,37 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     }
     paramId = record.param.trim();
     paramDef = catalog!.parameters.find((parameter) => parameter.id === paramId);
+    // A dotted id (PRISM's band1.gainDb, Ozvena's convolution.mode) is not a
+    // rack param — it resolves against the INSTANCE's deep inventory in the
+    // set loop below, where the per-instance state (PRISM's bandCount!)
+    // decides. Refusing up front made every deep param unreachable even
+    // though the command layer and the automation path address exactly
+    // these ids (F-08).
     if (paramDef == null) {
-      return mcpError(
-        "UNKNOWN_TARGET",
-        `unknown param "${paramId}" on ${effect} — parameters: ${catalog!.parameters.map((parameter) => parameter.id).join(", ")}`,
-      );
+      if (typeof record.value !== "number" || !Number.isFinite(record.value)) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `set needs a finite number in NATIVE units (${paramId} is not a rack param — its range comes from the instance; see the list read-back)`,
+        );
+      }
+      rawValue = record.value;
+    } else {
+      if (typeof record.value !== "number" || !Number.isFinite(record.value)) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `set needs a finite number in NATIVE units (${paramId}: ${paramDef.min}..${paramDef.max}${paramDef.unit ? ` ${paramDef.unit}` : ""}, default ${paramDef.default})`,
+        );
+      }
+      rawValue = record.value;
+      clampedValue = clampEffectParam(effect as keyof typeof EFFECT_META, paramId, rawValue);
+      if (paramDef.kind === "toggle" && clampedValue !== 0 && clampedValue !== 1) {
+        return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} is a toggle and accepts only 0 or 1`);
+      }
+      if (paramDef.options?.length && !paramDef.options.some((option) => option.value === clampedValue)) {
+        const values = paramDef.options.map((option) => option.value).join(", ");
+        return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} accepts only: ${values}`);
+      }
     }
-    if (typeof record.value !== "number" || !Number.isFinite(record.value)) {
-      return mcpError(
-        "INVALID_ARGUMENTS",
-        `set needs a finite number in NATIVE units (${paramId}: ${paramDef.min}..${paramDef.max}${paramDef.unit ? ` ${paramDef.unit}` : ""}, default ${paramDef.default})`,
-      );
-    }
-    rawValue = record.value;
     const rawInstance = record.instance;
     if (
       rawInstance !== undefined &&
@@ -10139,14 +10171,6 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       return mcpError("INVALID_ARGUMENTS", "instance must be a positive 1-based integer from 1 to 128");
     }
     instanceWanted = rawInstance === undefined ? 1 : rawInstance;
-    clampedValue = clampEffectParam(effect as keyof typeof EFFECT_META, paramId, rawValue);
-    if (paramDef.kind === "toggle" && clampedValue !== 0 && clampedValue !== 1) {
-      return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} is a toggle and accepts only 0 or 1`);
-    }
-    if (paramDef.options?.length && !paramDef.options.some((option) => option.value === clampedValue)) {
-      const values = paramDef.options.map((option) => option.value).join(", ");
-      return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} accepts only: ${values}`);
-    }
   }
 
   const doc = ctx.getDoc();
@@ -10227,6 +10251,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       doc,
       targets.map((track) => track.id),
     );
+    const deepLines: string[] = [];
     for (const track of targets) {
       const matching = installedInstances.filter(
         (instance) =>
@@ -10277,13 +10302,31 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
           bypassed: instance.bypassed,
           parameters: parameterData,
         });
+        // F-08 discovery: the instance's DEEP/structured ids (PRISM bands,
+        // Ozvena networks — anything the automation inventory knows beyond
+        // the rack list) are settable through op:set; an agent that cannot
+        // see them cannot reach them.
+        const rawFx = track.effects.find((candidate) => candidate.id === instance.effectId);
+        if (rawFx) {
+          const rackIds = new Set(catalog?.parameters.map((parameter) => parameter.id) ?? []);
+          const deepDefs = effectTargetParamDefs(rawFx).filter((def) => !rackIds.has(def.id));
+          if (deepDefs.length > 0) {
+            const shown = deepDefs
+              .slice(0, 8)
+              .map((def) => `${def.id} (def ${def.default}, ${def.min}..${def.max}${def.unit ? ` ${def.unit}` : ""})`);
+            deepLines.push(
+              `${track.name}: ${instance.type}#${instance.instance} deep/structured (${deepDefs.length}): ${shown.join(", ")}${deepDefs.length > 8 ? ` … +${deepDefs.length - 8} more` : ""}`,
+            );
+          }
+        }
       }
     }
     const instances = allInstances.slice(0, 40);
     const truncatedCount = Math.max(0, allInstances.length - instances.length);
-    const visibleLines = lines.slice(0, 40);
+    const allLines = deepLines.length > 0 ? [...lines, ...deepLines] : lines;
+    const visibleLines = allLines.slice(0, 40);
     const text =
-      lines.length > visibleLines.length
+      allLines.length > visibleLines.length
         ? `${visibleLines.join("\n")}\n… and ${lines.length - visibleLines.length} more line(s)`
         : visibleLines.join("\n") || "no FX instances match the target";
     const status = allInstances.length > 0 ? "listed" : "empty";
@@ -10294,10 +10337,16 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     };
   }
 
-  const param = paramDef!;
   const requested = rawValue!;
-  const clamped = clampedValue!;
-  const selected: Array<{ track: Track; fx: Track["effects"][number]; beforeValue: number; changed: boolean }> = [];
+  const clamped = clampedValue; // null for a deep id — the per-instance clamp lands in clampedHere
+  const selected: Array<{
+    track: Track;
+    fx: Track["effects"][number];
+    beforeValue: number;
+    changed: boolean;
+    clampedHere: number;
+    defUsed: { min: number; max: number; unit?: string | null; default: number };
+  }> = [];
   let next = doc;
   for (const track of targets) {
     const instances = track.effects.filter((fx) => fx.type === effect);
@@ -10343,15 +10392,46 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       });
       continue;
     }
-    const beforeValue = fx.params[paramId!] ?? param.default;
+    // Resolve the id against the rack def first, then THIS instance's deep
+    // inventory (PRISM's band schema depends on the instance's bandCount, so
+    // a static list can never carry it). One writer per family: fxeq through
+    // its canonical core-schema writer, everything else through
+    // setEffectParam (whose deep path resolves via the same targetParamDef
+    // inventory the automation path uses).
+    const deepDef = paramDef == null ? (effectTargetParamDefs(fx).find((def) => def.id === paramId) ?? null) : null;
+    if (paramDef == null && deepDef == null) {
+      const deepIds = effectTargetParamDefs(fx)
+        .map((def) => def.id)
+        .filter((id) => !catalog!.parameters.some((parameter) => parameter.id === id))
+        .slice(0, 10)
+        .join(", ");
+      unmatched.push({
+        trackId: track.id,
+        trackName: track.name,
+        reason: `unknown param "${paramId}" on ${effect} — rack: ${catalog!.parameters
+          .map((parameter) => parameter.id)
+          .join(", ")}; deep/structured on this instance: ${deepIds}${deepIds ? "…" : " (none)"}`,
+      });
+      continue;
+    }
+    const defUsed = paramDef ?? deepDef!;
+    const clampedHere = paramDef ? clamped! : Math.max(deepDef!.min, Math.min(deepDef!.max, requested));
+    if (deepDef?.kind === "toggle" && clampedHere !== 0 && clampedHere !== 1) {
+      return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} is a toggle and accepts only 0 or 1`);
+    }
+    const beforeValue = fx.params[paramId!] ?? defUsed.default;
     if (!Number.isFinite(beforeValue)) {
       return mcpError("EXECUTION_FAILED", `${track.name}: ${effect}.${paramId} has a non-finite stored value`);
     }
-    const changed = beforeValue !== clamped;
-    selected.push({ track, fx, beforeValue, changed });
+    const changed = beforeValue !== clampedHere;
+    selected.push({ track, fx, beforeValue, changed, clampedHere, defUsed });
     if (changed) {
       try {
-        next = setEffectParam(next, track.id, fx.id, paramId!, clamped).execute(next);
+        next = (
+          effect === "fxeq"
+            ? setFxEqParam(next, track.id, fx.id, paramId!, clampedHere)
+            : setEffectParam(next, track.id, fx.id, paramId!, clampedHere)
+        ).execute(next);
       } catch (error) {
         return mcpError(
           "INVALID_ARGUMENTS",
@@ -10380,7 +10460,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
 
   const after = ctx.getDoc();
   const mutated = after !== doc;
-  const changes = selected.map(({ track, fx, beforeValue }) => {
+  const changes = selected.map(({ track, fx, beforeValue, clampedHere, defUsed }) => {
     const committedTrack = after.tracks.find((candidate) => candidate.id === track.id);
     const committedFx = committedTrack?.effects.find((candidate) => candidate.id === fx.id);
     const storedValue = committedFx?.params[paramId!];
@@ -10388,7 +10468,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       committedFx == null
         ? null
         : storedValue === undefined
-          ? param.default
+          ? defUsed.default
           : Number.isFinite(storedValue)
             ? storedValue
             : null;
@@ -10404,14 +10484,16 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       beforeValue,
       requestedValue: requested,
       value,
-      min: param.min,
-      max: param.max,
-      unit: param.unit ?? null,
-      clamped: clamped !== requested,
+      min: defUsed.min,
+      max: defUsed.max,
+      unit: defUsed.unit ?? null,
+      clamped: clampedHere !== requested,
       changed: value != null && value !== beforeValue,
     };
   });
-  const readBackMismatch = changes.some((change) => change.value !== clamped);
+  const readBackMismatch = changes.some(
+    (change) => change.clamped === false && change.value != null && change.value !== change.requestedValue,
+  );
   const status =
     unmatched.length > 0 || readBackMismatch || executionError != null
       ? "partial"
@@ -10422,7 +10504,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   const data = resultData(status, { changes, undoSteps });
   const parts = changes.map((change) => {
     const tidy = (value: number): number => Math.round(value * 1e4) / 1e4;
-    const clampedNote = change.clamped ? ` — clamped to ${param.min}..${param.max}` : "";
+    const clampedNote = change.clamped ? ` — clamped to ${change.min}..${change.max}` : "";
     return `${change.trackName}: ${paramId} ${tidy(change.beforeValue)} → ${change.value == null ? "unavailable" : tidy(change.value)}${clampedNote}`;
   });
   for (const missed of unmatched) parts.push(`${missed.trackName}: ${missed.reason}`);
