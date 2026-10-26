@@ -816,7 +816,7 @@ carried R-08/R-09.
   **FIXED** (`411c5008`, `3647f33a`, `4463d381`, `24444f13`) — the export no longer writes a file that
   silently lost a sound, nor one rendered from a half-built graph, nor a stem that mixed the old
   document with new audio; a silent take says so; the recorder names the source that actually
-  captured; every recorder error is reported (§8g). Measured scope: **29 new cases green**, **11
+  captured; every recorder error is reported (§8g). Measured scope: **25 new cases green**, **11
   falsified RED** across six teeth probes, the typecheck (**0 errors in this session's files**; the
   remaining ones are in other sessions' WIP) and the targeted export/recording specs. The full suite
   was NOT re-run. Four limits are on the record: the **drum-pad** half of E-02 (a missing drum sample
