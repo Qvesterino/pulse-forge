@@ -110,6 +110,21 @@ export class RecordingAlignmentController {
     return () => this.listeners.delete(listener);
   };
 
+  /**
+   * The offset for ONE source, read on demand.
+   *
+   * Audit R-2: the offset belongs to the source that ACTUALLY recorded. In
+   * native WASAPI mode that is the Windows endpoint the I/O panel opened, not
+   * the browser device the dropdown names — so the caller asks for the source
+   * it is about to record from, not for "the selected device". The controller's
+   * own state (the selected device) is untouched: this is a READ of another
+   * slot, not a switch.
+   */
+  getSnapshotFor = (deviceId: string): number => {
+    if (deviceId === this.deviceIdProvider()) return this.getSnapshot();
+    return this.readSlot(deviceId);
+  };
+
   setOffsetMs(value: number): void {
     const deviceId = this.deviceIdProvider();
     if (deviceId !== this.deviceId) {

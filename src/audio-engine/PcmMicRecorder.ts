@@ -160,6 +160,16 @@ function getBrowserStorageEstimate(): (() => Promise<BrowserStorageEstimate>) | 
 }
 
 const PROCESSOR_NAME = "pulse-forge-pcm-capture";
+
+/**
+ * The namespace of a NATIVE capture source (audit R-2).
+ *
+ * A native WASAPI capture is identified by a Windows Core Audio endpoint id,
+ * not by the browser's device id — two different id spaces. The prefix keeps
+ * the two apart, so a native endpoint can never be mistaken for a browser
+ * device (and the recording offset of one can never be applied to the other).
+ */
+export const NATIVE_CAPTURE_SOURCE_PREFIX = "wasapi:";
 // Short durable blocks reduce the amount of a take that can be lost if the
 // browser or device disappears before the next IndexedDB commit.
 const CHUNK_SECONDS = 0.5;
@@ -300,6 +310,15 @@ export class PcmMicRecorder {
    * second explains the truncated take — and the second used to be dropped.
    */
   private readonly errorLog: string[] = [];
+  /**
+   * The id of the source that ACTUALLY captured (audit R-2).
+   *
+   * Empty until the stream is open. In the browser path it is the selected
+   * device id; in the native WASAPI path it is the Windows endpoint the I/O
+   * panel opened, namespaced so it can never be confused with a browser
+   * device. The recording offset is looked up under THIS id.
+   */
+  private captureSourceId = "";
   private readyResolve: ((value: { channels: number; sampleRate: number }) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
   private stoppedResolve: (() => void) | null = null;
@@ -361,6 +380,17 @@ export class PcmMicRecorder {
    */
   get errors(): readonly string[] {
     return this.errorLog;
+  }
+
+  /**
+   * The id of the source that actually captured (audit R-2).
+   *
+   * Empty before the stream is open. A native WASAPI capture reports its
+   * Windows endpoint id under the `wasapi:` namespace — the browser device
+   * dropdown has no say in that path, so the id has to come from here.
+   */
+  get captureSource(): string {
+    return this.captureSourceId;
   }
 
   /** Queue a pass or punch-in seam in AudioWorklet time at its exact input frame. */
@@ -513,6 +543,7 @@ export class PcmMicRecorder {
 
       const nativeAudioIoBridge = this.deps.getUserMedia ? null : await import("./windowsAudioIoBridge");
       const nativeCaptureStream = nativeAudioIoBridge?.getWindowsAudioCaptureStream(ctx) ?? null;
+      const nativeCaptureEndpointId = nativeAudioIoBridge?.getWindowsAudioCaptureEndpointId(ctx) ?? null;
       const getUserMedia =
         this.deps.getUserMedia ??
         (nativeCaptureStream
@@ -578,6 +609,13 @@ export class PcmMicRecorder {
         throw new Error(`Could not start audio-input capture${error instanceof Error ? `: ${error.message}` : ""}`);
       }
       this.assertStartIsCurrent(token);
+      // Audit R-02: NAME the source that actually captured. The browser path
+      // honours the selected device; the native WASAPI path opens the Windows
+      // endpoint the I/O panel chose and IGNORES the browser device id — so
+      // the source is only known here, after the stream was resolved.
+      this.captureSourceId = nativeCaptureEndpointId
+        ? `${NATIVE_CAPTURE_SOURCE_PREFIX}${nativeCaptureEndpointId}`
+        : this.inputDeviceId;
       this.track = this.stream.getAudioTracks()[0] ?? null;
       if (!this.track || this.track.readyState === "ended") throw new Error("The selected audio input is unavailable");
 

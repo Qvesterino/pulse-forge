@@ -398,6 +398,18 @@ export function getWindowsAudioCaptureStream(ctx: AudioContext): MediaStream | n
   return captureConnectionsByContext.get(ctx)?.captureStream ?? null;
 }
 
+/**
+ * The native capture endpoint this context is actually recording from.
+ *
+ * Audit R-2: the native path opens the endpoint the user picked in the I/O
+ * panel — the browser's device dropdown has no say in it. The recorder has to
+ * be able to NAME the source that really captured, or the dropdown would keep
+ * showing one device while another one recorded.
+ */
+export function getWindowsAudioCaptureEndpointId(ctx: AudioContext): string | null {
+  return captureConnectionsByContext.get(ctx)?.negotiation.inputEndpointId ?? null;
+}
+
 /** Subscribe to device loss while a native-backed recording is armed. */
 export function subscribeWindowsAudioCaptureFailure(
   ctx: AudioContext,

@@ -164,6 +164,7 @@ import {
   clampInputGainDb,
   MAX_INPUT_GAIN_DB,
   MIN_INPUT_GAIN_DB,
+  NATIVE_CAPTURE_SOURCE_PREFIX,
   type PcmCaptureInfo,
 } from "../audio-engine/PcmMicRecorder";
 import { buildAudioClipConsolidationDoc, buildBounceZoneDoc } from "../rendering/bounce";
@@ -1176,7 +1177,9 @@ export function ArrangementPanel() {
                 placeOnTimeline: true,
                 startBar: recordingStartBar(ticks, ticksPerBar(latestDoc)),
                 bpm: latestDoc.bpm,
-                recordingInputOffsetMs: recordingAlignment.getSnapshot(),
+                recordingInputOffsetMs: recordingAlignment.getSnapshotFor(
+                  recorderGroup?.getRecorder(route.trackId)?.captureSource || route.deviceId,
+                ),
                 leadInSec: leadInWillApply ? leadInTicks * services.transport.secondsPerTick : 0,
               };
             },
@@ -1411,7 +1414,9 @@ export function ArrangementPanel() {
           placeOnTimeline: true,
           startBar,
           bpm: currentDoc.bpm,
-          recordingInputOffsetMs: recordingAlignment.getSnapshot(),
+          recordingInputOffsetMs: recordingAlignment.getSnapshotFor(
+            recRef.current?.captureSource || recordingInputDeviceId,
+          ),
           leadInSec: leadInWillApply ? leadInTicks * services.transport.secondsPerTick : 0,
         };
       });
@@ -1790,6 +1795,18 @@ export function ArrangementPanel() {
           // — it is the user's audio — but the app SAYS that it is silent.
           ...(take.silence.silent
             ? ["This take is SILENT — no audio was captured. It was placed and saved as it is."]
+            : []),
+          // Audit R-2: the source that actually captured can be a DIFFERENT one
+          // than the dropdown names — the native WASAPI path opens the Windows
+          // endpoint the I/O panel chose and ignores the browser device id.
+          ...(rec.captureSource && rec.captureSource !== recordingInputDeviceId
+            ? [
+                `This take was recorded from a different source than the selected input (${
+                  rec.captureSource.startsWith(NATIVE_CAPTURE_SOURCE_PREFIX)
+                    ? "the native Windows capture endpoint"
+                    : rec.captureSource
+                }). The selected input's calibration was not applied to it.`,
+              ]
             : []),
           ...(routing.unavailableChannels.length
             ? [
