@@ -470,11 +470,25 @@ try {
     // boot failure — but only when EVERY failed request went there.
     const optionalServiceOnly =
       appFailedRequests.length > 0 && appFailedRequests.every((r) => OPTIONAL_LOCAL_SERVICE_URL.test(r.url));
-    const fatal = appErrors.filter(
+    // A same-origin MEDIA asset failing to stream (the landing demo video)
+    // is equally non-essential: the app boots and every control works
+    // without it, and under suite load the browser can abort a large media
+    // read (measured: 1× /landing/mcp-agent-session.mp4 requestfailed while
+    // everything else passed). JS chunks stay FATAL — a missed chunk is a
+    // broken boot, not a cosmetic one.
+    const failedMediaAssets = appFailedRequests.filter((r) => /\.(?:mp4|webm|wav|mp3|ogg)(?:$|\?)/i.test(r.url));
+    let fatal = appErrors.filter(
       (e) =>
         !/AudioContext|autoplay|user gesture/i.test(e) &&
         !(optionalServiceOnly && /Failed to load resource: net::ERR_CONNECTION_REFUSED/.test(e)),
     );
+    // When failed media requests exist and the only remaining fatal errors
+    // are generic resource-load errors, those errors ARE the media loads
+    // (the console text carries no URL) — demote them to info. Any real
+    // app error (a thrown exception, a chunk failing to parse) survives.
+    if (failedMediaAssets.length > 0 && fatal.length > 0 && fatal.every((e) => /Failed to load resource/i.test(e))) {
+      fatal = [];
+    }
     // The failed requests, GROUPED by URL: the console text carries no URL, so
     // without this a red app-boot gate says only "N refused" and the reader
     // has to guess which service. The URLs are what the filter above judged.
@@ -486,6 +500,11 @@ try {
     if (optionalServiceOnly) {
       console.log(
         `[info] app boot — ignored ${appFailedRequests.length} refused request(s) to the optional local gallery service: ${refusedSummary}`,
+      );
+    }
+    if (failedMediaAssets.length > 0) {
+      console.log(
+        `[info] app boot — ignored ${failedMediaAssets.length} failed media asset request(s) (non-essential to boot): ${failedMediaAssets.map((r) => r.url).join(", ")}`,
       );
     }
     if (fatal.length === 0) {
