@@ -2,6 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 import { createLatencyReportReadiness } from "./latencyReadiness";
 import { capUserIrFrames } from "./ozvena-params";
+import { mix01ToPercent100 } from "./scale-bridges";
 import { generateFactoryIr, generateFactoryIr4 } from "./ozvena-core/modules/factoryIr";
 import {
   createZeroedBlockSpectra,
@@ -140,7 +141,8 @@ export function createOzvenaNode(
   // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
   // 0..100 — the node bridges at the doc→worklet boundary (defaults arrive
   // deep-scale and are not bridged).
-  for (const [id, v] of Object.entries(instance.params)) initial[id] = id === "global.dryWet" ? v * 100 : v;
+  for (const [id, v] of Object.entries(instance.params))
+    initial[id] = id === "global.dryWet" ? mix01ToPercent100(v) : v;
 
   const node = new AudioWorkletNode(ctx, "ozvena-processor", {
     numberOfInputs: 1,
@@ -208,7 +210,7 @@ export function createOzvenaNode(
     waitForLatencyReport: (timeoutMs: number) => latencyReadiness.wait(timeoutMs),
     setParameter(id: string, value: number) {
       if (disposed) return;
-      node.port.postMessage({ type: "param", id, value: id === "global.dryWet" ? value * 100 : value });
+      node.port.postMessage({ type: "param", id, value: id === "global.dryWet" ? mix01ToPercent100(value) : value });
     },
     /**
      * Time-stamped parameter set (automation lanes, offline render). The
@@ -218,7 +220,12 @@ export function createOzvenaNode(
      */
     setParameterAt(id: string, value: number, when: number) {
       if (disposed) return;
-      node.port.postMessage({ type: "paramAt", id, value: id === "global.dryWet" ? value * 100 : value, when });
+      node.port.postMessage({
+        type: "paramAt",
+        id,
+        value: id === "global.dryWet" ? mix01ToPercent100(value) : value,
+        when,
+      });
     },
     /**
      * Roadmap O7: load a user impulse response (convolution mode). The

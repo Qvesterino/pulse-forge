@@ -1,6 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { EFFECT_META } from "../src/effects/definitions";
 import { scaleBridgeFor, toDescriptorValue } from "../src/effects/scale-bridges";
+import { ALL_PARAMS as ULTINA_DEEP } from "../src/effects/ultina-core/contracts/parameterSchema";
+import { ALL_PARAMS as MORPH_DEEP } from "../src/effects/morph-dynamics-core/contracts/parameterSchema";
+import { OZVENA_TARGET_DEFS } from "../src/project-model/targets";
 import type { EffectType } from "../src/project-model/types";
 
 /**
@@ -172,6 +175,68 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
     // A mapping typo must not silently shrink the sweep to nothing.
     expect(checked, "sweep must cover a meaningful param count").toBeGreaterThanOrEqual(60);
     expect(undeclared.join("; "), "every paired processor must declare its AudioParam surface").toBe("");
+    expect(offenders.join("; ")).toBe("");
+  });
+
+  // R-09: the three flagships take their params via port messages (no
+  // AudioParam surface), which is why the sweep above skipped them. Their
+  // DEEP schema is declarative all the same — the sweep applies the
+  // registered bridge (percent-100 for the mix params) and demands the deep
+  // range cover the DOCUMENT range. A widened doc def the deep DSP cannot
+  // honor now fails here, flagship or not.
+  const FLAGSHIP_DEEP: [EffectType, Readonly<{ id: string; minValue: number; maxValue: number }>[]][] = [
+    ["ultina", ULTINA_DEEP],
+    ["morphdynamics", MORPH_DEEP],
+  ];
+  it("FLAGSHIP SWEEP: ultina + morphdynamics deep schemas cover the bridged doc ranges", () => {
+    const offenders: string[] = [];
+    let checked = 0;
+    for (const [effect, deep] of FLAGSHIP_DEEP) {
+      const deepById = new Map(deep.map((d) => [d.id, d]));
+      for (const def of EFFECT_META[effect].params) {
+        if (def.deprecated) continue;
+        const bridge = scaleBridgeFor(effect, def.id);
+        const docMin = toDescriptorValue(effect, def.id, def.min);
+        const docMax = toDescriptorValue(effect, def.id, def.max);
+        const desc = deepById.get(def.id);
+        if (!desc) {
+          offenders.push(`${effect}.${def.id}: no deep schema entry (rack param the DSP does not declare)`);
+          continue;
+        }
+        checked++;
+        if (!(desc.minValue <= docMin + EPS && desc.maxValue >= docMax - EPS)) {
+          offenders.push(
+            `${effect}.${def.id}: doc [${def.min}, ${def.max}] → bridged [${docMin}, ${docMax}] vs deep [${desc.minValue}, ${desc.maxValue}]`,
+          );
+        }
+      }
+    }
+    expect(checked, "the flagship sweep must actually see the params").toBeGreaterThanOrEqual(18);
+    expect(offenders.join("; ")).toBe("");
+  });
+
+  it("FLAGSHIP SWEEP: ozvena rack params are covered by the target defs and the bridged dryWet by the deep clamp", () => {
+    const offenders: string[] = [];
+    const targetById = new Map(OZVENA_TARGET_DEFS.map((d) => [d.id, d]));
+    for (const def of EFFECT_META.ozvena.params) {
+      if (def.deprecated) continue;
+      const target = targetById.get(def.id);
+      if (!target) {
+        offenders.push(`ozvena.${def.id}: no automation-target def`);
+        continue;
+      }
+      // The target defs are DOCUMENT scale (the automation path writes doc
+      // values straight through) — identity coverage.
+      if (!(target.min <= def.min + EPS && target.max >= def.max - EPS)) {
+        offenders.push(`ozvena.${def.id}: def [${def.min}, ${def.max}] vs target [${target.min}, ${target.max}]`);
+      }
+    }
+    // global.dryWet: doc 0..1 bridges ×100 into the deep state, whose clamp
+    // is [0, 100] (ozvenaProcessor reads clamp(state.global.dryWet, 0, 100)).
+    const bridge = scaleBridgeFor("ozvena", "global.dryWet");
+    expect(bridge?.domain).toBe("percent-100");
+    expect(bridge?.toDescriptor?.(0)).toBe(0);
+    expect(bridge?.toDescriptor?.(1)).toBe(100);
     expect(offenders.join("; ")).toBe("");
   });
 

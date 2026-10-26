@@ -50,6 +50,7 @@ import type {
   ID,
 } from "../../project-model/types";
 import { uid } from "../../shared/ids";
+import { dbToLinearGain } from "../../effects/scale-bridges";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -1014,7 +1015,8 @@ function setTrackPan(pan: number, doc: ProjectDocument, trackId: ID): ProjectDoc
 }
 
 function dbToGain(db: number): number {
-  return Math.pow(10, db / 20);
+  // R-09: one owner in effects/scale-bridges (same function compressor-node reads).
+  return dbToLinearGain(db);
 }
 
 function clamp(v: number, min: number, max: number): number {

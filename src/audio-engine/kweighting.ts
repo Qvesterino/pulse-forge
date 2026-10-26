@@ -1,4 +1,5 @@
 import { MIN_DB } from "./metering";
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 /**
  * ITU-R BS.1770-4 K-weighting and loudness math — PURE, shared by the offline
@@ -29,7 +30,7 @@ export function kWeightingCoefficients(sampleRate: number): [BiquadCoefficients,
   const shelfGainDb = 3.9998438539736248;
   const shelfQ = 0.7071752369554196;
   const ks = Math.tan((Math.PI * shelfF0) / fs);
-  const vh = Math.pow(10, shelfGainDb / 20);
+  const vh = dbToLinearGain(shelfGainDb);
   const vb = Math.pow(vh, 0.4996667741545416);
   const shelfA0 = 1 + ks / shelfQ + ks * ks;
 

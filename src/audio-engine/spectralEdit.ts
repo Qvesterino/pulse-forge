@@ -14,6 +14,7 @@
  * for A/B (and for undo — commands rewire a clip's bufferId instead of
  * mutating the shared bank entry).
  */
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 /** In-place iterative radix-2 complex FFT. `n` must be a power of two. */
 export function fftInPlace(re: Float64Array, im: Float64Array, inverse = false): void {
@@ -108,7 +109,7 @@ function compileEdits(edits: SpectralEdit[], sampleRate: number, fftSize: number
     return {
       startSec: e.startSec,
       endSec: e.endSec,
-      gainLin: Math.pow(10, e.gainDb / 20),
+      gainLin: dbToLinearGain(e.gainDb),
       binLo: fLo / binHz,
       binHi: fHi / binHz,
       binFrom: Math.max(1, Math.floor(reachLo / binHz)),

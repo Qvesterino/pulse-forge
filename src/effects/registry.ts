@@ -38,6 +38,7 @@ import { createTapeStopNode } from "../audio-worklets/tapestop-node";
 import { createFreqShiftNode } from "../audio-worklets/freqshifter-node";
 import { createPitchCorrectNode } from "../audio-worklets/pitchcorrect-node";
 import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
+import { dbToLinearGain } from "./scale-bridges";
 import { createVinylNode } from "../audio-worklets/vinyl-node";
 import { createWowFlutterNode } from "../audio-worklets/wowflutter-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
@@ -158,7 +159,7 @@ export {
   GRANULAR_FREEZE_MAX_WINDOW_SEC,
 } from "./definitions";
 
-const dbToLin = (db: number) => Math.pow(10, db / 20);
+const dbToLin = (db: number) => dbToLinearGain(db);
 
 /**
  * OFFLINE parameter regime.
@@ -2265,7 +2266,7 @@ const sidechain: EffectDefinition = {
     const analyserBuf = new Float32Array(analyser.fftSize);
 
     let env = 0;
-    let thresholdLin = Math.pow(10, -18 / 20);
+    let thresholdLin = dbToLin(-18);
     let ratio = 4;
     let amount = 1;
     let attackCoef = Math.exp(-1 / (ctx.sampleRate * 0.005));
@@ -2289,7 +2290,7 @@ const sidechain: EffectDefinition = {
       const threshDb = 20 * Math.log10(Math.max(thresholdLin, 1e-7));
       const overDb = Math.max(0, envDb - threshDb);
       const reductionDb = overDb * (1 - 1 / Math.max(1, ratio));
-      const reduction = Math.pow(10, -reductionDb / 20);
+      const reduction = dbToLin(-reductionDb);
       return Math.max(0, 1 - amount * (1 - reduction));
     };
 
@@ -2305,7 +2306,7 @@ const sidechain: EffectDefinition = {
     const apply = (id: string, v: number, _when: number) => {
       switch (id) {
         case "threshold":
-          thresholdLin = Math.pow(10, v / 20);
+          thresholdLin = dbToLin(v);
           break;
         case "ratio":
           ratio = v;

@@ -28,6 +28,7 @@ import { meterChangeClause } from "../project-model/meter-disclosure";
 import { setGroove } from "./groove";
 import { setMasterConfig } from "./master";
 import { setBeatManglerSteps, setEffectParam } from "./effectParams";
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 /* ---------------- intent routing ---------------- */
 /**
@@ -164,14 +165,14 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       // MASTER domain is 0..2 (+6 dB): the fader is the drive-into-the-
       // master-chain knob; reference matching rides loudnessTrimDb instead.
       if (op.target === "mix") {
-        const targetMasterGain = Math.max(0, Math.min(2, Math.pow(10, op.absDb / 20)));
+        const targetMasterGain = Math.max(0, Math.min(2, dbToLinearGain(op.absDb)));
         next = setMasterConfig(next, { masterGain: targetMasterGain }).execute(next);
         continue;
       }
       for (const trackId of resolve(op.target)) {
         const track = next.tracks.find((t) => t.id === trackId);
         if (!track || track.kind === "group") continue;
-        const targetGain = Math.max(0, Math.min(1.5, Math.pow(10, op.absDb / 20)));
+        const targetGain = Math.max(0, Math.min(1.5, dbToLinearGain(op.absDb)));
         next = setTrackParams(next, trackId, { gain: targetGain }).execute(next);
       }
       continue;
@@ -183,14 +184,14 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       if (op.target === "mix") {
         // Same 0..2 master domain as the absolute set above.
         const masterGain = next.master?.masterGain ?? 1;
-        const targetMasterGain = Math.max(0, Math.min(2, masterGain * Math.pow(10, op.deltaDb / 20)));
+        const targetMasterGain = Math.max(0, Math.min(2, masterGain * dbToLinearGain(op.deltaDb)));
         next = setMasterConfig(next, { masterGain: targetMasterGain }).execute(next);
         continue;
       }
       for (const trackId of resolve(op.target)) {
         const track = next.tracks.find((t) => t.id === trackId);
         if (!track || track.kind === "group") continue;
-        const targetGain = Math.max(0, Math.min(1.5, track.gain * Math.pow(10, op.deltaDb / 20)));
+        const targetGain = Math.max(0, Math.min(1.5, track.gain * dbToLinearGain(op.deltaDb)));
         next = setTrackParams(next, trackId, { gain: targetGain }).execute(next);
       }
       continue;

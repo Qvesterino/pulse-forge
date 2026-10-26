@@ -14,6 +14,7 @@
 import { evaluateDelivery, type MasterProfile } from "../mastering/profiles";
 
 import { analyzeLoudnessBuffer } from "./kweighting";
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 export const MIN_DB = -120;
 export const MAX_DB = 6;
@@ -28,7 +29,8 @@ export function toDb(linear: number): number {
 }
 
 export function fromDb(db: number): number {
-  return Math.pow(10, db / 20);
+  // R-09: the amplitude conversion's one owner lives in effects/scale-bridges.
+  return dbToLinearGain(db);
 }
 
 /** Approximate BS.1770 loudness from a stereo window (K-weighting is omitted
@@ -189,7 +191,7 @@ export function computeStageAdjustment(
   const loud = Math.abs(input.lufsIntegrated - lufsTarget) > 1 ? loudDelta : 0;
   const delta = Math.min(peakDelta, loud);
 
-  const masterGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
+  const masterGain = Math.max(0, Math.min(2, currentGain * fromDb(delta)));
   const profileLimited = peakDelta < loud - 0.05;
   const actualDb = masterGain === currentGain ? 0 : 20 * Math.log10(masterGain / currentGain);
   const inputRangeLimited = !Number.isFinite(actualDb) || Math.abs(actualDb - delta) >= 0.05;

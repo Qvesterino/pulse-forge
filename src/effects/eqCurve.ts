@@ -17,6 +17,7 @@
  *     → (v + hsG·(v − LP_hs(v))) → LP
  * evaluated at DC..Nyquist, in dB.
  */
+import { dbToLinearGain } from "./scale-bridges";
 
 const BUTTER_Q = 0.7071067811865475;
 
@@ -152,7 +153,7 @@ export function eqResponseDbAt(p: Record<string, number>, hz: number, sr = EQ_CU
   const w = (2 * Math.PI * f) / sr;
 
   let h = protoMag(hpProto(num(p, "hpFreq", 20), sr), w);
-  const lsG = Math.pow(10, num(p, "lowShelfGain", 0) / 20) - 1;
+  const lsG = dbToLinearGain(num(p, "lowShelfGain", 0)) - 1;
   const ls = protoMag(lpProto(num(p, "lowShelfFreq", 120), sr), w);
   h = mul(h, { re: 1 + lsG * ls.re, im: lsG * ls.im });
 

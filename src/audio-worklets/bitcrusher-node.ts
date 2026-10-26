@@ -2,6 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 /**
  * Create a Bitcrusher AudioWorkletNode synchronously.
@@ -66,7 +67,7 @@ export function createBitcrusherNode(
 
   // Set initial output gain
   const outputDb = instance.params.output ?? 0;
-  if (Number.isFinite(outputDb)) out.gain.value = Math.pow(10, outputDb / 20);
+  if (Number.isFinite(outputDb)) out.gain.value = dbToLinearGain(outputDb / 20);
 
   return {
     input,
@@ -96,7 +97,7 @@ export function createBitcrusherNode(
           }
           break;
         case "output":
-          if (Number.isFinite(v)) out.gain.setTargetAtTime(Math.pow(10, v / 20), now, 0.02);
+          if (Number.isFinite(v)) out.gain.setTargetAtTime(dbToLinearGain(v), now, 0.02);
           break;
       }
     },
@@ -124,7 +125,7 @@ export function createBitcrusherNode(
           }
           break;
         case "output":
-          if (Number.isFinite(v)) out.gain.setTargetAtTime(Math.pow(10, v / 20), when, 0.02);
+          if (Number.isFinite(v)) out.gain.setTargetAtTime(dbToLinearGain(v), when, 0.02);
           break;
       }
     },

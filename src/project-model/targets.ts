@@ -94,7 +94,7 @@ function collectOzvenaTargetDefs(value: unknown, prefix = "", out: TargetParamDe
   return out;
 }
 
-const OZVENA_TARGET_DEFS = [
+export const OZVENA_TARGET_DEFS = [
   "global",
   "blendPad",
   "engines",
@@ -114,6 +114,7 @@ const OZVENA_TARGET_DEFS = [
 // catalog validates UI edits, automation and MIDI without exposing analysis
 // bookkeeping fields.
 OZVENA_TARGET_DEFS.push(
+  { id: "global.quality", label: "Quality Mode", min: 0, max: 3, default: 1 },
   { id: "engines.e2.algo", label: "E2 Algorithm", min: 0, max: 2, default: 0 },
   { id: "engines.e3.algo", label: "E3 Algorithm", min: 0, max: 1, default: 1 },
   { id: "blendPad.engine2Algo", label: "Blend Algorithm", min: 0, max: 2, default: 0 },

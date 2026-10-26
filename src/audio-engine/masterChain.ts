@@ -10,6 +10,7 @@ import type { MasterConfig } from "../project-model/types";
 import { MASTER_SIGNAL_NODE_ORDER, type MasterSignalNodeId } from "../mastering/signalFlow";
 import { isLiveAudioContext, isOfflineAudioContext } from "./liveContext";
 import type { MeteringRig } from "./meteringRig";
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 const MASTER_MONITOR_BYPASS_FADE_SECONDS = 0.04;
 const MASTER_MONITOR_BYPASS_SCHEDULE_AHEAD_SECONDS = 0.01;
@@ -1115,7 +1116,7 @@ export class MasterChain {
       const gain = typeof gainRaw === "number" && Number.isFinite(gainRaw) ? Math.min(2, Math.max(0, gainRaw)) : 1;
       const trimRaw = config.loudnessTrimDb;
       const trim = typeof trimRaw === "number" && Number.isFinite(trimRaw) ? Math.min(12, Math.max(-12, trimRaw)) : 0;
-      if (this.masterInputGain) writeControl(this.masterInputGain.gain, gain * Math.pow(10, trim / 20), 0.01);
+      if (this.masterInputGain) writeControl(this.masterInputGain.gain, gain * dbToLinearGain(trim), 0.01);
     }
     if (this.masterTape) {
       const enabled = config.tapeEnabled ?? false;
@@ -1130,8 +1131,8 @@ export class MasterChain {
       // hostile values straight into these AudioParams otherwise.
       const midDb = Math.min(6, Math.max(-6, config.msMidGain ?? 0));
       const sideDb = Math.min(6, Math.max(-6, config.msSideGain ?? 0));
-      const midLin = enabled ? Math.pow(10, midDb / 20) : 1;
-      const sideLin = enabled ? Math.pow(10, sideDb / 20) : 1;
+      const midLin = enabled ? dbToLinearGain(midDb) : 1;
+      const sideLin = enabled ? dbToLinearGain(sideDb) : 1;
       writeControl(this.masterMs.midGain.gain, midLin, 0.01);
       writeControl(this.masterMs.sideGain.gain, sideLin, 0.01);
     }
@@ -1181,7 +1182,7 @@ export class MasterChain {
       if (!this.masterClipperCurve) {
         const n = 2048;
         const curve = new Float32Array(new ArrayBuffer(n * 4));
-        const ceilingLin = Math.pow(10, -0.3 / 20);
+        const ceilingLin = dbToLinearGain(-0.3);
         for (let i = 0; i < n; i++) {
           const x = (i / (n - 1)) * 2 - 1;
           curve[i] = (ceilingLin * Math.tanh(x * 3)) / Math.tanh(3);

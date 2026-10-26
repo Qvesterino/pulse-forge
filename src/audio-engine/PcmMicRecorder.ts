@@ -15,6 +15,7 @@ import {
   recordingStorageWarning,
   type BrowserStorageEstimate,
 } from "./recordingStorageBudget";
+import { dbToLinearGain } from "../effects/scale-bridges";
 
 export interface PcmRecordingMetadata {
   projectId: string;
@@ -328,7 +329,7 @@ export class PcmMicRecorder {
     if (!gain) return;
     const now = this.deps.ctx.currentTime;
     gain.cancelScheduledValues(now);
-    gain.setTargetAtTime(Math.pow(10, this.inputGainDb / 20), now, 0.01);
+    gain.setTargetAtTime(dbToLinearGain(this.inputGainDb), now, 0.01);
   }
 
   /** Current input trim in dB. Derived from {@link inputGainDb}; kept as a
@@ -585,7 +586,7 @@ export class PcmMicRecorder {
       // Pre-capture trim: source → inputGainNode → (capture worklet | monitor).
       // getInputLevel taps post-trim so the meter reads what will be saved.
       this.inputGainNode = ctx.createGain();
-      this.inputGainNode.gain.value = Math.pow(10, this.inputGainDb / 20);
+      this.inputGainNode.gain.value = dbToLinearGain(this.inputGainDb);
       this.inputAnalyser = ctx.createAnalyser();
       this.inputAnalyser.fftSize = 1024;
       const readyPromise = this.waitUntilReady();
