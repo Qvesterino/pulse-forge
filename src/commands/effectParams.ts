@@ -9,7 +9,7 @@ import type { Command } from "./types";
 import type { EffectInstance, ProjectDocument } from "../project-model/types";
 import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
-import { clampEffectParam, defaultParamsOf, EFFECT_META } from "../effects/definitions";
+import { clampEffectParam, defaultParamsOf, EFFECT_META, EFFECT_PARAM_ALIASES } from "../effects/definitions";
 import { targetParamDef } from "../project-model/targets";
 import { CORE_EFFECT_PRESETS } from "../effects/presets";
 import type { BeatmakingEffectChain } from "../effects/chains";
@@ -81,16 +81,14 @@ export function setEffectParam(
   const def = EFFECT_META[type].params.find((p) => p.id === paramId);
   const deepDef = !def && type === "ozvena" ? targetParamDef(doc, { kind: "fxParam", trackId, fxId, paramId }) : null;
   if (!def && !deepDef) throw new Error(`Effect param ${paramId} not defined for ${type}`);
-  const eqLegacyMap: Record<string, string> = {
-    lowGain: "lowShelfGain",
-    lowFreq: "lowShelfFreq",
-    midGain: "lowMidGain",
-    midFreq: "lowMidFreq",
-    midQ: "lowMidQ",
-    highGain: "highShelfGain",
-    highFreq: "highShelfFreq",
-  };
-  const canonicalId = type === "eq" ? eqLegacyMap[paramId] : undefined;
+  // Legacy-id write: remap to the canonical id (declared on the ParamDef as
+  // deprecated/aliasOf, DERIVED into EFFECT_PARAM_ALIASES) and keep BOTH
+  // keys in sync — old documents store the legacy key and the runtime reads
+  // it as a fallback only while the canonical key is absent. The map used
+  // to be a hand-written eq-only table here that agreed with the registry
+  // only by luck (R-08); the derivation covers any effect that declares an
+  // alias, not just eq.
+  const canonicalId = EFFECT_PARAM_ALIASES[type]?.[paramId];
   const safeValue = Number.isFinite(value) ? value : (def?.default ?? deepDef!.default);
   if (def?.kind === "toggle" && safeValue !== 0 && safeValue !== 1) {
     throw new Error(`Invalid toggle value ${safeValue} for ${type}.${paramId}; expected 0 or 1`);

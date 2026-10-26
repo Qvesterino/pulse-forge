@@ -91,7 +91,11 @@ export function listEffectCatalogEntries(): EffectCatalogEntry[] {
 export function getEffectCatalogEntry(type: string): EffectCatalogEntry | null {
   if (!Object.prototype.hasOwnProperty.call(EFFECT_META, type)) return null;
   const meta = EFFECT_META[type as EffectType];
-  const parameters = meta.params.map(pluginCatalogParameter);
+  // Deprecated aliases are NOT settable agent surface — the canonical id is
+  // the one the runtime consumes; the aliases exist for old documents and
+  // are remapped inside the command layer (R-08: same rule as the
+  // instrument catalog below).
+  const parameters = meta.params.filter((param) => param.deprecated !== true).map(pluginCatalogParameter);
   const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]));
   const primaryKnob = EFFECT_PRIMARY_KNOB[meta.type] ?? null;
   const primaryRole = primaryKnob

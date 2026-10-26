@@ -3259,3 +3259,23 @@ export const EFFECT_PRIMARY_KNOB: Partial<Record<EffectType, string>> = Object.f
     .filter(([, meta]) => meta.primaryKnob != null)
     .map(([type, meta]) => [type, meta.primaryKnob as string]),
 );
+
+/**
+ * LEGACY PARAM ALIASES — legacy id → canonical id, DERIVED from the
+ * deprecated/aliasOf ParamDefs above. The registry owns this truth (the
+ * aliases exist there so old documents keep working); the command layer
+ * reads THIS map to keep both keys in sync on a legacy-id write. It used to
+ * be a second hand-written table in commands/effectParams.ts that agreed
+ * with the registry only by luck — R-08.
+ */
+export const EFFECT_PARAM_ALIASES: Partial<Record<EffectType, Readonly<Record<string, string>>>> = Object.fromEntries(
+  Object.entries(EFFECT_META)
+    .map(([type, meta]) => {
+      const aliases: Record<string, string> = {};
+      for (const param of meta.params) {
+        if (param.deprecated === true && param.aliasOf) aliases[param.id] = param.aliasOf;
+      }
+      return [type, aliases] as const;
+    })
+    .filter(([, aliases]) => Object.keys(aliases).length > 0),
+);

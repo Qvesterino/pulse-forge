@@ -47,7 +47,13 @@ import { jsonEqual } from "../shared/jsonEqual";
 import { clampInstrumentParam, defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
 import { supportsHeldVoiceSlideNote } from "../instruments/noteExpressionCapabilities";
 import { createProjectFromTemplate } from "./templates";
-import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
+import {
+  clampEffectParam,
+  defaultParamsOf,
+  EFFECT_META,
+  EFFECT_PARAM_ALIASES,
+  normalizePluginParams,
+} from "../effects/definitions";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { isMasterProfileId } from "../mastering/profiles";
 import {
@@ -841,17 +847,13 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
         }
       }
       // EQ compatibility: old three-band fields feed the new canonical bands.
-      if (type === "eq") {
-        const aliases: Array<[string, string]> = [
-          ["lowGain", "lowShelfGain"],
-          ["lowFreq", "lowShelfFreq"],
-          ["midGain", "lowMidGain"],
-          ["midFreq", "lowMidFreq"],
-          ["midQ", "lowMidQ"],
-          ["highGain", "highShelfGain"],
-          ["highFreq", "highShelfFreq"],
-        ];
-        for (const [legacy, canonical] of aliases) {
+      // The pairs are DERIVED from the registry's deprecated/aliasOf
+      // declarations (EFFECT_PARAM_ALIASES) — this used to be a third
+      // hand-written copy of the alias truth that agreed with the registry
+      // only by luck (R-08).
+      const eqAliases = EFFECT_PARAM_ALIASES.eq;
+      if (type === "eq" && eqAliases) {
+        for (const [legacy, canonical] of Object.entries(eqAliases)) {
           if (
             (source as Record<string, unknown>)[canonical] === undefined &&
             typeof (source as Record<string, unknown>)[legacy] === "number"
