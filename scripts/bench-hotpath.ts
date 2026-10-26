@@ -1,5 +1,5 @@
 /**
- * bench-hotpath — measures whether the A.3 / A.4 / B.7 / C.5 / P.1 / P.2 hot-path
+ * bench-hotpath — measures whether the A.3 / A.4 / B.7 / C.5 / P.1 / P.2 / P.3 / P.4 / P.5 hot-path
  * optimisations actually pay off, using old-vs-new implementations measured
  * side-by-side in the SAME process (same V8, same heap, same JIT state).
  *
@@ -25,6 +25,13 @@ import type { DrumTrack, Pattern, ProjectDocument, Track } from "../src/project-
 import type { DeltaOp, DeltaPath } from "../src/commands/docDelta";
 import { computeDocDelta, applyDocDelta, deepEqualRef } from "../src/commands/docDelta";
 import { soloAudibility } from "../src/project-model/solo-audibility";
+import {
+  arrangementSecondsBetweenTicks,
+  arrangementSecondsBetweenTicksInSpans,
+  buildArrangementSpans,
+} from "../src/project-model/scene-time";
+import { buildClipIndexById, buildCompTakeOrderIndex } from "../src/ui/arrangement/clip-indexes";
+import { pickVisibleClips } from "../src/ui/arrangement/windowing";
 
 const args = process.argv.slice(2);
 function flagValue(name: string, fallback: number): number {
@@ -633,6 +640,205 @@ function benchP2(): Promise<ABLegacy> {
   );
 }
 
+// ─── P.3: the arrangement render's per-visible-clip work ────────────────────
+
+/**
+ * ONE arrangement render: W visible audio clips over a document of N audio
+ * clips and S scene clips.
+ *
+ * Pre-fix, every visible clip rebuilt the comp-take `Set` over EVERY audio
+ * clip in the document, and rebuilt the WHOLE scene span map (a filter, a
+ * `scenes.find` per clip and a sort). The render's cost therefore grew with
+ * (visible clips × document size) — the cliff the performance-cliff audit
+ * measured.
+ *
+ * The optimised side builds both indexes ONCE (ADR 0063) and reads them per
+ * clip. The two sides must return the SAME number — the bench asserts it, so
+ * a faster-but-different answer can never be reported as a win.
+ */
+function benchP3(): Promise<ABLegacy> {
+  const N = 2000; // audio clips in the document
+  const W = 60; // visible audio clips
+  const S = 400; // scene clips in the arrangement
+
+  const scenes = [
+    { id: "s-0", bpm: 120 },
+    { id: "s-1", bpm: 90 },
+    { id: "s-2", bpm: 140 },
+    { id: "s-3", bpm: 100 },
+  ];
+  const sceneClips = Array.from({ length: S }, (_, i) => ({
+    sceneId: `s-${i % scenes.length}`,
+    startBar: i,
+    lengthBars: 2,
+  }));
+  const takeGroups = Array.from({ length: 40 }, (_, g) => ({ id: `g-${g}`, compTakeId: `comp-${g}` }));
+  const audioClips = Array.from({ length: N }, (_, i) => {
+    const g = Math.floor(i / 50);
+    return {
+      id: `a-${i}`,
+      takeGroupId: `g-${g}`,
+      takeId: `pass-${i % 10}`,
+      compSourceTakeId: i % 3 === 0 ? `pass-${(i + 1) % 10}` : undefined,
+      startBar: i,
+      lengthBars: 1,
+    };
+  });
+  const visible = audioClips.filter((_, i) => i % 30 === 0).slice(0, W);
+  const projectBpm = 120;
+  const barUnit = 1920;
+
+  const legacy = (): number => {
+    let sum = 0;
+    for (const clip of visible) {
+      const clipTakeGroup = clip.takeGroupId ? takeGroups.find((g) => g.id === clip.takeGroupId) : undefined;
+      sum += clip.compSourceTakeId
+        ? Array.from(
+            new Set(
+              audioClips
+                .filter((c) => c.takeGroupId === clip.takeGroupId && c.takeId && c.takeId !== clipTakeGroup?.compTakeId)
+                .map((c) => c.takeId!),
+            ),
+          ).indexOf(clip.compSourceTakeId) + 1
+        : 0;
+      sum += arrangementSecondsBetweenTicks(
+        sceneClips,
+        scenes,
+        clip.startBar * barUnit,
+        (clip.startBar + clip.lengthBars) * barUnit,
+        projectBpm,
+        barUnit,
+      );
+    }
+    return sum;
+  };
+
+  const current = (): number => {
+    const order = buildCompTakeOrderIndex(audioClips, takeGroups);
+    const spans = buildArrangementSpans(sceneClips, scenes, projectBpm, barUnit);
+    let sum = 0;
+    for (const clip of visible) {
+      sum += order.numberOf(clip.takeGroupId, clip.compSourceTakeId);
+      sum += arrangementSecondsBetweenTicksInSpans(
+        spans,
+        clip.startBar * barUnit,
+        (clip.startBar + clip.lengthBars) * barUnit,
+        projectBpm,
+      );
+    }
+    return sum;
+  };
+
+  const legacyValue = legacy();
+  const currentValue = current();
+  if (Math.abs(legacyValue - currentValue) > 1e-6) {
+    throw new Error(`P.3 sides disagree: legacy ${legacyValue} vs current ${currentValue}`);
+  }
+
+  return ab(`P.3  arrangement render, ${W} visible clips over ${N} audio / ${S} scene clips`, current, legacy);
+}
+
+// ─── P.4: the windowing memo's forced pass ─────────────────────────────────
+
+/**
+ * The windowing memo's FORCED pass: the clips a live gesture owns, which must
+ * stay mounted even when the window has moved past them.
+ *
+ * Pre-fix it walked EVERY clip of the document on every render: the list is
+ * sorted, so the WINDOW scan could stop early, but the forced pass could not.
+ * The panel commits on every pointermove, so this cost was paid per mouse
+ * move — the cliff the performance-cliff audit measured (C-4).
+ *
+ * The optimised side reads the forced clips from an index built once per clip
+ * LIST (ADR 0063). The index is built OUTSIDE the measured call on purpose:
+ * that is what the memo does — it is keyed on the list's identity, so it is
+ * rebuilt when the list changes, not when the panel re-renders. P.5 measures
+ * what that rebuild costs, so the saving is not hidden.
+ */
+function benchP4(): Promise<ABLegacy> {
+  const N = 4000;
+  const list = Array.from({ length: N }, (_, i) => ({ id: `c-${i}`, startBar: i, lengthBars: 1 }));
+  const forced = new Set(["c-3999", "c-2000"]);
+  const indexById = buildClipIndexById(list);
+
+  const legacy = (): number => {
+    const out: number[] = [];
+    const taken = new Set<number>();
+    for (let i = 0; i < list.length; i++) {
+      const clip = list[i]!;
+      if (clip.startBar > 40) break; // sorted by startBar
+      if (clip.startBar + clip.lengthBars >= 0) {
+        out.push(i);
+        taken.add(i);
+      }
+    }
+    for (let i = 0; i < list.length; i++) {
+      const clip = list[i]!;
+      if (!taken.has(i) && forced.has(clip.id)) out.push(i);
+    }
+    return out.sort((a, b) => a - b).length;
+  };
+
+  const current = (): number => pickVisibleClips(list, indexById, 0, 40, forced).length;
+
+  if (legacy() !== current()) throw new Error("P.4 sides disagree");
+
+  return ab(`P.4  windowing forced pass per render, ${N} clips (2 forced)`, current, legacy);
+}
+
+/**
+ * What P.4's saving is NOT hiding: the index has to be BUILT.
+ *
+ * The build is paid once per clip-LIST change, while the pre-fix walk was paid
+ * once per RENDER. So the honest question is not "build vs walk" but "build
+ * + N renders vs N walks" — the ratio of renders to edits is the variable that
+ * decides the trade, and it is a property of how the panel is used.
+ *
+ * Both sides below do the SAME work: N renders over one clip list. The
+ * current side charges the index build to the first of them. N = 20 is a
+ * realistic drag gesture (the panel commits on every pointermove, and a clip
+ * list changes only when the edit lands).
+ */
+function benchP5(): Promise<ABLegacy> {
+  const N = 4000;
+  const RENDERS = 20;
+  const list = Array.from({ length: N }, (_, i) => ({ id: `c-${i}`, startBar: i, lengthBars: 1 }));
+  const forced = new Set(["c-3999", "c-2000"]);
+
+  const legacy = (): number => {
+    let rendered = 0;
+    for (let r = 0; r < RENDERS; r++) {
+      const out: number[] = [];
+      const taken = new Set<number>();
+      for (let i = 0; i < list.length; i++) {
+        const clip = list[i]!;
+        if (clip.startBar > 40) break; // sorted by startBar
+        if (clip.startBar + clip.lengthBars >= 0) {
+          out.push(i);
+          taken.add(i);
+        }
+      }
+      for (let i = 0; i < list.length; i++) {
+        const clip = list[i]!;
+        if (!taken.has(i) && forced.has(clip.id)) out.push(i);
+      }
+      rendered += out.length;
+    }
+    return rendered;
+  };
+
+  const current = (): number => {
+    const indexById = buildClipIndexById(list);
+    let rendered = 0;
+    for (let r = 0; r < RENDERS; r++) rendered += pickVisibleClips(list, indexById, 0, 40, forced).length;
+    return rendered;
+  };
+
+  if (legacy() !== current()) throw new Error("P.5 sides disagree");
+
+  return ab(`P.5  ${RENDERS} renders over one ${N}-clip list (index built once)`, current, legacy);
+}
+
 // ─── Report ───────────────────────────────────────────────────────────────
 
 function fmt(n: number, digits = 3): string {
@@ -659,7 +865,7 @@ async function main(): Promise<void> {
   console.log(`Measurement noise floor: ${fmtBytes(noise.bytesPerCall)}/call (no-op probe)`);
   console.log("=".repeat(112));
 
-  const benches = [benchB7(), benchA3(), benchA4(), benchC5(), benchP1(), benchP2()];
+  const benches = [benchB7(), benchA3(), benchA4(), benchC5(), benchP1(), benchP2(), benchP3(), benchP4(), benchP5()];
   const results: ABLegacy[] = [];
   for (const p of benches) results.push(await p);
 

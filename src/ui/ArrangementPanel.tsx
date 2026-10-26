@@ -104,8 +104,11 @@ import {
 import { stepsPerBar } from "../project-model/grid";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "./arrangement/sectionFxChips";
+import { buildClipIndexById, buildCompTakeOrderIndex } from "./arrangement/clip-indexes";
+import { pickVisibleClips, type WindowedClip } from "./arrangement/windowing";
 import {
-  arrangementSecondsBetweenTicks,
+  arrangementSecondsBetweenTicksInSpans,
+  buildArrangementSpans,
   effectiveSceneBpm,
   sceneBarsToSeconds,
   sceneSecondsToBars,
@@ -2157,6 +2160,44 @@ export function ArrangementPanel() {
     () => [...(arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar),
     [arrangement.audioClips],
   );
+  /**
+   * ADR 0063 INDEXES — built ONCE per clip list, read per visible clip.
+   *
+   * `clips` and `audioClips` are sorted COPIES, so their IDENTITY is what
+   * changes: the indexes are keyed on it and are rebuilt only when the list
+   * itself changes, not on every render. That is what turns the per-visible-clip
+   * scans of the performance-cliff audit (finding C-3/C-4) into per-list work.
+   */
+  const clipIndexById = useMemo(() => buildClipIndexById(clips), [clips]);
+  const audioClipIndexById = useMemo(() => buildClipIndexById(audioClips), [audioClips]);
+  /**
+   * The comp-source take order and the take-group lookup.
+   *
+   * The old code asked, per VISIBLE audio clip: "which take group is this?" (a
+   * `find` over the groups) and "which take of that group is this comp clip
+   * sliced from?" (a `Set` over EVERY audio clip, rebuilt for each clip). Both
+   * are now one lookup in an index built once per (audio clips, take groups).
+   *
+   * The index reads the ORIGINAL `arrangement.audioClips`: the take NUMBER is
+   * the order the takes appear in the document, not the order they are drawn.
+   */
+  const compTakeOrder = useMemo(
+    () => buildCompTakeOrderIndex(arrangement.audioClips ?? [], arrangement.takeGroups ?? []),
+    [arrangement.audioClips, arrangement.takeGroups],
+  );
+  /**
+   * The scene span map — the arrangement's scene-pinned tempo spans, sorted.
+   *
+   * Every visible audio clip needs the wall-clock length of its own span, and
+   * the old code rebuilt the WHOLE map for each of them: a filter over every
+   * scene clip, a `scenes.find` per clip and a sort, PER VISIBLE CLIP. It is
+   * built once per clip list here; the walk is
+   * `arrangementSecondsBetweenTicksInSpans`.
+   */
+  const arrangementSpans = useMemo(
+    () => buildArrangementSpans(clips, scenes, doc.bpm, barUnit),
+    [clips, scenes, doc.bpm, barUnit],
+  );
   // Stretch dialog data — resolved once per opened clip (BPM detection is an
   // autocorrelation pass; never run it per render).
   const stretchTarget = stretchClipId ? (audioClips.find((c) => c.id === stretchClipId) ?? null) : null;
@@ -2238,6 +2279,14 @@ export function ArrangementPanel() {
    * Entries keep their ORIGINAL index because `clips[index + 1]` renders the
    * transition mark to the next section — resolved against the full list, not the
    * window, or the last visible clip silently loses its "+" button.
+   *
+   * WHAT THIS STILL WAS (performance-cliff audit, findings C-3/C-4): the
+   * window scan stops early, but the FORCED pass — the one that keeps a live
+   * gesture's clip mounted — had no way to stop, so it read every clip of the
+   * document on every render. The audio map was worse: `compSourceTakeNumber`
+   * rebuilt a `Set` over all audio clips and `arrangementSecondsBetweenTicks`
+   * rebuilt the whole scene span map, PER VISIBLE CLIP. Both are now indexes
+   * built once per list (ADR 0063) and read per clip.
    */
   const windowed = useMemo(() => {
     const forced = new Set<string>();
@@ -2254,29 +2303,20 @@ export function ArrangementPanel() {
 
     const pick = <T extends { id: string; startBar: number; lengthBars: number }>(
       list: readonly T[],
-    ): { clip: T; index: number }[] => {
+      indexById: ReadonlyMap<string, WindowedClip<T>>,
+    ): WindowedClip<T>[] => {
       if (!viewport) return list.map((clip, index) => ({ clip, index }));
-      const out: { clip: T; index: number }[] = [];
-      const taken = new Set<number>();
-      for (let i = 0; i < list.length; i++) {
-        const clip = list[i]!;
-        if (clip.startBar > viewport.lastBar) break; // sorted by startBar
-        if (clip.startBar + clip.lengthBars >= viewport.firstBar) {
-          out.push({ clip, index: i });
-          taken.add(i);
-        }
-      }
-      for (let i = 0; i < list.length; i++) {
-        const clip = list[i]!;
-        if (!taken.has(i) && forced.has(clip.id)) out.push({ clip, index: i });
-      }
-      return out.sort((a, b) => a.index - b.index);
+      // The window scan stops at `lastBar` (the list is sorted by startBar).
+      // The FORCED pass is a lookup per forced clip, not a walk over the
+      // document: that walk read every clip of the song on every render,
+      // whether or not a gesture was running (performance-cliff finding C-4).
+      return pickVisibleClips(list, indexById, viewport.firstBar, viewport.lastBar, forced);
     };
 
-    return { clips: pick(clips), audioClips: pick(audioClips) };
+    return { clips: pick(clips, clipIndexById), audioClips: pick(audioClips, audioClipIndexById) };
     // The drag refs are read, not tracked: `drag` / `multiDrag` are the state
     // that changes during a gesture, and both force a recompute anyway.
-  }, [clips, audioClips, viewport, drag, multiDrag, groupDragPreview, doc.id]);
+  }, [clips, audioClips, clipIndexById, audioClipIndexById, viewport, drag, multiDrag, groupDragPreview, doc.id]);
   const visibleClips = windowed.clips;
   const visibleAudioClips = windowed.audioClips;
 
@@ -3366,13 +3406,11 @@ export function ArrangementPanel() {
     // tempos (average sec/bar). doc.bpm alone disagreed with playback whenever
     // a scene pinned a different tempo — the fade handle moved at the wrong
     // rate and trim wrote offsets against a wall clock nothing runs at.
-    const clipWallSec = arrangementSecondsBetweenTicks(
-      clips,
-      scenes,
-      clip.startBar * ticksPerBar(doc),
-      (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
+    const clipWallSec = arrangementSecondsBetweenTicksInSpans(
+      arrangementSpans,
+      clip.startBar * barUnit,
+      (clip.startBar + clip.lengthBars) * barUnit,
       doc.bpm,
-      ticksPerBar(doc),
     );
     // SLIP gate (Alt+drag in the body): the slip writes offsetSec, whose
     // mapping is only defined for linear forward playback — reversed clips
@@ -3701,13 +3739,11 @@ export function ArrangementPanel() {
         // tempos (signed: a leftward trim goes negative). doc.bpm here wrote
         // trim/offset against a wall clock nothing plays at under a pinned
         // scene — the trim handle and the audible skip disagreed.
-        const deltaSec = arrangementSecondsBetweenTicks(
-          clips,
-          scenes,
-          cur.origStart * ticksPerBar(doc),
-          final.startBar * ticksPerBar(doc),
+        const deltaSec = arrangementSecondsBetweenTicksInSpans(
+          arrangementSpans,
+          cur.origStart * barUnit,
+          final.startBar * barUnit,
           doc.bpm,
-          ticksPerBar(doc),
         );
         const lengthChanged = final.lengthBars !== cur.origLength;
         const startChanged = final.startBar !== cur.origStart;
@@ -5863,23 +5899,12 @@ export function ArrangementPanel() {
               const selected = selectedAudioClipId === clip.id || selectionStore.isClipSelected(clip.id);
               const isCurrent = clip.id === currentClipId;
               const track = tracks.find((t) => t.id === clip.trackId);
-              const clipTakeGroup = clip.takeGroupId
-                ? arrangement.takeGroups?.find((group) => group.id === clip.takeGroupId)
-                : undefined;
-              const compSourceTakeNumber = clip.compSourceTakeId
-                ? Array.from(
-                    new Set(
-                      (arrangement.audioClips ?? [])
-                        .filter(
-                          (candidate) =>
-                            candidate.takeGroupId === clip.takeGroupId &&
-                            candidate.takeId &&
-                            candidate.takeId !== clipTakeGroup?.compTakeId,
-                        )
-                        .map((candidate) => candidate.takeId!),
-                    ),
-                  ).indexOf(clip.compSourceTakeId) + 1
-                : 0;
+              const clipTakeGroup = clip.takeGroupId ? compTakeOrder.groupOf(clip.takeGroupId) : undefined;
+              // The comp-source take number: which take of the group this comp
+              // clip is sliced from. One lookup in the index built once per
+              // (audio clips, take groups) — it used to rebuild a `Set` over
+              // EVERY audio clip for EVERY visible clip (finding C-3).
+              const compSourceTakeNumber = compTakeOrder.numberOf(clip.takeGroupId, clip.compSourceTakeId);
               // Alt+drag stretch preview: badge + tooltip show the live rate.
               const effRate =
                 audioStretchPreview?.clipId === clip.id ? audioStretchPreview.rate : (clip.stretchRate ?? 1);
@@ -5894,15 +5919,16 @@ export function ArrangementPanel() {
               // tempo aware, matching the drag sensitivity in beginAudioDrag),
               // not doc.bpm — under a pinned scene the handle sat at the
               // wrong fraction of the clip.
+              // The span map is SHARED (built once per clip list) and the walk
+              // is per clip: it used to rebuild the whole map per visible clip
+              // (finding C-3).
               const clipSecPerBar =
                 lengthBars > 0
-                  ? arrangementSecondsBetweenTicks(
-                      clips,
-                      scenes,
-                      startBar * ticksPerBar(doc),
-                      (startBar + lengthBars) * ticksPerBar(doc),
+                  ? arrangementSecondsBetweenTicksInSpans(
+                      arrangementSpans,
+                      startBar * barUnit,
+                      (startBar + lengthBars) * barUnit,
                       doc.bpm,
-                      ticksPerBar(doc),
                     ) / lengthBars
                   : (barUnit * 60) / (doc.bpm * PPQ);
               return (
