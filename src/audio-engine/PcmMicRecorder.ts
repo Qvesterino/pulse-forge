@@ -292,6 +292,14 @@ export class PcmMicRecorder {
   private writeTail: Promise<void> = Promise.resolve();
   private persistenceError: string | null = null;
   private errorReported = false;
+  /**
+   * Every error this recorder reported, in order (audit R-4).
+   *
+   * A take can fail twice: the input can be interrupted AND the storage can
+   * fail while the capture unwinds. The first error stopped the capture, the
+   * second explains the truncated take — and the second used to be dropped.
+   */
+  private readonly errorLog: string[] = [];
   private readyResolve: ((value: { channels: number; sampleRate: number }) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
   private stoppedResolve: (() => void) | null = null;
@@ -342,6 +350,17 @@ export class PcmMicRecorder {
   /** Exact PCM format plus browser-reported settings for the opened input track. */
   get captureInfo(): PcmCaptureInfo | null {
     return this.captureInfo_;
+  }
+
+  /**
+   * Every error this recorder reported, in order (audit R-4).
+   *
+   * A take can fail more than once — the input is interrupted AND the storage
+   * fails while the capture unwinds. The list is the whole story; the first
+   * error alone explains the stop, not the truncation.
+   */
+  get errors(): readonly string[] {
+    return this.errorLog;
   }
 
   /** Queue a pass or punch-in seam in AudioWorklet time at its exact input frame. */
@@ -918,18 +937,24 @@ export class PcmMicRecorder {
   }
 
   private reportError(message: string): void {
-    if (this.errorReported) return;
+    const first = !this.errorReported;
     this.errorReported = true;
-    // Capture lifecycle must not rely on a mounted UI reacting to onError.
-    // Stop at the recorder boundary too; UI callers may also call stop(),
-    // which safely joins the same finishPromise.
-    if (this.state_ === "recording") {
+    this.errorLog.push(message);
+    // The FIRST error stops the capture. A later error arrives while the
+    // capture is already unwinding — it must not start a second teardown.
+    if (first && this.state_ === "recording") {
       void this.finishCapture().catch((error) => {
         const detail = error instanceof Error ? error.message : String(error);
         console.error(`[recording] cleanup after capture error failed: ${detail}`);
       });
     }
-    this.onError?.(message);
+    // Audit R-04: EVERY error is reported. The old `if (this.errorReported)
+    // return;` hid a later storage failure behind an earlier "input
+    // interrupted" — the take was then explained by the wrong cause, and the
+    // reason it is short was never told. The later message carries the
+    // earlier one, so both reach the user.
+    const earlier = this.errorLog.length > 1 ? ` (Earlier: ${this.errorLog[0]})` : "";
+    this.onError?.(`${message}${earlier}`);
   }
 
   private finishCapture(): Promise<string | null> {
