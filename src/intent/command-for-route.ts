@@ -23,6 +23,7 @@ import { applySoundSwapIntent, applyStepEditIntent } from "./sound-words";
 import { applyBypassIntent, applyEffectIntent, applySendIntent } from "./mix";
 import { applyParamIntent } from "./param-intent";
 import { applyCompoundIntent } from "./compound";
+import { addAutomationRamp } from "../commands/automation";
 
 export function buildIntentCommand(doc: ProjectDocument, route: RoutedIntent): Command | null {
   switch (route.kind) {
@@ -36,6 +37,16 @@ export function buildIntentCommand(doc: ProjectDocument, route: RoutedIntent): C
       return applyGrooveIntent(doc, route.intent);
     case "sectionGrooveIntent":
       return applySectionGrooveIntent(doc, route.intent);
+    case "automationPlan":
+      if ("error" in route.result) return null;
+      return addAutomationRamp(
+        doc,
+        route.result.plan.target,
+        route.result.plan.startTick,
+        route.result.plan.fromValue,
+        route.result.plan.endTick,
+        route.result.plan.toValue,
+      );
     case "markerIntent":
       return applyMarkerIntent(doc, route.intent);
     case "automateIntent":

@@ -3788,7 +3788,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_automation",
     description:
-      "Inspect real inserted effect targets with listTargets, or edit automation lanes on the project timeline: add a point or bounded two-point ramp (each is one undo step), created on demand — one undo step for both), delete the point nearest a bar, clear a lane, or remove a lane (clear/remove are destructive-gated). Targets: trackId or family + param — 'gain' or 'pan' for track lanes, or effect+param for FX-parameter lanes (see kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, fx params per their registry range); out-of-range values are clamped. Read the lanes first via kyx_state subject:automation.",
+      "Read the real inserted FX and their canonical parameters with listTargets. Add a point (a new lane is created in the same undo step) or an exact two-point ramp (one undo step), move/delete points, or clear/remove a lane (clear/remove are destructive-gated). Targets use trackId plus effect/fxId and param; see kyx_catalog for units and ranges. addPoint clamps native values; addRamp rejects out-of-range native values. Read lanes via kyx_state subject:automation.",
     inputSchema: {
       type: "object",
       properties: {

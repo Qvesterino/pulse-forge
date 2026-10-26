@@ -129,6 +129,7 @@ import {
 // that calls kyx_tracks loadPreset must not need the UI to have warmed first.
 import { factoryPresets, isFactoryPresetsWarm, warmFactoryPresets } from "../presets/factory-loader";
 import {
+  addAutomationRamp,
   addAutomationLane,
   addAutomationPoint,
   addToGroup,
@@ -1559,6 +1560,7 @@ const OUTPUT_AUTOMATION = receiptSchema({
   op: { type: "string" },
   laneId: { type: "string" },
   points: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 4096 },
+  targets: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 64 },
 });
 const OUTPUT_MASTER = receiptSchema({
   op: { type: "string" },
@@ -2451,18 +2453,14 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_automation",
     description:
-      "Automation lanes on the project timeline: add a point (lane is " +
-      "created on demand — one undo step for both), delete the point nearest " +
-      "a bar, clear a lane, or remove a lane (clear/remove are " +
-      "destructive-gated). Targets: trackId or family + param — 'gain' or " +
-      "'pan' for track lanes, or effect+param for FX-parameter lanes (see " +
-      "kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, " +
-      "fx params per their registry range); out-of-range values are clamped. " +
-      "Read the lanes first via kyx_state subject:automation.",
+      "Read the real inserted FX and their canonical parameters with listTargets. Add a point (a new lane is created in the same undo step) or an exact two-point ramp (one undo step), move/delete points, or clear/remove a lane (clear/remove are destructive-gated). Targets use trackId plus effect/fxId and param; see kyx_catalog for units and ranges. addPoint clamps native values; addRamp rejects out-of-range native values. Read lanes via kyx_state subject:automation.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["addPoint", "movePoint", "deletePoint", "clearLane", "removeLane"] },
+        op: {
+          type: "string",
+          enum: ["listTargets", "addPoint", "addRamp", "movePoint", "deletePoint", "clearLane", "removeLane"],
+        },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
@@ -2490,6 +2488,18 @@ export const MCP_TOOLS: McpToolDef[] = [
           maximum: MAX_ARRANGEMENT_CLIP_BARS,
           description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
         },
+        startBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
+          description: "For addRamp — 1-based start bar (inclusive)",
+        },
+        endBar: {
+          type: "integer",
+          minimum: 2,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
+          description: "For addRamp — 1-based end bar (exclusive boundary)",
+        },
         newBar: {
           type: "integer",
           minimum: 1,
@@ -2509,6 +2519,8 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "Optional 1-based beat within the project's meter (default 1)",
         },
         value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
+        fromValue: { type: "number", description: "NATIVE start value for addRamp; must be within the target range" },
+        toValue: { type: "number", description: "NATIVE end value for addRamp; must be within the target range" },
       },
       required: ["op"],
     },
@@ -8095,6 +8107,37 @@ export function explicitTrackIds(doc: ProjectDocument, record: Record<string, un
 function executeAutomationTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const op = String(record.op ?? "");
   const doc = ctx.getDoc();
+  if (op === "listTargets") {
+    const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+    if (!trackId) return { text: "listTargets needs an exact trackId from kyx_state subject:tracks", mutated: false };
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track)
+      return { text: `no track with id "${trackId}" — list ids via kyx_state subject:tracks`, mutated: false };
+    const effects = track.effects.map((effect) => ({
+      fxId: effect.id,
+      effectType: effect.type,
+      effectName: EFFECT_META[effect.type].name,
+      instance: track.effects.filter((candidate) => candidate.type === effect.type).indexOf(effect) + 1,
+      bypassed: effect.bypassed,
+      params: effectTargetParamDefs(effect).map((def) => ({
+        paramId: def.id,
+        label: def.label,
+        min: def.min,
+        max: def.max,
+        default: def.default,
+        ...(def.unit ? { unit: def.unit } : {}),
+        ...(def.format?.(def.max).includes("%") ? { displayUnit: "%" } : {}),
+        ...(def.kind ? { kind: def.kind } : {}),
+      })),
+    }));
+    const parameterCount = effects.reduce((sum, effect) => sum + effect.params.length, 0);
+    return {
+      text: `${track.name}: ${effects.length} inserted effect instance(s), ${parameterCount} catalogued automation parameter(s)${effects.length === 0 ? " — insert an effect first" : ""}`,
+      data: { op, trackId, trackName: track.name, targets: effects },
+      mutated: false,
+      stage: "read",
+    };
+  }
   const target = resolveAutomationTarget(doc, record);
   if (typeof target === "string") return { text: target, mutated: false };
   if (!isAutomationTargetValid(doc, target)) {
@@ -8104,6 +8147,82 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     };
   }
   const lane = automationLaneForTarget(doc, target);
+
+  if (op === "addRamp") {
+    if (target.kind !== "fxParam") return { text: "addRamp currently requires an inserted FX target", mutated: false };
+    const startBar = record.startBar;
+    const endBar = record.endBar;
+    const fromValue = record.fromValue;
+    const toValue = record.toValue;
+    if (
+      typeof startBar !== "number" ||
+      !Number.isSafeInteger(startBar) ||
+      startBar < 1 ||
+      startBar > MAX_ARRANGEMENT_CLIP_BARS ||
+      typeof endBar !== "number" ||
+      !Number.isSafeInteger(endBar) ||
+      endBar <= startBar ||
+      endBar > MAX_ARRANGEMENT_CLIP_BARS
+    ) {
+      return {
+        text: `addRamp needs integer bars satisfying 1 ≤ startBar < endBar ≤ ${MAX_ARRANGEMENT_CLIP_BARS}`,
+        mutated: false,
+      };
+    }
+    if (
+      typeof fromValue !== "number" ||
+      !Number.isFinite(fromValue) ||
+      typeof toValue !== "number" ||
+      !Number.isFinite(toValue)
+    ) {
+      return { text: "addRamp needs finite native fromValue and toValue numbers", mutated: false };
+    }
+    const def = targetParamDef(doc, target);
+    if (!def) return { text: "the resolved FX target has no parameter definition", mutated: false };
+    if (def.kind && ["toggle", "enum", "discrete", "unknown"].includes(def.kind)) {
+      return { text: `${def.label} is discrete and cannot be represented as a continuous ramp`, mutated: false };
+    }
+    if (fromValue < def.min || fromValue > def.max || toValue < def.min || toValue > def.max) {
+      return {
+        text: `${def.label} accepts ${def.min}..${def.max}${def.unit ? ` ${def.unit}` : ""}; values outside the range are rejected, not clamped`,
+        mutated: false,
+      };
+    }
+    try {
+      const startTick = tickAtBar(startBar, doc);
+      const endTick = tickAtBar(endBar, doc);
+      const command = addAutomationRamp(doc, target, startTick, fromValue, endTick, toValue);
+      ctx.execute(command);
+      const after = ctx.getDoc();
+      const landedLane = automationLaneForTarget(after, target);
+      const points = landedLane?.points.map((point) => ({ tick: point.tick, value: point.value })) ?? [];
+      const verified = Boolean(
+        landedLane &&
+        points.length === 2 &&
+        points[0]!.tick === startTick &&
+        points[0]!.value === fromValue &&
+        points[1]!.tick === endTick &&
+        points[1]!.value === toValue,
+      );
+      const formatValue = (value: number) =>
+        def.format?.(value) ?? `${Number(value.toFixed(4))}${def.unit ? ` ${def.unit}` : ""}`;
+      const summary = `${automationTargetLabel(after, target)}: ${startBar}→${endBar} bars, ${points.length} ramp points${verified ? ` (${formatValue(points[0]!.value)} → ${formatValue(points[1]!.value)})` : " — read-back did not match the requested ramp"}`;
+      return {
+        text: `${summary} — one undo step${verified ? "; read-back verified" : "; inspect the lane and undo if needed"}`,
+        mutated: true,
+        stage: "applied",
+        data: {
+          status: verified ? "applied" : "verification-needed",
+          changed: true,
+          laneId: landedLane?.id,
+          points,
+          readback: [summary],
+        },
+      };
+    } catch (error) {
+      return { text: error instanceof Error ? error.message : String(error), mutated: false };
+    }
+  }
 
   if (op === "addPoint") {
     const position = positionFromRecord(record, doc);
@@ -8270,7 +8389,10 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     };
   }
 
-  return { text: `unknown op: ${op} (addPoint | movePoint | deletePoint | clearLane | removeLane)`, mutated: false };
+  return {
+    text: `unknown op: ${op} (listTargets | addPoint | addRamp | movePoint | deletePoint | clearLane | removeLane)`,
+    mutated: false,
+  };
 }
 
 /** Resolve the tool's target fields into an AutomationTarget. Returns an
@@ -12580,6 +12702,49 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
 // Intent Bar's destructive-intent checkpoint — the UI must not import the
 // lazy MCP surface, so the predicate moved to the intent layer).
 
+function automationPlanProposalResult(route: Extract<RoutedIntent, { kind: "automationPlan" }>): McpToolResult {
+  if ("error" in route.result) {
+    return {
+      text: `automation plan declined: ${route.result.error}`,
+      mutated: false,
+      stage: "noop",
+      data: { status: "declined", changed: false, route: "automationPlan", readback: [] },
+    };
+  }
+  const plan = route.result.plan;
+  const summary = `${plan.trackName} · ${plan.effectName} · ${plan.paramLabel}: ${plan.formatValue(plan.fromValue)} → ${plan.formatValue(plan.toValue)} · bars ${plan.startBar}–${plan.endBar}`;
+  return {
+    text: `Proposal only — review in KYX before applying: ${summary}. Exact target ${plan.target.trackId}/${plan.target.fxId}/${plan.target.paramId}; no project change has been made.`,
+    mutated: false,
+    stage: "dry-run",
+    dryRun: true,
+    data: {
+      status: "proposal",
+      changed: false,
+      route: "automationPlan",
+      readback: [summary],
+      automation: {
+        target: {
+          trackId: plan.target.trackId,
+          trackName: plan.trackName,
+          fxId: plan.target.fxId,
+          effectType: plan.effectType,
+          paramId: plan.paramId,
+          paramLabel: plan.paramLabel,
+        },
+        parameter: { min: plan.min, max: plan.max, unit: plan.unitLabel },
+        range: {
+          startBar: plan.startBar,
+          endBar: plan.endBar,
+          startTick: plan.startTick,
+          endTick: plan.endTick,
+        },
+        values: { from: plan.fromValue, to: plan.toValue },
+      },
+    },
+  };
+}
+
 function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = false): McpToolResult {
   const trimmed = instruction.trim();
   if (trimmed.length === 0) return { text: "empty instruction", mutated: false };
@@ -12590,6 +12755,7 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
     // deterministic and inspectable.
     const doc = ctx.getDoc();
     const route = routeIntentText(trimmed, doc);
+    if (route.kind === "automationPlan") return automationPlanProposalResult(route);
     const plan = planIntent(doc, route);
     const text = plan.executable
       ? `Plan (dry run): ${formatPlan(plan)}`
@@ -12620,6 +12786,7 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
  * model fallback land here, so the destructive gate, the UI-local refusals
  * and the verification read-back apply to BOTH brains identically. */
 function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolResult {
+  if (route.kind === "automationPlan") return automationPlanProposalResult(route);
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
   if (route.kind === "pattern" || route.kind === "revise") {

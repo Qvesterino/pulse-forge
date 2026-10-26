@@ -74,6 +74,7 @@ import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/sele
 import { stripPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 import { resolvePriorAdjustment } from "./prior-adjustment";
+import { planPluginAutomationIntent, type PluginAutomationPlanResult } from "./automation-plan";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -394,6 +395,7 @@ export type RoutedIntent =
   | { kind: "queryIntent"; intent: QueryIntent }
   | { kind: "grooveIntent"; intent: GrooveIntent }
   | { kind: "sectionGrooveIntent"; intent: SectionGrooveIntent }
+  | { kind: "automationPlan"; result: PluginAutomationPlanResult }
   | { kind: "automateIntent"; intent: AutomateIntent }
   | { kind: "markerIntent"; intent: MarkerIntent }
   | { kind: "stepEditIntent"; intent: StepEditIntent }
@@ -745,6 +747,7 @@ export function routeIntentText(
     hasSelectedStepSelection?: boolean;
     selectedClipId?: string | null;
     selectedRange?: { fromTick: number; toTick: number } | null;
+    selectedTrackId?: string | null;
   } = {},
 ): RoutedIntent {
   if (NEGATED_MUTATION_COMMAND.test(text)) {
@@ -902,6 +905,11 @@ export function routeIntentText(
   if (SCENE_REFERENCE.test(deaccent(text))) {
     return clarifySceneReference();
   }
+  // TARGET-AWARE AUTOMATION — exact inserted FX instance + catalog parameter
+  // + bounded timeline range. This previews first and outranks the older
+  // comparative knob route; no project mutation happens in the router.
+  const automationPlan = planPluginAutomationIntent(text, doc, context.selectedTrackId);
+  if (automationPlan) return { kind: "automationPlan", result: automationPlan };
   // P2 (domain calibration 2026-10-20): a fully resolved EFFECT × KNOB ×
   // TARGET is more specific than a generic fader/tempo ask and must win.
   // Measured before this move: "much faster compressor attack on the drums"

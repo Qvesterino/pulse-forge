@@ -46,6 +46,7 @@ export const ROUTE_ADJUSTMENT: Readonly<Record<RoutedIntent["kind"], AdjustmentK
   // No document mutation — the remembered move is still the last one.
   clarify: "none",
   queryIntent: "none",
+  automationPlan: "none",
   complaintIntent: "none",
   transport: "none",
   select: "none",

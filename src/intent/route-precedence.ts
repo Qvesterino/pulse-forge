@@ -65,6 +65,12 @@ export const ROUTE_PRECEDENCE: readonly RouteStage[] = [
     note: "a description of the current sound is not an instruction",
   },
   {
+    id: "automation-plan",
+    kinds: ["automationPlan"],
+    note: "a fully bounded automation request resolves against an inserted plugin and is reviewed before mutation",
+    contextOnly: "requires the current project FX chain and parameter catalog",
+  },
+  {
     id: "param",
     kinds: ["paramIntent"],
     note: "effect × knob × target is more specific than fader/tempo/effect-primary; measured wrong-target fixes live here",

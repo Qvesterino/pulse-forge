@@ -49,6 +49,7 @@ import {
   type SessionGeneration,
 } from "../intent/session-context";
 import { setMasterConfig, duplicateTimeRange, setSceneIntensity } from "../commands/commands";
+import { addAutomationRamp } from "../commands/automation";
 import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../commands/intentRouting";
 import { applyGenerationResultCommand, applyGenerationResultWithFxCommand } from "../commands/aiPattern";
 import {
@@ -91,6 +92,7 @@ import {
   grooveReadback,
   markerReadback,
 } from "../intent/studio-words";
+import type { PluginAutomationPlan } from "../intent/automation-plan";
 import { applySoundSwapIntent, applyStepEditIntent, soundSwapReadback } from "../intent/sound-words";
 import { assistThinSelectionCommand, assistVarySelectionCommand } from "../commands/assistSelectionCommands";
 import { planSelectedStepInstruction, type SelectedStepInstructionPlan } from "../assist/selected-step-plan";
@@ -3871,7 +3873,22 @@ export function IntentPanel() {
   const [selectedArrangementPreview, setSelectedArrangementPreview] = useState<SelectedArrangementPromptPreview | null>(
     null,
   );
+  const [automationProposal, setAutomationProposal] = useState<{
+    source: string;
+    plan: PluginAutomationPlan;
+    baseDoc: ProjectDocument;
+  } | null>(null);
   const [rangeConsolidating, setRangeConsolidating] = useState(false);
+
+  useEffect(() => {
+    if (!automationProposal) return;
+    return services.store.subscribe(() => {
+      if (services.store.getDoc() !== automationProposal.baseDoc) {
+        setAutomationProposal(null);
+        setError("Project changed after the automation preview. Nothing was applied; plan it again.");
+      }
+    });
+  }, [automationProposal, services.store]);
   // `prompt` rides along for MINING only (which ask produced these chips) —
   // the diagnosis path leaves it unset; picked chips log against it.
   const [clarify, setClarify] = useState<{
@@ -4059,6 +4076,79 @@ export function IntentPanel() {
     }
   };
 
+  const applyAutomationProposal = () => {
+    const proposal = automationProposal;
+    if (!proposal || busy || routeBusy || songBusy || theatreBusy || mutateBusy) return;
+    const currentDoc = services.store.getDoc();
+    const selectedTrackIds = selection.getState().trackIds;
+    const selectedTrackId = selectedTrackIds.length === 1 ? selectedTrackIds[0] : null;
+    if (
+      text.trim() !== proposal.source ||
+      currentDoc !== proposal.baseDoc ||
+      (proposal.plan.usedSelectedTrack && selectedTrackId !== proposal.plan.target.trackId)
+    ) {
+      setAutomationProposal(null);
+      setError("Project, prompt, or target selection changed. Nothing was applied; review a fresh automation plan.");
+      return;
+    }
+
+    const refreshedRoute = routeIntentText(proposal.source, currentDoc, { selectedTrackId });
+    const refreshedPlan = refreshedRoute.kind === "automationPlan" ? refreshedRoute.result : null;
+    if (
+      !refreshedPlan ||
+      "error" in refreshedPlan ||
+      JSON.stringify(refreshedPlan.plan.target) !== JSON.stringify(proposal.plan.target) ||
+      refreshedPlan.plan.startTick !== proposal.plan.startTick ||
+      refreshedPlan.plan.endTick !== proposal.plan.endTick ||
+      refreshedPlan.plan.fromValue !== proposal.plan.fromValue ||
+      refreshedPlan.plan.toValue !== proposal.plan.toValue
+    ) {
+      setAutomationProposal(null);
+      setError("The plugin target or parameter no longer resolves to the reviewed plan. Nothing was applied.");
+      return;
+    }
+
+    try {
+      const command = addAutomationRamp(
+        currentDoc,
+        proposal.plan.target,
+        proposal.plan.startTick,
+        proposal.plan.fromValue,
+        proposal.plan.endTick,
+        proposal.plan.toValue,
+      );
+      services.store.execute(command);
+      const after = services.store.getDoc();
+      const lane = after.automation.find(
+        (candidate) =>
+          candidate.target.kind === proposal.plan.target.kind &&
+          candidate.target.trackId === proposal.plan.target.trackId &&
+          candidate.target.fxId === proposal.plan.target.fxId &&
+          candidate.target.paramId === proposal.plan.target.paramId,
+      );
+      const startPoint = lane?.points.find((point) => point.tick === proposal.plan.startTick);
+      const endPoint = lane?.points.find((point) => point.tick === proposal.plan.endTick);
+      if (
+        !lane ||
+        lane.points.length !== 2 ||
+        startPoint?.value !== proposal.plan.fromValue ||
+        endPoint?.value !== proposal.plan.toValue
+      ) {
+        setAutomationProposal(null);
+        setError("The command ran, but automation read-back did not match the reviewed curve. Check Undo History.");
+        return;
+      }
+      setAutomationProposal(null);
+      setJustApplied(false);
+      setError(null);
+      setStatus(
+        `✓ ${proposal.plan.trackName} · ${proposal.plan.effectName} · ${proposal.plan.paramLabel}: ${proposal.plan.formatValue(startPoint.value)} → ${proposal.plan.formatValue(endPoint.value)} · bars ${proposal.plan.startBar}–${proposal.plan.endBar} · 2 points verified (one undo step)`,
+      );
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const toggleVoiceCapture = async () => {
     if (voiceState === "recording") {
       setVoiceState("transcribing");
@@ -4110,6 +4200,7 @@ export function IntentPanel() {
     setRouteBusy(true);
     setSelectedStepPreview(null);
     setSelectedArrangementPreview(null);
+    setAutomationProposal(null);
     setError(null);
     setJustApplied(false);
     setClarify(null);
@@ -4141,13 +4232,17 @@ export function IntentPanel() {
       // Rewrite only when the selection resolves to EXACTLY one mix target;
       // otherwise the sentence is left untouched so the router clarifies
       // rather than fanning out to siblings.
-      const routedText = rewriteSelectedTrackReference(source, doc, routeSelection.trackIds[0] ?? null).text;
+      const isAutomationRequest = /^\s*(?:please\s+)?(?:automate|automatizuj|automatizovat)\b/i.test(source);
+      const routedText = isAutomationRequest
+        ? source
+        : rewriteSelectedTrackReference(source, doc, routeSelection.trackIds[0] ?? null).text;
       const route =
         preRoutedRef.current ??
         routeIntentText(routedText, doc, {
           hasSelectedStepSelection: Boolean(routeSelection.stepSelection),
           selectedClipId: routeSelection.clipIds.length === 1 ? routeSelection.clipIds[0] : null,
           selectedRange: routeSelection.timeRange,
+          selectedTrackId: routeSelection.trackIds.length === 1 ? routeSelection.trackIds[0] : null,
         });
       preRoutedRef.current = null;
       executedRoute = route;
@@ -4521,6 +4616,20 @@ export function IntentPanel() {
         const command = applyGrooveIntent(doc, route.intent);
         services.store.execute(command);
         setStatus(`🥁 ${command.label} — ${grooveReadback(services.store.getDoc())} (one undo step)`);
+      } else if (route.kind === "automationPlan") {
+        if ("error" in route.result) {
+          setError(route.result.error);
+          return;
+        }
+        setAutomationProposal({
+          source: text.trim(),
+          plan: route.result.plan,
+          baseDoc: doc,
+        });
+        const plan = route.result.plan;
+        setStatus(
+          `Automation preview ready · ${plan.trackName} · ${plan.effectName} ${plan.paramLabel} · bars ${plan.startBar}–${plan.endBar}. Review the curve before applying.`,
+        );
       } else if (route.kind === "automateIntent") {
         // "automate the volume from 0 to 100" — track-gain ramp lane,
         // spanning the whole arrangement (v1; role spans come with spans).
@@ -5163,9 +5272,10 @@ export function IntentPanel() {
         value={text}
         onChange={(e) => {
           replacePrompt(e.target.value);
-          if (selectedStepPreview || selectedArrangementPreview) setStatus(null);
+          if (selectedStepPreview || selectedArrangementPreview || automationProposal) setStatus(null);
           setSelectedStepPreview(null);
           setSelectedArrangementPreview(null);
+          setAutomationProposal(null);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void generate();
@@ -5605,6 +5715,90 @@ export function IntentPanel() {
               onClick={() => {
                 setSelectedArrangementPreview(null);
                 setStatus("Arrangement preview cancelled; project unchanged.");
+              }}
+            >
+              CANCEL
+            </button>
+          </div>
+        </div>
+      )}
+      {automationProposal && (
+        <div className="intent-history" role="region" aria-label="Plugin automation review">
+          <span className="intent-history-label">AUTOMATION · REVIEW REQUIRED</span>
+          <div>
+            {automationProposal.plan.trackName} · {automationProposal.plan.effectName} ·{" "}
+            {automationProposal.plan.paramLabel}
+          </div>
+          <div>
+            {automationProposal.plan.formatValue(automationProposal.plan.fromValue)} →{" "}
+            {automationProposal.plan.formatValue(automationProposal.plan.toValue)} · bars{" "}
+            {automationProposal.plan.startBar}–{automationProposal.plan.endBar} · allowed{" "}
+            {automationProposal.plan.formatValue(automationProposal.plan.min)}–
+            {automationProposal.plan.formatValue(automationProposal.plan.max)}
+          </div>
+          <div title={`Target ${automationProposal.plan.target.fxId} · parameter ${automationProposal.plan.paramId}`}>
+            Exact target · {automationProposal.plan.effectType} / {automationProposal.plan.paramId} · ticks{" "}
+            {automationProposal.plan.startTick}–{automationProposal.plan.endTick}
+          </div>
+          {automationProposal.plan.effectBypassed && (
+            <div role="note">
+              This inserted effect is bypassed, so the automation will not be audible until it is enabled.
+            </div>
+          )}
+          <svg
+            className="intent-automation-curve"
+            viewBox="0 0 320 64"
+            role="img"
+            aria-label={`Linear automation ramp from ${automationProposal.plan.formatValue(automationProposal.plan.fromValue)} to ${automationProposal.plan.formatValue(automationProposal.plan.toValue)}`}
+            style={{ width: "100%", height: 64 }}
+          >
+            <line x1="12" y1="12" x2="308" y2="12" stroke="currentColor" opacity="0.16" />
+            <line x1="12" y1="52" x2="308" y2="52" stroke="currentColor" opacity="0.16" />
+            <path
+              d={`M 12 ${52 - ((automationProposal.plan.fromValue - automationProposal.plan.min) / (automationProposal.plan.max - automationProposal.plan.min)) * 40} L 308 ${52 - ((automationProposal.plan.toValue - automationProposal.plan.min) / (automationProposal.plan.max - automationProposal.plan.min)) * 40}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+            <circle
+              cx="12"
+              cy={
+                52 -
+                ((automationProposal.plan.fromValue - automationProposal.plan.min) /
+                  (automationProposal.plan.max - automationProposal.plan.min)) *
+                  40
+              }
+              r="4"
+              fill="currentColor"
+            />
+            <circle
+              cx="308"
+              cy={
+                52 -
+                ((automationProposal.plan.toValue - automationProposal.plan.min) /
+                  (automationProposal.plan.max - automationProposal.plan.min)) *
+                  40
+              }
+              r="4"
+              fill="currentColor"
+            />
+          </svg>
+          <div className="intent-actions">
+            <button
+              type="button"
+              className="btn intent-route-btn"
+              disabled={busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+              onClick={applyAutomationProposal}
+            >
+              APPLY · ONE UNDO STEP
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setAutomationProposal(null);
+                setStatus("Automation preview cancelled; project and undo history unchanged.");
               }}
             >
               CANCEL

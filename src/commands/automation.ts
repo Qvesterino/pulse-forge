@@ -2,7 +2,7 @@ import type { Command } from "./types";
 import type { AutomationLane, AutomationTarget, Lfo, LfoKind, Macro, ProjectDocument } from "../project-model/types";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { insertPointSorted } from "../project-model/automation";
-import { clampTargetValue, isAutomationTargetValid, targetOwner } from "../project-model/targets";
+import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
 import { clamp, uid } from "../shared/ids";
 import { snapshot } from "./core";
 
@@ -53,6 +53,53 @@ export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget
   const lane: AutomationLane = { id: uid("lane"), target: { ...target }, points: [] };
   const next: ProjectDocument = { ...doc, automation: [...doc.automation, lane] };
   return snapshot("addAutomationLane", "Add automation lane", doc, next);
+}
+
+/** Create a fresh two-point automation lane as one atomic, undoable command. */
+export function addAutomationRamp(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  startTick: number,
+  startValue: number,
+  endTick: number,
+  endValue: number,
+): Command {
+  if (!isAutomationTargetValid(doc, target)) throw new Error("Cannot automate a missing or invalid target");
+  const def = targetParamDef(doc, target);
+  if (!def) throw new Error("Automation target has no parameter definition");
+  if (!Number.isSafeInteger(startTick) || !Number.isSafeInteger(endTick) || startTick < 0 || endTick <= startTick) {
+    throw new Error("Automation ramp needs an increasing, non-negative tick range");
+  }
+  if (
+    !Number.isFinite(startValue) ||
+    !Number.isFinite(endValue) ||
+    startValue < def.min ||
+    startValue > def.max ||
+    endValue < def.min ||
+    endValue > def.max
+  ) {
+    throw new Error(`Automation values must be within ${def.min}..${def.max}`);
+  }
+  const exists = doc.automation.some(
+    (lane) =>
+      lane.target.kind === target.kind &&
+      lane.target.trackId === target.trackId &&
+      lane.target.fxId === target.fxId &&
+      lane.target.paramId === target.paramId,
+  );
+  if (exists) throw new Error("Automation lane for this target already exists");
+
+  const lane: AutomationLane = {
+    id: uid("lane"),
+    target: { ...target },
+    points: insertPointSorted([], { tick: startTick, value: clampAutomationPointValue(doc, target, startValue) }),
+  };
+  lane.points = insertPointSorted(lane.points, {
+    tick: endTick,
+    value: clampAutomationPointValue(doc, target, endValue),
+  });
+  const next: ProjectDocument = { ...doc, automation: [...doc.automation, lane] };
+  return snapshot("addAutomationRamp", "Add automation ramp", doc, next);
 }
 
 export function removeAutomationLane(doc: ProjectDocument, laneId: string): Command {

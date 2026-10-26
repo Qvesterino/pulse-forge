@@ -39,6 +39,7 @@ export const ROUTE_DOMAINS: Readonly<Record<RoutedIntent["kind"], readonly Inten
   selectedRangeArrange: ["editing"],
   grooveIntent: ["editing"],
   sectionGrooveIntent: ["editing"],
+  automationPlan: ["editing"],
   automateIntent: ["editing"],
   markerIntent: ["editing"],
   stepEditIntent: ["editing"],
