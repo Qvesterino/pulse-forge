@@ -12,8 +12,8 @@
       "id": "spec-counts",
       "claim": "docs/CURRENT-STATE.md's spec-file count equals the committed tree",
       "command": "git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)",
-      "state": "fail",
-      "summary": "1260 claimed, 1261 measured",
+      "state": "pass",
+      "summary": "1262 claimed, 1262 measured",
       "freshness": "drift-checked"
     },
     {
