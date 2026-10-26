@@ -1314,7 +1314,10 @@ pass by never counting anything.
 **Two pinned contracts changed on purpose**, with the reason at each pin:
 `tests/fx-meter-state-rebuild.test.ts` (the runtime map no longer shrinks when an effect is
 bypassed) and `tests/e2e/17-mastering-workspace.spec.ts` (a bypassed master insert keeps its
-runtime — live _and_ offline).
+runtime — live _and_ offline). Both were **executed**, not only asserted: the unit spec is in the
+targeted run below, and the e2e spec was run in a real Chromium —
+`npx playwright test tests/e2e/17-mastering-workspace.spec.ts -g "master worklet fallbacks"` →
+**1 passed**.
 
 **A defect in my own first implementation, recorded rather than hidden.** The first pass changed
 `rebuildFxChain` to keep bypassed effects, but the **signature filter was still in place** when
