@@ -1423,6 +1423,14 @@ button.brief-chip:hover {
   color: #e06c75;
   border-color: #e06c75;
 }
+
+/* ADR 0065: the standing consent for an EXTERNAL agent to change the
+   project. It is a consent switch, not a destructive one — same colour, its
+   own name, so the two are never confused when reading the markup. */
+.intent-mcp-consent-on {
+  color: #e06c75;
+  border-color: #e06c75;
+}
 .intent-mcp-token-input {
   width: 110px;
   font-size: 10px;

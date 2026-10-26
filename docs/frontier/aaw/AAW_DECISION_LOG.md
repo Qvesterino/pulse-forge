@@ -294,16 +294,40 @@ applies through their own hands — is unchanged.
 
 **What is implemented (ADR 0065).** The permission lattice (`src/mcp/permissionLattice.ts`), the
 scope guard (`src/mcp/scope-guard.ts`), and the document revision counter (`ProjectStore`).
-**29 unit tests** in `tests/permission-lattice.test.ts`.
+**35 unit tests** in `tests/permission-lattice.test.ts`. The MCP chip carries the switch
+(`🔒 ZMENY` / `🔓 ZMENY`) next to the existing `MAZANIE` toggle — without it the consent would be
+a flag nobody could set, and an external client that may never change the project is a relay that
+does nothing.
+
+**Two corrections made during implementation (2026-10-25), recorded rather than edited away.**
+
+1. **The destructive lock is NOT a lattice rule.** The first implementation refused a locked
+   destructive call centrally. It broke **64 tests**, because the existing D4 gate is
+   **per-operation** (not per-tool), runs **after** argument validation (so a malformed request
+   stays `INVALID_ARGUMENTS`, not `POLICY_REFUSED`), and carries the auto-checkpoint side effect.
+   The central copy was removed; the lattice now owns only the external consent and the revision
+   check.
+2. **The consent is read from the MCP CONTEXT, not from `localStorage`.** The persisted flag behind
+   the context's back created two truths for one consent and refused calls the host had explicitly
+   unlocked. The flag is now the **fallback**; the context answers first.
 
 **What is NOT implemented — the honest gap.** KYX's consent is a **standing** one (a flag), not
 ZYVO's **per-call** one (a UI click). The per-call proposal surface does not exist in KYX yet.
 The standing consent is strictly stronger than the old behaviour and strictly weaker than
 per-call approval. Closing that gap is the next increment of this decision, not a footnote.
 
+**One deliberate deviation from the original rule.** The rule said "external = `web-relay`,
+`desktop-stdio`, `qmr`, `headless`". `headless` was **removed** from the gated list: the headless
+host (`src/mcp/headless-host.ts`) is an in-process harness — `docs/AGENT-KIT.md` lists it under
+"tests, tooling" and ADR 0046 made it the evaluation workhorse — so nothing reaches it from
+outside the process, and gating it would make the harness unable to evaluate the thing it exists
+to evaluate. Its `allowMutations` defaults to on and a test opts out to exercise the refusal. The
+two **shipped** network-reachable surfaces (`web-relay`, `desktop-stdio`) are gated by default.
+
 **Evidence.** `apps/vocalforge-daw/src/agentVoiceManager.ts:5638-5648` (ZYVO's posture);
 `src/mcp/agentTrust.ts:190-193` + `src/mcp/flags.ts` (KYX's old surface);
-`docs/adr/0065-permission-lattice-and-scope-guard.md` (the decision and its gaps).
+`docs/adr/0065-permission-lattice-and-scope-guard.md` (the decision, the two corrections and the
+remaining gaps).
 
 ---
 

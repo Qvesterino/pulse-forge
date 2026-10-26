@@ -1,6 +1,6 @@
 import { executeMcpToolAsync, type McpToolContext, type McpToolResult } from "./tools";
 import { withAgentAttribution } from "./attribution";
-import { mcpAllowDestructive } from "./flags";
+import { mcpAllowDestructive, mcpAllowMutations } from "./flags";
 import { storeRevision } from "./revision";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
@@ -149,6 +149,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     diagnoseMix: (request) => import("./mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request)),
     mixPreview: (request) => import("./mix-preview").then((m) => m.previewMixIdea(services, request)),
     allowDestructive: mcpAllowDestructive,
+    // ADR 0065: the standing consent for an EXTERNAL agent to mutate.
+    allowMutations: mcpAllowMutations,
   };
 }
 

@@ -47,24 +47,87 @@ destructive`) already ships in `src/mcp/agentTrust.ts` and already feeds the MCP
 
 The rules, in order:
 
-1. A locked destructive call is **forbidden** — never merely prompted.
-2. A write whose **declared revision** the document has left behind is **forbidden**. This is
+1. A write whose **declared revision** the document has left behind is **forbidden**. This is
    checked _before_ consent, because consent given for one document is not consent for another.
-3. An **external** agent's mutating call **confirms** unless the user granted standing consent.
-4. Everything else is **auto** — `read` and `runtime` do not change the document.
+2. An **external** agent's mutating or destructive call **confirms** unless the user granted
+   standing consent.
+3. Everything else is **auto** — `read` and `runtime` do not change the document.
+
+### The D4 destructive lock is NOT a lattice rule — and why
+
+The first draft of this ADR put "a locked destructive call is forbidden" at the top of the table. It
+was **removed during implementation**, and the removal is recorded here rather than quietly edited
+away.
+
+The destructive lock already exists, and it is **better** where it is: at each destructive _site_
+inside the tool, as `ctx.allowDestructive?.() !== true`. Three properties made the central copy
+actively worse:
+
+- **It is per-operation, not per-tool.** `effectiveRisk()` classifies a whole TOOL, so a tool that
+  also has a safe operation (add a marker, remove a marker) is not wholly destructive. A central
+  gate refused the safe operation too.
+- **It runs after the tool validates its arguments.** A central gate fired first, so a malformed
+  request came back as `POLICY_REFUSED` instead of `INVALID_ARGUMENTS` — a malformed request
+  stopped being reported as malformed.
+- **It carries the auto-checkpoint side effect** and the pinned refusal sentence that the MCP
+  panel quotes.
+
+Measured, not assumed: the central rule broke **64 tests** across the MCP suite. The lattice now
+owns only what only it can own — the external-transport consent and the revision check.
+
+### The consent is read from the CONTEXT, not from `localStorage`
+
+The first implementation read `pf:mcp-allow-mutations` straight out of `localStorage`. That was
+**wrong**, and the suite said so: the pre-existing destructive gate is **context-injected**
+(`ctx.allowDestructive?.()`), and hosts and tests override it. A lattice reading the persisted flag
+behind the context's back creates **two sources of truth for one consent** — and refused calls the
+host had explicitly unlocked.
+
+The consent is now read from the context (`ctx.allowMutations?.()`), with the persisted flag as the
+**fallback** when the context does not answer. `tests/permission-lattice.test.ts` pins both
+directions: the context can grant what the flag refuses, and the flag applies when the context is
+silent.
+
+### Attribution is not trust
+
+`agentId` is an **audit label** ("who did this"), and the lattice needs a **trust answer** ("may
+this change the document without asking?"). The two coincide on the shipped surfaces but not in
+the harness:
+
+- The **web relay** (`bridge.ts`, agentId `web-relay`) and the **desktop stdio server**
+  (`desktop-host.ts`, agentId `desktop-stdio`) are network-reachable → **gated by default**.
+- The **headless host** (`headless-host.ts`) is an **in-process harness** — `docs/AGENT-KIT.md`
+  lists it under "tests, tooling", and ADR 0046 made it the evaluation workhorse. Nothing reaches
+  it from outside the process, so its `allowMutations` **defaults to on** and a test opts out with
+  `allowMutations: false` to exercise the refusal path. Gating it as "external" would have made
+  the harness unable to evaluate the thing it exists to evaluate.
+- The **human in the app** (the intent bar, the panels) carries **no** agent id → never gated.
+
+### The consent has a switch, or it is unreachable
+
+A standing flag with no UI is a flag nobody can set, and an external client that can never change
+the project is a relay that does nothing. The MCP chip therefore carries a second switch next to
+the existing `MAZANIE` toggle:
+
+- `🔒 ZMENY` / `🔓 ZMENY` — "an external agent may change this project".
+
+It is a **separate** switch from `MAZANIE` on purpose: an external client may legitimately be
+connected to **read** the project (an analysis agent, a monitor) without being allowed to rewrite
+it. Both are read live, so flipping one takes effect immediately.
 
 `decidePermission()` is pure: same inputs, same decision, always. That is what makes the whole
 trust table testable without a store, a DOM, or a model.
 
 ### 2. The transport split — the one decision that matters
 
-An agent arriving over a transport (`web-relay`, `desktop-stdio`, `qmr`, `headless`) is **not** the
-person sitting in the app. So:
+An agent arriving over a **transport** is **not** the person sitting in the app. So:
 
 - **`local`** (the human in the UI, or a test): mutating calls stay `auto`. The in-app intent flow
   already previews and applies through the human's own hands.
-- **external**: mutating calls need the user's standing consent, **OFF by default**
-  (`pf:mcp-allow-mutations`, read live on every call — flipping it takes effect immediately).
+- **external** (`web-relay`, `desktop-stdio`, `qmr`): mutating calls need the user's standing
+  consent, **OFF by default** (`pf:mcp-allow-mutations`, read live on every call — flipping it takes
+  effect immediately). The headless host is deliberately **not** in this list — see "Attribution is
+  not trust" above.
 
 This is KYX adopting ZYVO's posture. It is strictly stronger than the old behaviour: 21 tools that
 could rewrite a project unasked now cannot.
@@ -106,7 +169,10 @@ sandbox; the real call is the one that needs consent.
 
 **Good.**
 
-- 21 mutating tools stop being able to rewrite a project without consent.
+- 21 mutating tools stop being able to rewrite a project without consent, on the two surfaces that
+  are reachable from outside the app (the web relay, the desktop stdio server).
+- The consent is **reachable**: the MCP chip carries the `🔒 ZMENY` / `🔓 ZMENY` switch. A standing
+  flag with no UI would have made the whole guarantee hollow.
 - Every decision is auditable: the refusal is returned as a typed error (`POLICY_REFUSED`,
   `CONFIRMATION_REQUIRED`) and written to the agent audit log with its reason.
 - The scope guard composes with F-25 instead of replacing it: _was the field I write about to
@@ -116,7 +182,7 @@ sandbox; the real call is the one that needs consent.
 **Honest gaps — recorded, not hidden.**
 
 1. **A standing consent is weaker than a per-call approval.** ZYVO's external surface asks every
-   time; KYX asks once, via a flag. The per-call approval UI does not exist in KYX yet. This is
+   time; KYX asks once, via a switch. The per-call approval UI does not exist in KYX yet. This is
    the strongest available improvement over the old behaviour and it is still not the best one.
 2. **The revision is in memory.** It resets on reload. Documented as an open decision, not
    pretended away.
@@ -124,6 +190,10 @@ sandbox; the real call is the one that needs consent.
    verifiable, and the guard says so.
 4. **The post-write verifier is a primitive, not yet a product surface.** `verifyScope()` exists and
    is tested; wiring it into the result read-back is the next increment.
+5. **The lattice does not enforce the D4 destructive lock.** That lock stays in the tool layer,
+   where it is per-operation and runs after argument validation. The consequence is that a future
+   destructive tool that forgets the per-site check would not be caught by the lattice. The registry
+   metadata (P-3) is what would close that.
 
 ## Alternatives considered and rejected
 
@@ -137,14 +207,32 @@ sandbox; the real call is the one that needs consent.
 
 ## Verification
 
-- `tests/permission-lattice.test.ts` — **29 tests**: the decision table (including "a stale
+- `tests/permission-lattice.test.ts` — **35 tests**: the decision table (including "a stale
   revision is refused _before_ consent is considered"), the transport split, the revision
-  counter's movement rules (a no-op command must not bump it; undo must), and the scope guard's
-  three verdicts.
-- `npx tsc --noEmit` — clean for every file this ADR touches.
+  counter's movement rules (a no-op command must not bump it; undo must), the scope guard's
+  three verdicts, and two write-path tests that pin the two boundaries this ADR got wrong the
+  first time — the lattice does not pre-empt the tool's own destructive gate, and an external
+  agent without consent is refused with `CONFIRMATION_REQUIRED`.
+- `npx vitest run tests/mcp tests/agent-trust.test.ts tests/koren-catalog.test.ts` — **632 passed,
+  3 failed**. None of the three is this ADR's:
+  - `mcp-edit-parity` asserts a refusal sentence that a parallel session changed in commit
+    `0ffa24f4` — the mismatch is in the **committed** tree, before this work;
+  - `mcp-relay-session-ownership` trips a parallel session's `server/mcp-core.mjs` output-schema
+    work;
+  - `agent-trust`'s "audits reads without starting a session" is a **full-suite ordering flake** —
+    the file passes **15/15** on its own, and in isolation with `-t`.
+
+  **Before** this ADR's design was corrected, the same run failed **64** tests.
+
+- `npx tsc --noEmit` — the only two errors in the whole tree are in `tests/struna/engine.test.ts`
+  (a parallel session's file). **Zero** errors in any file this ADR touches.
 - The lattice is wired at `executeMcpToolCore` (`src/mcp/tools.ts`), the scope guard wraps the
   stale-write guard at the dispatch, and the revision is exposed on every live MCP context
   (browser relay, desktop stdio, QMR, headless).
+- `tests/mcp-web-host.test.ts` — the relay round-trip still works **with** the consent granted, and
+  a new test pins that **without** it the relay may not change the project.
+- `src/ui/IntentPanel.tsx` — the MCP chip carries the `🔒 ZMENY` / `🔓 ZMENY` switch, so the
+  standing consent is reachable by a user and not only by a persisted flag.
 
 **Not verified here:** no end-to-end run against a live relay with a real external client was
 performed, and no per-call approval UI exists to test. The standing-consent path is covered by unit

@@ -7,7 +7,7 @@ import {
   type McpMeterSnapshot,
   type McpToolContext,
 } from "./tools";
-import { mcpAllowDestructive } from "./flags";
+import { mcpAllowDestructive, mcpAllowMutations } from "./flags";
 import { withAgentAttribution } from "./attribution";
 
 /**
@@ -183,6 +183,8 @@ export class McpBridge {
         listProjects: this.deps.listProjects,
         saveAsProject: this.deps.saveAsProject,
         allowDestructive: mcpAllowDestructive,
+        // ADR 0065: the standing consent for an EXTERNAL agent to mutate.
+        allowMutations: mcpAllowMutations,
       },
       "web-relay",
     );

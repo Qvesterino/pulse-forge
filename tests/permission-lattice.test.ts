@@ -3,9 +3,11 @@ import {
   DEFAULT_AUTONOMY_POLICY,
   decidePermission,
   isExternalAgent,
+  readAutonomyPolicy,
   readDeclaredRevision,
   type AutonomyPolicy,
 } from "../src/mcp/permissionLattice";
+import { executeMcpTool } from "../src/mcp/tools";
 import {
   checkCommandScope,
   pathContains,
@@ -36,7 +38,6 @@ import type { DeltaPath } from "../src/commands/docDelta";
 const CONSENTED: AutonomyPolicy = {
   version: 1,
   allowExternalMutations: true,
-  allowDestructive: true,
 };
 
 function renameCommand(doc: ProjectDocument, name: string): Command {
@@ -121,22 +122,26 @@ describe("permission lattice — the decision table", () => {
   });
 
   it("REFUSES a locked destructive call instead of prompting for it", () => {
-    const outcome = decidePermission({
-      risk: "destructive",
-      agentId: "web-relay",
-      policy: DEFAULT_AUTONOMY_POLICY,
-    });
-    expect(outcome.decision).toBe("forbid");
-    expect(outcome.code).toBe("DESTRUCTIVE_LOCKED");
-  });
-
-  it("lets a destructive call through once the user unlocked it", () => {
+    // The D4 destructive lock is NOT the lattice's rule — it lives at each
+    // destructive SITE in the tool layer (it is per-op, runs after argument
+    // validation, and carries the auto-checkpoint). This test pins that
+    // boundary: the lattice must not pre-empt it.
     const outcome = decidePermission({
       risk: "destructive",
       agentId: "web-relay",
       policy: CONSENTED,
     });
     expect(outcome.decision).toBe("auto");
+  });
+
+  it("still asks before an EXTERNAL agent's destructive call without consent", () => {
+    const outcome = decidePermission({
+      risk: "destructive",
+      agentId: "web-relay",
+      policy: DEFAULT_AUTONOMY_POLICY,
+    });
+    expect(outcome.decision).toBe("confirm");
+    expect(outcome.code).toBe("MUTATIONS_NOT_ALLOWED");
   });
 
   it("refuses a write whose declared revision the document has left behind", () => {
@@ -218,6 +223,83 @@ describe("readDeclaredRevision", () => {
     expect(readDeclaredRevision({ projectRevision: "5" })).toBeNull();
     expect(readDeclaredRevision({ projectRevision: Number.NaN })).toBeNull();
     expect(readDeclaredRevision({})).toBeNull();
+  });
+});
+
+describe("readAutonomyPolicy — the CONTEXT is the source of truth", () => {
+  it("reads the external-mutation consent from the context, not from localStorage", () => {
+    // The lattice must read the SAME truth the host injected. A lattice that
+    // read the persisted flag behind the context's back would refuse calls
+    // the host had explicitly unlocked — two truths for one consent.
+    const policy = readAutonomyPolicy({ allowMutations: () => true });
+    expect(policy.allowExternalMutations).toBe(true);
+  });
+
+  it("lets the context REFUSE external mutations even when the persisted flag is on", () => {
+    localStorage.setItem("pf:mcp-allow-mutations", "1");
+    const policy = readAutonomyPolicy({ allowMutations: () => false });
+    expect(policy.allowExternalMutations).toBe(false);
+  });
+
+  it("falls back to the persisted flag when the context does not answer", () => {
+    localStorage.setItem("pf:mcp-allow-mutations", "1");
+    const policy = readAutonomyPolicy();
+    expect(policy.allowExternalMutations).toBe(true);
+  });
+
+  it("defaults to no consent at all when nothing says otherwise", () => {
+    const policy = readAutonomyPolicy();
+    expect(policy.allowExternalMutations).toBe(false);
+  });
+});
+
+describe("the lattice inside the MCP write path", () => {
+  it("does not let the lattice pre-empt the tool's own destructive gate", async () => {
+    // The regression this pins: the lattice used to read the persisted flag
+    // directly and refuse every destructive-classified call the host had
+    // unlocked — before the tool's own per-op D4 gate ever ran.
+    const store = new ProjectStore(createDefaultProject());
+    const result = await executeMcpTool(
+      {
+        getDoc: () => store.getDoc(),
+        execute: (command) => store.execute(command),
+        undo: () => store.undo(),
+        redo: () => store.redo(),
+        undoStackLength: () => store.undoStackLength,
+        historyLabels: () => store.history.map((entry) => entry.label),
+        isMicRecordingActive: () => false,
+        transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
+        allowDestructive: () => true,
+      },
+      "kyx_tracks",
+      { op: "addDrum" },
+    );
+    expect(result.errorCode).toBeUndefined();
+    expect(result.isError).toBeFalsy();
+    expect(result.mutated).toBe(true);
+  });
+
+  it("refuses an external agent's mutating call without standing consent", async () => {
+    const store = new ProjectStore(createDefaultProject());
+    const result = await executeMcpTool(
+      {
+        getDoc: () => store.getDoc(),
+        execute: (command) => store.execute(command),
+        undo: () => store.undo(),
+        redo: () => store.redo(),
+        undoStackLength: () => store.undoStackLength,
+        historyLabels: () => store.history.map((entry) => entry.label),
+        isMicRecordingActive: () => false,
+        transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
+        agentId: "web-relay",
+        allowMutations: () => false,
+      },
+      "kyx_tracks",
+      { op: "addDrum" },
+    );
+    expect(result.errorCode).toBe("CONFIRMATION_REQUIRED");
+    expect(result.isError).toBe(true);
+    expect(result.mutated).toBe(false);
   });
 });
 

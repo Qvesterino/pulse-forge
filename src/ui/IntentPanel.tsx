@@ -26,7 +26,7 @@ import { orderClarificationChoices } from "../intent/reaction-choice-bias";
 import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { parseToneIntent } from "../intent/toneIntent";
-import { mcpAllowDestructive, setMcpAllowDestructive } from "../mcp/flags";
+import { mcpAllowDestructive, mcpAllowMutations, setMcpAllowDestructive, setMcpAllowMutations } from "../mcp/flags";
 import { mcpRelayEnabled, mcpRelayServerUrl, setMcpRelayEnabled, setMcpRelayToken } from "../mcp/relayConfig";
 import type { McpDesktopStatus } from "../mcp/desktop-host";
 import type { DesktopMcpApi } from "../mcp/desktop-host";
@@ -513,6 +513,41 @@ const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
   unavailable: "Lokálny intent model nie je na tomto serveri (chýba artifact). Klikni pre opätovný pokus.",
   error: "Lokálny intent model zlyhal. Klikni pre opätovný pokus.",
 };
+
+/**
+ * ADR 0065 — the standing consent for an EXTERNAL agent (the web relay, the
+ * desktop stdio client, QMR) to CHANGE the project.
+ *
+ * It is a separate switch from "MAZANIE" on purpose: an external client may
+ * legitimately be connected to READ the project (an analysis agent, a monitor)
+ * without being allowed to rewrite it. Default is OFF, and the flag is read
+ * live on every call, so flipping it takes effect immediately.
+ *
+ * It is its own component because both MCP surfaces (web relay and desktop
+ * stdio) carry it, and one toggle must mean one thing in both places.
+ */
+function McpConsentToggle() {
+  const [allowed, setAllowed] = useState(() => mcpAllowMutations());
+  return (
+    <button
+      type="button"
+      className={`btn btn-small${allowed ? " intent-mcp-consent-on" : ""}`}
+      onClick={() => {
+        const next = !allowed;
+        setMcpAllowMutations(next);
+        setAllowed(next);
+      }}
+      title={
+        allowed
+          ? "Externý agent MÔŽE meniť projekt (pridávať, upravovať, mazať podľa MAZANIE). Klikni pre zákaz."
+          : "Zmeny cez externého agenta sú ZAMKNUTÉ (odporúčané) — externý klient môže len čítať. Klikni pre povolenie."
+      }
+      aria-pressed={allowed}
+    >
+      {allowed ? "🔓 ZMENY" : "🔒 ZMENY"}
+    </button>
+  );
+}
 
 export function IntentPanel() {
   const services = useServices();
@@ -5083,6 +5118,7 @@ export function IntentPanel() {
             aria-label="MCP relay token"
           />
           <span className="intent-history-label">{webMcpConnected ? "● LIVE" : "○ …"}</span>
+          <McpConsentToggle />
         </div>
       )}
       {desktopMcp && mcpStatus?.enabled && mcpConfigText && (
@@ -5110,11 +5146,12 @@ export function IntentPanel() {
             title={
               mcpDestructive
                 ? "Mazanie (tracky/sekcie/FX) cez MCP je POVOLENÉ — externý klient môže mazať."
-                : "Mazanie cez MCP je zamknuté (odporúčané) — externý klient môže len pridávať/upravovať."
+                : "Mazanie cez MCP je zamknuté — externý klient môže pridávať/upravovať len ak je zapnuté aj ZMENY."
             }
           >
             {mcpDestructive ? "🔓 MAZANIE" : "🔒 MAZANIE"}
           </button>
+          <McpConsentToggle />
         </div>
       )}
       <textarea

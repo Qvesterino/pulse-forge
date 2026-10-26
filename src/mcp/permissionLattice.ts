@@ -46,14 +46,13 @@
  * matches the live one.
  */
 import type { ToolRisk } from "./agentTrust";
-import { mcpAllowDestructive, mcpAllowMutations } from "./flags";
+import { mcpAllowMutations } from "./flags";
 
 /** What the lattice decided to do with a call. */
 export type PermissionDecision = "auto" | "confirm" | "forbid";
 
 /** Why — a stable code the caller can branch on, plus a human-readable line. */
-export type PermissionCode =
-  "OK" | "DESTRUCTIVE_LOCKED" | "MUTATIONS_NOT_ALLOWED" | "CONFIRMATION_REQUIRED" | "STALE_REVISION";
+export type PermissionCode = "OK" | "MUTATIONS_NOT_ALLOWED" | "CONFIRMATION_REQUIRED" | "STALE_REVISION";
 
 export interface PermissionOutcome {
   decision: PermissionDecision;
@@ -74,8 +73,6 @@ export interface AutonomyPolicy {
   version: 1;
   /** Standing consent for EXTERNAL agents to apply mutating calls. */
   allowExternalMutations: boolean;
-  /** Standing consent for destructive calls (the pre-existing flag). */
-  allowDestructive: boolean;
 }
 
 /**
@@ -85,7 +82,6 @@ export interface AutonomyPolicy {
 export const DEFAULT_AUTONOMY_POLICY: AutonomyPolicy = {
   version: 1,
   allowExternalMutations: false,
-  allowDestructive: false,
 };
 
 /**
@@ -118,25 +114,27 @@ export interface PermissionInput {
  * THE DECISION FUNCTION. Pure, total, ordered.
  *
  * The order matters and is not arbitrary:
- *   1. a locked destructive call is refused before anything else looks at it,
- *   2. a stale revision is refused before consent is even considered — a
+ *   1. a stale revision is refused before consent is even considered — a
  *      consent given for an old document is not consent for this one,
- *   3. external mutating calls need the user's standing consent,
- *   4. everything else is allowed, because the risk classes that remain
- *      (read, runtime) do not change the document.
+ *   2. an EXTERNAL agent's document change needs the user's standing consent,
+ *   3. everything else is allowed.
+ *
+ * WHAT THE LATTICE DOES NOT DECIDE — and why.
+ *
+ * The D4 destructive lock is NOT here. It stays in the tool layer, at each
+ * destructive SITE, because it is finer-grained than this function can be:
+ * `effectiveRisk()` classifies a whole TOOL, while the lock is per OPERATION
+ * (a tool that also has a safe op is not wholly destructive), it runs AFTER
+ * the tool validates its arguments (so a malformed request is still reported
+ * as malformed, not as a policy problem), and it carries the auto-checkpoint
+ * side effect. A central gate here would be coarser, would fire earlier, and
+ * would break both of those contracts.
+ *
+ * The lattice owns what only it can own: the external-transport consent and
+ * the revision check.
  */
 export function decidePermission(input: PermissionInput): PermissionOutcome {
   const { risk, agentId, policy, declaredRevision, currentRevision } = input;
-
-  if (risk === "destructive" && !policy.allowDestructive) {
-    return {
-      decision: "forbid",
-      code: "DESTRUCTIVE_LOCKED",
-      reason:
-        "This call destroys user content. Enable destructive MCP calls in the KYX MCP panel to allow it — the change is then undoable and audited.",
-      risk,
-    };
-  }
 
   if (
     typeof declaredRevision === "number" &&
@@ -151,7 +149,7 @@ export function decidePermission(input: PermissionInput): PermissionOutcome {
     };
   }
 
-  if (risk === "mutate" && isExternalAgent(agentId) && !policy.allowExternalMutations) {
+  if (isExternalAgent(agentId) && (risk === "mutate" || risk === "destructive") && !policy.allowExternalMutations) {
     return {
       decision: "confirm",
       code: "MUTATIONS_NOT_ALLOWED",
@@ -161,19 +159,10 @@ export function decidePermission(input: PermissionInput): PermissionOutcome {
     };
   }
 
-  if (risk === "mutate" && isExternalAgent(agentId) && policy.allowExternalMutations) {
-    return {
-      decision: "auto",
-      code: "OK",
-      reason: "External agent edit, allowed by the user's standing consent.",
-      risk,
-    };
-  }
-
   return {
     decision: "auto",
     code: "OK",
-    reason: risk === "mutate" ? "In-app edit." : "No document change.",
+    reason: risk === "mutate" || risk === "destructive" ? "In-app edit." : "No document change.",
     risk,
   };
 }
@@ -189,17 +178,34 @@ export function readDeclaredRevision(envelope: Record<string, unknown>): number 
 }
 
 /**
- * Read the user's standing consent from the persisted trust flags.
+ * Where the standing consent comes from.
+ *
+ * The MCP CONTEXT is the injection point — the same kind of hook the
+ * pre-existing destructive gate already uses (`ctx.allowDestructive?.()`). A
+ * host, a test or an embedder can therefore override the consent without
+ * touching the persisted flags. The persisted flag is the FALLBACK, used
+ * only when the context does not answer.
+ *
+ * This matters: a lattice that read `localStorage` behind the context's back
+ * would refuse calls the host had explicitly unlocked — two sources of truth
+ * for one consent.
+ */
+export interface PermissionPolicySource {
+  /** ADR 0065: standing consent for an external agent to apply mutating calls. */
+  allowMutations?: () => boolean;
+}
+
+/**
+ * Read the user's standing consent.
  *
  * This is the ONLY impure function in this module: `decidePermission` stays
  * pure so the decision table can be tested without a DOM, a store, or a
- * model. The flags are read LIVE on every call, so flipping a toggle takes
+ * model. The flag is read LIVE on every call, so flipping a toggle takes
  * effect immediately without rebinding the host.
  */
-export function readAutonomyPolicy(): AutonomyPolicy {
+export function readAutonomyPolicy(source?: PermissionPolicySource): AutonomyPolicy {
   return {
     version: 1,
-    allowExternalMutations: mcpAllowMutations(),
-    allowDestructive: mcpAllowDestructive(),
+    allowExternalMutations: source?.allowMutations?.() ?? mcpAllowMutations(),
   };
 }

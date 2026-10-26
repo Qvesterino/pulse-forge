@@ -15,6 +15,7 @@ import {
   stopMcpWebBridge,
 } from "../src/mcp/web-host";
 import type { Services } from "../src/services";
+import { setMcpAllowMutations } from "../src/mcp/flags";
 
 /**
  * WEB MCP HOST (Phase D3 wiring) — URL derivation, persistence gates and
@@ -117,6 +118,10 @@ describe("web mcp bridge lifecycle", () => {
     const services = fakeServices();
     setMcpRelayToken("tok");
     setMcpRelayEnabled(true);
+    // ADR 0065: the relay is an EXTERNAL transport. A mutating call needs the
+    // user's standing consent — granted here, because this test's subject is
+    // the relay ROUND-TRIP, not the consent policy.
+    setMcpAllowMutations(true);
     const stop = startMcpWebBridgeIfEnabled(services);
     expect(FakeWebSocket.instances).toHaveLength(1);
     const socket = FakeWebSocket.instances[0]!;
@@ -141,6 +146,31 @@ describe("web mcp bridge lifecycle", () => {
     stop();
     expect(socket.closed).toBe(true);
     expect(mcpWebBridgeConnected()).toBe(false);
+  });
+
+  it("the relay may NOT mutate the project without the user's standing consent", async () => {
+    // ADR 0065 — the guarantee this whole lattice exists for. The web relay
+    // is reachable by an agent OUTSIDE the app; without the user's consent it
+    // may READ the project, but it may not change it.
+    const services = fakeServices();
+    setMcpRelayToken("tok");
+    setMcpRelayEnabled(true);
+    setMcpAllowMutations(false);
+    const stop = startMcpWebBridgeIfEnabled(services);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.onopen?.();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "mcp-call", id: 9, tool: "kyx_intent", args: { instruction: "set tempo to 140" } }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const result = socket.sent
+      .map((raw) => JSON.parse(raw) as { type: string; id?: number })
+      .find((m) => m.type === "mcp-result");
+    expect(result?.id).toBe(9);
+    // the project is UNCHANGED — the relay asked, and the user did not say yes
+    expect(services.store.doc.bpm).not.toBe(140);
+    stop();
   });
 
   it("a services swap reconnects through the App re-arm contract (stop closes, start re-opens)", () => {

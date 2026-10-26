@@ -197,7 +197,7 @@ returning `auto` / `confirm` / `forbid`, reusing the existing `ToolRisk` vocabul
 inventing a second one; the **scope guard** (`src/mcp/scope-guard.ts`) enforces a declared scope
 before the write lands and verifies it after; a **document revision counter** gives the lattice
 something to refuse a stale plan against; and the MCP write path consults the lattice before it
-mutates. **29 unit tests** in `tests/permission-lattice.test.ts`; the decision is
+mutates. **35 unit tests** in `tests/permission-lattice.test.ts`; the decision is
 `docs/adr/0065-permission-lattice-and-scope-guard.md`. The other two week-3 items did **not**
 land: the capability-descriptor extension (**P-3**) is untouched — a grep for
 `requiresApproval|permissionTier|riskClass|realtimeSafe` across `src/` returns **0** hits — and
@@ -214,13 +214,15 @@ need a permissively-licensed fallback (D-02)?
 
 **Week 4, as it actually stands (2026-10-25).** The consent split **is** the shipped part: KYX now
 separates external from local traffic, and an external agent's mutating call needs standing consent
-(`pf:mcp-allow-mutations`, default **OFF**) — ZYVO's draft-only posture, ported. The known gap is
-that this is a **standing** consent, not ZYVO's **per-call** one; the per-call proposal UI does not
-exist in KYX yet, and that is the next increment of D-14, not a footnote. **D-02** was decided in
-the same window: **document and defer** (assumption: below USD 10M annual revenue for two years;
-re-review 2028-10-25 or on any trigger). **E-07** runs with a **two-listener panel** — directional
-only, never a release gate. Still open in this week: the hash-based protected-object verifier, the
-**P-3** registry metadata, **Z-1 take comparison**, and the three experiments (E-03, E-06, E-07).
+(`pf:mcp-allow-mutations`, default **OFF**) — ZYVO's draft-only posture, ported. The switch that
+grants it is in the **MCP chip** (`🔒 ZMENY` / `🔓 ZMENY`), next to the existing `MAZANIE` toggle,
+because a consent nobody can grant is a consent that does not exist. The known gap is that this is a
+**standing** consent, not ZYVO's **per-call** one; the per-call proposal UI does not exist in KYX yet,
+and that is the next increment of D-14, not a footnote. **D-02** was decided in the same window:
+**document and defer** (assumption: below USD 10M annual revenue for two years; re-review 2028-10-25
+or on any trigger). **E-07** runs with a **two-listener panel** — directional only, never a release
+gate. Still open in this week: the hash-based protected-object verifier, the **P-3** registry
+metadata, **Z-1 take comparison**, and the three experiments (E-03, E-06, E-07).
 
 **Compute:** no GPU required for any week-1..4 item. A 6–16 GB VRAM machine is only needed for E-01,
 E-04 and E-05, which are months 2–6. **Cost:** ~0. **Model downloads:** ~1.1 GB (E-03 only).
@@ -235,7 +237,7 @@ E-04 and E-05, which are months 2–6. **Cost:** ~0. **Model downloads:** ~1.1 G
    vendored, the re-review date is 2028-10-25.)**
 4. The permission lattice + scope verifier → **green**, or Wave 0 does not close and nothing else
    starts. **(PARTIALLY GREEN 2026-10-25: the lattice and the path/operation scope guard are green
-   with 29 passing tests; the hash-based protected-object verifier is still open, so Wave 0 does
+   with 35 passing tests; the hash-based protected-object verifier is still open, so Wave 0 does
    not close.)**
 
 ---

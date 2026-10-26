@@ -29,6 +29,10 @@ function makeCtx(): McpToolContext {
     historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
+    // ADR 0065: these tests exercise ATTRIBUTION, not transport policy. An
+    // attributed agent is an EXTERNAL agent, so it needs the user's standing
+    // consent before it may change the document — granted here on purpose.
+    allowMutations: () => true,
   };
 }
 

@@ -32,6 +32,21 @@ export interface HeadlessHostOptions {
   agentId?: McpAgentId;
   /** D4 destructive gate (default off — the live contract). */
   allowDestructive?: boolean;
+  /**
+   * ADR 0065: standing consent for an external agent to apply mutating calls.
+   *
+   * DEFAULT **ON** — and that is deliberate. The headless host is an
+   * IN-PROCESS HARNESS (`docs/AGENT-KIT.md` lists it under "tests, tooling";
+   * ADR 0046 made it the evaluation workhorse), not a network surface: nothing
+   * reaches it from outside the process. The two SHIPPED external transports —
+   * the web relay and the desktop stdio server — gate by default, and that is
+   * where the consent matters.
+   *
+   * The `agentId` here stays "headless" for ATTRIBUTION (the audit prefix),
+   * which is a different concern from trust: this harness is where the trust
+   * gate is exercised, not where it is spent.
+   */
+  allowMutations?: boolean;
 }
 
 export interface HeadlessTransportEvent {
@@ -92,6 +107,10 @@ export function createHeadlessMcpHost(options: HeadlessHostOptions): HeadlessHos
       store.endUndoFrame();
     },
     ...(options.allowDestructive ? { allowDestructive: () => options.allowDestructive === true } : {}),
+    // ADR 0065: the standing consent for an external agent to mutate. This
+    // harness defaults to ON (see the option's doc comment); pass
+    // `allowMutations: false` to exercise the refusal path.
+    allowMutations: () => options.allowMutations !== false,
   };
 
   const agentId: McpAgentId = options.agentId ?? "headless";
