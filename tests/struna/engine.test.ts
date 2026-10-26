@@ -4,6 +4,7 @@ import { defaultInstrumentParams } from "../../src/instruments/definitions";
 import { normalizeProject } from "../../src/project-model/schema";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { InstrumentTrack } from "../../src/project-model/types";
+import type { InstrumentRuntime } from "../../src/instruments/types";
 
 /**
  * STRUNA (ADR 0061) — extended Karplus-Strong. Pinned: the fundamental

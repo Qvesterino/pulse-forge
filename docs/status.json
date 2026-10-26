@@ -5,7 +5,7 @@
       "claim": "Every user-facing seam is declared with an entry-point spec and a negative assertion",
       "command": "node scripts/check-seam-coverage.mjs",
       "state": "pass",
-      "summary": "1 check(s), 84 seams",
+      "summary": "1 check(s), 85 seams",
       "freshness": "drift-checked"
     },
     {
@@ -13,7 +13,7 @@
       "claim": "docs/CURRENT-STATE.md's spec-file count equals the committed tree",
       "command": "git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)",
       "state": "pass",
-      "summary": "1262 claimed, 1262 measured",
+      "summary": "1266 claimed, 1266 measured",
       "freshness": "drift-checked"
     },
     {

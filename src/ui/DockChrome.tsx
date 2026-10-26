@@ -60,6 +60,12 @@ export const DOCK_TABS: readonly DockTabDef[] = [
     title: "Chorál — drop-a-hum choir: grain stack, formant shaping and Forge root estimate",
   },
   {
+    id: "kopa",
+    label: "KOPA",
+    ariaLabel: "Toggle KOPA panel",
+    title: "KOPA — kick designer: reference Forge, pitch/click/body/tail, LOW-END STACK",
+  },
+  {
     id: "arr",
     label: "ARR",
     ariaLabel: "Toggle arrangement and scenes",

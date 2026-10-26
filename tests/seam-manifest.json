@@ -754,6 +754,15 @@
       "seamEvent": "fireEvent.contextMenu(tab(0))",
       "negativeSpec": "deletes only after the confirm dialog accepts, and never on cancel",
       "note": "Experience-friction F-02 (2026-10-25): the tab nameplate owns Rename/Duplicate/Delete/Move up/Move down so no Mixer round-trip is needed. Edge moves render disabled, delete rides a real window.confirm with an undo hint, and rename enters the SAME inline input as F2."
+    },
+    {
+      "id": "kopa-lowend-stack-build",
+      "status": "COVERED",
+      "entryPoint": "src/ui/KopaPanel.tsx LowEndStackCard build onClick",
+      "spec": "tests/ui/KopaPanel.lowend.test.tsx",
+      "seamEvent": "fireEvent.click",
+      "negativeSpec": "does not duplicate the wiring",
+      "note": "LOW-END STACK wave (KOPA+KOREŇ+sidechain): the card renders in the no-KOPA empty state; the dispatched command is executed against the real doc, and a re-click on a wired stack must not accumulate effects."
     }
   ]
 }

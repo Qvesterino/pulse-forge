@@ -3,7 +3,10 @@ import { forgeLowEndStackCommand } from "../../src/commands/instrument";
 import { lowEndPlan } from "../../src/instruments/lowEnd";
 import { parseKey } from "../../src/project-model/scales";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import type { InstrumentTrack, ProjectDocument } from "../../src/project-model/types";
+import type { InstrumentTrack, MusicalKey, ProjectDocument } from "../../src/project-model/types";
+
+/** `kind` alone does not discriminate the Track union — guard explicitly. */
+const isInstrument = (t: ProjectDocument["tracks"][number]): t is InstrumentTrack => t.kind === "instrument";
 
 /**
  * The LOW-END STACK (the KOPA-family follow-up): one command binds KOPA
@@ -12,11 +15,11 @@ import type { InstrumentTrack, ProjectDocument } from "../../src/project-model/t
  * command's apply/undo/idempotence are pinned here.
  */
 
-function docWithKey(key: string | undefined): ProjectDocument {
+function docWithKey(key: MusicalKey | undefined): ProjectDocument {
   const doc = createProjectFromTemplate("house");
   if (key !== undefined) doc.key = key;
   // Strip the template's existing kopa/808 tracks so each test starts clean.
-  doc.tracks = doc.tracks.filter((t) => !(t.kind === "instrument" && (t.instrument === "kopa" || t.instrument === "808")));
+  doc.tracks = doc.tracks.filter((t) => !(isInstrument(t) && (t.instrument === "kopa" || t.instrument === "808")));
   return doc;
 }
 
@@ -53,7 +56,7 @@ describe("lowEndPlan", () => {
 });
 
 describe("forgeLowEndStackCommand", () => {
-  function buildStack(key = "C Major"): ProjectDocument {
+  function buildStack(key: MusicalKey = "C Major"): ProjectDocument {
     const doc = docWithKey(key);
     // The caller resolves the tonic from the doc's key (lowEndPlan) and
     // hands it to the command — mirror that contract here.
@@ -63,8 +66,8 @@ describe("forgeLowEndStackCommand", () => {
 
   it("creates the KOPA kick, the 808 bass, the KOREŇ engine and the sidechain in one apply", () => {
     const doc = buildStack("C Major");
-    const kick = doc.tracks.find((t): t is InstrumentTrack => t.instrument === "kopa");
-    const bass = doc.tracks.find((t): t is InstrumentTrack => t.instrument === "808");
+    const kick = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "kopa");
+    const bass = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808");
     expect(kick).toBeTruthy();
     expect(bass).toBeTruthy();
     // The kick is tuned to the tonic (C → −12 st from the default anchor).
@@ -79,7 +82,7 @@ describe("forgeLowEndStackCommand", () => {
 
   it("re-tunes to the tonic for a non-C key (A → −3 st)", () => {
     const doc = buildStack("A Natural Minor");
-    const kick = doc.tracks.find((t): t is InstrumentTrack => t.instrument === "kopa");
+    const kick = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "kopa");
     expect(kick!.params.bodyTune).toBe(-3);
     expect(kick!.params.subTune).toBe(-3);
   });
@@ -91,14 +94,16 @@ describe("forgeLowEndStackCommand", () => {
     const next = command.execute(doc);
     const rolled = command.undo(next);
     expect(rolled.tracks.length).toBe(before);
-    expect(rolled.tracks.some((t): t is InstrumentTrack => t.instrument === "kopa")).toBe(false);
+    expect(rolled.tracks.some((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "kopa")).toBe(
+      false,
+    );
   });
 
   it("is idempotent: applying the stack twice does not duplicate the effects", () => {
     let doc = docWithKey("C Major");
     doc = forgeLowEndStackCommand(doc, { keyRootPc: 0 }).execute(doc);
     doc = forgeLowEndStackCommand(doc, { keyRootPc: 0 }).execute(doc);
-    const bass = doc.tracks.find((t): t is InstrumentTrack => t.instrument === "808");
+    const bass = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808");
     const sidechains = (bass!.effects ?? []).filter((fx) => fx.type === "sidechain");
     const korens = (bass!.effects ?? []).filter((fx) => fx.type === "bassHarmonic");
     expect(sidechains.length).toBe(1);
