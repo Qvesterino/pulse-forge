@@ -584,9 +584,12 @@ lie: "the effect sounds better" is otherwise "the effect is louder".
   `setMetersEnabled?`. Only plugins with a real A/B surface implement it.
 - **`AudioEngine.setFxAudition(trackId, fxId, mode)`** writes the mode to the
   runtime and remembers it per fx id, so a chain rebuild (an insert, a
-  reorder, a bypass toggle — all of which dispose and recreate every runtime)
-  re-applies the user's A/B position instead of silently snapping back to
-  WET. The remembered mode dies with the effect it belonged to.
+  reorder — both of which dispose and recreate every runtime) re-applies the
+  user's A/B position instead of silently snapping back to WET. The remembered
+  mode dies with the effect it belonged to. **A bypass toggle is no longer a
+  rebuild** (ADR 0068): the runtime survives the toggle, so the A/B position
+  survives it as well — the remembered mode is a second line of defence now, not
+  the only one.
 - **The export cannot inherit it.** The offline renderer builds its OWN
   `AudioEngine` (`src/rendering/renderer.ts`), and the mode is engine
   instance state — not document state. There is no command, no undo entry, no

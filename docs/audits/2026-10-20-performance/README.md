@@ -151,12 +151,18 @@ Swept across the three surfaces the brief names:
   clip" id to boundary crossings; `src/services/rafLoop.ts` is one shared rAF
   bus whose map cannot grow.
 - **Audio/DSP path** — the FX chain rebuild is signature-guarded (toggling a
-  parameter does not rebuild the graph); a bypassed effect gets no runtime at
-  all; PDC delay nodes are allocated only for chains that have effects; the
-  PRE-fader analyser tap is allocated on first read; the scheduler's
-  `tracksById` is a ref-guarded Map; note sorting and phrase length are
-  WeakMap-cached; the offline renderer runs the same engine on an
-  `OfflineAudioContext`.
+  parameter does not rebuild the graph); PDC delay nodes are allocated only for
+  chains that have effects; the PRE-fader analyser tap is allocated on first
+  read; the scheduler's `tracksById` is a ref-guarded Map; note sorting and
+  phrase length are WeakMap-cached; the offline renderer runs the same engine on
+  an `OfflineAudioContext`.
+  - **Amended 2026-10-26 — this line originally claimed "a bypassed effect gets
+    no runtime at all".** That was measured as a healthy property, and it was
+    also the mechanism behind performance-cliff finding **C-5**: because the
+    bypass left the chain's _signature_, a bypass toggle rebuilt the whole rack
+    of that track and every other effect lost its state. A bypassed effect now
+    **keeps its runtime** and is muted by a wet/dry crossfade (ADR 0068); the
+    toggle is a parameter write.
 - **Lifecycle/leaks** — every `setInterval`, `addEventListener`, worker, socket
   and subscription inspected has a matching release; `closeProject` disposes
   style observer, generative runtime, collab, bandmate, MIDI, link sync,

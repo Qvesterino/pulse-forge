@@ -989,7 +989,11 @@ test.describe("17 — mastering workspace", () => {
         );
       }, "the worklet processors and delayed gate latency report");
 
-      const bypassedCompressorWasOmitted = !internals.masterFx.runtimes.has(compressorEffect.id);
+      // CHANGED BY C-5 (ADR 0067): a bypassed master insert KEEPS its runtime.
+      // It used to be omitted from the chain entirely — the very behaviour that
+      // tore the master rack down on every bypass toggle. The insert now stays,
+      // muted, and its state survives the toggle.
+      const bypassedCompressorKeepsItsRuntime = internals.masterFx.runtimes.has(compressorEffect.id);
       compressorEffect.bypassed = false;
       engine.setProject(doc);
       await settleProject(engine);
@@ -1299,7 +1303,10 @@ test.describe("17 — mastering workspace", () => {
 
       compressorEffect.bypassed = true;
       const bypassedCompressorSamples = await renderMasterConfig();
-      const compressorRuntimeOmittedAfterBypass = !internals.masterFx.runtimes.has(compressorEffect.id);
+      // CHANGED BY C-5 (ADR 0067): the offline render builds the SAME chain as
+      // the live one (invariant 3), so the bypassed insert is present there
+      // too — muted, not omitted.
+      const compressorRuntimeKeptAfterBypass = internals.masterFx.runtimes.has(compressorEffect.id);
       const compressorBypassDifferenceDb = differenceDb(offlineSamples, bypassedCompressorSamples);
 
       compressorEffect.bypassed = false;
@@ -1324,9 +1331,9 @@ test.describe("17 — mastering workspace", () => {
         gateLatencySec,
         bypassLatencyTargetSec,
         activeBypassLatencyTargetSec,
-        bypassedCompressorWasOmitted,
+        bypassedCompressorKeepsItsRuntime,
         compressorDegraded,
-        compressorRuntimeOmittedAfterBypass,
+        compressorRuntimeKeptAfterBypass,
         liveLimiterGainReductionDb,
         liveCompressorGainReductionDb,
         liveGateHandlerInstalled: liveHandlerWasInstalled,
@@ -1358,8 +1365,10 @@ test.describe("17 — mastering workspace", () => {
     expect(facts.bypassLatencyTargetSec).toBeGreaterThan(facts.gateLatencySec);
     expect(facts.bypassLatencyTargetSec).toBeLessThan(facts.gateLatencySec + 0.0003);
     expect(Math.abs(facts.activeBypassLatencyTargetSec - facts.bypassLatencyTargetSec) * 44100).toBeLessThanOrEqual(1);
-    expect(facts.bypassedCompressorWasOmitted).toBe(true);
-    expect(facts.compressorRuntimeOmittedAfterBypass).toBe(true);
+    // CHANGED BY C-5 (ADR 0067): the bypassed insert stays in the chain —
+    // muted, not omitted — so both facts are now TRUE.
+    expect(facts.bypassedCompressorKeepsItsRuntime).toBe(true);
+    expect(facts.compressorRuntimeKeptAfterBypass).toBe(true);
     expect(facts.compressorDegraded, JSON.stringify(facts)).toBe(false);
     expect(facts.liveLimiterGainReductionDb, JSON.stringify(facts)).toBeGreaterThan(0.1);
     expect(facts.liveCompressorGainReductionDb, JSON.stringify(facts)).toBeGreaterThan(0.1);

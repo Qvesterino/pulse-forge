@@ -346,12 +346,13 @@ describe("effect chain churn returns to baseline", () => {
       const bypassed = cycle % 2 === 0;
       engine.setProject(docWith([fx("fx-eq", "eq"), fx("fx-comp", "compressor", bypassed)]));
       await flush();
-      expect(fxState(engine)?.runtimes.size, `cycle ${cycle}: a bypassed effect holds a runtime`).toBe(
-        bypassed ? 1 : 2,
-      );
-      expect(fxState(engine)?.params.size, `cycle ${cycle}: param cache does not track the runtime`).toBe(
-        bypassed ? 1 : 2,
-      );
+      // CHANGED BY C-5 (ADR 0067): a bypassed effect KEEPS its runtime. It used
+      // to be dropped from the chain — and from this map — the moment the
+      // bypass was on, which is exactly the behaviour that tore the whole
+      // chain down on every toggle. The map is now the SAME size in both
+      // states, and the toggle never changes it.
+      expect(fxState(engine)?.runtimes.size, `cycle ${cycle}: the runtime map changed on a bypass toggle`).toBe(2);
+      expect(fxState(engine)?.params.size, `cycle ${cycle}: param cache does not track the runtime`).toBe(2);
     }
   });
 });

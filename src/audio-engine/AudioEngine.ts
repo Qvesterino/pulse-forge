@@ -83,9 +83,40 @@ export function clampSendLevel(value: number): number {
   return Number.isFinite(value) ? Math.min(1.5, Math.max(0, value)) : 0;
 }
 
+/**
+ * The engine's own wiring for ONE effect's bypass (ADR 0068).
+ *
+ * A bypassed effect stays in the chain: its runtime keeps running so its
+ * internal state survives the toggle, and a parallel DRY path carries the
+ * signal past it. The wet side is the effect's own output (muted while the
+ * effect is bypassed); the dry side is `dryGain` (open while it is). Exactly
+ * one of the two is open, so the chain hears the effect OR hears through it,
+ * never both, and never silence.
+ */
+interface FxBypassWiring {
+  /** The dry path's gain: open (1) while the effect is bypassed, closed (0) while it is live. */
+  dryGain: GainNode;
+  /**
+   * The effect's output trim. Its AudioParam carries the WET side's gain:
+   * `trim × wet`, because the census budget (ADR 0048) leaves exactly one
+   * spare node per effect.
+   */
+  trimGain: GainNode;
+  /** The effect's output trim in dB. */
+  trimDb: number;
+  /** True while the effect is muted. */
+  bypassed: boolean;
+}
+
 interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
   params: Map<string, Record<string, number>>;
+  /**
+   * Per-effect bypass wiring, keyed by effect id — the engine's own truth
+   * about which effects are muted. The DOCUMENT owns `EffectInstance.bypassed`;
+   * this owns the graph.
+   */
+  bypass: Map<string, FxBypassWiring>;
   // `null` means this graph has never been built. The empty string is a valid
   // signature for a chain with no effects, and still needs pass-through
   // routing plus its PDC node initialized.
@@ -127,6 +158,8 @@ interface RetiredFxChain {
   outputGain: GainNode;
   pdcDelay: DelayNode | null;
   runtimes: Map<string, EffectRuntime>;
+  /** The retired chain's dry-path gains (ADR 0068) — released with the chain. */
+  bypass: Map<string, FxBypassWiring>;
   clock: ConstantSourceNode;
   silence: GainNode;
   disposed: boolean;
@@ -134,6 +167,13 @@ interface RetiredFxChain {
 
 const FX_REBUILD_CROSSFADE_SEC = 0.02;
 const FX_REBUILD_RETIRE_PAD_SEC = 0.01;
+/**
+ * How long a bypass toggle takes to cross from the wet path to the dry path
+ * (or back). It matches the output trim's own smoothing constant, so both
+ * sides of the crossfade move with the SAME time constant and the sum stays
+ * flat through the transition — a toggle is a blend, not a dip.
+ */
+const FX_BYPASS_FADE_SEC = 0.015;
 
 export type EffectIntentPreviewEndReason = "manual" | "projectChanged" | "transportStarted" | "restoreFailed";
 
@@ -301,6 +341,7 @@ export class AudioEngine {
   private masterFx: FxChainState = {
     runtimes: new Map(),
     params: new Map(),
+    bypass: new Map(),
     signature: null,
     pdcDelay: null,
     latencySubs: [],
@@ -1229,9 +1270,13 @@ export class AudioEngine {
   }
 
   private fxSignature(effects: EffectInstance[]): string {
+    // The bypass flag is NOT part of the signature. A bypassed effect STAYS in
+    // the chain (ADR 0068), so toggling it does not change the graph's SHAPE
+    // and must not trigger a rebuild — the toggle is a parameter write, applied
+    // in syncFxParams. The signature answers "is this the same chain?", and
+    // the chain is the same: same effects, same order, same sidechains.
     return (
       effects
-        .filter((e) => !e.bypassed)
         // Sidechain selection changes the graph even when type and params stay
         // identical. Include it so an old feed cannot survive a source change.
         .map((e) => `${e.id}:${e.type}:${e.sidechainTrackId ?? ""}`)
@@ -1293,6 +1338,17 @@ export class AudioEngine {
         /* a failing runtime must not strand the rest of the retiring chain */
       }
     }
+    // The retired chain's dry-path gains (ADR 0068) are engine-owned: they
+    // carry the bypassed signal until the crossfade ends, and are released
+    // with the branch.
+    for (const wiring of retired.bypass.values()) {
+      try {
+        wiring.dryGain.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    retired.bypass.clear();
     try {
       retired.outputGain.disconnect();
     } catch {
@@ -1321,6 +1377,7 @@ export class AudioEngine {
     }
     state.runtimes.clear();
     state.params.clear();
+    this.disposeFxBypassWiring(state);
     try {
       state.pdcDelay?.disconnect();
     } catch {
@@ -1375,6 +1432,7 @@ export class AudioEngine {
         outputGain,
         pdcDelay: state.pdcDelay,
         runtimes: state.runtimes,
+        bypass: state.bypass,
         clock,
         silence,
         disposed: false,
@@ -1385,6 +1443,7 @@ export class AudioEngine {
       state.latencySubs = [];
       state.runtimes = new Map();
       state.params = new Map();
+      state.bypass = new Map();
       state.pdcDelay = null;
       state.chainInput = null;
       state.chainTail = null;
@@ -1412,6 +1471,9 @@ export class AudioEngine {
         }
       }
       state.runtimes.clear();
+      // The dry-path gains are engine-owned (ADR 0068), so no runtime's
+      // dispose() releases them: the chain does.
+      this.disposeFxBypassWiring(state);
       try {
         state.pdcDelay?.disconnect();
       } catch {
@@ -1458,8 +1520,16 @@ export class AudioEngine {
     const bpm = this.doc?.bpm ?? 124;
     let head: AudioNode = input;
     let chainInput: AudioNode = input;
+    // The DRY path of the previous stage (ADR 0068). It carries the signal
+    // that entered that stage, so the next stage can be fed past it.
+    let pendingDry: GainNode | null = null;
     for (const fx of effects) {
-      if (fx.bypassed) continue;
+      // A BYPASSED effect is still built (ADR 0068). It used to be skipped
+      // here, which meant a bypass toggle changed the chain's SHAPE: the
+      // signature changed, the whole chain was torn down and re-instantiated,
+      // and every effect on the track lost its state. Now the effect stays,
+      // its runtime keeps running, and a parallel dry path carries the signal
+      // past it — the toggle is a parameter write, not a rebuild.
       const def = EFFECT_DEFS[fx.type];
       if (!def) continue;
       // Lazy worklet modules load on demand: the first chain build runs
@@ -1491,7 +1561,19 @@ export class AudioEngine {
         def.factory(ctx, fx, { bpm, seed, harmonyContext: resolveHarmonyContext(this.doc) }),
       );
       const trimGain = ctx.createGain();
-      trimGain.gain.value = dbToLinear(fx.outputTrimDb ?? 0);
+      // The dry path (ADR 0068): one gain per effect, the only node the fix
+      // adds. It carries the signal PAST the effect while the effect is
+      // bypassed and is closed while the effect is live.
+      const dryGain = ctx.createGain();
+      const bypassed = fx.bypassed === true;
+      const wiring: FxBypassWiring = { dryGain, trimGain, trimDb: fx.outputTrimDb ?? 0, bypassed };
+      // The wet side is the effect's own output, muted while the effect is
+      // bypassed; the dry side is the parallel path, open while it is. The
+      // output trim and the bypass share ONE AudioParam — the wet side's gain
+      // is trim × wet — because the census budget (ADR 0048) leaves exactly
+      // one spare node per effect, and a second gain node would break it.
+      trimGain.gain.value = dbToLinear(wiring.trimDb) * (bypassed ? 0 : 1);
+      dryGain.gain.value = bypassed ? 1 : 0;
       rawRuntime.output.connect(trimGain);
       let trimDisposed = false;
       const rt = new Proxy(rawRuntime, {
@@ -1500,7 +1582,11 @@ export class AudioEngine {
           if (property === "setOutputTrimDb") {
             return (gainDb: number) => {
               const safe = Number.isFinite(gainDb) ? Math.max(-18, Math.min(12, gainDb)) : 0;
-              trimGain.gain.setTargetAtTime(dbToLinear(safe), ctx.currentTime, 0.015);
+              wiring.trimDb = safe;
+              // The trim and the bypass share ONE AudioParam (ADR 0068): the
+              // wet side's gain is trim × wet. Nothing fights over it because
+              // the engine owns both factors and always writes the product.
+              trimGain.gain.setTargetAtTime(dbToLinear(safe) * (wiring.bypassed ? 0 : 1), ctx.currentTime, 0.015);
             };
           }
           if (property === "dispose") {
@@ -1554,10 +1640,24 @@ export class AudioEngine {
         }
       }
       if (state.runtimes.size === 0) chainInput = rt.input;
+      // The stage's INPUT carries the previous stage's wet AND dry. Exactly one
+      // of them is open at a time, so this is "the signal entering this stage".
       head.connect(rt.input);
+      pendingDry?.connect(rt.input);
+      // The dry branch of THIS stage is fed from the same two sources, so it
+      // never passes through an effect's own input stage: a bypassed effect is
+      // bypassed by the WIRING, not by the effect's front end.
+      head.connect(dryGain);
+      pendingDry?.connect(dryGain);
+      pendingDry = dryGain;
       head = rt.output;
       state.runtimes.set(fx.id, rt);
-      state.params.set(fx.id, { ...fx.params, __outputTrimDb: fx.outputTrimDb ?? 0 });
+      state.bypass.set(fx.id, wiring);
+      state.params.set(fx.id, {
+        ...fx.params,
+        __outputTrimDb: fx.outputTrimDb ?? 0,
+        __bypassed: bypassed ? 1 : 0,
+      });
       // Metering defaults to off; re-apply the panel's desired state after a
       // rebuild swapped the runtime.
       rt.setMetersEnabled?.(this.fxMetersEnabled.get(fx.id) ?? false);
@@ -1601,9 +1701,15 @@ export class AudioEngine {
     state.outputDestination = output;
     const chainSink = outputGain ?? output;
     state.chainSink = chainSink;
-    if (effects.some((fx) => !fx.bypassed)) {
+    // A chain that OWNS effects always owns the compensation delay node now
+    // (ADR 0068): the wet path and the dry path meet at the delay, and they
+    // must meet AFTER it — a split there would put the bypassed signal a
+    // different latency away from the live one. A chain with NO effects is
+    // still dry, and still gets the node on demand (see ensurePdcDelay).
+    if (effects.length > 0) {
       if (!state.pdcDelay) state.pdcDelay = ctx.createDelay(0.2);
       head.connect(state.pdcDelay);
+      pendingDry?.connect(state.pdcDelay);
       state.pdcDelay.connect(chainSink);
     } else {
       state.pdcDelay = null;
@@ -1645,10 +1751,19 @@ export class AudioEngine {
 
   private syncFxParams(effects: EffectInstance[], state: FxChainState): void {
     for (const fx of effects) {
-      if (fx.bypassed) continue;
       const rt = state.runtimes.get(fx.id);
       const cached = state.params.get(fx.id);
       if (!rt || !cached) continue;
+      // THE BYPASS WRITE (ADR 0068). The chain no longer changes shape when an
+      // effect is bypassed, so this is where the toggle lands: the effect's
+      // runtime is alive and untouched, and only the wet/dry gains move. A
+      // bypassed effect's PARAMS still sync — its runtime is running, and an
+      // un-bypass must find the values the user left behind.
+      const bypassed = fx.bypassed === true;
+      const bypassChanged = cached.__bypassed !== (bypassed ? 1 : 0);
+      if (bypassChanged) {
+        this.applyFxBypass(state, fx.id, bypassed);
+      }
       // A bulk replay (document load, preset apply) is not a user gesture —
       // effects with an internal undo history must not record it, or one
       // preset load evicts the user's live-tweak history.
@@ -1678,11 +1793,60 @@ export class AudioEngine {
         // chain rebuild — the runtime's construction snapshot was all the
         // processor ever saw, so undo/redo of a pattern silently reverted it.
         rt.setPattern?.(fx.steps ?? []);
-        if (paramsChanged) state.params.set(fx.id, { ...fx.params, __outputTrimDb: outputTrimDb });
+        // The cache must record the bypass state even when no PARAM changed —
+        // otherwise every later sync would see a "changed" bypass and re-run
+        // the fade, over and over.
+        if (paramsChanged || bypassChanged) {
+          state.params.set(fx.id, {
+            ...fx.params,
+            __outputTrimDb: outputTrimDb,
+            __bypassed: bypassed ? 1 : 0,
+          });
+        }
       } finally {
         rt.endParamSync?.();
       }
     }
+  }
+
+  /**
+   * Apply an effect's bypass state to the graph (ADR 0068).
+   *
+   * The wet side (the effect's own output) and the dry side (the parallel path
+   * around it) move together with the SAME time constant, so the toggle is a
+   * crossfade rather than a click: the sum of the two stays flat through the
+   * transition and the chain never goes silent. The effect's runtime is NOT
+   * touched — it keeps running, so its state (a delay tail, a reverb decay)
+   * survives the toggle.
+   */
+  private applyFxBypass(state: FxChainState, fxId: string, bypassed: boolean): void {
+    const wiring = state.bypass.get(fxId);
+    if (!wiring) return;
+    const now = this.ctx?.currentTime ?? 0;
+    wiring.bypassed = bypassed;
+    const wet = bypassed ? 0 : dbToLinear(wiring.trimDb);
+    const dry = bypassed ? 1 : 0;
+    this.writeStripControl(wiring.trimGain.gain, wet, now, FX_BYPASS_FADE_SEC);
+    this.writeStripControl(wiring.dryGain.gain, dry, now, FX_BYPASS_FADE_SEC);
+  }
+
+  /**
+   * Release a chain's engine-owned dry-path gains (ADR 0068).
+   *
+   * They are not part of any runtime, so no `dispose()` releases them — the
+   * chain does. Disconnecting the gain removes its outgoing edges; its
+   * sources are already gone (their runtimes were disposed), so nothing is
+   * left feeding a dead node.
+   */
+  private disposeFxBypassWiring(state: FxChainState): void {
+    for (const wiring of state.bypass.values()) {
+      try {
+        wiring.dryGain.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    state.bypass.clear();
   }
 
   /**
@@ -1701,7 +1865,8 @@ export class AudioEngine {
           : (this.trackNodes.get(owner.id) ?? this.returnNodes.get(owner.id));
       if (!ownerNodes) continue;
       for (const fx of owner.effects) {
-        if (fx.bypassed) continue;
+        // A bypassed effect still has a runtime (ADR 0068), so its detector
+        // feed is still wired: the effect keeps running, it is only muted.
         const runtime = ownerNodes.fx.runtimes.get(fx.id);
         if (!runtime?.setSidechainInput) continue;
         const sourceNodes = fx.sidechainTrackId
@@ -1711,7 +1876,6 @@ export class AudioEngine {
       }
     }
     for (const fx of doc.master.effects ?? []) {
-      if (fx.bypassed) continue;
       const runtime = this.masterFx.runtimes.get(fx.id);
       if (!runtime?.setSidechainInput) continue;
       const sourceNodes = fx.sidechainTrackId
@@ -1952,7 +2116,14 @@ export class AudioEngine {
           modAutoGain,
           modMacroGain,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
+          fx: {
+            runtimes: new Map(),
+            params: new Map(),
+            bypass: new Map(),
+            signature: null,
+            pdcDelay: null,
+            latencySubs: [],
+          },
         };
         this.returnNodes.set(ret.id, nodes);
       }
@@ -2008,7 +2179,14 @@ export class AudioEngine {
           modMacroPan,
           analyser,
           preFaderAnalyser: null,
-          fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
+          fx: {
+            runtimes: new Map(),
+            params: new Map(),
+            bypass: new Map(),
+            signature: null,
+            pdcDelay: null,
+            latencySubs: [],
+          },
           sends: new Map(),
           sendDelays: new Map(),
         };
@@ -2071,7 +2249,14 @@ export class AudioEngine {
           routeDestination: this.masterChain.input,
           analyser,
           preFaderAnalyser: null,
-          fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
+          fx: {
+            runtimes: new Map(),
+            params: new Map(),
+            bypass: new Map(),
+            signature: null,
+            pdcDelay: null,
+            latencySubs: [],
+          },
           sends: new Map(),
           sendDelays: new Map(),
         };
@@ -2253,7 +2438,14 @@ export class AudioEngine {
     const tracksById = getDocIndex(this.doc).tracksById;
     const chainLatency = (state: FxChainState): number => {
       let total = 0;
-      for (const rt of state.runtimes.values()) total += this.callRuntime(() => rt.getLatencySec?.()) ?? 0;
+      for (const [fxId, rt] of state.runtimes) {
+        // A bypassed effect contributes NO latency (ADR 0068): the dry path
+        // carries the signal PAST it, so the effect's own DSP latency is not
+        // on the chain. Counting it would delay every other track against a
+        // latency the signal never incurred.
+        if (state.bypass.get(fxId)?.bypassed) continue;
+        total += this.callRuntime(() => rt.getLatencySec?.()) ?? 0;
+      }
       return total;
     };
     const groupLatency = new Map<string, number>();
@@ -2318,7 +2510,10 @@ export class AudioEngine {
   /** Serial fixed latency of the master insert slot plus its local PDC delay. */
   private masterInsertLatencySec(): number {
     let seconds = Math.max(0, this.masterFx.pdcDelay?.delayTime.value ?? 0);
-    for (const runtime of this.masterFx.runtimes.values()) {
+    for (const [fxId, runtime] of this.masterFx.runtimes) {
+      // A bypassed master insert is muted (ADR 0068) and its dry path adds no
+      // latency — counting it would misalign the whole project.
+      if (this.masterFx.bypass.get(fxId)?.bypassed) continue;
       const latency = this.callRuntime(() => runtime.getLatencySec?.()) ?? 0;
       if (Number.isFinite(latency) && latency > 0) seconds += latency;
     }
@@ -3357,6 +3552,10 @@ export class AudioEngine {
     const out: { trackId: string; fxId: string; reason: string }[] = [];
     const collect = (trackId: string, state: FxChainState) => {
       for (const [fxId, rt] of state.runtimes) {
+        // A bypassed effect is muted (ADR 0068) — its fallback is not audible,
+        // so it is not reported as a degraded insert. The offline renderer
+        // filters the same way, and live and offline must agree.
+        if (state.bypass.get(fxId)?.bypassed) continue;
         if (rt.degraded) out.push({ trackId, fxId, reason: rt.degradedReason ?? "Fallback processing" });
       }
     };
@@ -3399,23 +3598,35 @@ export class AudioEngine {
   }
 
   /** Latest gain reduction in dB reported by an effect runtime (metering). */
+  /**
+   * The FX chain state that owns an effect — a track, a group, a return or the
+   * master insert rack. One lookup, so every per-effect surface reads the same
+   * chain (and therefore the same bypass state).
+   */
+  private fxChainStateOf(trackId: string): FxChainState | undefined {
+    return (
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx : undefined) ??
+      this.trackNodes.get(trackId)?.fx ??
+      this.groupNodes.get(trackId)?.fx ??
+      this.returnNodes.get(trackId)?.fx
+    );
+  }
+
   getFxGainReductionDb(trackId: string, fxId: string): number | null {
-    const rt =
-      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
-      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
-    return rt?.getGainReductionDb?.() ?? null;
+    const state = this.fxChainStateOf(trackId);
+    // A bypassed effect is muted (ADR 0068): its gain reduction is not the
+    // chain's, so it is not reported.
+    if (state?.bypass.get(fxId)?.bypassed) return null;
+    return state?.runtimes.get(fxId)?.getGainReductionDb?.() ?? null;
   }
 
   /** Current separate dynamics-stage readings for a composite effect such as ZENIT. */
   getFxGainReductionBreakdown(trackId: string, fxId: string): readonly EffectGainReductionReading[] | null {
-    const rt =
-      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
-      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
-    const readings = rt?.getGainReductionBreakdown?.();
+    const state = this.fxChainStateOf(trackId);
+    // A bypassed effect is muted (ADR 0068): its gain reduction is not the
+    // chain's, so it is not reported.
+    if (state?.bypass.get(fxId)?.bypassed) return null;
+    const readings = state?.runtimes.get(fxId)?.getGainReductionBreakdown?.();
     if (!readings) return null;
     return readings
       .filter(
@@ -3463,12 +3674,13 @@ export class AudioEngine {
 
   /** Live meter snapshot from an effect runtime ( Ultina spectrum/LUFS/masking…). */
   getFxMeters(trackId: string, fxId: string): unknown {
-    const rt =
-      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
-      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
-    return rt?.getMeters?.() ?? null;
+    const state = this.fxChainStateOf(trackId);
+    // A bypassed effect is MUTED (ADR 0068). Its runtime is alive and it keeps
+    // analysing, but its telemetry is not the chain's signal — so it must not
+    // be presented as live (docs/AGENT-KIT.md: a bypassed insert says "no
+    // telemetry", never zeros and never a reading).
+    if (state?.bypass.get(fxId)?.bypassed) return null;
+    return state?.runtimes.get(fxId)?.getMeters?.() ?? null;
   }
 
   /**
