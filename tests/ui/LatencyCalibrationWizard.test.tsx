@@ -1,7 +1,8 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LatencyCalibrationWizard } from "../../src/ui/LatencyCalibrationWizard";
-import { recordingAlignment } from "../../src/audio-engine/recordingAlignment";
+import { recordingAlignment, recordingAlignmentStorageKey } from "../../src/audio-engine/recordingAlignment";
+import { saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 import { renderWithContext } from "../helpers";
 import type { AudioLatencyMeasurement } from "../../src/audio-engine/latencyCalibration";
 
@@ -22,6 +23,7 @@ vi.mock("../../src/audio-engine/latencyProbe", async (importOriginal) => {
 
 afterEach(() => {
   recordingAlignment.reset();
+  saveRecordingInputDeviceId("");
   vi.unstubAllGlobals();
 });
 
@@ -105,6 +107,42 @@ describe("LatencyCalibrationWizard", () => {
       await openAudioPhase();
       expect(recordingAlignment.getSnapshot()).toBe(-42);
       expect(screen.queryByText(/Applied to mic recording placement/)).toBeNull();
+    });
+
+    // Audit R-3: the calibration must measure the microphone the app RECORDS
+    // from, and the offset must be filed under THAT device — not under a
+    // global key that every interface inherits.
+    it("measures the selected input and files the offset under that device", async () => {
+      saveRecordingInputDeviceId("mic-a");
+      const { measureAudioRoundTrip } = await import("../../src/audio-engine/latencyProbe");
+      vi.mocked(measureAudioRoundTrip).mockClear();
+
+      await openAudioPhase();
+
+      expect(vi.mocked(measureAudioRoundTrip).mock.calls[0][3]).toBe("mic-a");
+      expect(localStorage.getItem(recordingAlignmentStorageKey("mic-a"))).toBe("63");
+      // Another device inherits nothing.
+      expect(localStorage.getItem(recordingAlignmentStorageKey("mic-b"))).toBeNull();
+    });
+
+    it("names the input the calibration belongs to, so an uncompensated interface has an explanation", async () => {
+      saveRecordingInputDeviceId("mic-a");
+      const original = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          enumerateDevices: async () => [
+            { kind: "audioinput", deviceId: "mic-a", label: "Studio interface · Input 1" },
+          ],
+        },
+      });
+      try {
+        renderWithContext(<LatencyCalibrationWizard open onClose={() => {}} />);
+        expect(await screen.findByTestId("latency-input-label")).toHaveTextContent("Studio interface · Input 1");
+      } finally {
+        if (original) Object.defineProperty(navigator, "mediaDevices", original);
+        else Reflect.deleteProperty(navigator, "mediaDevices");
+      }
     });
   });
 });
