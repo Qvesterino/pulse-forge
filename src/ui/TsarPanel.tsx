@@ -17,7 +17,15 @@ import {
   sourceContentHash,
   type SourceRecord,
 } from "../sample-library/source-record";
-import { mutateTsarPatch, mutationReveal, type TsarMutation } from "../tsar/mutations";
+import {
+  mutateTsarPatch,
+  mutationReveal,
+  MUTATION_GROUPS,
+  MUTATION_RANGES,
+  describeMutationRun,
+  type MutationGroup,
+  type TsarMutation,
+} from "../tsar/mutations";
 import { TSAR_FACTORY_PRESETS } from "../presets/tsar-factory";
 import { importAudioFile } from "./sample-import";
 import type { InstrumentPreset } from "../presets/types";
@@ -155,6 +163,20 @@ export function TsarPanel() {
     total: number;
   } | null>(null);
   const [mutSeed, setMutSeed] = useState(() => 1_234_567);
+  /**
+   * WAVE 4 — controlled mutations.
+   *
+   * `mutRange` is how far a variant may move (1 = the pre-wave-4 reach).
+   * `mutLocks` freezes whole parameter groups: a locked group's parameters
+   * stay bit-identical in every variant.
+   * `mutRuns` keeps this session's runs so a producer can re-invoke the exact
+   * same variations later, even after the patch has moved on.
+   */
+  const [mutRange, setMutRange] = useState(1);
+  const [mutLocks, setMutLocks] = useState<MutationGroup[]>([]);
+  const [mutSeedText, setMutSeedText] = useState("");
+  const [mutRuns, setMutRuns] = useState<{ key: string; seed: number; variants: TsarMutation[] }[]>([]);
+  const [mutNote, setMutNote] = useState<string | null>(null);
 
   if (!track) {
     return (
@@ -204,9 +226,44 @@ export function TsarPanel() {
     services.engine.previewInstrumentPreset(track.id, pseudoPreset("tsar-original", "ORIGINAL", {}));
   };
   const startMutations = () => {
-    const variants = mutateTsarPatch(track.params, mutSeed);
-    if (variants.length < 2) return;
+    const options = { range: mutRange, locks: mutLocks };
+    const variants = mutateTsarPatch(track.params, mutSeed, 6, options);
+    if (variants.length < 2) {
+      // Say WHY, instead of a button that silently does nothing.
+      setMutNote(
+        mutLocks.length
+          ? "Nothing to vary — every live group is locked."
+          : "Nothing to vary — this patch has no audible axis left to move.",
+      );
+      return;
+    }
+    setMutNote(null);
     setMutLadder({ pool: variants.slice(1), champion: variants[0]!, round: 0, total: variants.length - 1 });
+    // Keep the run so the same variations can be invoked again later.
+    const key = describeMutationRun(mutSeed, options);
+    setMutRuns((runs) => [
+      { key, seed: mutSeed, variants },
+      ...runs.filter((run) => run.key !== key),
+    ].slice(0, 6));
+  };
+  /** Put a previous run's variations back on the table, unchanged. */
+  const replayRun = (run: { key: string; variants: TsarMutation[] }) => {
+    setMutLadder({ pool: run.variants.slice(1), champion: run.variants[0]!, round: 0, total: run.variants.length - 1 });
+    setMutNote(null);
+  };
+  /** Type a seed back in to invoke the same variations again. */
+  const applySeedText = () => {
+    const parsed = Number.parseInt(mutSeedText.trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      setMutNote("That seed is not a number.");
+      return;
+    }
+    setMutSeed(parsed >>> 0);
+    setMutSeedText("");
+    setMutNote(null);
+  };
+  const toggleLock = (group: MutationGroup) => {
+    setMutLocks((locks) => (locks.includes(group) ? locks.filter((entry) => entry !== group) : [...locks, group]));
   };
   const pickMutation = (challengerWon: boolean) => {
     setMutLadder((ladder) => {
@@ -227,7 +284,7 @@ export function TsarPanel() {
         services.store.doc,
         track.id,
         mutLadder.champion.params,
-        `mutation winner · seed ${mutSeed}`,
+        `mutation winner · ${describeMutationRun(mutSeed, { range: mutRange, locks: mutLocks })}`,
       ),
     );
     setMutLadder(null);
@@ -595,16 +652,68 @@ export function TsarPanel() {
               <button
                 type="button"
                 className="btn btn-small"
-                onClick={() => setMutSeed((seed) => (seed * 1_664_525 + 1_013_904_223) >>> 0)}
+                onClick={() => {
+                  setMutSeed((seed) => (seed * 1_664_525 + 1_013_904_223) >>> 0);
+                  setMutNote(null);
+                }}
               >
-                RETAKE (SEED {mutSeed % 100_000})
+                RETAKE SEED
               </button>
+              <label className="tsar-mut-seed">
+                SEED
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="tsar-mut-seed-input"
+                  value={mutSeedText}
+                  placeholder={String(mutSeed)}
+                  aria-label="Mutation seed"
+                  onChange={(event) => setMutSeedText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") applySeedText();
+                  }}
+                />
+                <button type="button" className="btn btn-small" onClick={applySeedText}>
+                  SET
+                </button>
+              </label>
+              <span className="tsar-forge-hint">seed {mutSeed}</span>
+              <div className="tsar-mut-row" role="group" aria-label="Mutation range">
+                <span className="tsar-mut-row-label">RANGE</span>
+                {MUTATION_RANGES.map((stop) => (
+                  <button
+                    key={stop.id}
+                    type="button"
+                    className={`tsar-chip${Math.abs(mutRange - stop.value) < 1e-9 ? " on" : ""}`}
+                    aria-pressed={Math.abs(mutRange - stop.value) < 1e-9}
+                    onClick={() => setMutRange(stop.value)}
+                  >
+                    {stop.label}
+                  </button>
+                ))}
+              </div>
+              <div className="tsar-mut-row" role="group" aria-label="Locked parameter groups">
+                <span className="tsar-mut-row-label">LOCK</span>
+                {MUTATION_GROUPS.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    className={`tsar-chip${mutLocks.includes(group.id) ? " on" : ""}`}
+                    aria-pressed={mutLocks.includes(group.id)}
+                    onClick={() => toggleLock(group.id)}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
+              {mutNote && <span className="tsar-mut-note">{mutNote}</span>}
               <span className="tsar-forge-hint">6 deterministic variants — pick by ear, apply the winner.</span>
             </div>
           ) : mutLadder.pool.length > 0 ? (
             <div className="tsar-forge-controls">
               <span className="tsar-forge-hint">
-                BLIND A/B — round {mutLadder.round + 1}/{mutLadder.total}
+                BLIND A/B — round {mutLadder.round + 1}/{mutLadder.total} ·{" "}
+                {describeMutationRun(mutSeed, { range: mutRange, locks: mutLocks })}
               </span>
               <button type="button" className="btn btn-small" onClick={previewOriginal}>
                 ▶ ORIGINAL
@@ -643,6 +752,22 @@ export function TsarPanel() {
               <button type="button" className="btn btn-small" onClick={() => setMutLadder(null)}>
                 DISCARD
               </button>
+            </div>
+          )}
+          {mutRuns.length > 0 && (
+            <div className="tsar-mut-row" role="group" aria-label="Recent mutation runs">
+              <span className="tsar-mut-row-label">RECENT</span>
+              {mutRuns.map((run) => (
+                <button
+                  key={run.key}
+                  type="button"
+                  className="tsar-chip"
+                  onClick={() => replayRun(run)}
+                  title={`Re-invoke ${run.key}`}
+                >
+                  ↻ {run.key}
+                </button>
+              ))}
             </div>
           )}
         </section>

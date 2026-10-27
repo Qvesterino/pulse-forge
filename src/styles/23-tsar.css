@@ -162,6 +162,70 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Controlled mutations (roadmap wave 4) ─────────────────────────────────
+   A row of small toggles, not a panel of prose: RANGE says how far a
+   variant may move, LOCK says which groups may not move at all. */
+.tsar-mut-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tsar-mut-row-label {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  letter-spacing: 0.08em;
+}
+
+.tsar-chip {
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.12));
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.tsar-chip:hover {
+  color: var(--text-main);
+}
+
+.tsar-chip.on {
+  border-color: var(--accent, #6ea8fe);
+  color: var(--accent, #6ea8fe);
+}
+
+.tsar-mut-seed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  letter-spacing: 0.08em;
+}
+
+.tsar-mut-seed-input {
+  width: 9ch;
+  background: transparent;
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.12));
+  border-radius: 3px;
+  color: var(--text-main);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  padding: 2px 4px;
+}
+
+.tsar-mut-note {
+  color: var(--warning, #e0a34a);
+  font-size: var(--fs-compact);
 }
 
 .tsar-forge-slot {

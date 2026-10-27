@@ -185,6 +185,19 @@ Existujúci deterministický A/B turnaj mutácií ostáva základom. Rozšíreni
 - Náhľad neprepíše originál a pôvodný patch možno vždy znovu vypočuť.
 - Varianty sú odlišné aj zvukovo; iba odlišné číselné hodnoty nie sú dôkazom kvality.
 
+### Stav (2026-10-27) — DODANÉ
+
+Implementované ako **ADR 0073** (kontrakt) + `docs/CURRENT-STATE.md` (popis).
+
+- **Zámky (LOCK)** — šesť skupín parametrov, ktoré sú **partíciou** všetkých 76 parametrov TSAR: `source`, `tuning`, `envelope`, `filter`, `modulation`, `character`. Zamknutá skupina sa **vyberá z osí** — jej parametre sa v žiadnom variante nezapíšu, takže zostávajú **bitovo nezmenené** (a zámky sa prenášajú aj do top-up variantov, ktoré sú druhý beh mutátora s iným seedom).
+- **Rozsah (RANGE)** — štyri stupne (SUBTLE/MEDIUM/BOLD/FULL). Rozsah riadi **šírku** (koľko osí variant smie), **nie dosah**: meranie ukázalo, že pohyb zmenšený na sedminu váhy mení číslo, nie zvuk. Dosah si drží aspoň polovicu váhy aj pri najjemnejšom stupni a `range = 1` reprodukuje pôvodné ťaženie aj výber **presne**.
+- **Seed** — zobrazený **celý** (staré tlačidlo ukazovalo len posledných päť číslic, čo nie je seed, ktorý sa dá znovu vyvolať), dá sa vpísať späť a každý beh sa eviduje s kľúčom (seed + rozsah + zámky), takže tie isté variácie sa dajú priviesť neskôr. Kľúč cestuje aj v menovke víťaza v histórii.
+- **Pravidlo živosti osí** — `isMutationAxisLive` číta pravidlá samotného DSP: slot s LEVEL 0 je tichý; `srcAMorph`/`srcBMorph` číta len wavetable; `srcASpread` potrebuje unison; globálny `morph` potrebuje B; `noiseColor` potrebuje noise; **šírka** pracuje na side signále (`panR − panL`), takže centrovaný zdroj nemá side; **otvorený filter** prehltne svoje Q; LFO sa dostane k zvuku len cez mod slot; glide pod 0.001 engine ignoruje.
+- **Brána počuteľnosti (audit)** — varianty sa renderujú **skutočným** procesorom a rozdiel sa meria v ZVUKU (vlastný vzorec z `tests/tsar/engine.test.ts`, rozšírený na stereo). Brána má **kontroly**: patch proti sebe = **presne 0**, patch líšiaci sa len v parametroch **tichého** zdroja = **presne 0** (pasca, merateľná), reálna zmena zvuku = **0,33**.
+- **Zmerané (960 variantov, 4 rozsahy):** pred pravidlami boli **2 z 48** variantov bitovo identické originálu; po nich **0 z 960**. Najslabší variant na `FULL` = 0,0083, 10. percentil = 0,165, medián = 1,41. Turnaj zostáva slepý, originál sa dá vždy znova vypočuť a víťaz je stále JEDEN príkaz.
+- **Úprimné limity** — meranie je rozdiel **energie** za celý render, takže pomalejšiu zmenu obálky podhodnocuje; je to dolná hranica vnemenoťného rozdielu, nie model sluchu. Pravidlá živosti pracujú s parametrami — asset-závislý fakt im je neviditeľný.
+- **Otvorené:** strop DAW-JS (5630 KB) je stále červený a patrí vlastníkovi budgetu; browser audit (`npm run test:browser`) stále nebežal.
+
 ## Vlna 5 — výrazové ovládanie a podmienené rozšírenia
 
 ### TSAR ORBIT
