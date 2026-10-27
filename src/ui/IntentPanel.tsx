@@ -73,7 +73,11 @@ import {
 } from "../intent/song";
 import type { SearchLane } from "../intent/candidate-search";
 import { fxWordsForArtist } from "../intent/artists";
-import { consolidateRangeToAudio } from "../services/rangeConsolidation";
+import {
+  commitRangeConsolidationPreview,
+  prepareRangeConsolidationPreview,
+  type PreparedRangeConsolidationPreview,
+} from "../services/rangeConsolidation";
 import { artistMixProfileOf } from "../intent/artist-mix";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
@@ -3879,6 +3883,41 @@ export function IntentPanel() {
     baseDoc: ProjectDocument;
   } | null>(null);
   const [rangeConsolidating, setRangeConsolidating] = useState(false);
+  const rangeConsolidatingRef = useRef(false);
+  const [rangeBouncePreview, setRangeBouncePreview] = useState<PreparedRangeConsolidationPreview | null>(null);
+  const [rangePreviewPlaying, setRangePreviewPlaying] = useState<"A" | "B" | null>(null);
+
+  useEffect(() => {
+    if (!rangeBouncePreview) return;
+    const invalidateIfStale = () => {
+      if (rangeConsolidatingRef.current) return;
+      const liveRange = selection.getState().timeRange;
+      const liveIntent = selectedArrangementPreview;
+      const isCurrent =
+        services.store.getDoc() === rangeBouncePreview.sourceDoc &&
+        liveRange?.fromTick === rangeBouncePreview.range.fromTick &&
+        liveRange?.toTick === rangeBouncePreview.range.toTick &&
+        text.trim() === liveIntent?.source &&
+        liveIntent?.kind === "range" &&
+        liveIntent.operation === "consolidate" &&
+        liveIntent.range.fromTick === rangeBouncePreview.range.fromTick &&
+        liveIntent.range.toTick === rangeBouncePreview.range.toTick;
+      if (isCurrent) return;
+      stopAudition();
+      setRangePreviewPlaying(null);
+      setRangeBouncePreview(null);
+      setSelectedArrangementPreview(null);
+      setError("Project, prompt, or time selection changed. The A/B preview was discarded without applying it.");
+    };
+    const unsubscribeStore = services.store.subscribe(invalidateIfStale);
+    const unsubscribeSelection = selection.subscribe(invalidateIfStale);
+    invalidateIfStale();
+    return () => {
+      unsubscribeStore();
+      unsubscribeSelection();
+      stopAudition();
+    };
+  }, [rangeBouncePreview, selectedArrangementPreview, selection, services.store, text]);
 
   useEffect(() => {
     if (!automationProposal) return;
@@ -4041,25 +4080,20 @@ export function IntentPanel() {
       return;
     }
     if (preview.operation === "consolidate") {
+      rangeConsolidatingRef.current = true;
       setRangeConsolidating(true);
       try {
-        const command = await consolidateRangeToAudio(services, preview.range, () => {
-          const liveRange = selection.getState().timeRange;
-          return (
-            promptInputRef.current?.value.trim() === preview.source &&
-            liveRange != null &&
-            liveRange.fromTick === preview.range.fromTick &&
-            liveRange.toTick === preview.range.toTick &&
-            parseSelectedTimeRangeIntent(promptInputRef.current?.value ?? "") === "consolidate"
-          );
-        });
-        setSelectedArrangementPreview(null);
-        setJustApplied(false);
+        const prepared = await prepareRangeConsolidationPreview(services, preview.range, () =>
+          isRangeConsolidationSelectionCurrent(preview.source, preview.range),
+        );
+        setRangeBouncePreview(prepared);
+        setRangePreviewPlaying(null);
         setError(null);
-        setStatus(`✓ ${command.label} (one undo step)`);
+        setStatus("A/B preview ready. Listen to A and B, then confirm to replace the selected section.");
       } catch (error) {
         setError(error instanceof Error ? error.message : String(error));
       } finally {
+        rangeConsolidatingRef.current = false;
         setRangeConsolidating(false);
       }
       return;
@@ -4073,6 +4107,71 @@ export function IntentPanel() {
       setStatus(`✓ ${command.label} (one undo step)`);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const isRangeConsolidationSelectionCurrent = (
+    source: string,
+    range: { fromTick: number; toTick: number },
+  ): boolean => {
+    const liveRange = selection.getState().timeRange;
+    const liveIntent = selectedArrangementPreview;
+    return (
+      promptInputRef.current?.value.trim() === source &&
+      text.trim() === source &&
+      parseSelectedTimeRangeIntent(promptInputRef.current?.value ?? "") === "consolidate" &&
+      liveRange != null &&
+      liveRange.fromTick === range.fromTick &&
+      liveRange.toTick === range.toTick &&
+      liveIntent?.kind === "range" &&
+      liveIntent.operation === "consolidate" &&
+      liveIntent.source === source &&
+      liveIntent.range.fromTick === range.fromTick &&
+      liveIntent.range.toTick === range.toTick
+    );
+  };
+
+  const auditionRangeConsolidation = (take: "A" | "B") => {
+    const preview = rangeBouncePreview;
+    if (!preview) return;
+    const buffer = take === "A" ? preview.before : preview.after;
+    const gain = take === "A" ? preview.beforeGain : preview.afterGain;
+    playAuditionBuffer(buffer, () => setRangePreviewPlaying(null), gain);
+    setRangePreviewPlaying(take);
+    setStatus(
+      take === "A" ? "Auditioning A · original mix." : "Auditioning B · consolidated print through the master chain.",
+    );
+  };
+
+  const confirmRangeConsolidationPreview = async () => {
+    const preview = rangeBouncePreview;
+    if (!preview || busy || routeBusy || songBusy || theatreBusy || mutateBusy || rangeConsolidating) return;
+    stopAudition();
+    setRangePreviewPlaying(null);
+    rangeConsolidatingRef.current = true;
+    setRangeConsolidating(true);
+    try {
+      const command = await commitRangeConsolidationPreview(services, preview, () =>
+        isRangeConsolidationSelectionCurrent(selectedArrangementPreview?.source ?? "", preview.range),
+      );
+      setRangeBouncePreview(null);
+      setSelectedArrangementPreview(null);
+      setJustApplied(false);
+      setError(null);
+      setStatus(`✓ ${command.label} (one undo step)`);
+    } catch (error) {
+      if (
+        services.store.getDoc() !== preview.sourceDoc ||
+        !isRangeConsolidationSelectionCurrent(selectedArrangementPreview?.source ?? "", preview.range) ||
+        services.bank.revision !== preview.bankRevision
+      ) {
+        setRangeBouncePreview(null);
+        setSelectedArrangementPreview(null);
+      }
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      rangeConsolidatingRef.current = false;
+      setRangeConsolidating(false);
     }
   };
 
@@ -4199,6 +4298,11 @@ export function IntentPanel() {
     if (!source || routeBusy || busy || songBusy || theatreBusy || mutateBusy) return;
     setRouteBusy(true);
     setSelectedStepPreview(null);
+    if (rangeBouncePreview) {
+      stopAudition();
+      setRangePreviewPlaying(null);
+      setRangeBouncePreview(null);
+    }
     setSelectedArrangementPreview(null);
     setAutomationProposal(null);
     setError(null);
@@ -5273,6 +5377,11 @@ export function IntentPanel() {
         onChange={(e) => {
           replacePrompt(e.target.value);
           if (selectedStepPreview || selectedArrangementPreview || automationProposal) setStatus(null);
+          if (rangeBouncePreview) {
+            stopAudition();
+            setRangePreviewPlaying(null);
+            setRangeBouncePreview(null);
+          }
           setSelectedStepPreview(null);
           setSelectedArrangementPreview(null);
           setAutomationProposal(null);
@@ -5690,29 +5799,89 @@ export function IntentPanel() {
               <div>{selectedArrangementPreview.description}</div>
               {selectedArrangementPreview.operation === "consolidate" && (
                 <div role="note">
-                  This renders the full mix to one audio print and replaces the source clips. Undo restores them.
+                  Preview A is the current mix; B is the print through the project master chain. Nothing changes in the
+                  project until you confirm the bounce.
                 </div>
               )}
             </>
           )}
           <div className="intent-actions">
-            <button
-              type="button"
-              className="btn intent-route-btn"
-              disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
-              onClick={() => void applySelectedArrangementPromptPreview()}
-            >
-              {rangeConsolidating ? "RENDERING PRINT…" : "APPLY "}{" "}
-              {selectedArrangementPreview.kind === "clip"
-                ? "CLIP EDIT"
-                : selectedArrangementPreview.operation.toUpperCase()}{" "}
-              · ONE UNDO STEP
-            </button>
+            {selectedArrangementPreview.kind === "range" && selectedArrangementPreview.operation === "consolidate" ? (
+              rangeBouncePreview ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn"
+                    aria-pressed={rangePreviewPlaying === "A"}
+                    disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+                    onClick={() => auditionRangeConsolidation("A")}
+                  >
+                    A · ORIGINAL MIX
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    aria-pressed={rangePreviewPlaying === "B"}
+                    disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+                    onClick={() => auditionRangeConsolidation("B")}
+                  >
+                    B · BOUNCE
+                  </button>
+                  {rangePreviewPlaying && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        stopAudition();
+                        setRangePreviewPlaying(null);
+                        setStatus("A/B audition stopped.");
+                      }}
+                    >
+                      STOP PREVIEW
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn intent-route-btn"
+                    disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+                    onClick={() => void confirmRangeConsolidationPreview()}
+                  >
+                    {rangeConsolidating ? "APPLYING BOUNCE…" : "CONFIRM BOUNCE · ONE UNDO STEP"}
+                  </button>
+                  <span role="status">A/B preview level matched; project unchanged.</span>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn intent-route-btn"
+                  disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+                  onClick={() => void applySelectedArrangementPromptPreview()}
+                >
+                  {rangeConsolidating ? "RENDERING A/B PREVIEW…" : "RENDER A/B PREVIEW"}
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                className="btn intent-route-btn"
+                disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+                onClick={() => void applySelectedArrangementPromptPreview()}
+              >
+                APPLY{" "}
+                {selectedArrangementPreview.kind === "clip"
+                  ? "CLIP EDIT"
+                  : selectedArrangementPreview.operation.toUpperCase()}{" "}
+                · ONE UNDO STEP
+              </button>
+            )}
             <button
               type="button"
               className="btn"
               disabled={rangeConsolidating}
               onClick={() => {
+                stopAudition();
+                setRangePreviewPlaying(null);
+                setRangeBouncePreview(null);
                 setSelectedArrangementPreview(null);
                 setStatus("Arrangement preview cancelled; project unchanged.");
               }}
