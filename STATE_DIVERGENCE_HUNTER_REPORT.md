@@ -26,15 +26,15 @@
 > | **F-16** collab normalisation            | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                                                                                                                                                                 | `04c41290` (parallel session), `faba6885` |
 > | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                             | `3d59627e`                                |
 > | **F-11** macro / modulator / lane        | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`) | `64e71cd3` · ADR 0067                     |
+> | **F-18** fallback runtime vs. the knobs  | Low          | **FIXED** — the controls themselves disclose the 1:1 passthrough (the engine's own reason, in the flagship panels' words), and the device chip says PASSTHROUGH instead of ACTIVE                                                                                                       | `361fb5b6`                                |
 > | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                    | —                                         |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 12 resolved, 17 open, 0 Critical.**
+> **29 findings, 13 resolved, 16 open, 0 Critical.**
 >
-> **Still open, and the next wave:** the rack's passthrough-runtime badge
-> (a knob whose effect never loaded still shows a value with no effect on
-> the audio), and the rest of §11.
+> **Still open, and the next wave:** F-12 (the normaliser's and the commands'
+> silent clamps), and the rest of §11.
 
 ---
 
@@ -1014,12 +1014,20 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 **Severity:** Low · **Confidence:** Confirmed
 
 - **Observed divergence:** `bypassRuntime` is a transparent passthrough that **ignores every**
-  `setParameter` (`src/effects/registry.ts:343-358`); several effect types return it when the module
-  has not landed (`:1092-1093, 1110-1111`). The rack does surface a badge, but only via a 60 ms poll
+  `setParameter` (`src/effects/registry.ts:343-359`); several effect types return it when the module
+  has not landed (`:1092-1094, 1110-1112`). The rack does surface a badge, but only via a 60 ms poll
   (`src/ui/EffectRack.tsx:242-244`). The knobs still read the document (`src/ui/EffectRack.tsx:969,
-1310`), so the user sees a parameter set that has no effect on the audio.
+ 1310`), so the user sees a parameter set that has no effect on the audio.
 - **Smallest safe repair:** when the runtime is a passthrough, disable the knobs and say so in the
   control itself rather than in a polled badge.
+- **REPAIR (2026-10-27).** The disclosure now sits **AT the controls**: the generic parameter grid
+  and the quick controls render the engine's own reason in the same banner the flagship panels
+  already use, and the device state chip reads **PASSTHROUGH** instead of ACTIVE (the audio passes
+  through 1:1 — "ACTIVE" was a lie). **The knobs were deliberately NOT disabled** (the audit
+  suggested it): a fallback runtime ignores the write, but the value stays in the project and
+  applies when the module lands (the worklet refresh re-syncs the document), and the flagship
+  panels keep their controls live in exactly the same situation. A disabled control would block a
+  value the project keeps; the disclosure is what tells the truth.
 
 ---
 
@@ -1040,7 +1048,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 **Severity:** Low · **Confidence:** Confirmed
 
 - **Observed divergence:** dB→linear exists twice — `src/effects/scale-bridges.ts:32`
-  `dbToLinearGain` vs `src/effects/registry.ts:161` `dbToLin` (used 13× across
+  `dbToLinearGain` vs `src/effects/registry.ts:162` `dbToLin` (used 13× across
   `registry.ts:873-3212`). Two of four registered percent-100 bridges are hardcoded inline:
   `SCALE_BRIDGES` declares `ozvena.global.dryWet` and `morphdynamics.global.mix` →
   `mix01ToPercent100` (`scale-bridges.ts:75-84`), but `ozvenaNode.ts:143, 211, 221` and
@@ -1269,7 +1277,7 @@ is the only finding that breaks the product's own central contract.
   2. `src/effects/fxeqNode.ts:249-250` — the node's own comment states the intent: _"the restored
      entry arrives asynchronously via the callback so the host can write it through."_ The write-back
      is **deliberate design**, not an accident.
-  3. `src/ui/EffectRack.tsx:1116` — `onParam` → `store.execute(setFxEqParam(doc, trackId, fxId, fullId, value))`.
+  3. `src/ui/EffectRack.tsx:1119` — `onParam` → `store.execute(setFxEqParam(doc, trackId, fxId, fullId, value))`.
   4. `src/effects/fxeq-core/core/fxEqProcessor.ts:747-756` — the core's `undo()` **already applied**
      the restored value to the live DSP (`values[entry.id] = entry.value`; and `values["globalMix"]`
      _is_ the audible wet/dry — `:591`), then returned the **core** id (`globalMix`) and the **core**
@@ -1424,7 +1432,7 @@ product but no probe or test in this audit exercised it.
 | Scenario                                                               | Trigger                                                       | Expected invariant                                         | Observed / untested                                                                                                                                                                                                                                | Evidence                                                                                                                        | Risk                                                                                | Proposed test                                                                                                       |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Bypass toggled in the UI but not in the DSP                            | the user clicks bypass                                        | the effect is audibly bypassed                             | **Observed — diverges in kind.** Bypass is a _structural_ removal: the chain rebuilds, so processor state (tails, envelope, filter memory) is lost and the UI says ACTIVE                                                                          | `src/audio-engine/AudioEngine.ts:1190-1199, 1976-1981, 1364-1373`                                                               | medium (F-17)                                                                       | toggle bypass on a reverb with a long tail; assert the tail survives (listening)                                    |
-| Parameter unit mapping mismatch (0–1 vs dB/Hz/ms/%)                    | the doc stores a normalized value, the DSP wants a native one | the same intent yields the same sound on every surface     | **Observed — two separate owners** for dB→linear, and percent-100 bridges hardcoded in 2 of 4 registered pairs                                                                                                                                     | `src/effects/scale-bridges.ts:32, 75-84` vs `src/effects/registry.ts:161`; `ozvenaNode.ts:143`; `morphDynamicsNode.ts:23`       | low today, **high if one is edited** (F-20)                                         | assert every `SCALE_BRIDGES` entry is the function the node actually calls (fails today for ozvena + morphdynamics) |
+| Parameter unit mapping mismatch (0–1 vs dB/Hz/ms/%)                    | the doc stores a normalized value, the DSP wants a native one | the same intent yields the same sound on every surface     | **Observed — two separate owners** for dB→linear, and percent-100 bridges hardcoded in 2 of 4 registered pairs                                                                                                                                     | `src/effects/scale-bridges.ts:32, 75-84` vs `src/effects/registry.ts:162`; `ozvenaNode.ts:143`; `morphDynamicsNode.ts:23`       | low today, **high if one is edited** (F-20)                                         | assert every `SCALE_BRIDGES` entry is the function the node actually calls (fails today for ozvena + morphdynamics) |
 | A plugin preset restores UI fields but misses runtime processor values | a preset is applied                                           | the processor holds what the UI shows                      | **Observed — one candidate left open**: the parameter cache is seeded from the document and only pushes _differences_, so a factory that does not apply every parameter would leave it permanently unsent                                          | `src/audio-engine/AudioEngine.ts:1519, 1620-1625`                                                                               | medium — **not confirmed**; the shipped factories read appear to apply the full set | for every effect type, assert the runtime holds every document parameter after a rebuild                            |
 | A plugin instance is closed and reopened                               | remove the effect, add it back                                | the instance state is preserved, or the reset is disclosed | **Observed — diverges.** The reopened instance starts at the **factory defaults** and mints a **new id**, invalidating every AI-held reference to the old one                                                                                      | measured §5.3 (T3)                                                                                                              | low-medium (F-27)                                                                   | assert the AI surface discloses the reset                                                                           |
 | A plugin's in-plugin undo writes back into the document                | the user presses PRISM's ↶ Undo                               | the document, the UI and the DSP all show the undone value | **Observed — diverges, and it is the only second writer.** The DSP applies the undo and posts it back; the write arrives under the plugin's internal id (`globalMix`, 0..100) and the normaliser discards it in favour of the canonical id (`mix`) | **measured §5.3 (T6)**; `src/ui/FxEqPanel.tsx:219-227`; `src/effects/fxeqNode.ts:249-250`; `src/effects/definitions.ts:415-418` | **critical (F-28)**                                                                 | assert the document's `mix` changes, that document and core agree, and that a reload reproduces the same wet/dry    |
