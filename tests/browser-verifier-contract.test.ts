@@ -196,4 +196,24 @@ describe("browser verifier contract", () => {
     expect(code).toMatch(/bootStep/);
     expect(code).toMatch(/pluginStep/);
   });
+
+  it("the reload step re-selects the track that holds the flagship", () => {
+    const code = stripComments(readVerifier());
+    // The selected track is UI state, not part of the saved document: a
+    // reopened project lands on a DEFAULT track. MEASURED 2026-10-27: the
+    // PRISM survived the reload intact, but the editor never mounted because
+    // another track was current, and the wait timed out on a green product.
+    expect(code, "the flow must identify the current track").toContain('.track-tab[aria-current="true"]');
+  });
+
+  it("the dock panel's open state comes from the tab, not from the panel element", () => {
+    const code = stripComments(readVerifier());
+    // The panel element can be mounted while its dock slot is closed, so
+    // `isVisible()` on it is not the signal — reading it toggled the panel
+    // shut. The dock TAB carries the state (`aria-expanded`).
+    expect(code, "the flow must read the dock tab's aria-expanded").toContain("aria-expanded");
+    expect(code, "the flow must not decide the panel state with isVisible() on the panel").not.toMatch(
+      /devices-panel[\s\S]{0,140}isVisible/,
+    );
+  });
 });

@@ -10,7 +10,7 @@
     "fx-extra-worklet.js": "4a4ec2ab7419b277a1cd4fad442686bad7e574b207329bdd66be89a5a6913dbb",
     "fxeq-worklet.js": "5a06b7f37c05bbe5a35adbc8a4c99a4e5230428d53511b78e551511cbae0aa1d",
     "generative-player-worklet.js": "e6b9c29e46bfe293b3562734ce0d8f424f50b5bc483261d167c569e1bf812de0",
-    "hlas-worklet.js": "9323bf24dab00a43ccb6b1dca965961153fb2c13e0a7727c7dc9a9198c5f732e",
+    "hlas-worklet.js": "bb59a7f9abfece2947a0869cedf3f2d2e5e9c3e1472339380f4806114ecb38c8",
     "kopa-worklet.js": "61f040b74d0bfb159e3dcd1cde7f57c20e876c294dec12c9d729b54fb5af4ff7",
     "ladic-worklet.js": "007d6932a58b55ed2063b675f615931d1bc6c1bd1411ab92615d27148927da06",
     "morph-dynamics-worklet.js": "c8ffa26d9a2bbe687aa426924acd5b0b89d0c3a20a49d2a02f38083313616477",
@@ -22,7 +22,7 @@
     "skrutka-worklet.js": "62f4a27b9e499ff4b05fb9601b4e8ce0dec793bc6eea070042356b93b00f243c",
     "spectral-worklet.js": "76d562921c2e34ad8880a9a41bdb545cbb2da6e2460548fde912974fe2571784",
     "strk-worklet.js": "357fb21e329d2a6ec3df3bd8439901d34946a93bc18360685ab66f8ab0032f26",
-    "struna-worklet.js": "b1b0dc7cf78233ea504a728cf4bfa21299ddbed6055f47b79681b11b13186a19",
+    "struna-worklet.js": "ac3649935acbaa9b41d4d3725e714bb678db6d72e9b48087c5124eca712bb438",
     "tsar-worklet.js": "9221c6e277a5c2179a15a7b5802ef862137f38f744ad7eecf3d302cc2ffc20f0",
     "ultina-worklet.js": "ec9f97bf839aacd76eeaf618c4986dc58788832fac3743b60f9fcf3b11dea60d"
   }

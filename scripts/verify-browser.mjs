@@ -964,6 +964,26 @@ try {
     await plugPage.waitForSelector(".fxeq-panel .effect-ab", { timeout: 5000 });
     // Reload is the user-facing persistence boundary: source, both snapshots
     // and the enabled morph control must survive the project rehydrate.
+    //
+    // TWO facts the flow has to respect, both MEASURED 2026-10-27 with a
+    // focused probe:
+    //
+    //  - The selected track is UI state, not part of the saved document: a
+    //    reopened project lands on a DEFAULT track, so the rack shows a
+    //    DIFFERENT chain than the one the flagship was added to. The PRISM
+    //    survived the reload intact (the probe found it on its track, with
+    //    the editor mounting the moment that track was selected) — but the
+    //    flow waited for the editor while another track was current, and the
+    //    wait timed out on a product that was fine. The flow re-selects the
+    //    track that holds the flagship, the way a user would.
+    //  - The dock TAB carries the open state (`aria-expanded`). The panel
+    //    element can be mounted while its slot is closed, so `isVisible()` on
+    //    the panel is NOT the signal — reading it made the flow toggle the
+    //    panel shut and then wait for an editor that could not mount.
+    const currentTrackName = await plugPage.evaluate(() => {
+      const tab = document.querySelector('.track-tab[aria-current="true"]');
+      return (tab?.getAttribute("title") ?? "").split(" — ")[0] || null;
+    });
     pluginStep = "reload and re-verify";
     await plugPage.waitForTimeout(1200); // allow command autosave to settle before reload
     await plugPage.reload({ waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
@@ -975,9 +995,21 @@ try {
       await plugPage.locator(".pb-row button:has-text('OPEN')").first().click();
     }
     await plugPage.waitForSelector(".sequencer", { timeout: 30_000 });
-    const reloadedDevices = plugPage.locator(".devices-panel").first();
-    if (!(await reloadedDevices.isVisible().catch(() => false))) {
-      await clickPanelAction(plugPage, "FX");
+    const devicesTab = plugPage.locator('.dock-tabs button[aria-label="Toggle track device chain"]').first();
+    if ((await devicesTab.getAttribute("aria-expanded")) !== "true") {
+      await devicesTab.click();
+    }
+    await plugPage
+      .waitForSelector("#dock-panel-devices", { state: "visible", timeout: LAZY_PANEL_TIMEOUT_MS })
+      .catch(() => {});
+    if (currentTrackName) {
+      await plugPage.evaluate((name) => {
+        const tab = [...document.querySelectorAll(".track-tab")].find(
+          (t) => (t.getAttribute("title") ?? "").split(" — ")[0] === name,
+        );
+        tab?.click();
+      }, currentTrackName);
+      await plugPage.waitForTimeout(300);
     }
     await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 60_000 });
     const reloadedSource = await plugPage.locator(".fx-sidechain-picker select").first().inputValue();

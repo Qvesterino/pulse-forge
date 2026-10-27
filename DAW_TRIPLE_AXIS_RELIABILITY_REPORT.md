@@ -48,11 +48,15 @@ was running.
 
 **Verdict.** The intent surface's contract with the AI is materially tighter than it was 48 hours
 ago, and the fixes are guarded by censuses, not spot checks. The remaining risk is concentrated
-outside the intent layer: the browser verifier still drives UI that no longer exists (F-15/F-16,
-unrepaired), several P2/P3 backlog items (F-07/F-08, F-10…F-14) are verified-open but unfixed,
-and — a new class this session — **the repo's own gates are red on `main` from concurrent waves
-landing without their gates** (V-1), which is exactly the "green is not proof" failure mode the
-directive warns about, one level up: here the gates themselves are being landed broken.
+outside the intent layer: several P2/P3 backlog items (F-07/F-08, F-10…F-14) are verified-open but
+unfixed, and — a new class this session — **the repo's own gates are red on `main` from concurrent
+waves landing without their gates** (V-1), which is exactly the "green is not proof" failure mode
+the directive warns about, one level up: here the gates themselves are being landed broken.
+
+**UPDATE (sixth session):** the browser-verifier sentence above is **superseded** — the verifier no
+longer drives UI that no longer exists. F-15/F-16 are repaired and, for the first time, MEASURED:
+a browser-verifier run in an isolated detached worktree at HEAD (§8h) found both gates RED, which
+proved the repair was only half done, and the sixth session closed the rest.
 
 **What this report does not claim.** No human listening. No full-suite re-run to zero-red (the
 tree was mid-landing for four other sessions the entire time — see §7). No real-browser run (the
@@ -221,7 +225,7 @@ deserves a suite.
 | F-08             | P2  | verified open — `kyx_plugin_param` cannot reach deep params though its description claims it can                                                                                                                                   |
 | F-10…F-13        | P3  | verified open (read-back no-movement wording, duplicate alias table, percent-taper divergence, test-only scale bridges)                                                                                                            |
 | F-14             | P3  | verified open — `tests/zz-diagnostic.test.ts` still on `main`                                                                                                                                                                      |
-| F-15/F-16        | P2  | verified open — the browser verifier still drives `.devices-add-effect` (a `<select>` the React code no longer has) and budgets 5 s against a `React.lazy` panel; the plugin workflow they protect is unverified in a real browser |
+| F-15/F-16        | P2  | FIXED in the sixth session (`602be33e`) -- measured: the verifier drives the live popover, and every wait on a `React.lazy` panel carries a module-boundary budget; guarded by `tests/browser-verifier-contract.test.ts` (8 cases) |
 | pre-existing red | —   | `tests/intent-router-corpus.test.ts` "model route gate" reproduced RED on a **clean detached worktree at HEAD** — not this session's (the same file was flagged pre-existing by the 2026-10-23 session)                            |
 
 ---
@@ -256,7 +260,7 @@ over MCP v1 honestly; checkpoint restore is ungated by design as the documented 
 | Strict typecheck                                       | **0 errors in this session's files.** Re-measured by the second session on the tree as it stands: **13 errors — 7 pre-existing at HEAD** (`previewDeck.ts` ×2, `bass-harmonic-audition.test.ts`, `koren-audition-engine.test.ts` ×4 — the KOREN/previewDeck wave) **and 6 from the in-flight wave** (`struna-factory.ts` ×4, `struna/engine.test.ts` ×2). Measured at HEAD with this session's files reverted: the identical 7 — so this session adds none |
 | Prettier                                               | this session's 9 files clean; repo gate red only on parallel in-flight/untracked files (V-1)                                                                                                                                                                                                                                                                                                                                                               |
 | Full vitest suite                                      | **RUN by the second session — 1208/1230 files pass, 22 fail**; every red attributed to another wave by measurement (§7b). Not green, but not this session's                                                                                                                                                                                                                                                                                                |
-| Production build / browser verifier                    | **NOT RUN** — the tree is still mid-landing for a fourth wave; a run would measure their work as much as this session's. Honest gap, not a pass.                                                                                                                                                                                                                                                                                                           |
+| Production build / browser verifier                    | **RUN (sixth session)** - browser verifier, isolated detached worktree at HEAD: 434/438 checks pass after the F-15/F-16 repair; every remaining red is attributed in §8h. The production build is still NOT RUN.                                                                                                                                                                                                                                           |
 | Listening                                              | **NOT PERFORMED** — no claim in this report rests on an ear                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ### 7b. The full suite — FINALLY RUN, and every red attributed
@@ -527,7 +531,7 @@ as a PATCH, so the peer's uncommitted work in the same file stayed out of the co
 | **P1** | V-1: land the gates with the waves — the typecheck/format reds on `main` are the loudest reliability hazard in the tree right now                    | low     | the in-flight waves' owners |
 | **P1** | V-2: the `kyx_save` tool-count pin (the ROT GUARD playbook exists; run it)                                                                           | low     | the landing wave            |
 | **P2** | R-03 (carried): the mechanical "normalize must not prune what the undo delta does not carry" guard — the class-ending test                           | medium  | none                        |
-| **P2** | R-10 (carried): repair the browser verifier (F-15 selector, F-16 lazy budget) so the plugin workflow is verified in a real browser again             | low     | none                        |
+| **P2** | R-10 (carried): repair the browser verifier (F-15 selector, F-16 lazy budget) - **CLOSED** in the sixth session (`602be33e`), measured (§8h)         | low     | none                        |
 | **P2** | F-07: unify take-clip delete semantics (UI promotes the alternate take; MCP refuses) and make return-bus effect removal honest                       | medium  | none                        |
 | **P2** | F-08: teach `kyx_plugin_param` the deep params or make its description honest                                                                        | medium  | none                        |
 | **P2** | V-3: give the AI bridge a unit suite (recipes, slot mappers) — it is the AI's direct write path and has one guard                                    | medium  | none                        |
@@ -541,8 +545,9 @@ as a PATCH, so the peer's uncommitted work in the same file stayed out of the co
    every session's "typecheck clean" claim is provisional. The fix is procedural, not technical.
 2. **Finish R-03, the class-ending normalizer guard.** Two incidents (sidechain/MIDI, take lanes)
    came from the same seam; a per-case fix does not end a class.
-3. **Repair the browser verifier (F-15/F-16).** Two of its stable reds no longer measure the
-   product; the plugin workflow it protects is unverified in a real browser.
+3. **Repair the browser verifier (F-15/F-16).** **CLOSED in the sixth session** (`602be33e`): the
+   add-effect flow drives the live popover, and every wait on a `React.lazy` panel carries a
+   module-boundary budget. Measured in a real browser: 434/438 checks pass (§8h).
 4. **Extract the shared `verifiedMutation` helper across the MCP tools (R-02).** The read-back
    envelope is now the proven pattern; `src/mcp/intent-readback.ts` is already in flight — finish
    it and make "reports the state it produced" a framework property.
@@ -773,8 +778,12 @@ carried R-08/R-09.
   **UPDATE (second session):** the suite **was** run — 1208/1230 files pass, 22 fail — and every red is
   attributed to another wave by a two-worktree measurement (§7b). **0 of the 24 belong to this
   session.** The production build and the browser verifier remain unrun for the reason above.
-- **The browser story is unchanged:** three stable verifier reds, of which two are verifier
-  defects (F-15/F-16); Firefox/WebKit unexercised.
+- **UPDATE (sixth session) — the browser story CHANGED:** the verifier was finally **RUN** in an
+  isolated detached worktree at HEAD, and **both F-15/F-16 gates were RED** — the app-boot gate
+  timed out on a lazy panel's 5 s budget, and the plugin workflow on the same class of budget. The
+  repair (one owner for the lazy budget, and gates that name the step that failed) took the run
+  from **419/438 to 434/438**, with the app-boot gate green (§8h). Firefox/WebKit remain
+  unexercised — the run is Chromium, as the verifier defaults.
 - **No listening test** exists for anything in this report; the loudness/audibility claims are
   structural, not perceptual.
 - **The parallel read-back wave was landing while this report was written** — the F-18 wording
