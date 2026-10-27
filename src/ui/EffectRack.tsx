@@ -4,7 +4,7 @@ import { usePlayheadTick } from "./usePlayheadTick";
 import { effectParamEffectiveValues } from "../project-model/effective-values";
 import { canonicalizeDeprecatedTarget } from "../project-model/targets";
 import type { EffectType, Track } from "../project-model/types";
-import type { EffectGainReductionReading } from "../effects/types";
+import type { EffectGainReductionReading, EffectRuntime } from "../effects/types";
 import { FxAddPopover } from "./FxAddPopover";
 import { FxIntentBar } from "./FxIntentBar";
 import { EmptyState, PanelHeader } from "./PanelChrome";
@@ -677,6 +677,13 @@ function Device({
   devicesMode?: boolean;
 }) {
   const services = useServices();
+  // CF-03 live knob preview: the same optional runtime access the PRISM panel
+  // uses — degraded bypass runtimes and test mocks may not expose it, and
+  // previewFxParam itself no-ops on a degraded runtime.
+  const engineWithPreview = services.engine as typeof services.engine & {
+    previewFxParam?: (trackId: string, fxId: string, paramId: string, value: number) => void;
+    getFxRuntime?: (trackId: string, fxId: string) => EffectRuntime | null;
+  };
   // GOAL 04: `doc` is only consumed as a command argument (applyEffectPreset,
   // moveEffect, etc.). A plain getter avoids the doc-wide subscription this
   // component would otherwise carry.
@@ -1316,6 +1323,27 @@ function Device({
             contextHint={contextHint}
             fallbackReason={fallbackReason}
             onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
+            onPreview={(paramId, value) => {
+              // An automation lane owns the sound while it drives the
+              // parameter — a runtime write would fight the lane for the
+              // length of the drag, then snap back on commit.
+              if (effectiveValues[paramId] !== undefined) return;
+              engineWithPreview.previewFxParam?.(track.id, fx.id, paramId, value);
+            }}
+            onCancelPreview={(paramId) => {
+              if (effectiveValues[paramId] !== undefined) return;
+              const runtime = engineWithPreview.getFxRuntime?.(track.id, fx.id) ?? null;
+              if (!runtime) return;
+              runtime.beginParamSync?.();
+              try {
+                runtime.setParameter(
+                  paramId,
+                  fx.params[paramId] ?? def.params.find((p) => p.id === paramId)?.default ?? 0,
+                );
+              } finally {
+                runtime.endParamSync?.();
+              }
+            }}
           />
           <div className="fx-output-trim-row" aria-label="Effect output level">
             <Slider

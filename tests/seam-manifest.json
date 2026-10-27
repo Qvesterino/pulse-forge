@@ -111,6 +111,15 @@
       "negativeSpec": "NEGATIVE: Solo does not touch Mute, and Mute does not touch Solo"
     },
     {
+      "id": "fx-knob-live-preview",
+      "status": "COVERED",
+      "entryPoint": "src/ui/EffectRack.tsx Device → EffectParameterGrid onPreview → AudioEngine.previewFxParam",
+      "note": "CF-03 (creative-flow audit 2026-10-27): a drag on any generic device knob is audible DURING the drag via the same previewFxParam path the PRISM editor uses; the document still commits once on pointer-up. An interrupted drag re-writes the committed value through the runtime with no document command, and a parameter an automation lane drives never previews (the lane owns the sound).",
+      "spec": "tests/ui/EffectRack.test.tsx",
+      "seamEvent": "previewFxParam",
+      "negativeSpec": "NEGATIVE: an interrupted knob drag cancels the preview"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

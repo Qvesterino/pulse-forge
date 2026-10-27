@@ -7,6 +7,8 @@ import { UltinaPanel } from "../../src/ui/UltinaPanel";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { EFFECT_DEFS } from "../../src/effects/registry";
+import { ProjectStore } from "../../src/store/ProjectStore";
+import { addAutomationLane, addAutomationPoint } from "../../src/commands/automation";
 
 describe("EffectRack", () => {
   function trackWithEffects(count: number) {
@@ -62,6 +64,93 @@ describe("EffectRack", () => {
     const collapse = screen.getByRole("button", { name: "Collapse Delay" });
     await user.click(collapse);
     expect(screen.getByRole("button", { name: "Expand Delay" })).toBeInTheDocument();
+  });
+
+  it("sends a GENERIC device knob's drag to live preview while commit stays a document command (CF-03)", async () => {
+    const { doc, track } = trackWithEffects(1);
+    const services = mockServices(doc);
+    const previewFxParam = vi.fn();
+    (services.engine as any).previewFxParam = previewFxParam;
+    renderWithContext(<EffectRack track={track} />, { services });
+
+    const slider = screen.getByRole("slider", { name: "MIX" });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 80, pointerId: 1 });
+    // onPreview is rAF-coalesced — let the frame land before pointer-up
+    // cancels it (same cadence the PRISM preview spec uses).
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    fireEvent.pointerUp(slider, { pointerId: 1 });
+
+    expect(previewFxParam).toHaveBeenCalledWith(track.id, "fx0", "mix", expect.any(Number));
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((command) => command.type === "setEffectParam")).toBe(true);
+  });
+
+  it("NEGATIVE: an interrupted knob drag cancels the preview and re-writes the committed value (CF-03)", async () => {
+    const { doc, track } = trackWithEffects(1);
+    const services = mockServices(doc);
+    const previewFxParam = vi.fn();
+    const setParameter = vi.fn();
+    (services.engine as any).previewFxParam = previewFxParam;
+    (services.engine as any).getFxRuntime = vi.fn(() => ({
+      beginParamSync: vi.fn(),
+      setParameter,
+      endParamSync: vi.fn(),
+    }));
+    renderWithContext(<EffectRack track={track} />, { services });
+
+    const slider = screen.getByRole("slider", { name: "MIX" });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 80, pointerId: 1 });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    fireEvent.pointerCancel(slider, { pointerId: 1 });
+
+    // The drag WAS audible up to the interruption…
+    expect(previewFxParam).toHaveBeenCalled();
+    // …and the cancel restored the COMMITTED value on the runtime — no
+    // document command, no junk undo entry.
+    const committed = EFFECT_DEFS.delay.params.find((param) => param.id === "mix")!.default;
+    expect(setParameter).toHaveBeenCalledWith("mix", committed);
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((command) => command.type === "setEffectParam")).toBe(false);
+  });
+
+  it("NEGATIVE: an automated knob does not preview — the lane owns the sound (CF-03)", async () => {
+    const base = createProjectFromTemplate("house");
+    const store = new ProjectStore(base);
+    const track = store.doc.tracks.find((candidate) => candidate.kind === "instrument")!;
+    track.effects = [{ id: "fx0", type: "delay" as const, bypassed: false, params: {} }];
+    store.execute(addAutomationLane(store.doc, { kind: "fxParam", trackId: track.id, fxId: "fx0", paramId: "mix" }));
+    const laneId = store.doc.automation[store.doc.automation.length - 1]!.id;
+    store.execute(addAutomationPoint(store.doc, laneId, 0, 0.7));
+
+    const services = mockServices(store.doc);
+    const previewFxParam = vi.fn();
+    (services.engine as any).previewFxParam = previewFxParam;
+    renderWithContext(<EffectRack track={track} />, { services });
+
+    // MIX is lane-driven: a runtime write would fight the automation for the
+    // length of the drag. FEEDBK has no lane and still previews.
+    fireEvent.pointerDown(screen.getByRole("slider", { name: "MIX" }), {
+      button: 0,
+      clientX: 10,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(screen.getByRole("slider", { name: "MIX" }), { clientX: 80, pointerId: 1 });
+    fireEvent.pointerDown(screen.getByRole("slider", { name: "FEEDBK" }), {
+      button: 0,
+      clientX: 10,
+      pointerId: 2,
+    });
+    fireEvent.pointerMove(screen.getByRole("slider", { name: "FEEDBK" }), { clientX: 80, pointerId: 2 });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+
+    expect(previewFxParam).not.toHaveBeenCalledWith(track.id, "fx0", "mix", expect.any(Number));
+    expect(previewFxParam).toHaveBeenCalledWith(track.id, "fx0", "feedback", expect.any(Number));
   });
 
   it("opens the goal-first add popover with the full device grid", () => {

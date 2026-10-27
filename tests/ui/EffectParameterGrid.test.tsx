@@ -199,4 +199,49 @@ describe("EffectParameterGrid", () => {
     expect(screen.getByRole("slider", { name: /Drive/ })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /Bypass/ })).toBeInTheDocument();
   });
+
+  it("CF-03: forwards a drag to onPreview/onCancelPreview with the param id", async () => {
+    const onPreview = vi.fn();
+    const onCancelPreview = vi.fn();
+    const params: ParamDef[] = [{ id: "drive", label: "Drive", min: 0, max: 100, default: 50 }];
+    const { act, fireEvent } = await import("@testing-library/react");
+    renderWithContext(
+      <EffectParameterGrid
+        family="dynamics"
+        params={params}
+        values={{}}
+        onChange={() => {}}
+        onPreview={onPreview}
+        onCancelPreview={onCancelPreview}
+        paged={false}
+      />,
+    );
+    const slider = screen.getByRole("slider", { name: /Drive/ });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 30, pointerId: 1 });
+    // onPreview is rAF-coalesced — let the frame land.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(onPreview).toHaveBeenCalledWith("drive", expect.any(Number));
+    fireEvent.pointerCancel(slider, { pointerId: 1 });
+    expect(onCancelPreview).toHaveBeenCalledWith("drive");
+  });
+
+  it("NEGATIVE (CF-03): without preview handlers the knob stays commit-only and drags still commit", async () => {
+    const onChange = vi.fn();
+    const params: ParamDef[] = [{ id: "drive", label: "Drive", min: 0, max: 100, default: 50 }];
+    const { act, fireEvent } = await import("@testing-library/react");
+    renderWithContext(
+      <EffectParameterGrid family="dynamics" params={params} values={{}} onChange={onChange} paged={false} />,
+    );
+    const slider = screen.getByRole("slider", { name: /Drive/ });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 30, pointerId: 1 });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    fireEvent.pointerUp(slider, { pointerId: 1 });
+    expect(onChange).toHaveBeenCalledWith("drive", expect.any(Number));
+    // Keyboard stepping still commits without any preview path involved
+    // (direct keyDown — a synthetic click here would itself commit a value).
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
 });

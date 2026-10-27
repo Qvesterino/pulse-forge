@@ -7,6 +7,8 @@ export function EffectParameterGrid({
   params,
   values,
   onChange,
+  onPreview,
+  onCancelPreview,
   paged,
   contextHint,
   effectiveValues,
@@ -16,6 +18,16 @@ export function EffectParameterGrid({
   params: ParamDef[];
   values: Record<string, number>;
   onChange: (paramId: string, value: number) => void;
+  /**
+   * Live drag preview (CF-03): fired for every coalesced move on a continuous
+   * knob, BEFORE the single document commit on pointer-up — the knob is
+   * audible during the drag the way the mixer faders and the PRISM editor
+   * already are. Optional: hosts without an engine preview path stay
+   * commit-only and nothing else changes.
+   */
+  onPreview?: (paramId: string, value: number) => void;
+  /** Restore the committed value after an interrupted drag or long-press. */
+  onCancelPreview?: (paramId: string) => void;
   paged: boolean;
   contextHint?: (paramId: string) => string | undefined;
   /**
@@ -98,6 +110,8 @@ export function EffectParameterGrid({
               format={param.format}
               taper={param.taper}
               onCommit={(value) => onChange(param.id, value)}
+              onPreview={onPreview ? (value) => onPreview(param.id, value) : undefined}
+              onCancel={onCancelPreview ? () => onCancelPreview(param.id) : undefined}
             />
             {effectiveValue !== undefined ? (
               // The knob value is the REQUEST; this line is what the DSP is
