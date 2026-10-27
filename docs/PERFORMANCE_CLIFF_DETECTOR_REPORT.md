@@ -1362,14 +1362,14 @@ sides, the sum flat by algebra) and on the counts — not on an ear (§12.1). Th
 effect keeps running, which is a deliberate trade and not a free win. And the browser render path
 remains unmeasured (§12).
 
-**One decision was taken without the interactive confirmation, and it is recorded here rather than
-left implicit.** The choice between the variants was put to a questionnaire, and the dialogue was
-interrupted before an answer came. The variant that shipped is the one the audit's priority 6
-states literally — _"keep the bypassed effect in the chain and in the signature"_ — which is also
-the only one that satisfies the priority's own acceptance gate ("the effect's node identity is
-unchanged across a bypass toggle"). The alternatives, and why they lose, are in ADR 0068. Had the
-answer gone the other way, the two pinned contracts would have to be changed back — the reason is
-at each pin.
+**The variant was chosen before the answer arrived, and the answer confirmed it.** The choice
+between the variants was put to a questionnaire; the dialogue was interrupted before an answer
+came, and the work proceeded on the variant the audit's priority 6 states literally — _"keep the
+bypassed effect in the chain and in the signature"_ — which is also the only one that satisfies
+the priority's own acceptance gate ("the effect's node identity is unchanged across a bypass
+toggle"). The answer that arrived afterwards was **variant A — the same one** (bypass = a
+parameter write, audit priority 6), so **nothing had to be reworked** and the two pinned contracts
+stand as they are. The alternatives, and why they lose, are in ADR 0068.
 
 ### 14.5 Still open
 
