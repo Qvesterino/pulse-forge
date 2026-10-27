@@ -156,6 +156,30 @@ Two honest limits of the measure:
 - The panel grew three small control rows. It is a panel of controls, not an
   essay: a row of chips, a seed field, and a row of recent runs.
 
+## Bundle cost (measured, isolated)
+
+Both numbers come from the SAME tree built twice — the parent `03d845d0`
+and that parent plus this wave's source changes — in one isolated worktree,
+so a parallel session's concurrent commits cannot contaminate the delta.
+
+|                  | Before  | After   | Delta                       |
+| ---------------- | ------- | ------- | --------------------------- |
+| DAW JS sum       | 5801 KB | 5807 KB | **+6 KB** (ceiling 5630 KB) |
+| Studio boot path | 2191 KB | 2191 KB | **+0 KB** (ceiling 2200 KB) |
+| Shipped JS total | 8304 KB | 8309 KB | +5 KB                       |
+
+The boot path did not move: the mutation panel and the mutator sit behind the
+lazy panel chunk, not on the studio's start-up path.
+
+Two facts the budget owner needs, and neither of them is this wave's doing:
+the DAW-JS gate was **already red by 171 KB** before this wave (it stood at
+5666 KB when wave 3 was measured, and the commits between them added 135 KB),
+and the boot path has **only 9 KB of headroom** left. The ceiling was not
+raised: the trigger in `scripts/check-bundle-size.mjs` forbids a raise
+without a diet, and wave 2's dead-weight audit
+(`scripts/audit-dead-weight.mjs`) measured 204 of 204 chunks reachable and 0
+modules shipped twice in the main graph — the sum is shipped product.
+
 ## What this ADR does NOT change
 
 The TSAR DSP is untouched. The parameter set, the engines and the factory
