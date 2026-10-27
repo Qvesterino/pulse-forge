@@ -59,58 +59,42 @@ describe("the mutation audit — the measure can tell a real difference from a f
 });
 
 describe("the mutation audit — every variant the mutator offers differs in SOUND", () => {
-  it(
-    "no variant produces the original's sound, at any range",
-    () => {
-      for (const range of [1, 0.75, 0.5, 0.25]) {
-        for (let seedIndex = 0; seedIndex < 6; seedIndex += 1) {
-          const seed = (1_234_567 + seedIndex * 7919) >>> 0;
-          for (const variant of mutateTsarPatch(BASE, seed, 6, { range })) {
-            const distance = audibleDistance(BASE_RENDER, renderPatch(variant.params));
-            expect(
-              distance,
-              `seed ${seed} ${variant.id} (range ${range}) must not sound like the original`,
-            ).toBeGreaterThan(0);
-          }
-        }
-      }
-    },
-    180_000,
-  );
-
-  it(
-    "at the default range every variant is a real difference, not a rounding error",
-    () => {
-      for (let seedIndex = 0; seedIndex < 8; seedIndex += 1) {
+  it("no variant produces the original's sound, at any range", () => {
+    for (const range of [1, 0.75, 0.5, 0.25]) {
+      for (let seedIndex = 0; seedIndex < 6; seedIndex += 1) {
         const seed = (1_234_567 + seedIndex * 7919) >>> 0;
-        for (const variant of mutateTsarPatch(BASE, seed, 6)) {
+        for (const variant of mutateTsarPatch(BASE, seed, 6, { range })) {
           const distance = audibleDistance(BASE_RENDER, renderPatch(variant.params));
-          expect(distance, `seed ${seed} ${variant.id} must be a real difference`).toBeGreaterThan(
-            REAL_DIFFERENCE_FLOOR,
-          );
+          expect(
+            distance,
+            `seed ${seed} ${variant.id} (range ${range}) must not sound like the original`,
+          ).toBeGreaterThan(0);
         }
       }
-    },
-    180_000,
-  );
+    }
+  }, 180_000);
 
-  it(
-    "a patch with BOTH sources audible also produces audible variations",
-    () => {
-      // The liveness rule follows the patch: with B audible, B's axes join
-      // the pool and the variants move further.
-      const both = auditParams({ srcBLevel: 0.7, srcBEngine: 1, morph: 0.4 });
-      const bothRender = renderPatch(both);
-      for (let seedIndex = 0; seedIndex < 4; seedIndex += 1) {
-        const seed = (777_000 + seedIndex * 7919) >>> 0;
-        for (const variant of mutateTsarPatch(both, seed, 6)) {
-          const distance = audibleDistance(bothRender, renderPatch(variant.params));
-          expect(distance, `seed ${seed} ${variant.id} must be a real difference`).toBeGreaterThan(
-            REAL_DIFFERENCE_FLOOR,
-          );
-        }
+  it("at the default range every variant is a real difference, not a rounding error", () => {
+    for (let seedIndex = 0; seedIndex < 8; seedIndex += 1) {
+      const seed = (1_234_567 + seedIndex * 7919) >>> 0;
+      for (const variant of mutateTsarPatch(BASE, seed, 6)) {
+        const distance = audibleDistance(BASE_RENDER, renderPatch(variant.params));
+        expect(distance, `seed ${seed} ${variant.id} must be a real difference`).toBeGreaterThan(REAL_DIFFERENCE_FLOOR);
       }
-    },
-    180_000,
-  );
+    }
+  }, 180_000);
+
+  it("a patch with BOTH sources audible also produces audible variations", () => {
+    // The liveness rule follows the patch: with B audible, B's axes join
+    // the pool and the variants move further.
+    const both = auditParams({ srcBLevel: 0.7, srcBEngine: 1, morph: 0.4 });
+    const bothRender = renderPatch(both);
+    for (let seedIndex = 0; seedIndex < 4; seedIndex += 1) {
+      const seed = (777_000 + seedIndex * 7919) >>> 0;
+      for (const variant of mutateTsarPatch(both, seed, 6)) {
+        const distance = audibleDistance(bothRender, renderPatch(variant.params));
+        expect(distance, `seed ${seed} ${variant.id} must be a real difference`).toBeGreaterThan(REAL_DIFFERENCE_FLOOR);
+      }
+    }
+  }, 180_000);
 });

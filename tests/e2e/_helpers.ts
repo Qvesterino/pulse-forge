@@ -123,16 +123,20 @@ export async function openHouseTemplate(page: Page, options: { timeoutMs?: numbe
 
 async function openFirstProjectTemplate(page: Page): Promise<void> {
   const firstTemplate = page.locator(".pb-template").first();
-  // The template disclosure starts OPEN and COLLAPSES once the project list
-  // loads, so the expansion has to happen AFTER the list arrives — the
-  // first-run summary ("EXPLORE ALL PROJECT TEMPLATES") is that signal.
-  // Expanding before the list arrives was a race the card then lost.
-  const expandTemplates = page.getByText("EXPLORE ALL PROJECT TEMPLATES", { exact: true });
-  const firstRun = await expandTemplates
+  // The template disclosure is UNCONTROLLED (the open state must never sit
+  // in React props — a controlled `open` snapped a user-expanded section
+  // shut on every re-render). On a first run it mounts OPEN, so the summary
+  // is clicked ONLY when the templates are actually hidden — a blind click
+  // would CLOSE an already-open section (regressed the e2e boot after the
+  // uncontrolled-disclosure fix).
+  const firstRun = await page
+    .getByText("EXPLORE ALL PROJECT TEMPLATES", { exact: true })
     .waitFor({ state: "visible", timeout: 15_000 })
     .then(() => true)
     .catch(() => false);
-  if (firstRun) await expandTemplates.click();
+  if (firstRun && !(await firstTemplate.isVisible())) {
+    await page.getByText("EXPLORE ALL PROJECT TEMPLATES", { exact: true }).click();
+  }
   await firstTemplate.waitFor({ state: "visible", timeout: 15_000 });
   await firstTemplate.click();
 }

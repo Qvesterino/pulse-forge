@@ -64,8 +64,9 @@ import {
   targetOwner,
   targetParamDef,
 } from "./targets";
+import { assignPointIds } from "./automation";
 
-export const SCHEMA_VERSION = 38;
+export const SCHEMA_VERSION = 39;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -421,16 +422,27 @@ export function sanitizeSceneAutomation(
     if (doc && !isAutomationTargetValid(doc, target)) continue;
     if (!Array.isArray(raw.points)) continue;
     const id = typeof raw.id === "string" ? raw.id : uid("sceneAuto");
-    const points = raw.points
-      .map((p: unknown) => {
-        if (!isObject(p)) return null;
-        const tick = Math.max(0, Math.floor(Number(p.tick) || 0));
-        const value = Number(p.value);
-        if (!Number.isFinite(value)) return null;
-        return { tick, value: doc ? clampTargetValue(doc, target, value) : value };
-      })
-      .filter((p: unknown): p is { tick: number; value: number } => p !== null)
-      .sort((a: { tick: number }, b: { tick: number }) => a.tick - b.tick);
+    const points = assignPointIds(
+      id,
+      raw.points
+        .map((p: unknown) => {
+          if (!isObject(p)) return null;
+          const tick = Math.max(0, Math.floor(Number(p.tick) || 0));
+          const value = Number(p.value);
+          if (!Number.isFinite(value)) return null;
+          // Audit F-07: the point's identity SURVIVES normalisation — a
+          // rebuilt point array that dropped the id would strip every lane of
+          // its identity and send an undo to the wrong point.
+          const pointId = typeof p.id === "string" && p.id !== "" ? p.id : undefined;
+          return {
+            ...(pointId ? { id: pointId } : {}),
+            tick,
+            value: doc ? clampTargetValue(doc, target, value) : value,
+          };
+        })
+        .filter((p: unknown): p is { tick: number; value: number } => p !== null)
+        .sort((a: { tick: number }, b: { tick: number }) => a.tick - b.tick),
+    );
     if (points.length === 0) continue;
     out.push({
       id,
@@ -1219,7 +1231,10 @@ function sanitizeGenerativeConfig(raw: unknown, trackId: string, trackIds: Set<s
               const tick = Number(entry.tick);
               const pointValue = Number(entry.value);
               if (!Number.isFinite(tick) || !Number.isFinite(pointValue)) return null;
+              // Audit F-07: the identity survives normalisation.
+              const pointId = typeof entry.id === "string" && entry.id !== "" ? entry.id : undefined;
               return {
+                ...(pointId ? { id: pointId } : {}),
                 tick: Math.max(0, Math.min(1_000_000_000, Math.round(tick))),
                 value: Math.min(1, Math.max(0, pointValue)),
               };
@@ -1229,7 +1244,7 @@ function sanitizeGenerativeConfig(raw: unknown, trackId: string, trackIds: Set<s
           if (points.length === 0) return null;
           const id =
             typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id.slice(0, 200) : uid("genAuto");
-          return { id, macro: macro as GenerativeMacroName, points };
+          return { id, macro: macro as GenerativeMacroName, points: assignPointIds(id, points) };
         })
         .filter((lane): lane is GenerativeMacroAutomation => lane !== null)
     : [];
@@ -1851,17 +1866,21 @@ function normalizeArrangementDomain(s: NormalizeState): void {
               ? Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - lengthTicks, Math.round(rawPhase)))
               : 0;
           const points: AutomationPoint[] = Array.isArray(clip.points)
-            ? clip.points
-                .filter(
-                  (point): point is AutomationPoint =>
-                    Boolean(point) && Number.isFinite(point.tick) && Number.isFinite(point.value),
-                )
-                .slice(0, 16384)
-                .map((point) => ({
-                  tick: Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(point.tick))),
-                  value: clampTargetValue(doc, clip.target!, point.value),
-                }))
-                .sort((a, b) => a.tick - b.tick)
+            ? assignPointIds(
+                clip.id,
+                clip.points
+                  .filter(
+                    (point): point is AutomationPoint =>
+                      Boolean(point) && Number.isFinite(point.tick) && Number.isFinite(point.value),
+                  )
+                  .slice(0, 16384)
+                  .map((point) => ({
+                    ...point,
+                    tick: Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(point.tick))),
+                    value: clampTargetValue(doc, clip.target!, point.value),
+                  }))
+                  .sort((a, b) => a.tick - b.tick),
+              )
             : [];
           const linkedTargets: AutomationTarget[] = [];
           const linkedTargetKeys = new Set([automationTargetKey(clip.target!)]);
@@ -2153,13 +2172,17 @@ function normalizeAutomationDomain(s: NormalizeState): void {
   for (const lane of automation) {
     if (!lane || typeof lane !== "object" || !lane.target || !isAutomationTargetValid(doc, lane.target)) continue;
     const points = Array.isArray(lane.points)
-      ? lane.points
-          .filter((point) => point && Number.isFinite(point.tick) && Number.isFinite(point.value))
-          .map((point) => ({
-            tick: Math.max(0, Math.round(point.tick)),
-            value: clampTargetValue(doc, lane.target, point.value),
-          }))
-          .sort((a, b) => a.tick - b.tick)
+      ? assignPointIds(
+          lane.id,
+          lane.points
+            .filter((point) => point && Number.isFinite(point.tick) && Number.isFinite(point.value))
+            .map((point) => ({
+              ...point,
+              tick: Math.max(0, Math.round(point.tick)),
+              value: clampTargetValue(doc, lane.target, point.value),
+            }))
+            .sort((a, b) => a.tick - b.tick),
+        )
       : [];
     filtered.push({ ...lane, points });
   }
@@ -3611,6 +3634,15 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v37 adds an independent, duration-preserving AudioClip pitch offset.
   // v38 adds project-local Live Sets with named 4×4 loop-pad assignments.
   // Older files remain playable; legacy recipe fields stay absent.
+  // v39 gives every AUTHORED automation point a stable identity (`id`). A
+  // point used to be addressed by its VALUE, which made an undo lose the
+  // point it created once the point had been edited, made an identical insert
+  // duplicate the point, and made a positional capture point at whatever
+  // occupied the slot later. The migration is the NORMALISER: it backfills an
+  // id on every point that lacks one, deterministically (carrier + slot), so
+  // two clients loading the same legacy file derive the same identity and
+  // their collab merge does not treat every point as new. Existing ids are
+  // preserved — a re-normalisation never renumbers a live document.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
 }

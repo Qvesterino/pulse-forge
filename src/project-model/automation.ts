@@ -1,5 +1,59 @@
 import type { AutomationLane, AutomationPoint } from "./types";
 
+/**
+ * The id prefix every authored automation point carries.
+ *
+ * Deterministic ids minted by the normaliser are `<prefix><carrierId>-<slot>`;
+ * ids minted by a command are `<prefix><uid>`.
+ */
+export const AUTOMATION_POINT_ID_PREFIX = "pt-";
+
+/**
+ * Give every point of an authored curve a stable identity.
+ *
+ * A point used to be addressed by its VALUE (`{ tick, value }`), and that one
+ * decision produced three defects at once:
+ *
+ *   - an identical insert duplicated the point (the curve held two points no
+ *     document-level diff could tell apart);
+ *   - an undo could not re-anchor a point that had been EDITED since it was
+ *     created — the content it carried no longer matched anything, so the undo
+ *     removed nothing while still consuming a history entry;
+ *   - a positional capture (`lane.points[index]`) pointed at whatever occupied
+ *     the slot later, so a lane that shifted in between sent the write to a
+ *     different point.
+ *
+ * The id is what a point is addressed by from now on.
+ *
+ * EXISTING ids are preserved — a re-normalisation must never renumber a live
+ * document, or every collaborator's copy would diverge. A missing id is minted
+ * DETERMINISTICALLY from the carrier and the slot, because two clients that
+ * load the SAME legacy document must derive the SAME identity: a random id
+ * would make their collab merge treat every point as a new one.
+ *
+ * A duplicate id inside one curve is re-minted — two points sharing an id
+ * would be indistinguishable to the id-anchored delta.
+ */
+export function assignPointIds(carrierId: string, points: AutomationPoint[]): AutomationPoint[] {
+  const seen = new Set<string>();
+  let changed = false;
+  const out = points.map((point, index) => {
+    const id = point.id;
+    if (typeof id === "string" && id !== "" && !seen.has(id)) {
+      seen.add(id);
+      return point;
+    }
+    const base = `${AUTOMATION_POINT_ID_PREFIX}${carrierId}-${index}`;
+    let minted = base;
+    let bump = 0;
+    while (seen.has(minted)) minted = `${base}-${++bump}`;
+    seen.add(minted);
+    changed = true;
+    return { ...point, id: minted };
+  });
+  return changed ? out : points;
+}
+
 export function valueAt(points: AutomationPoint[], tick: number, fallback = 0): number {
   if (points.length === 0) return fallback;
   if (tick <= points[0].tick) return points[0].value;

@@ -36,14 +36,14 @@ violated by the product, not merely unproven.
 `src/tsar/mutations.ts` now carries `MUTATION_GROUP_PARAMS`: six groups that
 are a **partition** of the 76 shipped TSAR parameters.
 
-| Group | What it holds |
-| --- | --- |
-| `source` | the two sources, their engines, levels, pans, spreads, morphs, and the shared `morph`/`sub`/`noise` generators |
-| `tuning` | the pitch anchors: root, coarse, fine, glide, drift |
-| `envelope` | the two ADSRs and the velocity response |
-| `filter` | the two filters: type, cutoff, Q, filter envelope |
-| `modulation` | the mod matrix, the global LFO, the arpeggiator |
-| `character` | the output stage: tone, drive, width, level |
+| Group        | What it holds                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `source`     | the two sources, their engines, levels, pans, spreads, morphs, and the shared `morph`/`sub`/`noise` generators |
+| `tuning`     | the pitch anchors: root, coarse, fine, glide, drift                                                            |
+| `envelope`   | the two ADSRs and the velocity response                                                                        |
+| `filter`     | the two filters: type, cutoff, Q, filter envelope                                                              |
+| `modulation` | the mod matrix, the global LFO, the arpeggiator                                                                |
+| `character`  | the output stage: tone, drive, width, level                                                                    |
 
 A locked group is **removed from the axis pool**, so its parameters are
 bit-identical in every variant — not "restored afterwards", never written at
@@ -111,11 +111,11 @@ using the engine test's own relative-difference formula generalised to
 stereo. The gate `tests/tsar/mutation-audibility.test.ts` carries its
 controls:
 
-| Control | Measured | What it proves |
-| --- | --- | --- |
-| A patch against itself | **exactly 0** | the measure does not invent differences |
+| Control                                                    | Measured      | What it proves                            |
+| ---------------------------------------------------------- | ------------- | ----------------------------------------- |
+| A patch against itself                                     | **exactly 0** | the measure does not invent differences   |
 | A patch differing only in a **silent** source's parameters | **exactly 0** | the trap is real, and the measure sees it |
-| A patch whose timbre really changed | **0.33** | a real difference is far above zero |
+| A patch whose timbre really changed                        | **0.33**      | a real difference is far above zero       |
 
 ## Evidence (measured, not asserted)
 
@@ -123,12 +123,12 @@ The sweep: 240 variants per range, 4 ranges, 960 variants in total, each
 rendered through the real processor (`scratch/measure-mutation-audit.mts`,
 2026-10-27).
 
-| Range | weakest | 10th percentile | median | identical |
-| --- | --- | --- | --- | --- |
-| `FULL` (1) | 0.0083 | 0.165 | 1.41 | **0** |
-| `BOLD` (0.75) | 0.0121 | 0.135 | 0.80 | **0** |
-| `MEDIUM` (0.5) | 0.0011 | 0.038 | 0.68 | **0** |
-| `SUBTLE` (0.25) | 0.0004 | 0.014 | 0.20 | **0** |
+| Range           | weakest | 10th percentile | median | identical |
+| --------------- | ------- | --------------- | ------ | --------- |
+| `FULL` (1)      | 0.0083  | 0.165           | 1.41   | **0**     |
+| `BOLD` (0.75)   | 0.0121  | 0.135           | 0.80   | **0**     |
+| `MEDIUM` (0.5)  | 0.0011  | 0.038           | 0.68   | **0**     |
+| `SUBTLE` (0.25) | 0.0004  | 0.014           | 0.20   | **0**     |
 
 Before the rules of this ADR, **2 of 48** sampled variants rendered
 bit-identical to the original. After them, **0 of 960**.

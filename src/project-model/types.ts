@@ -1020,6 +1020,18 @@ export interface AutomationTarget {
 export interface AutomationPoint {
   tick: number;
   value: number;
+  /**
+   * Stable identity (SCHEMA v39+). This is what a point is ADDRESSED by: the
+   * command's undo re-anchors on it, the structural delta anchors on it, and a
+   * positional capture (`lane.points[index]`) keeps pointing at the same point
+   * after the lane shifted.
+   *
+   * Optional in the type because the same shape serves EPHEMERAL curves —
+   * interpolated ramp samples and live intensity curves that never enter the
+   * document and have no identity to carry. The NORMALISER guarantees an id on
+   * every point that DOES live in the document (see `assignPointIds`).
+   */
+  id?: ID;
 }
 
 export interface AutomationLane {

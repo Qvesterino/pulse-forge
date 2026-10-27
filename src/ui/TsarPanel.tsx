@@ -241,10 +241,7 @@ export function TsarPanel() {
     setMutLadder({ pool: variants.slice(1), champion: variants[0]!, round: 0, total: variants.length - 1 });
     // Keep the run so the same variations can be invoked again later.
     const key = describeMutationRun(mutSeed, options);
-    setMutRuns((runs) => [
-      { key, seed: mutSeed, variants },
-      ...runs.filter((run) => run.key !== key),
-    ].slice(0, 6));
+    setMutRuns((runs) => [{ key, seed: mutSeed, variants }, ...runs.filter((run) => run.key !== key)].slice(0, 6));
   };
   /** Put a previous run's variations back on the table, unchanged. */
   const replayRun = (run: { key: string; variants: TsarMutation[] }) => {

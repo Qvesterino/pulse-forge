@@ -259,7 +259,6 @@ export function isMutationAxisLive(axisId: string, base: Record<string, number>)
   return true;
 }
 
-
 /** One mutable axis: how a random draw maps onto the parameter's range. */
 interface MutationAxis {
   id: string;
