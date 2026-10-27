@@ -68,7 +68,7 @@ describe("AI control hardening — output schemas and per-call risk", () => {
       expect(policy.reason.length, key).toBeGreaterThan(10);
       expect(policy.revisit.length, key).toBeGreaterThan(10);
     }
-    expect(capabilities.cancellation.supported).toBe(false);
+    expect(capabilities.cancellation.supported).toBe(true);
     expect(capabilities.cancellation.revisit.length).toBeGreaterThan(10);
   });
 
@@ -88,17 +88,18 @@ describe("AI control hardening — output schemas and per-call risk", () => {
     expect(remove.risk).toBe("destructive");
   });
 
-  it("advertises what the transport can actually do, including no MCP cancellation", async () => {
+  it("advertises what the transport can actually do, including COOPERATIVE cancellation", async () => {
     const host = createHeadlessMcpHost({ document: createDefaultProject() });
     const result = await host.call("kyx_state", { subject: "capabilities" });
     expect(result.isError, result.text).not.toBe(true);
     const data = result.data as {
-      capabilities: { hooks: Record<string, boolean>; cancellation: { supported: boolean } };
+      capabilities: { hooks: Record<string, boolean>; cancellation: { supported: boolean; scope: string } };
     };
     expect(data.capabilities.hooks.export).toBe(false);
     expect(data.capabilities.hooks.save).toBe(false);
-    expect(data.capabilities.cancellation.supported).toBe(false);
-    expect(result.text).toContain("cancellation: not supported");
+    expect(data.capabilities.cancellation.supported).toBe(true);
+    expect(data.capabilities.cancellation.scope).toContain("cooperative");
+    expect(result.text).toContain("cancellation: cooperative");
   });
 });
 

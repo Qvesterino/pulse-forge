@@ -84,6 +84,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export async function mcpRenderAudioPreview(
   services: Services,
   request: { bars: number },
+  signal?: AbortSignal,
 ): Promise<McpAudioPreviewArtifact> {
   const source = services.store.getDoc();
   const doc = createMcpPreviewDocument(source, request.bars);
@@ -96,6 +97,7 @@ export async function mcpRenderAudioPreview(
     tailSeconds: 0.35,
     ...(hasArrangement ? { arrangementOnly: true, minimumDurationTicks: request.bars * ticksPerBar(doc) } : {}),
     quality: "live",
+    signal,
   });
 
   const expectedBytes = 44 + buffer.length * buffer.numberOfChannels * 2;

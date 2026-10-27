@@ -186,6 +186,7 @@ async function renderTrackWindow(
   services: Services,
   doc: ProjectDocument,
   request: { trackId: string; startTick: number; endTick: number },
+  signal?: AbortSignal,
 ): Promise<TrackWindowAnalysis> {
   const track = doc.tracks.find((candidate) => candidate.id === request.trackId);
   if (!track) throw new Error(`track ${request.trackId} not found`);
@@ -225,6 +226,7 @@ async function renderTrackWindow(
     minimumDurationTicks: request.endTick,
     arrangementOnly: mode === "song",
     masterProcessing: false,
+    signal,
   });
 
   const resolved = resolveAnalysisWindow(capturedDoc, analysisRequest, buffer.sampleRate);
@@ -271,7 +273,12 @@ export async function mcpRenderSummary(
     startTick?: number;
     endTick?: number;
   },
+  signal?: AbortSignal,
 ): Promise<RenderSummaryData> {
+  // AS-009 phase 2: cooperative cancellation — an already-aborted call never
+  // starts its first render.
+  const { throwIfAborted } = await import("../rendering/renderer");
+  throwIfAborted(signal);
   const scope = request.scope ?? "all";
   const doc: ProjectDocument = services.store.getDoc();
   const hasWindowRequest =
@@ -285,11 +292,16 @@ export async function mcpRenderSummary(
     ) {
       throw new Error("track-window analysis requires trackId, startTick, and endTick together");
     }
-    const trackWindow = await renderTrackWindow(services, doc, {
-      trackId: request.trackId,
-      startTick: request.startTick,
-      endTick: request.endTick,
-    });
+    const trackWindow = await renderTrackWindow(
+      services,
+      doc,
+      {
+        trackId: request.trackId,
+        startTick: request.startTick,
+        endTick: request.endTick,
+      },
+      signal,
+    );
     return {
       scope: "track-window",
       strips: [],
@@ -307,12 +319,16 @@ export async function mcpRenderSummary(
     const candidates = doc.tracks.filter((t) => t.kind !== "group");
     const overflow = candidates.length - STRIP_CAP;
     for (const track of overflow > 0 ? candidates.slice(0, STRIP_CAP) : candidates) {
+      // The N+1 loop is the big cancellation win: a 14-strip summary that is
+      // aborted at strip 3 stops there instead of rendering 11 more stems.
+      throwIfAborted(signal);
       const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
       const buffer = await renderProject(stemDoc, services.bank, {
         mode,
         sampleRate,
         tailSeconds: 0.6,
         masterProcessing: false,
+        signal,
       });
       strips.push({
         id: track.id,
@@ -325,7 +341,8 @@ export async function mcpRenderSummary(
 
   let master: RenderSummaryData["master"] = null;
   if (scope !== "tracks") {
-    const buffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6 });
+    throwIfAborted(signal);
+    const buffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6, signal });
     master = analyzeBufferMetrics(buffer);
   }
 

@@ -61,7 +61,7 @@ export interface McpBridgeDeps {
   fxMeters?: () => McpFxMeterSnapshot | null;
   beginUndoFrame?: (label?: string) => void;
   endUndoFrame?: () => void;
-  measureLoudness?: () => Promise<{ integrated: number; measured: boolean }>;
+  measureLoudness?: NonNullable<McpToolContext["measureLoudness"]>;
   applyLoudness?: NonNullable<McpToolContext["applyLoudness"]>;
   shareToGallery?: NonNullable<McpToolContext["shareToGallery"]>;
   renderSummary?: NonNullable<McpToolContext["renderSummary"]>;

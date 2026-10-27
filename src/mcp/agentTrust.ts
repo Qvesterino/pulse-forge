@@ -91,6 +91,7 @@ export const TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   kyx_song: "mutate",
   kyx_routing: "mutate",
   kyx_unsuno: "mutate",
+  kyx_separate: "mutate",
 };
 
 /** Risk of a tool; unknown tools are conservatively "mutate". */

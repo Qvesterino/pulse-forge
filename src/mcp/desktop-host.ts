@@ -171,7 +171,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
-    diagnoseMix: (request, signal) => import("./mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request, signal)),
+    diagnoseMix: (request, signal) =>
+      import("./mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request, signal)),
     mixPreview: (request, signal) => import("./mix-preview").then((m) => m.previewMixIdea(services, request, signal)),
     allowDestructive: mcpAllowDestructive,
     // ADR 0065: the standing consent for an EXTERNAL agent to mutate.

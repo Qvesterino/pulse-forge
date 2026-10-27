@@ -3928,6 +3928,16 @@ function mcpError(code: McpErrorCode, text: string, overrides?: Partial<McpToolR
 }
 
 /**
+ * AS-009 phase 2: render handlers convert hook failures into typed
+ * EXECUTION_FAILED receipts — an abort must NOT be converted, it must
+ * propagate to the dispatcher, which answers CANCELLED with an honest
+ * "what landed" note. Call this FIRST in every render-class catch.
+ */
+function rethrowIfMcpAborted(error: unknown, ctx: McpToolContext): void {
+  if (ctx.signal?.aborted) throw error;
+}
+
+/**
  * What holds NOW for the fields the ORIGINAL call wrote (audit F-06).
  *
  * The replay's own text and data are the original outcome — a pinned contract,
@@ -7477,6 +7487,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           },
         };
       } catch (error) {
+        rethrowIfMcpAborted(error, ctx);
         return mcpError(
           "EXECUTION_FAILED",
           `audio preview failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -7505,6 +7516,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             data: { integratedLufs: reading.integrated },
           };
         } catch (error) {
+          rethrowIfMcpAborted(error, ctx);
           return mcpError(
             "EXECUTION_FAILED",
             `loudness render failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -7521,7 +7533,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const targetDb =
         typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
       try {
-        const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) }, ctx.signal);
+        const outcome = await ctx.applyLoudness(
+          { direction, ...(targetDb !== undefined ? { targetDb } : {}) },
+          ctx.signal,
+        );
         if (!outcome.ok) return mcpError("EXECUTION_FAILED", outcome.error ?? "the operation failed without a reason");
         // The hook returns the UNEXECUTED command so the mutation still flows
         // through this context's executor (same store, same undo semantics).
@@ -7538,6 +7553,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           },
         };
       } catch (error) {
+        rethrowIfMcpAborted(error, ctx);
         return mcpError(
           "EXECUTION_FAILED",
           `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -7764,6 +7780,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         );
         return { text: formatRenderSummary(data), mutated: false, stage: "runtime", data };
       } catch (error) {
+        rethrowIfMcpAborted(error, ctx);
         return mcpError(
           "EXECUTION_FAILED",
           `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -7800,6 +7817,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           data: reactions ? { ...data, reactions: reactions.data } : data,
         };
       } catch (error) {
+        rethrowIfMcpAborted(error, ctx);
         return mcpError(
           "EXECUTION_FAILED",
           `mix diagnosis failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -7871,6 +7889,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             : { status: "rejected", ok: false, applied: false, reason: outcome.reason };
           return { text: formatMixPreview(outcome), mutated: false, stage: "runtime", data };
         } catch (error) {
+          rethrowIfMcpAborted(error, ctx);
           return mcpError(
             "EXECUTION_FAILED",
             `mix preview failed: ${error instanceof Error ? error.message : String(error)}`,

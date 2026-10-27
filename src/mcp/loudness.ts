@@ -13,7 +13,15 @@ import type { Services } from "../services";
  * Both are async and window-local — the honest-refusal contract lives in the
  * tool layer (hooks absent → refusal), errors surface as isError results.
  */
-export async function mcpMeasureLoudness(services: Services): Promise<{ integrated: number; measured: boolean }> {
+export async function mcpMeasureLoudness(
+  services: Services,
+  signal?: AbortSignal,
+): Promise<{ integrated: number; measured: boolean }> {
+  // AS-009 phase 2: entry-boundary check — the measure pipeline behind
+  // intent/loudness has no signal parameter yet, so the abort lands before
+  // the first render rather than mid-pipeline (honest granularity).
+  const { throwIfAborted } = await import("../rendering/renderer");
+  throwIfAborted(signal);
   const { measureLoudness } = await import("../intent/loudness");
   return measureLoudness(services.store.getDoc(), services.bank);
 }
@@ -21,6 +29,7 @@ export async function mcpMeasureLoudness(services: Services): Promise<{ integrat
 export async function mcpApplyLoudness(
   services: Services,
   input: { targetDb?: number; direction: "louder" | "quieter" },
+  signal?: AbortSignal,
 ): Promise<
   | {
       ok: true;
@@ -29,6 +38,8 @@ export async function mcpApplyLoudness(
     }
   | { ok: false; error: string }
 > {
+  const { throwIfAborted } = await import("../rendering/renderer");
+  throwIfAborted(signal);
   const { applyLoudnessIntent } = await import("../intent/loudness");
   const outcome = await applyLoudnessIntent(services.store.getDoc(), services.bank, {
     direction: input.direction,

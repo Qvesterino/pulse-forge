@@ -433,10 +433,12 @@ function buildStripDocFacts(doc: ProjectDocument): StripDocFacts {
 export async function mcpDiagnoseMix(
   services: Services,
   request: { scope?: "master" | "tracks" | "all" },
+  signal?: AbortSignal,
 ): Promise<MixDiagnosisData> {
   const scope = request.scope ?? "all";
   const doc: ProjectDocument = services.store.getDoc();
-  const { renderProject } = await import("../rendering/renderer");
+  const { renderProject, throwIfAborted } = await import("../rendering/renderer");
+  throwIfAborted(signal);
   const mode = doc.arrangement.clips.length > 0 ? "song" : "pattern";
   const sampleRate = 44100 as const;
   const facts = buildStripDocFacts(doc);
@@ -447,7 +449,7 @@ export async function mcpDiagnoseMix(
   // N+1.
   let masterReport: MixHealthReport | null = null;
   if (scope !== "tracks") {
-    const masterBuffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6 });
+    const masterBuffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6, signal });
     const masterChannels: Float32Array[] = [];
     for (let channel = 0; channel < masterBuffer.numberOfChannels; channel += 1) {
       masterChannels.push(masterBuffer.getChannelData(channel));
@@ -461,12 +463,14 @@ export async function mcpDiagnoseMix(
     const overflow = candidates.length - STRIP_CAP;
     const bounded = overflow > 0 ? candidates.slice(0, STRIP_CAP) : candidates;
     for (const track of bounded) {
+      throwIfAborted(signal);
       const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
       const buffer = await renderProject(stemDoc, services.bank, {
         mode,
         sampleRate,
         tailSeconds: 0.6,
         masterProcessing: false,
+        signal,
       });
       const channels: Float32Array[] = [];
       for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {

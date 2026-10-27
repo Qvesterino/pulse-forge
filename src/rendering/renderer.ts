@@ -205,8 +205,10 @@ export function assertProjectGraphBuilt(failure: { message: string } | null): vo
   );
 }
 
-/** @throws AbortError when the export was cancelled during setup. */
-function throwIfAborted(signal: AbortSignal | undefined): void {
+/** @throws AbortError when the export was cancelled during setup. Exported
+ * so the MCP render-class tools check the same signal at their own stage
+ * boundaries (AS-009 phase 2 cooperative cancellation). */
+export function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
 }
 

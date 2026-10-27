@@ -808,6 +808,15 @@
       "seamEvent": "\"kyx_export\", { format: \"midi\"",
       "negativeSpec": "refuses honestly without the host hook",
       "note": "The pure-document delivery formats (AS-013): MIDI (song arrangement or active pattern) and the .kyx JSON document serialize and download in the KYX window — no render engine, honest UNAVAILABLE_ON_TRANSPORT where the host hook is absent. Specs for retryPolicy (AS-009p1), per-call agentId (AS-010) and warp-pin reads (AS-012) live in the same file; the /mcp rate limiter is pinned by tests/collab-mcp-rate-limit.test.ts and the ops-coverage gate (AS-008) by the AS-008 describe."
+    },
+    {
+      "id": "mcp-cooperative-cancellation",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/tools.ts executeMcpToolCore — per-call AbortController + deadline auto-abort + cancelMcpCall; render-class hooks pass ctx.signal into renderProject",
+      "spec": "tests/mcp-cancellation.test.ts",
+      "seamEvent": "cancelMcpCall(\"cancel-1\")",
+      "negativeSpec": "an already-aborted render-summary call never starts its first render",
+      "note": "AS-009 phase 2: cooperative (not preemptive) — render handlers rethrow aborts via rethrowIfMcpAborted, the dispatcher answers typed CANCELLED with an honest what-landed note, and the deadline auto-abort sits PAST the transport budgets (75 s long-running / 30 s otherwise). Capability block advertises supported:true with the honest notifications/cancelled-not-wired caveat."
     }
   ]
 }

@@ -167,6 +167,7 @@ export async function buildMixPreview(
 export async function previewMixIdea(
   services: Services,
   request: { idea: string; target?: string },
+  signal?: AbortSignal,
 ): Promise<MixPreviewOutcome> {
   const doc = services.store.getDoc();
   // The planner is loaded at the moment of the call, not at boot: mix-idea
@@ -176,10 +177,11 @@ export async function previewMixIdea(
   const { planMixIdea } = await import("./mix-idea");
   const plan = planMixIdea(doc, request.idea, request.target);
   if (!plan.ok) return { ok: false, reason: plan.reason };
-  const { renderProject } = await import("../rendering/renderer");
+  const { renderProject, throwIfAborted } = await import("../rendering/renderer");
+  throwIfAborted(signal);
   const mode = doc.arrangement.clips.length > 0 ? ("song" as const) : ("pattern" as const);
   const lane = await buildMixPreview(doc, plan, (render) =>
-    renderProject(render, services.bank, { mode, sampleRate: 44100, tailSeconds: 0.6 }),
+    renderProject(render, services.bank, { mode, sampleRate: 44100, tailSeconds: 0.6, signal }),
   );
   lane.idea = request.idea;
   armMixPreviewLane(lane);

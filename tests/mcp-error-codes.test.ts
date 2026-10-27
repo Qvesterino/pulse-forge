@@ -84,8 +84,11 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
       "REQUEST_ID_CONFLICT",
       "INVALID_REQUEST_ID",
       "RESOURCE_LIMIT",
+      "WRITE_CONFLICT",
+      "CONFIRMATION_REQUIRED",
+      "CANCELLED",
     ];
-    expect(new Set(codes).size).toBe(11);
+    expect(new Set(codes).size).toBe(14);
   });
 
   it("success results carry no errorCode", async () => {
