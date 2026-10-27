@@ -11,9 +11,25 @@
 
 ---
 
-## Status vocabulary (evidence types)
+## Implementation follow-up (2026-10-27)
+
+The audit snapshot above is read-only history. Every P1 and P2 finding was then implemented in follow-up waves (each committed directly on `main` and pushed):
+
+- **AS-004 (`ea486c9b`):** all 7 bare destructive gates (`kyx_fx remove`, `kyx_automation clear/removeLane`, `kyx_clips cut/delete/deleteRipple/audioDelete`, `kyx_takes deleteTake`) now ride `destructiveAllowedWithCheckpoint`; the gate-parity suite lives in `tests/mcp-checkpoint.test.ts` and was falsified before landing.
+- **AS-011 + AS-005 (`ae43f726`):** the last five text-first tools (`kyx_generate/pattern/checkpoint/song/unsuno`) declare receipt envelopes — **39/39 tools have output schemas**; `unavailableByDesign` and `cancellation` are policy records `{supported, reason, revisit}`.
+- **AS-001 (`c092c3d5`):** the arrangement-BUILDING primitive — `kyx_clips op:add` (scene by id/name, pure add) and the MIDI clip family (`midiList/midiAdd/midiMove/midiResize/midiDelete`, delete D4-gated with checkpoint), meter-aware bar↔tick conversions, seam `mcp-clips-arrangement-build`.
+- **AS-002 + AS-003 (`26adf66f`):** the edit-depth wave — `kyx_notes` resize/duplicate/split/glue (clamped read-back disclosed) and `kyx_steps` setVelocity (existing hits only, off-cells skipped and disclosed) / setMeta (probability/microtiming/ratchet/amount, neutral values clear), single-snapshot read-back extended to five cell fields, seam `mcp-edit-depth`.
+- **The P2 wave (`d9c75427`):** AS-008 ops-coverage gate (dispatcher records ops-less mutating commands; suite pins the evidence-baked exemption list `kyx_tracks:rename`, `kyx_notes:add`, `kyx_pattern:select`), AS-009 phase-1 `retryPolicy` in capabilities, AS-010 per-call `agentId` envelope (once-only attribution, shared charset with `AGENT_LABEL_PREFIX`) + the 30/min rate limiter on the web `/mcp` route, AS-012 warp-pin reads in `audioList`, AS-013 `kyx_export format:midi|json` via the `exportDocument` host hook on both shipping transports.
+
+**AS-006/AS-007 (contract drift)** were picked up by a parallel session's range-consolidation wave. Still open per the original findings: AS-009 phase 2 (cooperative cancellation — AbortSignal through `renderProject`), AS-014 (per-kind MCP eligibility for the NL refusals), AS-015 (macro/live-set surface, needs its own ADR for the R4 parts). With the fix waves applied, the parity headline moves from **103/309 (33 %)** to roughly **~130/309 (≈42 %)**, with all three largest accidental-gap clusters (arrangement building, note transforms, step expressiveness) closed.
 
 | Status                | Meaning                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+---
+
+## Status vocabulary (evidence types)
+
+| Status                | Meaning in this report                                                                                                                     |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Verified in code**  | Read directly in this audit at cited lines (static evidence).                                                                              |
 | **Verified executed** | Proven by a committed test or a prior audit that actually executed the path (cited to that evidence; not re-executed here).                 |
