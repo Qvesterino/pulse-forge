@@ -311,10 +311,11 @@ const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
   type: "object",
   additionalProperties: true,
   properties: {
-    scope: { type: "string", enum: ["master", "tracks", "all"] },
+    scope: { type: "string", enum: ["master", "tracks", "all", "track-window"] },
     strips: { type: "array", items: { type: "object" } },
     master: { type: ["object", "null"] },
     referenceLufs: { type: "number" },
+    trackWindow: { type: "object" },
   },
   required: ["scope", "strips", "referenceLufs"],
 };
@@ -2928,6 +2929,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       "evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor " +
       "(peak−RMS = punchiness) and duration, plus the master vs the −14 " +
       "streaming reference and relative deltas against the loudest strip. " +
+      "For a focused read, provide trackId, startTick, and endTick together: " +
+      "KYX renders that isolated track pre-master and returns exact window timing, " +
+      "mix-health metrics, and the project revision before/after rendering. " +
       "Use before/after mix moves so decisions cite numbers, not vibes. " +
       "Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
@@ -2937,6 +2941,20 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           enum: ["all", "tracks", "master"],
           description: "all = strips + master (default); tracks/master limit the pass",
+        },
+        trackId: {
+          type: "string",
+          description: "Optional focused analysis target; provide with startTick and endTick",
+        },
+        startTick: {
+          type: "integer",
+          minimum: 0,
+          description: "Inclusive arrangement tick for focused track analysis",
+        },
+        endTick: {
+          type: "integer",
+          minimum: 1,
+          description: "Exclusive arrangement tick for focused track analysis",
         },
       },
     },
@@ -3690,6 +3708,9 @@ export interface McpToolContext {
    */
   renderSummary?: (request: {
     scope?: "master" | "tracks" | "all";
+    trackId?: string;
+    startTick?: number;
+    endTick?: number;
   }) => Promise<import("./render-summary").RenderSummaryData>;
 
   /**
@@ -7571,8 +7592,33 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         );
       }
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
+      const hasTrackWindow =
+        record.trackId !== undefined || record.startTick !== undefined || record.endTick !== undefined;
+      if (hasTrackWindow) {
+        if (
+          typeof record.trackId !== "string" ||
+          record.trackId.length === 0 ||
+          !Number.isSafeInteger(record.startTick) ||
+          !Number.isSafeInteger(record.endTick) ||
+          (record.startTick as number) < 0 ||
+          (record.endTick as number) <= (record.startTick as number)
+        ) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "focused render summary requires trackId plus non-negative integer startTick and endTick, with endTick > startTick",
+          );
+        }
+      }
       try {
-        const data = await ctx.renderSummary({ scope });
+        const data = await ctx.renderSummary(
+          hasTrackWindow
+            ? {
+                trackId: record.trackId as string,
+                startTick: record.startTick as number,
+                endTick: record.endTick as number,
+              }
+            : { scope },
+        );
         return { text: formatRenderSummary(data), mutated: false, stage: "runtime", data };
       } catch (error) {
         return mcpError(

@@ -4770,7 +4770,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_render_summary",
     description:
-      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. Use before/after mix moves so decisions cite numbers, not vibes. Slow (N+1 offline renders); render-bound transports only.",
+      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. For a focused read, provide trackId, startTick, and endTick together: KYX renders that isolated track pre-master and returns exact window timing, mix-health metrics, and the project revision before/after rendering. Use before/after mix moves so decisions cite numbers, not vibes. Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4778,6 +4778,20 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["all", "tracks", "master"],
           description: "all = strips + master (default); tracks/master limit the pass",
+        },
+        trackId: {
+          type: "string",
+          description: "Optional focused analysis target; provide with startTick and endTick",
+        },
+        startTick: {
+          type: "integer",
+          minimum: 0,
+          description: "Inclusive arrangement tick for focused track analysis",
+        },
+        endTick: {
+          type: "integer",
+          minimum: 1,
+          description: "Exclusive arrangement tick for focused track analysis",
         },
         requestId: {
           type: "string",
@@ -4804,7 +4818,7 @@ export const MCP_TOOL_DEFS = [
       properties: {
         scope: {
           type: "string",
-          enum: ["master", "tracks", "all"],
+          enum: ["master", "tracks", "all", "track-window"],
         },
         strips: {
           type: "array",
@@ -4817,6 +4831,9 @@ export const MCP_TOOL_DEFS = [
         },
         referenceLufs: {
           type: "number",
+        },
+        trackWindow: {
+          type: "object",
         },
       },
       required: ["scope", "strips", "referenceLufs"],

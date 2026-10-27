@@ -1,8 +1,12 @@
 import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { buildStemProject } from "../rendering/stems";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import { SONG_LOUDNESS_TARGET_LUFS } from "../intent/genre-reference.generated";
+import { defineAnalyzer, resolveAnalysisWindow, type AudioAnalysisResult } from "../analysis/contract";
+import { analyzeMixHealth, type MixHealthReport } from "../analysis/mixDoctor";
+import { storeRevision } from "./revision";
 
 /**
  * KYX MCP — RENDER SUMMARY BRIDGE (kyx_render_summary, the agent's "ears").
@@ -32,10 +36,25 @@ export interface RenderStripSummary {
 }
 
 export interface RenderSummaryData {
-  scope: "master" | "tracks" | "all";
+  scope: "master" | "tracks" | "all" | "track-window";
   strips: RenderStripSummary[];
   master: { lufs: number | null; peakDb: number; crestDb: number; durationSec: number } | null;
   referenceLufs: number;
+  trackWindow?: TrackWindowAnalysis;
+}
+
+export interface TrackWindowAnalysis {
+  track: { id: string; name: string; kind: string };
+  signalStage: {
+    id: "track-pre-master";
+    includes: "selected track and routed parent-group processing";
+    excludes: "other source tracks and the master chain";
+  };
+  projectRevision: number | null;
+  revisionAfterRender: number | null;
+  freshness: "current" | "stale" | "unknown";
+  renderCoverage: "isolated track rendered from timeline start through project end; metrics sliced to requested window";
+  result: AudioAnalysisResult<MixHealthReport>;
 }
 
 /** Minimal structural AudioBuffer — works with the real thing and fakes. */
@@ -104,6 +123,26 @@ function formatStrip(strip: RenderStripSummary): string {
 /** The agent-facing read-back: evidence table + relative deltas + the
  * streaming-reference verdict for the master. */
 export function formatRenderSummary(data: RenderSummaryData): string {
+  if (data.trackWindow) {
+    const { track, signalStage, projectRevision, revisionAfterRender, freshness, result } = data.trackWindow;
+    const metrics = result.payload;
+    const revisionText = projectRevision === null ? "unknown" : String(projectRevision);
+    const afterText = revisionAfterRender === null ? "unknown" : String(revisionAfterRender);
+    const correlation = metrics.stereoCorrelation === null ? "n/a" : metrics.stereoCorrelation.toFixed(3);
+    const lufs = metrics.integratedLufs === null ? "unmeasurable" : `${metrics.integratedLufs.toFixed(1)} LUFS`;
+    const lines = [
+      `track window: ${track.name} (${track.id}, ${track.kind})`,
+      `signal stage: ${signalStage.id} — ${signalStage.includes}; excludes ${signalStage.excludes}`,
+      `window: ticks ${result.request.window.startTick}..${result.request.window.endTick}; samples ${result.alignment.startSample}..${result.alignment.endSample} at ${result.alignment.sampleRate} Hz; ${result.alignment.startSec.toFixed(6)}..${result.alignment.endSec.toFixed(6)} s (${result.alignment.durationSec.toFixed(6)} s)`,
+      `project revision: ${revisionText} → ${afterText} (${freshness}); analysis ${result.algorithm.name} v${result.algorithm.version}`,
+      `metrics: ${lufs}; peak ${(-metrics.headroomDb).toFixed(1)} dBFS (${metrics.peak.toFixed(4)} linear); ${metrics.headroomDb.toFixed(1)} dB headroom; crest ${metrics.crestDb.toFixed(1)} dB; clipped samples ${metrics.clippedSamples}; DC ${metrics.dcOffset.toFixed(6)}; low-end share ${(metrics.lowEndShare * 100).toFixed(1)}%; stereo correlation ${correlation}`,
+      `flags: ${metrics.flags.length > 0 ? metrics.flags.map((flag) => `${flag.severity} ${flag.check}: ${flag.detail}`).join("; ") : "none"}`,
+      `render coverage: ${data.trackWindow.renderCoverage}`,
+    ];
+    if (result.caveats.length > 0) lines.push(`caveats: ${result.caveats.map((caveat) => caveat.detail).join("; ")}`);
+    return lines.join("\n");
+  }
+
   const lines: string[] = [];
   if (data.strips.length > 0) {
     lines.push(`strips (${data.scope === "all" ? "master processing bypassed" : "scope master"}):`);
@@ -130,14 +169,135 @@ export function formatRenderSummary(data: RenderSummaryData): string {
 }
 
 const STRIP_CAP = 14;
+const TRACK_WINDOW_MAX_BARS = 64;
+
+const trackWindowAnalyzer = defineAnalyzer<MixHealthReport>({
+  name: "kyx-mix-health",
+  version: "1",
+  featureSet: "mix-health",
+  analyze: (channels, sampleRate) => analyzeMixHealth(channels, sampleRate),
+});
+
+function isFiniteTick(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+async function renderTrackWindow(
+  services: Services,
+  doc: ProjectDocument,
+  request: { trackId: string; startTick: number; endTick: number },
+): Promise<TrackWindowAnalysis> {
+  const track = doc.tracks.find((candidate) => candidate.id === request.trackId);
+  if (!track) throw new Error(`track ${request.trackId} not found`);
+  if (track.kind === "group") throw new Error("track-window analysis requires a source track, not a group track");
+  if (!isFiniteTick(request.startTick) || !isFiniteTick(request.endTick) || request.endTick <= request.startTick) {
+    throw new Error("startTick and endTick must be non-negative integer ticks with endTick > startTick");
+  }
+  const barTicks = ticksPerBar(doc);
+  if (request.endTick - request.startTick > TRACK_WINDOW_MAX_BARS * barTicks) {
+    throw new Error(`analysis window is limited to ${TRACK_WINDOW_MAX_BARS} bars`);
+  }
+
+  // Store revision + document are captured synchronously before the first
+  // await, so the reported revision names the exact snapshot sent to render.
+  const projectRevision = storeRevision(services.store);
+  const capturedDoc = doc;
+  const analysisRequest = {
+    projectId: capturedDoc.id,
+    ...(projectRevision === null ? {} : { revision: projectRevision }),
+    scope: { kind: "track" as const, id: track.id },
+    window: { startTick: request.startTick, endTick: request.endTick },
+    stage: "track-pre-master" as const,
+    featureSet: "mix-health",
+  };
+  const { renderProject } = await import("../rendering/renderer");
+  const hasArrangement =
+    capturedDoc.arrangement.clips.length > 0 ||
+    (capturedDoc.arrangement.audioClips?.length ?? 0) > 0 ||
+    (capturedDoc.arrangement.midiClips?.length ?? 0) > 0 ||
+    (capturedDoc.arrangement.automationClips?.length ?? 0) > 0;
+  const mode = hasArrangement ? "song" : "pattern";
+  const stemDoc = buildStemProject(capturedDoc, (candidate) => candidate.id === track.id);
+  const buffer = await renderProject(stemDoc, services.bank, {
+    mode,
+    sampleRate: 44100,
+    tailSeconds: 0,
+    minimumDurationTicks: request.endTick,
+    arrangementOnly: mode === "song",
+    masterProcessing: false,
+  });
+
+  const resolved = resolveAnalysisWindow(capturedDoc, analysisRequest, buffer.sampleRate);
+  if (resolved.endSample <= resolved.startSample) {
+    throw new Error(`analysis window resolves to fewer than one sample at ${buffer.sampleRate} Hz`);
+  }
+  if (resolved.startSample < 0 || resolved.endSample > buffer.length) {
+    throw new Error(
+      `offline render ended at sample ${buffer.length}; requested window needs samples ${resolved.startSample}..${resolved.endSample}`,
+    );
+  }
+  const revisionAfterRender = storeRevision(services.store);
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
+  const result = trackWindowAnalyzer.run(capturedDoc, analysisRequest, channels, buffer.sampleRate);
+  const freshness =
+    projectRevision === null || revisionAfterRender === null
+      ? "unknown"
+      : projectRevision === revisionAfterRender
+        ? "current"
+        : "stale";
+
+  return {
+    track: { id: track.id, name: track.name, kind: track.kind },
+    signalStage: {
+      id: "track-pre-master",
+      includes: "selected track and routed parent-group processing",
+      excludes: "other source tracks and the master chain",
+    },
+    projectRevision,
+    revisionAfterRender,
+    freshness,
+    renderCoverage:
+      "isolated track rendered from timeline start through project end; metrics sliced to requested window",
+    result,
+  };
+}
 
 /** The engine path: offline-render master + per-strip stems and measure. */
 export async function mcpRenderSummary(
   services: Services,
-  request: { scope?: "master" | "tracks" | "all" },
+  request: {
+    scope?: "master" | "tracks" | "all";
+    trackId?: string;
+    startTick?: number;
+    endTick?: number;
+  },
 ): Promise<RenderSummaryData> {
   const scope = request.scope ?? "all";
   const doc: ProjectDocument = services.store.getDoc();
+  const hasWindowRequest =
+    request.trackId !== undefined || request.startTick !== undefined || request.endTick !== undefined;
+  if (hasWindowRequest) {
+    if (
+      typeof request.trackId !== "string" ||
+      request.trackId.length === 0 ||
+      request.startTick === undefined ||
+      request.endTick === undefined
+    ) {
+      throw new Error("track-window analysis requires trackId, startTick, and endTick together");
+    }
+    const trackWindow = await renderTrackWindow(services, doc, {
+      trackId: request.trackId,
+      startTick: request.startTick,
+      endTick: request.endTick,
+    });
+    return {
+      scope: "track-window",
+      strips: [],
+      master: null,
+      referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+      trackWindow,
+    };
+  }
   const { renderProject } = await import("../rendering/renderer");
   const mode = doc.arrangement.clips.length > 0 ? "song" : "pattern";
   const sampleRate = 44100 as const;

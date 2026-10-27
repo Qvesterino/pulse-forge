@@ -22,7 +22,7 @@ import { arrangementSecondsBetweenTicks } from "../project-model/scene-time";
  */
 
 export type AnalysisScopeKind = "track" | "clip" | "bus" | "master";
-export type AnalysisStage = "source" | "clip" | "track" | "bus" | "master";
+export type AnalysisStage = "source" | "clip" | "track" | "track-pre-master" | "bus" | "master";
 
 export interface AnalysisScope {
   kind: AnalysisScopeKind;
@@ -61,6 +61,9 @@ export interface AudioAnalysisResult<T = unknown> {
     sampleRate: number;
     startSample: number;
     endSample: number;
+    /** Exact arrangement-time boundaries used to derive the sample edges. */
+    startSec: number;
+    endSec: number;
     durationSec: number;
     /** The tempo segments the window crossed (scene pins included). */
     tempoContext: Array<{ fromTick: number; toTick: number; bpm: number }>;
@@ -100,7 +103,14 @@ export function resolveAnalysisWindow(
   const { startTick, endTick } = request.window;
   if (!(endTick > startTick)) throw new Error(`analysis window must be forward (got ${startTick}..${endTick})`);
 
-  const startSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, startTick, doc.bpm, barUnitTicks);
+  const startSec = arrangementSecondsBetweenTicks(
+    doc.arrangement.clips,
+    doc.scenes,
+    0,
+    startTick,
+    doc.bpm,
+    barUnitTicks,
+  );
   const endSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, endTick, doc.bpm, barUnitTicks);
 
   // The tempo segments the window crossed — from the same span builder the
@@ -186,7 +196,8 @@ export function resolveClipSourceWindow(
   if (clip.reverse || clip.loop || clip.stretchRate !== 1 || (clip.warpMarkers?.length ?? 0) > 0) {
     caveats.push({
       code: "source-window-approximate",
-      detail: "reverse/loop/warp/stretch clips do not map arrangement→source linearly — v1 resolves straight clips only",
+      detail:
+        "reverse/loop/warp/stretch clips do not map arrangement→source linearly — v1 resolves straight clips only",
     });
   }
   const toSec = (tick: number): number =>
@@ -210,7 +221,11 @@ export interface AnalyzerDefinition<P> {
   version: string;
   featureSet: string;
   /** The pure analyzer core: window PCM in, typed payload out. */
-  analyze: (channels: readonly Float32Array[], sampleRate: number, windowSec: { startSec: number; endSec: number }) => P;
+  analyze: (
+    channels: readonly Float32Array[],
+    sampleRate: number,
+    windowSec: { startSec: number; endSec: number },
+  ) => P;
   /** Optional confidence derived from the payload. */
   confidence?: (payload: P) => number | null;
 }
