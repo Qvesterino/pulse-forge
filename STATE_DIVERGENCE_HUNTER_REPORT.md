@@ -27,14 +27,17 @@
 > | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                                                      | `3d59627e`                                |
 > | **F-11** macro / modulator / lane        | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`)                          | `64e71cd3` · ADR 0067                     |
 > | **F-18** fallback runtime vs. the knobs  | Low          | **FIXED** — the controls themselves disclose the 1:1 passthrough (the engine's own reason, in the flagship panels' words), and the device chip says PASSTHROUGH instead of ACTIVE                                                                                                                                | `361fb5b6`                                |
-> | **F-12** silent clamps                   | Medium       | **FIXED** — a value the domain had to change is now disclosed on the command and lands in `Command.detail` (the toast's channel). Two producers feed it: the **command layer** (the clamp the audit never named) and the **normaliser's footprint**, read from the document. The MCP answer states the clamp too | `51c6ec59` · ADR 0068                     |
+> | **F-12** silent clamps                   | Medium       | **FIXED** — a value the domain had to change is now disclosed on the command and lands in `Command.detail` (the toast's channel). Two producers feed it: the **command layer** (the clamp the audit never named) and the **normaliser's footprint**, read from the document. The MCP answer states the clamp too | `51c6ec59` · ADR 0069                     |
 > | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                                             | —                                         |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
 > **29 findings, 14 resolved, 15 open, 0 Critical.**
 >
-> **Still open, and the next wave:** the rest of §11.
+> **Still open, and the next wave:** the rest of §6's TOP 10, the systemic
+> improvements in §7 (S-1 … S-5) and the remaining phases in §8. _(An earlier
+> revision of this block said "the rest of §11" — §11 is the method appendix,
+> not a work list; the pointer is corrected here.)_
 
 ---
 
@@ -862,7 +865,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Smallest safe repair:** have the normaliser collect what it changed and surface it through
   `Command.detail` (the mechanism already exists).
 - **Regression plan:** a spec asserting that an out-of-range set reports the clamp in `detail`.
-- **REPAIR (2026-10-27, ADR 0068).** The disclosure now travels **on the command** and lands in
+- **REPAIR (2026-10-27, ADR 0069).** The disclosure now travels **on the command** and lands in
   `Command.detail` — the toast's channel. Two producers feed it, because the measured reachable
   silent clamps live in two places, not one:
   - the **command layer** — the clamp helpers (`clampEffectParam`, `clampInstrumentParam`,

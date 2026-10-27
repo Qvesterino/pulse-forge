@@ -1,4 +1,4 @@
-# ADR 0068 — A value the domain had to change is disclosed, not silently rewritten
+# ADR 0069 — A value the domain had to change is disclosed, not silently rewritten
 
 Date: 2026-10-27 · Status: Accepted (shipped) · Scope: command layer, project store, MCP surface
 
