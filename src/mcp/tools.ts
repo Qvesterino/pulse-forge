@@ -12648,28 +12648,55 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       let next = doc;
       const applied: string[] = [];
       const skipped: string[] = [];
+      // Audit F-08: a write aimed at a SPECIFIC instance either hits it or
+      // SAYS it did not. The saved instance can be gone — the user deleted it
+      // and added a different device of the same type — and the per-type
+      // fallback then lands the write on a DIFFERENT instance. The
+      // acknowledgement used to name the SAVED ordinal, so the AI saw a
+      // plausible-looking success on the wrong entity. Every substitution is
+      // now named, in the text and in the structured data.
+      const substitutions: Array<{
+        track: string;
+        type: string;
+        savedFxId: string;
+        appliedFxId: string;
+        savedInstance: string;
+        appliedInstance: string;
+      }> = [];
       for (const device of snap.devices) {
         const track = next.tracks.find((t) => t.id === device.trackId);
-        const instanceLabel = `${device.trackName}/${device.type}${device.instanceIndex === undefined ? "" : ` #${device.instanceIndex + 1}`}`;
+        const savedLabel = `${device.trackName}/${device.type}${device.instanceIndex === undefined ? "" : ` #${device.instanceIndex + 1}`}`;
         if (!track) {
-          skipped.push(instanceLabel);
+          skipped.push(savedLabel);
           continue;
         }
         // Prefer the saved ID when it survived; the per-type occurrence handles recreated IDs.
         const matchingDevices = track.effects.filter((fx) => fx.type === device.type);
-        const instance =
-          matchingDevices.find((fx) => fx.id === device.fxId) ?? matchingDevices[device.instanceIndex ?? 0];
+        const byId = matchingDevices.find((fx) => fx.id === device.fxId);
+        const instance = byId ?? matchingDevices[device.instanceIndex ?? 0];
         if (!instance) {
-          skipped.push(instanceLabel);
+          skipped.push(savedLabel);
           continue;
+        }
+        // The acknowledgement names the instance the write ACTUALLY landed on
+        // — its ordinal among the same-type instances that exist NOW.
+        const appliedOrdinal = matchingDevices.findIndex((fx) => fx.id === instance.id);
+        const appliedLabel = `${track.name}/${device.type}${matchingDevices.length > 1 ? ` #${appliedOrdinal + 1}` : ""} (${instance.id})`;
+        if (!byId) {
+          substitutions.push({
+            track: track.name,
+            type: device.type,
+            savedFxId: device.fxId,
+            appliedFxId: instance.id,
+            savedInstance: savedLabel,
+            appliedInstance: appliedLabel,
+          });
         }
         for (const [paramId, value] of Object.entries(device.params))
           next = setEffectParam(next, track.id, instance.id, paramId, value).execute(next);
         if (device.outputTrimDb != null)
           next = setEffectOutputTrimDb(next, track.id, instance.id, device.outputTrimDb).execute(next);
-        applied.push(
-          `${track.name}/${device.type}${device.instanceIndex === undefined ? "" : ` #${device.instanceIndex + 1}`}`,
-        );
+        applied.push(appliedLabel);
       }
       if (applied.length === 0)
         return mcpError(
@@ -12678,7 +12705,26 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
         );
       ctx.execute(snapshot("mcpMasterAbRestore", `MCP: restore A/B '${name}'`, doc, next));
       const skippedReadback = skipped.length > 0 ? `; skipped missing ${skipped.join(", ")}` : "";
-      return { text: `restored '${name}' on ${applied.join(", ")}${skippedReadback} — one undo step`, mutated: true };
+      const substitutionNote =
+        substitutions.length === 0
+          ? ""
+          : ` — NOTE: ${substitutions.length} saved instance(s) no longer exist, so the write landed on a DIFFERENT one: ${substitutions
+              .map((s) => `${s.savedInstance} [${s.savedFxId}] → ${s.appliedInstance}`)
+              .join(", ")}`;
+      return {
+        text: `restored '${name}' on ${applied.join(", ")}${substitutionNote}${skippedReadback} — one undo step`,
+        mutated: true,
+        data: {
+          status: "applied",
+          op: "ab",
+          action: "restore",
+          name,
+          applied: true,
+          devices: applied,
+          skipped,
+          substitutions,
+        },
+      };
     }
     return mcpError("UNKNOWN_REQUEST", `unknown op:ab action: ${action} (save | list | compare | restore)`);
   }

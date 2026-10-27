@@ -35,17 +35,18 @@
 > | **F-17** bypass as a structural removal     | Low          | **FIXED** — the bypass flag is not part of the chain's signature: a bypassed effect STAYS in the chain, so toggling it is a parameter write, not a cold restart                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `af1d05dc` · ADR 0068                               |
 > | **F-20** duplicated unit conversions        | Low          | **FIXED** — one dB→linear owner (`src/effects/scale-bridges.ts`); the registry delegates to it instead of keeping a second implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `5f4d96c8`                                          |
 > | **F-07** automation points have no identity | Medium       | **FIXED** — every authored automation point carries a stable `id` (`SCHEMA_VERSION` 38 → 39), so an undo re-anchors on the entity it created, the structural delta anchors on the id instead of a slot, and a duplicated write is refused **at the command boundary** (every entry point inherits it). Re-measured first: the finding's single defect was **four** — the command layer duplicated a point, the MCP's `movePoint` acknowledged a point it never touched (it read the committed point back by index), an undo of an **edited** point removed nothing while consuming a history entry, and a positional capture deleted the human's point | `54b61f09` (core, by a parallel session) · ADR 0075 |
+> | **F-08** stale ordinal redirects a write    | Medium       | **FIXED** — the A/B restore's ordinal fallback stays (the "recreated the same device" case is real) but every substitution is now **named**: the acknowledgement reports the instance the write landed on — its id and its ordinal among the instances that exist NOW — and says so in prose and in `data.substitutions`. The report's claim that the same shape lived in the effect-instance and automation-target resolvers is **not true of today's code** — those refuse explicitly; the fallback existed in exactly ONE place                                                                                                                     | ADR 0076                                            |
 > | F-03, F-04, F-14                            | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | —                                                   |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 21 resolved, 8 open, 0 Critical.**
+> **29 findings, 22 resolved, 7 open, 0 Critical.**
 >
 > **Still open, and the next wave:** §6's TOP 10 is now **fully closed** (all ten
 > entries); what remains is the systemic improvements in §7 — **S-1 is closed**,
 > its four gaps were F-05, F-06, F-24 and F-26, so **S-2 … S-5 remain** — the
 > remaining phases in §8, and the seven findings still listed as open above:
-> **F-08, F-13, F-15, F-19, F-21, F-22, F-23 and F-27**.
+> **F-13, F-15, F-19, F-21, F-22, F-23 and F-27**.
 > _(An earlier revision of this block said "the rest of §11" — §11 is the
 > method appendix, not a work list; the pointer is corrected here.)_
 >
@@ -754,12 +755,22 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   signal. The same ordinal fallback shape exists in the effect-instance and automation-target
   resolvers.
 - **Evidence:** `src/mcp/tools.ts:12604-12606` (`kyx_master` A/B restore — the ordinal fallback quoted
-  above); the typed-error contrast at the `kyx_plugin_param` resolver (`src/mcp/tools.ts:11074-11075`).
+  above; **the repair rewrote those lines**, the fallback now sits at `:12751-12753` and discloses);
+  the typed-error contrast at the `kyx_plugin_param` resolver (`src/mcp/tools.ts:11074-11075` at the
+  time of the audit; today's is `:11422-11426`).
 - **Smallest safe repair:** on the fallback path, say so — _"original instance gone; applied to
   instance #2"_ — so the outcome is verifiable. (Removing the fallback entirely would break the
   legitimate "recreated the same effect" case; disclosure is the right minimum.)
 - **Regression plan:** delete the saved instance, add a different instance of the same type, run the
   restore, assert the acknowledgement discloses the substitution.
+- **REPAIR (2026-10-27, ADR 0076).** The class was **re-measured** before the repair, and the
+  report's scope claim needed correcting: the same `?? <ordinal>` shape existed in **exactly ONE**
+  place — the A/B restore. The effect-instance resolver, the automation-target resolver and the
+  plugin-param resolver all resolve by id and **refuse explicitly** when the id does not match, so the
+  report's sentence _"the same ordinal fallback shape exists in the effect-instance and
+  automation-target resolvers"_ does not hold against today's code. (One further candidate,
+  `src/integrations/audiotool-nexus/writer.ts`, requires **exactly one** match and declines
+  otherwise, so it never substitutes either.)
 
   The fallback **stays** — the "recreated the same device" case is real, and removing it would be a
   different lie. What changed is that the substitution is **named**:
@@ -1568,7 +1579,7 @@ product but no probe or test in this audit exercised it.
 | Scenario                                                                        | Trigger                                                       | Expected invariant                                                        | Observed / untested                                                                                                              | Evidence                                                                                                                                                                 | Risk                 | Proposed test                                                                                                                |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Human moves a plugin slider while the AI issues a parameter update              | both target the same `fxId`                                   | the later write wins; both writers see the same document                  | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice      | `src/store/ProjectStore.ts:268` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only)                                         | medium               | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
-| Two intents target the same track/clip using stale IDs                          | the human deleted the clip; the AI holds the old id           | a typed, machine-detectable refusal                                       | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — the ordinal fallback at `:12604-12606`; the typed path at `:11074-11075`            | high (F-08)          | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution    |
+| Two intents target the same track/clip using stale IDs                          | the human deleted the clip; the AI holds the old id           | a typed, machine-detectable refusal                                       | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — the ordinal fallback at `:12604-12606` (today `:12751-12753`, and it discloses); the typed path at `:11074-11075` (today `:11422-11426`)            | high (F-08)          | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution    |
 | A command acknowledges before the queued audio update is applied                | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms)                   | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1298-1303`                                                                                       | low — _not a defect_ | assert the applied value reaches 95 % of the commanded value within 3 × tc                                                   |
 | Tool output claims success though the command failed or was rejected            | an AI call on a stale target                                  | `isError` + a typed code                                                  | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result                                            | `src/mcp/tools.ts:8704`; measured §5.2                                                                                                                                   | high (F-05)          | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy                                     |
 | A human edits between an AI's call and its retry (same `requestId`)             | the AI retries a timed-out call                               | the retry reports the document's current value                            | **Observed — diverges.** The replay serves the _first_ call's read-back                                                          | `src/mcp/tools.ts:4805` (the replay builds its result) vs `src/mcp/tools.ts:5003` (the gate — the dispatch's `verifiedMutation` call is at `:4946` today); measured §5.2 | high (F-06)          | edit, retry the same `requestId`, assert the reported value equals the document's current value                              |
@@ -2429,11 +2440,11 @@ _last_ match), then the correct variant (**S-3**: stable point ids + the `MIGRAT
 landing in one `SCHEMA_VERSION` bump). Then **F-08** (disclose the ordinal substitution) and
 **F-22** (undo seals the open frame).
 
-> **F-07 is DONE (2026-10-27, ADR 0075).** The **correct** variant shipped,
+> **F-07 and F-08 are DONE (2026-10-27, ADR 0075 and ADR 0076).** The **correct** variant shipped,
 > not the cheap one: `SCHEMA_VERSION` is 39 and every authored automation point carries a stable id.
 > The `MIGRATIONS` chain from **F-13** did **not** land with it — for an additive optional field the
-> normaliser IS the migration, and F-13 stays open. **F-08** (disclose the ordinal substitution) and
-> **F-22** (undo seals the open frame) are the remaining entries in this phase.
+> normaliser IS the migration, and F-13 stays open. F-08's disclosure ships too. **F-22** (undo seals
+> the open frame) is the remaining entry in this phase.
 
 _Gate:_ the identity-based reproduction (object identity, not JSON) passes; projects written by
 v38 still open; a round-trip of every project fixture is byte-identical.
