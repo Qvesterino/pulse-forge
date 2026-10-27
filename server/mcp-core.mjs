@@ -1876,17 +1876,18 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_steps",
     description:
-      "Structured sixteenth-note step-grid edit on the ACTIVE pattern's drum pads (1-based indexes across the whole pattern; steps per bar follow the project's meter). add sets velocity, remove clears, toggle flips, ghost places a soft probabilistic hit, clearPad empties the whole family. Returns a verification read-back with the family's before → after step counts.",
+      "Structured sixteenth-note step-grid edit on the ACTIVE pattern's drum pads (1-based indexes across the whole pattern; steps per bar follow the project's meter). add sets velocity, remove clears, toggle flips, ghost places a soft probabilistic hit, clearPad empties the whole family. setVelocity reshapes the velocity of EXISTING hits (cells without a hit are skipped and disclosed); setMeta shapes a hit's expressiveness — probability (0..1, 1 = always), microtiming (-1..1, early→late fraction of a step), ratchet (1..8 retriggers), amount (0..1) — with the same existing-hit rule. Values at the neutral default clear the modifier. Returns a verification read-back with the family's before → after step counts and per-cell landed values.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["add", "remove", "toggle", "ghost", "clearPad"],
+          enum: ["add", "remove", "toggle", "ghost", "clearPad", "setVelocity", "setMeta"],
         },
         family: {
           type: "string",
           enum: ["kick", "snare", "clap", "hat", "perc", "tom"],
+          description: "Drum family to edit",
         },
         steps: {
           type: "array",
@@ -1902,7 +1903,31 @@ export const MCP_TOOL_DEFS = [
           type: "number",
           minimum: 0.05,
           maximum: 1,
-          description: "For add/toggle (default 0.8)",
+          description: "For add/toggle (default 0.8) / setVelocity (required)",
+        },
+        probability: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "setMeta — chance the hit plays each pass (1 = always, the default; clears the modifier)",
+        },
+        microtiming: {
+          type: "number",
+          minimum: -1,
+          maximum: 1,
+          description: "setMeta — timing shift as a fraction of a step (negative early, 0 neutral/clears)",
+        },
+        ratchet: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8,
+          description: "setMeta — retriggers within the step (1 neutral/clears)",
+        },
+        amount: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "setMeta — per-step velocity/mod depth (1 full, the default; clears the modifier)",
         },
         requestId: {
           type: "string",
@@ -1928,7 +1953,7 @@ export const MCP_TOOL_DEFS = [
         },
         op: {
           type: "string",
-          enum: ["add", "remove", "toggle", "ghost", "clearPad"],
+          enum: ["add", "remove", "toggle", "ghost", "clearPad", "setVelocity", "setMeta"],
         },
         family: {
           type: "string",
@@ -2027,10 +2052,34 @@ export const MCP_TOOL_DEFS = [
                 minimum: 0,
                 maximum: 1,
               },
+              microtiming: {
+                type: "number",
+                minimum: -1,
+                maximum: 1,
+              },
+              ratchet: {
+                type: "integer",
+                minimum: 1,
+                maximum: 8,
+              },
+              amount: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+              },
             },
             required: ["padId", "padName", "step", "velocity", "probability"],
           },
           maxItems: 2048,
+        },
+        skippedOffSteps: {
+          type: "array",
+          items: {
+            type: "integer",
+            minimum: 1,
+            maximum: 128,
+          },
+          maxItems: 128,
         },
         beforeHitCount: {
           type: "integer",
@@ -2073,13 +2122,25 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_notes",
     description:
-      "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps does not cover): list/add/move/delete notes, set velocity, quantize to grid or key on one track, transpose a family's whole line. Targets accept an exact trackId or a melodic family. Notes are addressed by stable noteId (preferred) or INDEX into a paged list response; indices remain supported for compatibility. Every edit uses the audited command layer and returns committed note read-back.",
+      "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps does not cover): list/add/move/delete notes, set velocity, resize a note's length, duplicate/split/glue a line, quantize to grid or key on one track, transpose a family's whole line. Targets accept an exact trackId or a melodic family. Notes are addressed by stable noteId (preferred) or INDEX into a paged list response; indices remain supported for compatibility. duplicate/split/glue accept noteIds (an array), a single noteId, or nothing (the whole line). Every edit uses the audited command layer and returns committed note read-back.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["list", "add", "move", "delete", "setVelocity", "quantize", "transpose"],
+          enum: [
+            "list",
+            "add",
+            "move",
+            "delete",
+            "setVelocity",
+            "resize",
+            "duplicate",
+            "split",
+            "glue",
+            "quantize",
+            "transpose",
+          ],
         },
         family: {
           type: "string",
@@ -2094,7 +2155,18 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           minLength: 1,
           maxLength: 128,
-          description: "Stable note ID for move/delete/setVelocity.",
+          description: "Stable note ID for move/delete/setVelocity/resize (or one target of duplicate/split/glue).",
+        },
+        noteIds: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+            maxLength: 128,
+          },
+          minItems: 1,
+          maxItems: 256,
+          description: "Stable note IDs for duplicate/split/glue; omit to act on the track's whole line.",
         },
         pitch: {
           type: "integer",
@@ -2133,7 +2205,7 @@ export const MCP_TOOL_DEFS = [
           type: "number",
           minimum: 0.05,
           maximum: 1000000,
-          description: "Note length in beats (add, default 0.5)",
+          description: "Note length in beats (add default 0.5; resize — the new length, clamped read-back disclosed)",
         },
         velocity: {
           type: "number",

@@ -3845,3 +3845,128 @@ describe("mcp clips — arrangement building (AS-001)", async () => {
     expect(store.undoStackLength).toBe(0);
   });
 });
+
+describe("mcp steps — edit depth (AS-003): setVelocity/setMeta on existing hits", async () => {
+  it("setVelocity reshapes existing hits in ONE undo step without changing hit counts", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_steps", { op: "add", family: "kick", steps: [1, 5], velocity: 0.9 });
+    const shaped = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setVelocity",
+      family: "kick",
+      steps: [1, 5],
+      velocity: 0.4,
+    });
+    expect(shaped.mutated, shaped.text).toBe(true);
+    expect(shaped.text).toContain("kick setVelocity");
+    const data = shaped.data as { changes: Array<{ step: number; velocity: number }>; skippedOffSteps: number[] };
+    expect(data.changes.length).toBeGreaterThanOrEqual(2);
+    expect(data.changes.every((change) => change.velocity === 0.4)).toBe(true);
+    expect([...new Set(data.changes.map((change) => change.step))].sort()).toEqual([1, 5]);
+    expect(data.skippedOffSteps).toEqual([]);
+    store.undo();
+    const kickPad = padIdForFamily(store.doc, "kick")!;
+    const rows = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.rows[kickPad];
+    expect(rows?.[0]).toBe(0.9);
+  });
+
+  it("setVelocity skips cells with no hit and discloses them", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_steps", { op: "add", family: "snare", steps: [5], velocity: 0.8 });
+    const result = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setVelocity",
+      family: "snare",
+      steps: [5, 7],
+      velocity: 0.3,
+    });
+    expect(result.mutated, result.text).toBe(true);
+    expect(result.text).toContain("skipped 1 step(s) with no hit (7");
+    const data = result.data as { changes: Array<{ step: number }>; skippedOffSteps: number[] };
+    expect(data.skippedOffSteps).toEqual([7]);
+    expect(data.changes.every((change) => change.step === 5)).toBe(true);
+  });
+
+  it("setMeta lands probability + microtiming on an existing hit; a neutral value clears it", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_steps", { op: "add", family: "snare", steps: [5], velocity: 0.9 });
+    const meta = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setMeta",
+      family: "snare",
+      steps: [5],
+      probability: 0.5,
+      microtiming: -0.25,
+    });
+    expect(meta.mutated, meta.text).toBe(true);
+    const landed = (meta.data as { changes: Array<{ step: number; probability: number; microtiming: number }> })
+      .changes[0];
+    expect(landed.probability).toBe(0.5);
+    expect(landed.microtiming).toBe(-0.25);
+
+    const cleared = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setMeta",
+      family: "snare",
+      steps: [5],
+      probability: 1,
+      microtiming: 0,
+    });
+    expect(cleared.mutated, cleared.text).toBe(true);
+    const afterClear = (cleared.data as { changes: Array<{ probability: number; microtiming: number }> }).changes[0];
+    expect(afterClear.probability).toBe(1);
+    expect(afterClear.microtiming).toBe(0);
+    const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    const snarePad = padIdForFamily(store.doc, "snare")!;
+    expect(pattern.stepMeta?.[snarePad]?.[4]).toBeUndefined();
+  });
+
+  it("setVelocity/setMeta refuse bad contracts without mutating", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_steps", { op: "add", family: "kick", steps: [1], velocity: 0.8 });
+    const before = store.undoStackLength;
+
+    const noVelocity = await executeMcpTool(ctx, "kyx_steps", { op: "setVelocity", family: "kick", steps: [1] });
+    expect(noVelocity.isError).toBe(true);
+    expect(noVelocity.errorCode).toBe("INVALID_ARGUMENTS");
+
+    const withVelocity = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setMeta",
+      family: "kick",
+      steps: [1],
+      probability: 0.5,
+      velocity: 0.5,
+    });
+    expect(withVelocity.isError).toBe(true);
+    expect(withVelocity.text).toContain("setVelocity");
+
+    const emptyMeta = await executeMcpTool(ctx, "kyx_steps", { op: "setMeta", family: "kick", steps: [1] });
+    expect(emptyMeta.isError).toBe(true);
+    expect(emptyMeta.errorCode).toBe("INVALID_ARGUMENTS");
+
+    const badRange = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setMeta",
+      family: "kick",
+      steps: [1],
+      microtiming: 2,
+    });
+    expect(badRange.isError).toBe(true);
+    expect(badRange.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.undoStackLength).toBe(before);
+  });
+
+  it("setVelocity on only-off steps is an honest no-op", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = await executeMcpTool(ctx, "kyx_steps", {
+      op: "setVelocity",
+      family: "tom",
+      steps: [13, 14],
+      velocity: 0.5,
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("nothing changed");
+    const data = result.data as { skippedOffSteps: number[] };
+    expect(data.skippedOffSteps.sort()).toEqual([13, 14]);
+  });
+});

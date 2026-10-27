@@ -781,6 +781,15 @@
       "seamEvent": "\"kyx_clips\", { op: \"add\"",
       "negativeSpec": "refuses a missing and an unknown scene",
       "note": "The arrangement-BUILDING primitive (AS-001), specs in the \"mcp clips — arrangement building\" describe: until this seam an agent could edit any existing clip but never place one. add/midiAdd are pure adds (no D4); midiDelete rides the D4 gate with the auto-before checkpoint."
+    },
+    {
+      "id": "mcp-edit-depth",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/tools.ts — kyx_notes resize/duplicate/split/glue + kyx_steps setVelocity/setMeta",
+      "spec": "tests/mcp-notes-music.test.ts",
+      "seamEvent": "\"kyx_notes\", { op: \"resize\"",
+      "negativeSpec": "refuse bad contracts without mutating",
+      "note": "The edit-depth wave (AS-002/AS-003): note lengths and line transforms (resize/duplicate/split/glue over the piano-roll commands) and the step expressive layer (setVelocity on existing hits with off-cell disclosure; setMeta probability/microtiming/ratchet/amount with neutral-value clearing). Steps specs live in tests/mcp-tools.test.ts (AS-003 describe). Expressive ops reshape hits that exist — placing stays op:add."
     }
   ]
 }

@@ -620,3 +620,106 @@ describe("kyx_music", async () => {
     expect(ctx.getDoc().bpm).not.toBeNaN();
   });
 });
+
+describe("kyx_notes — edit depth (AS-002): resize/duplicate/split/glue", async () => {
+  it("resize sets a note's length in beats and discloses the clamp at the ceiling", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    const added = await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      noteName: "C2",
+      startBeat: 0,
+      durationBeats: 0.5,
+      velocity: 0.9,
+    });
+    const noteId = (added.data as { noteId: string }).noteId;
+
+    const resized = await executeMcpTool(ctx, "kyx_notes", { op: "resize", noteId, durationBeats: 4 });
+    expect(resized.mutated, resized.text).toBe(true);
+    const landed = notesOf(ctx, "bass").find((note) => note.id === noteId)!;
+    expect(landed.duration).toBe(4 * 480);
+    expect((resized.data as { clamped: boolean }).clamped).toBe(false);
+
+    const clampedAsk = await executeMcpTool(ctx, "kyx_notes", { op: "resize", noteId, durationBeats: 100000 });
+    expect(clampedAsk.mutated, clampedAsk.text).toBe(true);
+    expect(clampedAsk.text).toContain("clamped to");
+    const atCeiling = notesOf(ctx, "bass").find((note) => note.id === noteId)!;
+    expect(atCeiling.duration).toBeLessThan(100000 * 480);
+    expect((clampedAsk.data as { clamped: boolean }).clamped).toBe(true);
+  });
+
+  it("duplicate doubles the whole line as ONE undo step; noteIds subset duplicates just those", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    await executeMcpTool(ctx, "kyx_notes", { op: "add", noteName: "C2", startBeat: 0, durationBeats: 0.5 });
+    await executeMcpTool(ctx, "kyx_notes", { op: "add", noteName: "E2", startBeat: 1, durationBeats: 0.5 });
+    expect(notesOf(ctx, "bass")).toHaveLength(2);
+
+    const whole = await executeMcpTool(ctx, "kyx_notes", { op: "duplicate" });
+    expect(whole.mutated, whole.text).toBe(true);
+    expect(notesOf(ctx, "bass")).toHaveLength(4);
+    store.undo();
+    expect(notesOf(ctx, "bass")).toHaveLength(2);
+
+    const first = notesOf(ctx, "bass")[0];
+    const one = await executeMcpTool(ctx, "kyx_notes", { op: "duplicate", noteIds: [first.id] });
+    expect(one.mutated, one.text).toBe(true);
+    expect(notesOf(ctx, "bass")).toHaveLength(3);
+  });
+
+  it("split halves a note in place", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    const added = await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      noteName: "C2",
+      startBeat: 0,
+      durationBeats: 2,
+    });
+    const noteId = (added.data as { noteId: string }).noteId;
+    const split = await executeMcpTool(ctx, "kyx_notes", { op: "split", noteIds: [noteId] });
+    expect(split.mutated, split.text).toBe(true);
+    const after = notesOf(ctx, "bass");
+    expect(after).toHaveLength(2);
+    expect(after.every((note) => note.duration === 480)).toBe(true);
+  });
+
+  it("glue merges a same-pitch pair into one note", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    await executeMcpTool(ctx, "kyx_notes", { op: "add", noteName: "C2", startBeat: 0, durationBeats: 0.5 });
+    await executeMcpTool(ctx, "kyx_notes", { op: "add", noteName: "C2", startBeat: 1, durationBeats: 0.5 });
+    await executeMcpTool(ctx, "kyx_notes", { op: "add", noteName: "G2", startBeat: 2, durationBeats: 0.5 });
+    const pair = notesOf(ctx, "bass")
+      .filter((note) => note.pitch === 36)
+      .map((note) => note.id);
+    expect(pair).toHaveLength(2);
+
+    const glued = await executeMcpTool(ctx, "kyx_notes", { op: "glue", noteIds: pair });
+    expect(glued.mutated, glued.text).toBe(true);
+    expect(notesOf(ctx, "bass")).toHaveLength(2);
+    const merged = notesOf(ctx, "bass").find((note) => note.pitch === 36)!;
+    expect(merged.duration).toBe(720);
+  });
+
+  it("resize/glue/duplicate refuse bad contracts without mutating", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    const added = await executeMcpTool(ctx, "kyx_notes", { op: "add", noteName: "C2", startBeat: 0 });
+    const noteId = (added.data as { noteId: string }).noteId;
+    const before = store.undoStackLength;
+
+    const noDuration = await executeMcpTool(ctx, "kyx_notes", { op: "resize", noteId });
+    expect(noDuration.isError).toBe(true);
+    expect(noDuration.errorCode).toBe("INVALID_ARGUMENTS");
+
+    const oneGlue = await executeMcpTool(ctx, "kyx_notes", { op: "glue", noteId });
+    expect(oneGlue.isError).toBe(true);
+    expect(oneGlue.errorCode).toBe("INVALID_ARGUMENTS");
+
+    const unknown = await executeMcpTool(ctx, "kyx_notes", { op: "duplicate", noteIds: ["nope"] });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.errorCode).toBe("UNKNOWN_TARGET");
+    expect(store.undoStackLength).toBe(before);
+  });
+});

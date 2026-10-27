@@ -150,6 +150,8 @@ import {
   deleteAutomationPoint,
   deleteNote,
   deleteTrack,
+  duplicateNotes,
+  glueNotes,
   moveAutomationPoint,
   moveEffect,
   moveEffectToIndex,
@@ -158,6 +160,8 @@ import {
   moveMidiClip,
   resizeArrangementClipRipple,
   resizeMidiClip,
+  resizeNote,
+  splitNotes,
   splitArrangementClipAtTick,
   deleteAudioClip,
   duplicateArrangementClip,
@@ -962,6 +966,9 @@ const STEP_CHANGE_SCHEMA = {
     step: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
     velocity: { type: "number", minimum: 0, maximum: 1 },
     probability: { type: "number", minimum: 0, maximum: 1 },
+    microtiming: { type: "number", minimum: -1, maximum: 1 },
+    ratchet: { type: "integer", minimum: 1, maximum: 8 },
+    amount: { type: "number", minimum: 0, maximum: 1 },
   },
   required: ["padId", "padName", "step", "velocity", "probability"],
 };
@@ -982,7 +989,10 @@ const OUTPUT_STEPS: McpOutputSchema = {
   additionalProperties: false,
   properties: {
     status: { type: "string", enum: ["changed", "no_change", "partial"] },
-    op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
+    op: {
+      type: "string",
+      enum: ["add", "remove", "toggle", "ghost", "clearPad", "setVelocity", "setMeta"],
+    },
     family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
     patternId: { type: "string" },
     patternName: { type: "string" },
@@ -1001,6 +1011,11 @@ const OUTPUT_STEPS: McpOutputSchema = {
       maxItems: MAX_STEP_COUNT,
     },
     changes: { type: "array", items: STEP_CHANGE_SCHEMA, maxItems: 2048 },
+    skippedOffSteps: {
+      type: "array",
+      items: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
+      maxItems: MAX_STEP_COUNT,
+    },
     beforeHitCount: { type: "integer", minimum: 0 },
     afterHitCount: { type: "integer", minimum: 0 },
     undoSteps: { type: "integer", minimum: 0, maximum: 1 },
@@ -2198,20 +2213,62 @@ export const MCP_TOOLS: McpToolDef[] = [
       "Structured sixteenth-note step-grid edit on the ACTIVE pattern's drum pads " +
       "(1-based indexes across the whole pattern; steps per bar follow the project's meter). add sets velocity, " +
       "remove clears, toggle flips, ghost places a soft probabilistic hit, " +
-      "clearPad empties the whole family. Returns a verification read-back " +
-      "with the family's before → after step counts.",
+      "clearPad empties the whole family. setVelocity reshapes the velocity " +
+      "of EXISTING hits (cells without a hit are skipped and disclosed); " +
+      "setMeta shapes a hit's expressiveness — probability (0..1, 1 = always), " +
+      "microtiming (-1..1, early→late fraction of a step), ratchet (1..8 " +
+      "retriggers), amount (0..1) — with the same existing-hit rule. Values " +
+      "at the neutral default clear the modifier. Returns a verification " +
+      "read-back with the family's before → after step counts and per-cell " +
+      "landed values.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
-        family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
+        op: {
+          type: "string",
+          enum: ["add", "remove", "toggle", "ghost", "clearPad", "setVelocity", "setMeta"],
+        },
+        family: {
+          type: "string",
+          enum: ["kick", "snare", "clap", "hat", "perc", "tom"],
+          description: "Drum family to edit",
+        },
         steps: {
           type: "array",
           items: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
           maxItems: MAX_STEP_COUNT,
           description: "1-based sixteenth-note step indexes within the pattern. Not used by clearPad.",
         },
-        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add/toggle (default 0.8)" },
+        velocity: {
+          type: "number",
+          minimum: 0.05,
+          maximum: 1,
+          description: "For add/toggle (default 0.8) / setVelocity (required)",
+        },
+        probability: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "setMeta — chance the hit plays each pass (1 = always, the default; clears the modifier)",
+        },
+        microtiming: {
+          type: "number",
+          minimum: -1,
+          maximum: 1,
+          description: "setMeta — timing shift as a fraction of a step (negative early, 0 neutral/clears)",
+        },
+        ratchet: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8,
+          description: "setMeta — retriggers within the step (1 neutral/clears)",
+        },
+        amount: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "setMeta — per-step velocity/mod depth (1 full, the default; clears the modifier)",
+        },
       },
       required: ["op", "family"],
     },
@@ -2221,18 +2278,33 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_notes",
     description:
       "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps " +
-      "does not cover): list/add/move/delete notes, set velocity, quantize to " +
-      "grid or key on one track, transpose a family's whole line. Targets " +
-      "accept an exact trackId or a melodic family. Notes are addressed by " +
-      "stable noteId (preferred) or INDEX into a paged list response; " +
-      "indices remain supported for compatibility. Every edit uses the " +
-      "audited command layer and returns committed note read-back.",
+      "does not cover): list/add/move/delete notes, set velocity, resize a " +
+      "note's length, duplicate/split/glue a line, quantize to grid or key " +
+      "on one track, transpose a family's whole line. Targets accept an " +
+      "exact trackId or a melodic family. Notes are addressed by stable " +
+      "noteId (preferred) or INDEX into a paged list response; indices " +
+      "remain supported for compatibility. duplicate/split/glue accept " +
+      "noteIds (an array), a single noteId, or nothing (the whole line). " +
+      "Every edit uses the audited command layer and returns committed " +
+      "note read-back.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["list", "add", "move", "delete", "setVelocity", "quantize", "transpose"],
+          enum: [
+            "list",
+            "add",
+            "move",
+            "delete",
+            "setVelocity",
+            "resize",
+            "duplicate",
+            "split",
+            "glue",
+            "quantize",
+            "transpose",
+          ],
         },
         family: {
           type: "string",
@@ -2244,7 +2316,14 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           minLength: 1,
           maxLength: 128,
-          description: "Stable note ID for move/delete/setVelocity.",
+          description: "Stable note ID for move/delete/setVelocity/resize (or one target of duplicate/split/glue).",
+        },
+        noteIds: {
+          type: "array",
+          items: { type: "string", minLength: 1, maxLength: 128 },
+          minItems: 1,
+          maxItems: 256,
+          description: "Stable note IDs for duplicate/split/glue; omit to act on the track's whole line.",
         },
         pitch: { type: "integer", minimum: 0, maximum: 127, description: "MIDI pitch (add; move absolute)" },
         noteName: { type: "string", description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)' },
@@ -2265,7 +2344,7 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "number",
           minimum: 0.05,
           maximum: 1000000,
-          description: "Note length in beats (add, default 0.5)",
+          description: "Note length in beats (add default 0.5; resize — the new length, clamped read-back disclosed)",
         },
         velocity: { type: "number", minimum: 0, maximum: 1, description: "add (default 0.8) / setVelocity" },
         pitchDelta: { type: "integer", minimum: -127, maximum: 127, description: "move relative semitones" },
@@ -6379,7 +6458,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           }),
         };
       }
-      const usesNoteTarget = op === "move" || op === "delete" || op === "setVelocity";
+      const usesNoteTarget = op === "move" || op === "delete" || op === "setVelocity" || op === "resize";
       const hasNoteId = record.noteId !== undefined;
       const hasIndex = record.index !== undefined;
       if (usesNoteTarget && hasNoteId && hasIndex) {
@@ -6607,6 +6686,118 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             requestedVelocity: velocity,
             clamped: changed.velocity !== velocity,
           }),
+        };
+      }
+      if (op === "resize") {
+        const durationBeats = record.durationBeats;
+        if (
+          typeof durationBeats !== "number" ||
+          !Number.isFinite(durationBeats) ||
+          durationBeats <= 0 ||
+          durationBeats > 1_000_000
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "resize needs durationBeats — the new length in beats (0.05..1000000)");
+        }
+        const requestedTicks = Math.max(1, Math.round(durationBeats * 480));
+        if (requestedTicks === target!.duration) {
+          return {
+            text: `duration is already ${beat(target!.duration)} beats for note ${target!.id}`,
+            mutated: false,
+            data: noteData("already_set", targetNotes.length, 0, {
+              noteId: target!.id,
+              index,
+              note: noteReadback(target!, index),
+              requestedDurationTicks: requestedTicks,
+              clamped: false,
+            }),
+          };
+        }
+        const beforeDoc = ctx.getDoc();
+        ctx.execute(resizeNote(beforeDoc, trackId, target!.id, requestedTicks));
+        const afterDoc = ctx.getDoc();
+        const afterNotes = notesOf();
+        const landedIndex = afterNotes.findIndex((note) => note.id === target!.id);
+        const changed = landedIndex >= 0 ? afterNotes[landedIndex] : undefined;
+        const mutated = afterDoc !== beforeDoc;
+        if (!changed) {
+          return mcpError("PARTIAL_FAILURE", "resize did not preserve the targeted note in committed state", {
+            mutated,
+            data: noteData("partial", afterNotes.length, mutated ? 1 : 0, { noteId: target!.id }),
+          });
+        }
+        const clamped = changed.duration !== requestedTicks;
+        return {
+          text: `resized ${describe(changed, landedIndex)}${clamped ? ` — clamped to ${beat(changed.duration)} beats` : ""}`,
+          mutated,
+          data: noteData(mutated ? "resized" : "already_set", afterNotes.length, mutated ? 1 : 0, {
+            noteId: changed.id,
+            index: landedIndex,
+            note: noteReadback(changed, landedIndex),
+            requestedDurationTicks: requestedTicks,
+            clamped,
+          }),
+        };
+      }
+      if (op === "duplicate" || op === "split" || op === "glue") {
+        const rawIds = record.noteIds;
+        if (
+          rawIds !== undefined &&
+          (!Array.isArray(rawIds) ||
+            rawIds.length === 0 ||
+            rawIds.length > 256 ||
+            rawIds.some((id) => typeof id !== "string" || id.trim() === "" || id.length > 128))
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "noteIds must be a non-empty array of note id strings (max 256)");
+        }
+        const requestedIds = Array.isArray(rawIds)
+          ? (rawIds as string[])
+          : hasNoteId
+            ? [record.noteId as string]
+            : undefined;
+        const beforeDoc = ctx.getDoc();
+        const before = notesOf();
+        if (requestedIds) {
+          const missing = requestedIds.find((id) => !before.some((note) => note.id === id));
+          if (missing) return mcpError("UNKNOWN_TARGET", `no note with id "${missing}" on track ${trackName}`);
+        }
+        const resolved = requestedIds ? before.filter((note) => requestedIds.includes(note.id)) : before;
+        if (resolved.length === 0) {
+          return {
+            text: `track ${trackName} has no notes to ${op}`,
+            mutated: false,
+            data: noteData("no_notes", before.length, 0),
+          };
+        }
+        if (op === "glue" && resolved.length < 2) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "glue needs at least two notes of the same pitch; this request resolved to one",
+          );
+        }
+        ctx.execute(
+          op === "duplicate"
+            ? duplicateNotes(beforeDoc, trackId, requestedIds)
+            : op === "split"
+              ? splitNotes(beforeDoc, trackId, requestedIds)
+              : glueNotes(beforeDoc, trackId, requestedIds),
+        );
+        const afterDoc = ctx.getDoc();
+        const after = notesOf();
+        const mutated = afterDoc !== beforeDoc;
+        if (!mutated) {
+          return {
+            text: `${op}: nothing changed on ${trackName} (the command no-opped — e.g. glue found no same-pitch pair)`,
+            mutated: false,
+            data: noteData("no_change", after.length, 0, {
+              beforeCount: before.length,
+              targetedCount: resolved.length,
+            }),
+          };
+        }
+        return {
+          text: `${op} on ${trackName}: ${before.length} → ${after.length} notes — one undo step`,
+          mutated,
+          data: noteData(op, after.length, 1, { beforeCount: before.length, targetedCount: resolved.length }),
         };
       }
       if (op === "quantize") {
@@ -12756,8 +12947,11 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   if (!pattern) return mcpError("UNKNOWN_TARGET", "no active pattern");
   const op = String(record.op ?? "");
   const family = String(record.family ?? "");
-  if (!("add remove toggle ghost clearPad".split(" ") as string[]).includes(op)) {
-    return mcpError("UNKNOWN_REQUEST", `unknown step op "${op}" (add | remove | toggle | ghost | clearPad)`);
+  if (!("add remove toggle ghost clearPad setVelocity setMeta".split(" ") as string[]).includes(op)) {
+    return mcpError(
+      "UNKNOWN_REQUEST",
+      `unknown step op "${op}" (add | remove | toggle | ghost | clearPad | setVelocity | setMeta)`,
+    );
   }
   if (!["kick", "snare", "clap", "hat", "perc", "tom"].includes(family)) {
     return mcpError("UNKNOWN_REQUEST", `unknown pad family "${family}"`);
@@ -12802,22 +12996,62 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
       );
     }
     requested = [...new Set(record.steps as number[])].sort((a, b) => a - b);
-    if (op !== "add" && op !== "toggle" && record.velocity !== undefined) {
-      return mcpError("INVALID_ARGUMENTS", `velocity is only used by add and toggle, not ${op}`);
+    if (op !== "add" && op !== "toggle" && op !== "setVelocity" && record.velocity !== undefined) {
+      return mcpError("INVALID_ARGUMENTS", `velocity is only used by add, toggle and setVelocity, not ${op}`);
     }
   }
   let velocity = 0.8;
   if (record.velocity !== undefined) {
     if (
-      (op !== "add" && op !== "toggle") ||
+      (op !== "add" && op !== "toggle" && op !== "setVelocity") ||
       typeof record.velocity !== "number" ||
       !Number.isFinite(record.velocity) ||
       record.velocity < 0.05 ||
       record.velocity > 1
     ) {
-      return mcpError("INVALID_ARGUMENTS", "velocity for add/toggle must be finite and between 0.05 and 1");
+      return mcpError("INVALID_ARGUMENTS", "velocity for add/toggle/setVelocity must be finite and between 0.05 and 1");
     }
     velocity = record.velocity;
+  }
+  if (op === "setVelocity" && record.velocity === undefined) {
+    return mcpError("INVALID_ARGUMENTS", "setVelocity needs velocity (0.05..1) — the new value for the existing hits");
+  }
+  // setMeta patch: validated up front so a bad field refuses the WHOLE edit
+  // (the read-back machine below trusts these ranges).
+  const metaPatch: { probability?: number; microtiming?: number; ratchet?: number; amount?: number } = {};
+  if (op === "setMeta") {
+    const numeric = (value: unknown, min: number, max: number): number | null =>
+      typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : null;
+    if (record.probability !== undefined) {
+      const probability = numeric(record.probability, 0, 1);
+      if (probability == null) return mcpError("INVALID_ARGUMENTS", "probability must be between 0 and 1");
+      metaPatch.probability = probability;
+    }
+    if (record.microtiming !== undefined) {
+      const microtiming = numeric(record.microtiming, -1, 1);
+      if (microtiming == null) return mcpError("INVALID_ARGUMENTS", "microtiming must be between -1 and 1");
+      metaPatch.microtiming = microtiming;
+    }
+    if (record.ratchet !== undefined) {
+      const ratchet = numeric(record.ratchet, 1, 8);
+      if (ratchet == null || !Number.isSafeInteger(record.ratchet))
+        return mcpError("INVALID_ARGUMENTS", "ratchet must be an integer from 1 to 8");
+      metaPatch.ratchet = ratchet;
+    }
+    if (record.amount !== undefined) {
+      const amount = numeric(record.amount, 0, 1);
+      if (amount == null) return mcpError("INVALID_ARGUMENTS", "amount must be between 0 and 1");
+      metaPatch.amount = amount;
+    }
+    if (Object.keys(metaPatch).length === 0) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        "setMeta needs at least one of probability (0..1), microtiming (-1..1), ratchet (1..8), amount (0..1)",
+      );
+    }
+    if (record.velocity !== undefined) {
+      return mcpError("INVALID_ARGUMENTS", "setMeta shapes modifiers, not velocity — use op:setVelocity for that");
+    }
   }
   const candidateSteps = op === "clearPad" ? Array.from({ length: stepCount }, (_, index) => index + 1) : requested;
   const candidateCellCount = targets.length * candidateSteps.length;
@@ -12831,9 +13065,13 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   const sourcePattern = (source: ProjectDocument) => source.patterns.find((candidate) => candidate.id === pattern.id);
   const readCell = (source: ProjectDocument, padId: string, stepIndex: number) => {
     const candidate = sourcePattern(source);
+    const meta = candidate?.stepMeta?.[padId]?.[stepIndex];
     return {
       velocity: candidate?.rows[padId]?.[stepIndex] ?? 0,
-      probability: candidate?.stepMeta?.[padId]?.[stepIndex]?.probability ?? 1,
+      probability: meta?.probability ?? 1,
+      microtiming: meta?.microtiming ?? 0,
+      ratchet: meta?.ratchet ?? 1,
+      amount: meta?.amount ?? 1,
     };
   };
   const hitCount = (source: ProjectDocument, padId: string): number =>
@@ -12851,29 +13089,54 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
 
   let next = doc;
   const affected = new Set<string>();
-  const intended = new Map<string, { velocity: number; probability: number }>();
+  const skippedOffSteps = new Set<number>();
+  const intended = new Map<
+    string,
+    { velocity: number; probability: number; microtiming: number; ratchet: number; amount: number }
+  >();
   for (const step of op === "clearPad" ? candidateSteps : requested) {
     const index = step - 1;
     for (const target of targets) {
       const current = readCell(next, target.padId, index);
       let nextVelocity: number | null = null;
       let nextProbability = current.probability;
+      let metaApplied = false;
       if (op === "add") nextVelocity = velocity;
       else if (op === "remove" || op === "clearPad") nextVelocity = current.velocity > 0 ? 0 : null;
       else if (op === "toggle") nextVelocity = current.velocity > 0 ? 0 : velocity;
       else if (op === "ghost" && current.velocity <= 0) {
         nextVelocity = 0.35;
         nextProbability = 0.5;
+      } else if (op === "setVelocity") {
+        // The expressive ops reshape hits that EXIST; placing is add's job.
+        if (current.velocity <= 0) {
+          skippedOffSteps.add(step);
+          continue;
+        }
+        nextVelocity = velocity;
+      } else if (op === "setMeta") {
+        if (current.velocity <= 0) {
+          skippedOffSteps.add(step);
+          continue;
+        }
+        next = setStepMeta(next, pattern.id, target.padId, index, metaPatch).execute(next);
+        metaApplied = true;
       }
       const velocityChanged = nextVelocity !== null && nextVelocity !== current.velocity;
       const probabilityChanged = nextProbability !== current.probability;
-      if (!velocityChanged && !probabilityChanged) continue;
+      if (!velocityChanged && !probabilityChanged && !metaApplied) continue;
       if (velocityChanged) next = setStepVelocityCommand(next, target.padId, index, nextVelocity!).execute(next);
       if (probabilityChanged)
         next = setStepMeta(next, pattern.id, target.padId, index, { probability: nextProbability }).execute(next);
       const cellKey = `${target.padId}:${index}`;
       affected.add(cellKey);
-      intended.set(cellKey, { velocity: nextVelocity ?? current.velocity, probability: nextProbability });
+      intended.set(cellKey, {
+        velocity: nextVelocity ?? current.velocity,
+        probability: metaApplied ? (metaPatch.probability ?? current.probability) : nextProbability,
+        microtiming: metaApplied ? (metaPatch.microtiming ?? current.microtiming) : current.microtiming,
+        ratchet: metaApplied ? (metaPatch.ratchet ?? current.ratchet) : current.ratchet,
+        amount: metaApplied ? (metaPatch.amount ?? current.amount) : current.amount,
+      });
     }
   }
   const makeData = (status: "changed" | "no_change" | "partial", afterDoc: ProjectDocument, undoSteps: number) => {
@@ -12885,9 +13148,13 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
         const target = targets.find((candidate) => candidate.padId === padId)!;
         const before = readCell(doc, padId, index);
         const landed = readCell(afterDoc, padId, index);
-        return before.velocity === landed.velocity && before.probability === landed.probability
-          ? null
-          : { padId, padName: target.name, step: index + 1, ...landed };
+        const same =
+          before.velocity === landed.velocity &&
+          before.probability === landed.probability &&
+          before.microtiming === landed.microtiming &&
+          before.ratchet === landed.ratchet &&
+          before.amount === landed.amount;
+        return same ? null : { padId, padName: target.name, step: index + 1, ...landed };
       })
       .filter((change) => change !== null)
       .sort((a, b) => a.step - b.step || a.padId.localeCompare(b.padId));
@@ -12905,6 +13172,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
       changedCellCount: changes.length,
       changedSteps,
       changes,
+      skippedOffSteps: [...skippedOffSteps].sort((a, b) => a - b),
       beforeHitCount,
       afterHitCount: totalHitCount(afterDoc),
       undoSteps,
@@ -12922,7 +13190,13 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   const mismatches = [...intended].filter(([cellKey, expected]) => {
     const separator = cellKey.lastIndexOf(":");
     const actual = readCell(afterDoc, cellKey.slice(0, separator), Number(cellKey.slice(separator + 1)));
-    return actual.velocity !== expected.velocity || actual.probability !== expected.probability;
+    return (
+      actual.velocity !== expected.velocity ||
+      actual.probability !== expected.probability ||
+      actual.microtiming !== expected.microtiming ||
+      actual.ratchet !== expected.ratchet ||
+      actual.amount !== expected.amount
+    );
   }).length;
   if (mismatches > 0) {
     data.status = "partial";
@@ -12936,8 +13210,15 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   const bars = barsPerPattern(doc, stepCount);
   const touchedText =
     data.changedSteps.length <= 12 ? data.changedSteps.join(", ") : `${data.changedSteps.length} steps`;
+  const skippedText =
+    skippedOffSteps.size > 0
+      ? ` · skipped ${skippedOffSteps.size} step(s) with no hit (${[...skippedOffSteps]
+          .sort((a, b) => a - b)
+          .slice(0, 8)
+          .join(", ")}${skippedOffSteps.size > 8 ? "…" : ""} — op:add places hits)`
+      : "";
   return {
-    text: `${family} ${op}: ${beforeHitCount} → ${data.afterHitCount} hits across ${targets.length} pad(s); ${data.changedCellCount} pad-step cell(s) changed (steps: ${touchedText}) · pattern "${pattern.name}" (${formatMetricalBars(bars)}) · one undo step`,
+    text: `${family} ${op}: ${beforeHitCount} → ${data.afterHitCount} hits across ${targets.length} pad(s); ${data.changedCellCount} pad-step cell(s) changed (steps: ${touchedText})${skippedText} · pattern "${pattern.name}" (${formatMetricalBars(bars)}) · one undo step`,
     mutated,
     data,
   };
