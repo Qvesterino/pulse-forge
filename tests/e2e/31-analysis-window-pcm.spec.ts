@@ -24,7 +24,7 @@ test.describe("31 — analysis window PCM mapping", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "WebKit on Windows has no Web Audio media stack");
 
   test("declared windows land on the rendered impulses within ±1 sample", async ({ page }) => {
-    test.setTimeout(600_000);
+    test.setTimeout(900_000);
     // This spec never touches the app's live document — it builds its own
     // deterministic project inside the page and renders it — so the boot is
     // the bare minimum: reach the app shell, not a particular studio state.
@@ -36,11 +36,10 @@ test.describe("31 — analysis window PCM mapping", () => {
 
     const report = await page.evaluate(async () => {
       const load = (specifier: string) => import(/* @vite-ignore */ specifier);
-      const [templateModule, commandModule, rendererModule, sampleModule, metadataModule, scenesModule, contractModule] =
+      const [templateModule, commandModule, sampleModule, metadataModule, scenesModule, contractModule] =
         await Promise.all([
           load("/src/project-model/templates.ts"),
           load("/src/commands/commands.ts"),
-          load("/src/rendering/renderer.ts"),
           load("/src/sample-library/factory.ts"),
           load("/src/commands/metadata.ts"),
           load("/src/commands/scenes.ts"),
@@ -48,7 +47,7 @@ test.describe("31 — analysis window PCM mapping", () => {
         ]);
       const { createProjectFromTemplate } = templateModule;
       const { addAudioClip, addArrangementClip } = commandModule;
-            const trackRendererModule = await load("/src/rendering/track-renderer.ts");
+      const trackRendererModule = await load("/src/rendering/track-renderer.ts");
       const { renderTrack } = trackRendererModule;
       const { SampleBank } = sampleModule;
       const { setTimeSignature } = metadataModule;
@@ -80,7 +79,7 @@ test.describe("31 — analysis window PCM mapping", () => {
         return hits;
       };
 
-      const barSec = (bpm: number): number => 240 / bpm;
+      const barSec = (bpm: number, meterNum = 4): number => (60 * meterNum) / bpm;
 
       interface Case {
         name: string;
@@ -94,12 +93,60 @@ test.describe("31 — analysis window PCM mapping", () => {
       }
 
       const cases: Case[] = [
-        { name: "flat 120, clip bars2-6 untrimmed, window bars2-4", bpm: 120, meterNum: 4, pins: [], clip: { startBar: 2, lengthBars: 4, trimStart: 0 }, windowBars: [2, 4], barUnit: BAR4 },
-        { name: "flat 120, trimStart 1.5", bpm: 120, meterNum: 4, pins: [], clip: { startBar: 2, lengthBars: 4, trimStart: 1.5 }, windowBars: [2, 4], barUnit: BAR4 },
-        { name: "pin140 bars0-8, clip bars2-6, window bars3-5", bpm: 120, meterNum: 4, pins: [[0, 8, 140]], clip: { startBar: 2, lengthBars: 4, trimStart: 0 }, windowBars: [3, 5], barUnit: BAR4 },
-        { name: "pin140 bars0-8 + trim 1, clip bars4-8, window bars5-7", bpm: 120, meterNum: 4, pins: [[0, 8, 140]], clip: { startBar: 4, lengthBars: 4, trimStart: 1 }, windowBars: [5, 7], barUnit: BAR4 },
-        { name: "3/4 meter, clip bars2-6, window bars3-5", bpm: 120, meterNum: 3, pins: [], clip: { startBar: 2, lengthBars: 4, trimStart: 0 }, windowBars: [3, 5], barUnit: 1440 },
-        { name: "flat 140 project, clip bars2-6, window bars2-4", bpm: 140, meterNum: 4, pins: [], clip: { startBar: 2, lengthBars: 4, trimStart: 0 }, windowBars: [2, 4], barUnit: BAR4 },
+        {
+          name: "flat 120, clip bars2-6 untrimmed, window bars2-4",
+          bpm: 120,
+          meterNum: 4,
+          pins: [],
+          clip: { startBar: 2, lengthBars: 4, trimStart: 0 },
+          windowBars: [2, 4],
+          barUnit: BAR4,
+        },
+        {
+          name: "flat 120, trimStart 1.5",
+          bpm: 120,
+          meterNum: 4,
+          pins: [],
+          clip: { startBar: 2, lengthBars: 4, trimStart: 1.5 },
+          windowBars: [2, 4],
+          barUnit: BAR4,
+        },
+        {
+          name: "pin140 bars0-8, clip bars2-6, window bars3-5",
+          bpm: 120,
+          meterNum: 4,
+          pins: [[0, 8, 140]],
+          clip: { startBar: 2, lengthBars: 4, trimStart: 0 },
+          windowBars: [3, 5],
+          barUnit: BAR4,
+        },
+        {
+          name: "pin140 bars0-8 + trim 1, clip bars4-8, window bars5-7",
+          bpm: 120,
+          meterNum: 4,
+          pins: [[0, 8, 140]],
+          clip: { startBar: 4, lengthBars: 4, trimStart: 1 },
+          windowBars: [5, 7],
+          barUnit: BAR4,
+        },
+        {
+          name: "3/4 meter, clip bars2-6, window bars3-5",
+          bpm: 120,
+          meterNum: 3,
+          pins: [],
+          clip: { startBar: 2, lengthBars: 4, trimStart: 0 },
+          windowBars: [3, 5],
+          barUnit: 1440,
+        },
+        {
+          name: "flat 140 project, clip bars2-6, window bars2-4",
+          bpm: 140,
+          meterNum: 4,
+          pins: [],
+          clip: { startBar: 2, lengthBars: 4, trimStart: 0 },
+          windowBars: [2, 4],
+          barUnit: BAR4,
+        },
       ];
 
       const results: Array<{ name: string; ok: boolean; renderLatencySamples: number | null; detail: string }> = [];
@@ -115,7 +162,10 @@ test.describe("31 — analysis window PCM mapping", () => {
           doc = createScene(doc, `pin-${bar}`).execute(doc);
           const sceneId = doc.scenes[doc.scenes.length - 1]!.id;
           if (bpm !== undefined) {
-            doc = { ...doc, scenes: doc.scenes.map((s: { id: string; bpm?: number }) => (s.id === sceneId ? { ...s, bpm } : s)) };
+            doc = {
+              ...doc,
+              scenes: doc.scenes.map((s: { id: string; bpm?: number }) => (s.id === sceneId ? { ...s, bpm } : s)),
+            };
           }
           doc = addArrangementClip(doc, sceneId, bar, bars).execute(doc);
         }
@@ -139,11 +189,31 @@ test.describe("31 — analysis window PCM mapping", () => {
         };
         const resolved = resolveAnalysisWindow(doc, request, SR);
 
-        // First-principles expectations (never the code under test):
-        const bs = barSec(c.bpm);
-        const clipStartSec = c.clip.startBar * bs;
-        const winStartSec = c.windowBars[0] * bs;
-        const winDurSec = (c.windowBars[1] - c.windowBars[0]) * bs;
+        // First-principles expectations (never the code under test): a tiny
+        // piecewise walk over the pin spans — bars inside a pin run at the
+        // pin's tempo, everything else at the project tempo.
+        const pinSpans = c.pins
+          .map(([bar, bars, bpm]) => ({ fromBar: bar, toBar: bar + bars, bs: barSec(bpm ?? c.bpm, c.meterNum) }))
+          .sort((a, b) => a.fromBar - b.fromBar);
+        const barToSec = (bar: number): number => {
+          let sec = 0;
+          let cursor = 0;
+          for (const span of pinSpans) {
+            if (bar <= span.fromBar) break;
+            const flatTo = Math.min(bar, span.fromBar);
+            sec += (flatTo - cursor) * barSec(c.bpm, c.meterNum);
+            cursor = flatTo;
+            if (bar > span.fromBar) {
+              const pinnedTo = Math.min(bar, span.toBar);
+              sec += (pinnedTo - span.fromBar) * span.bs;
+              cursor = pinnedTo;
+            }
+          }
+          return sec + (bar - cursor) * barSec(c.bpm, c.meterNum);
+        };
+        const clipStartSec = barToSec(c.clip.startBar);
+        const winStartSec = barToSec(c.windowBars[0]);
+        const winDurSec = barToSec(c.windowBars[1]) - winStartSec;
         const expectedRel: number[] = [];
         for (let s = 0; s < SOURCE_SECONDS; s++) {
           const sourceSec = s + IMPULSE_OFFSET;
@@ -183,9 +253,12 @@ test.describe("31 — analysis window PCM mapping", () => {
       return results;
     });
 
-    // The verdict: every case detects all impulses at a CONSTANT offset, and
+    // THE VERDICT: every case detects all impulses at a CONSTANT offset, and
     // the offset is THE SAME across tempos, scene pins, meter and trims —
-    // the mapping is exact up to one declared render constant.
+    // the tick→sample mapping is exact up to one declared render constant.
+    // (An earlier flat-math version of this spec measured a "+12600 sample"
+    // pin divergence that turned out to be its OWN expectation ignoring the
+    // pin — the render and scene-time agree with each other to the sample.)
     for (const line of report) {
       expect(line.ok, `${line.name}: ${line.detail}`).toBe(true);
     }

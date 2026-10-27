@@ -31,7 +31,6 @@ import type { ProjectDocument } from "../../src/project-model/types";
 const SR = 44100;
 const BAR = 1920; // 4/4 at PPQ 480
 const BAR34 = 1440; // 3/4
-const barSec = (bpm: number): number => 240 / bpm;
 
 function flatDoc(bpm: number, meterNum = 4): ProjectDocument {
   const doc = { ...testDoc(), bpm };
@@ -74,15 +73,71 @@ const cases: Array<{
   expectedEndSec: number;
 }> = [
   // ── flat 120 ────────────────────────────────────────────────────────────
-  { name: "120bpm bars 1-2", doc: () => flatDoc(120), startBar: 1, endBar: 2, barUnit: BAR, expectedStartSec: 2, expectedEndSec: 4 },
-  { name: "120bpm bars 0-1", doc: () => flatDoc(120), startBar: 0, endBar: 1, barUnit: BAR, expectedStartSec: 0, expectedEndSec: 2 },
-  { name: "120bpm bars 0.5-1.5 (half-bar resolution)", doc: () => flatDoc(120), startBar: 0.5, endBar: 1.5, barUnit: BAR, expectedStartSec: 1, expectedEndSec: 3 },
-  { name: "120bpm bars 3-5", doc: () => flatDoc(120), startBar: 3, endBar: 5, barUnit: BAR, expectedStartSec: 6, expectedEndSec: 10 },
+  {
+    name: "120bpm bars 1-2",
+    doc: () => flatDoc(120),
+    startBar: 1,
+    endBar: 2,
+    barUnit: BAR,
+    expectedStartSec: 2,
+    expectedEndSec: 4,
+  },
+  {
+    name: "120bpm bars 0-1",
+    doc: () => flatDoc(120),
+    startBar: 0,
+    endBar: 1,
+    barUnit: BAR,
+    expectedStartSec: 0,
+    expectedEndSec: 2,
+  },
+  {
+    name: "120bpm bars 0.5-1.5 (half-bar resolution)",
+    doc: () => flatDoc(120),
+    startBar: 0.5,
+    endBar: 1.5,
+    barUnit: BAR,
+    expectedStartSec: 1,
+    expectedEndSec: 3,
+  },
+  {
+    name: "120bpm bars 3-5",
+    doc: () => flatDoc(120),
+    startBar: 3,
+    endBar: 5,
+    barUnit: BAR,
+    expectedStartSec: 6,
+    expectedEndSec: 10,
+  },
   // ── flat 90 ─────────────────────────────────────────────────────────────
-  { name: "90bpm bars 0-1", doc: () => flatDoc(90), startBar: 0, endBar: 1, barUnit: BAR, expectedStartSec: 0, expectedEndSec: 240 / 90 },
-  { name: "90bpm bars 1-2", doc: () => flatDoc(90), startBar: 1, endBar: 2, barUnit: BAR, expectedStartSec: 240 / 90, expectedEndSec: 480 / 90 },
+  {
+    name: "90bpm bars 0-1",
+    doc: () => flatDoc(90),
+    startBar: 0,
+    endBar: 1,
+    barUnit: BAR,
+    expectedStartSec: 0,
+    expectedEndSec: 240 / 90,
+  },
+  {
+    name: "90bpm bars 1-2",
+    doc: () => flatDoc(90),
+    startBar: 1,
+    endBar: 2,
+    barUnit: BAR,
+    expectedStartSec: 240 / 90,
+    expectedEndSec: 480 / 90,
+  },
   // ── flat 140 ────────────────────────────────────────────────────────────
-  { name: "140bpm bars 2-3", doc: () => flatDoc(140), startBar: 2, endBar: 3, barUnit: BAR, expectedStartSec: 480 / 140, expectedEndSec: 720 / 140 },
+  {
+    name: "140bpm bars 2-3",
+    doc: () => flatDoc(140),
+    startBar: 2,
+    endBar: 3,
+    barUnit: BAR,
+    expectedStartSec: 480 / 140,
+    expectedEndSec: 720 / 140,
+  },
   // ── scene pin 140 over bars 0-4, project 120 ────────────────────────────
   {
     name: "pin140 inside span bars 0-1",
@@ -191,8 +246,14 @@ describe("E-1: the analysis window maps ticks to samples exactly (20-case matrix
       const resolved = resolveAnalysisWindow(doc, { ...req, window }, SR);
       const expectedStart = Math.round(c.expectedStartSec * SR);
       const expectedEnd = Math.round(c.expectedEndSec * SR);
-      expect(Math.abs(resolved.startSample - expectedStart), `start ${resolved.startSample} vs ${expectedStart}`).toBeLessThanOrEqual(1);
-      expect(Math.abs(resolved.endSample - expectedEnd), `end ${resolved.endSample} vs ${expectedEnd}`).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(resolved.startSample - expectedStart),
+        `start ${resolved.startSample} vs ${expectedStart}`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(resolved.endSample - expectedEnd),
+        `end ${resolved.endSample} vs ${expectedEnd}`,
+      ).toBeLessThanOrEqual(1);
       // The seconds themselves carry the documented epsilon of the integral.
       expect(Math.abs(resolved.startSec - c.expectedStartSec)).toBeLessThan(1e-6);
       expect(Math.abs(resolved.endSec - c.expectedEndSec)).toBeLessThan(1e-6);
@@ -201,7 +262,11 @@ describe("E-1: the analysis window maps ticks to samples exactly (20-case matrix
 
   it("case 18: the tempoContext names the crossed pins", () => {
     const doc = pinSpan(pinSpan(flatDoc(120), 4, 4, 160), 0, 4, 140);
-    const resolved = resolveAnalysisWindow(doc, { ...request(doc, 0, 5), window: { startTick: 0, endTick: 5 * BAR } }, SR);
+    const resolved = resolveAnalysisWindow(
+      doc,
+      { ...request(doc, 0, 5), window: { startTick: 0, endTick: 5 * BAR } },
+      SR,
+    );
     expect(resolved.tempoContext.map((span) => span.bpm)).toEqual([140, 160]);
   });
 
@@ -211,7 +276,9 @@ describe("E-1: the analysis window maps ticks to samples exactly (20-case matrix
     doc = addAudioClip(doc, trackId, "factory.kick", 1, 2).execute(doc);
     doc = {
       ...doc,
-      tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, frozen: { bufferId: `frozen-${trackId}` } } : t)),
+      tracks: doc.tracks.map((t) =>
+        t.id === trackId ? ({ ...t, frozen: { bufferId: `frozen-${trackId}` } } as typeof t) : t,
+      ),
     };
     const resolved = resolveAnalysisWindow(doc, request(doc, 0, 4), SR);
     expect(resolved.caveats.map((c) => c.code)).toContain("frozen-playback-uses-project-tempo");
