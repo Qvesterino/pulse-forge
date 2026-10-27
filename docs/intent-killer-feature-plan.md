@@ -323,6 +323,54 @@ tok, jeden po druhom:
   jam jam (W5 roly), taste-learning z LEPŠIE hlasovaní (→ W3 personal
   trainer dátová stránka).
 
+### W9 — Hudobné dôkazy od otázky po overenú zmenu — **PROPOSED 2026-10-27**
+
+**Cieľ:** KYX vie odpovedať na hudobnú otázku nad konkrétnym úsekom projektu,
+ukáže pôvod merania a navrhne zmenu, ktorú možno vypočuť, schváliť a zmerať
+znova. W9 spája dnešné query, audio merania, analýzu a undo cestu do jedného
+overiteľného workflow. Nepridáva nový modelový stack ani druhú projektovú
+schému.
+
+**Východiská:** [audit hudobného porozumenia z 2026-10-26](audits/2026-10-26-musical-understanding/MUSICAL-UNDERSTANDING-AUDIT.md)
+a [KYX AI Producer Contract](AI-PRODUCER-CONTRACT.md). Pred každou fázou sa
+overí aktuálny `HEAD`; audit je mapa medzier, nie dôkaz, že sa medzera medzi
+auditom a implementáciou nezmenila. Kľúčové existujúce hranice ostávajú:
+project model je pravda, tick je hudobný čas, audio sa meria mimo callbacku,
+zmena ide cez command/undo a subjektívny výsledok sa potvrdzuje posluchom.
+
+**Poradie a výstupné brány:**
+
+| Krok | Práca | Odhad | Závislosť | Brána na pokračovanie |
+|---|---|---:|---|---|
+| **W9.0 — Baseline** | Znovu overiť najvyššie medzery MUG-01/02/03/06/10/11 proti aktuálnemu `HEAD` aj rozpracovaným zmenám; zapísať presný MCP/UI vstup, existujúci kód a testy. Rozpracovaný kód sa ráta ako dodaný až po merge a prechode brán. | 0,5–1 deň | Žiadna | Každé tvrdenie má aktuálny zdrojový riadok, stav a reprodukovateľný fixture; zastarané nálezy sa vyradia. |
+| **W9.1 — Parametre a automatizácia** | Pred parametrovým zápisom zistiť, či automatizácia v cieľovom úseku preberá hodnotu; pri konflikte ukázať skutočný efektívny stav a ponúknuť úpravu lane. | 1–3 dni | W9.0 | Zápis pod aktívnou lane nikdy neohlási účinnú zmenu bez efektívneho read-backu; prázdne a susediace úseky ostanú platné. |
+| **W9.2 — Meranie rozsahu** | Dokončiť a zjednotiť explicitný `{fromBar,toBar}`/tick scope v render summary a mix doctor; ak to už rozpracováva iná zmena, najprv ju overiť a nadviazať, nevytvárať paralelnú cestu. Tick → sekundy → sample rozsah sa odvodí z `buildTempoMap`; výstup uvedie master/track tap, effects scope a skrátenie výsledku. | 2–4 dni | W9.0 | Golden projekty potvrdia správnu hranicu úseku a nezávisle prepočítané metriky v vopred určenej tolerancii; dlhé render-y majú tvrdý limit a viditeľné `truncated`. |
+| **W9.3 — Evidence envelope + MCP scope** | Použiť alebo rozšíriť existujúci vhodný read-only kontrakt; nevytvárať paralelný typ. Každý fakt nesie project revision, stabilné object ID, tick range, odvodený sample/time range, typ dôkazu, jednotky, pôvod, analyzer/verziu, neistotu, render scope a diagnostiku. MCP prijíma explicitné track/section/range scope a vracia len ohraničený dôkaz. | 2–4 dni | W9.1–W9.2 | Každé tvrdenie má zdroj, rozsah a revision; zmena projektu medzi analýzou a použitím vráti stale/refuse. Zatiaľ bez cache. |
+| **W9.4 — „Prečo to pôsobí staticky?“** | Nad projektovou pravdou vypočítať opakovanie patternov, variáciu velocity/nôt a zmenu hustoty/registeru; pridať rozsahové energy delty z W9.2. UI/MCP najprv uvádza merateľné fakty, sekčné roly berie z user markerov alebo ich označí ako odhad. | 3–5 dní | W9.3 | Na držaných-out projektoch producenti označia zistenia za užitočné; minimálne/drone aranžmány nedostávajú „statické“ tvrdenie bez dôkazu. |
+| **W9.5 — Zmena s pred/po dokladom** | Vybrať jediný workflow, napr. „zdvihni refrén“. Uložiť cieľ/range/revision, ukázať diff, prehrať A/B, aplikovať jedným undoable commandom a znovu zmerať rovnaký rozsah. | 3–5 dní | W9.3–W9.4 | Doklad rozlišuje štrukturálne uloženie, merateľný posun a posluchové rozhodnutie; pri chýbajúcom meraní alebo zmene revision netvrdí úspech. |
+| **W9.6 — Cielené rozšírenia** | Po samostatných evaloch pridať onset-zarovnaný kick/bass risk, spevácky phrase/pitch mapu, rozdielové zobrazenie take-ov a viac-taktový groove import. | po 1 use case naraz | W9.5 | Každá schopnosť prejde vlastným držaným-out testom a posluchovým/producentovým posúdením; pluginovo špecifické low-end merania sa nevydávajú za všeobecné. |
+
+**Praktické pravidlá realizácie:**
+
+1. W9.0 môže prebiehať teraz ako read-only baseline. Implementácia W9.1+
+   vstúpi do aktívnej kritickej cesty po gate bidirectional note-frame
+   kontraktu alebo po výslovnom preprioritizovaní; W9 túto cestu nenahrádza.
+2. Prvé meranie sa vždy prepočíta. Cache pridáme až vtedy, keď profilovanie
+   ukáže, že opakované renderovanie brzdí workflow. Potom kľúč obsahuje doc
+   revision, sample-bank revision, range, render chain aj analyzer version;
+   acceptance je **0 stale hitov** pri mutation fuzz.
+3. Model sa pridáva až vtedy, keď definovaný task zlyháva na projektovom query
+   alebo DSP/MIR baseline a held-out eval preukáže zlepšenie. Žiadne audio ani
+   model inference v audio callbacku; žiadny skrytý upload.
+4. Pri prvej verzii neautopilotovať „lepšie“. Zobraziť dôkazy, presný cieľ,
+   návrh, A/B a undo; umelecký verdikt zostáva na tvorcovi.
+
+**Minimálny release gate W9:** range/time map je správna; zdroj a scope každého
+čísla sú viditeľné; stála revision sa overí pred apply aj verify; truncation a
+unavailable audio sa priznajú; zmena je ohraničená a vratná; fresh render
+meria ten istý cieľ; listening eval neprehlasuje technický proxy za hudobnú
+kvalitu.
+
 ### Explicitne NE (anti-goals)
 
 - **Neural audio syntéza / vocals v browseri** — T5 ostáva ďaleký horizont
@@ -348,6 +396,7 @@ tok, jeden po druhom:
 | W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| W9 hudobné dôkazy | VYSOKÝ (správny cieľ + overiteľný výsledok) | 12–22 dní po bránach | W9.0; note-frame kritická cesta ostáva v platnosti | **PROPOSED 2026-10-27** — začať baseline-om; nasledujú meranie rozsahu → evidence contract → jeden vysvetliteľný, vratný workflow. |
 
 **Odporúčané prvé dve PR-éka (tento týždeň):**
 
@@ -371,6 +420,8 @@ lokálne").
 | Personalizácia                   | ranker favoriteGroups: 0; retrain len CLI | klik → A/B dôkaz ≥ 70 % top-1 na ★ (W3)                                                          | A/B harness report v UI                         |
 | Producer DNA osi                 | 6 rankable reasons (bass/harmony null)    | 8 reasons (W4)                                                                                   | `preference-evaluation.ts` lift                 |
 | Užívateľské „engine mi rozumie"  | —                                         | complaint chip → 1 klik → merateľná zmena (W0.2)                                                 | telemetry-free: test-only (session state)       |
+| Parametrový zápis pod automatizáciou | baseline treba potvrdiť vo W9.0       | žiadny úspešný zápis bez efektívneho read-backu / lane riešenia                                  | fixtures: lane aktívna, mimo rozsah, susedná     |
+| Musical-evidence receipt         | bez spoločného range/revision dokladu      | každý fakt nesie source + scope + revision; stale dôkaz sa odmietne                              | MCP headless fixtures + pre/post render         |
 
 ---
 
