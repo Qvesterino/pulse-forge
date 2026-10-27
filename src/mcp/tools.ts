@@ -140,11 +140,13 @@ import {
   setEffectOutputTrimDb,
   addMarker,
   addArrangementClip,
+  addMidiClip,
   createDrumTrack,
   createInstrumentTrack,
   createScene,
   deleteArrangementClip,
   deleteArrangementClipRipple,
+  deleteMidiClip,
   deleteAutomationPoint,
   deleteNote,
   deleteTrack,
@@ -153,7 +155,9 @@ import {
   moveEffectToIndex,
   moveNote,
   moveArrangementClipRipple,
+  moveMidiClip,
   resizeArrangementClipRipple,
+  resizeMidiClip,
   splitArrangementClipAtTick,
   deleteAudioClip,
   duplicateArrangementClip,
@@ -2558,6 +2562,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Arrangement AND audio clips: list scene clips (with ids + an audio " +
       "summary), audioList the track-lane waveforms in detail, or edit. " +
+      "add places a scene's clip at a 1-based bar (scene by id or name — " +
+      "a pure add needs no D4 unlock). " +
       "Every write accepts a stable clipId from list/audioList; the legacy " +
       "anchor-bar form resolves the clip COVERING that bar: move/resize/" +
       "split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple " +
@@ -2571,6 +2577,10 @@ export const MCP_TOOLS: McpToolDef[] = [
       "audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (" +
       "sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate " +
       "(bufferId + range)/audioCrossfade/audioDelete (D4). " +
+      "MIDI pattern clips live on instrument-track lanes: midiList, " +
+      "midiAdd (trackId or family + bar; patternId defaults to the active " +
+      "pattern), midiMove/midiResize (clipId + toBar/bars), midiDelete " +
+      "(D4-gated). " +
       "Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
@@ -2579,6 +2589,7 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           enum: [
             "list",
+            "add",
             "move",
             "resize",
             "duplicate",
@@ -2597,6 +2608,11 @@ export const MCP_TOOLS: McpToolDef[] = [
             "audioStrip",
             "audioConsolidate",
             "audioDelete",
+            "midiList",
+            "midiAdd",
+            "midiMove",
+            "midiResize",
+            "midiDelete",
             "split",
             "moveRipple",
             "resizeRipple",
@@ -2613,8 +2629,27 @@ export const MCP_TOOLS: McpToolDef[] = [
           maxLength: 128,
           description: "Stable clip id from list/audioList — preferred over bar; survives concurrent moves and ripples",
         },
-        toBar: { type: "integer", minimum: 1, description: "For move/audioMove — 1-based destination start bar" },
-        bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize — new length in bars" },
+        toBar: {
+          type: "integer",
+          minimum: 1,
+          description: "For move/audioMove/midiMove — 1-based destination start bar",
+        },
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 64,
+          description: "For resize/add/midiAdd/midiResize — length in bars (add defaults to 4)",
+        },
+        scene: {
+          type: "string",
+          maxLength: 64,
+          description: "For add — target scene by id or name (case-insensitive); kyx_state subject:scenes lists them",
+        },
+        patternId: {
+          type: "string",
+          maxLength: 128,
+          description: "For midiAdd — pattern id to place (default: the active pattern)",
+        },
         trackId: { type: "string", description: "For audio ops — exact track id" },
         family: {
           type: "string",
@@ -8703,7 +8738,161 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
           loop: clip.loop === true,
         })),
         audioClipCount: audio.length,
+        midiClipCount: doc.arrangement.midiClips?.length ?? 0,
       },
+    };
+  }
+
+  // ── scene-clip placement (AS-001): the one arrangement-BUILDING op ──────
+  if (op === "add") {
+    const wanted = typeof record.scene === "string" ? record.scene.trim() : "";
+    if (wanted === "") {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `add needs a scene (id or name) — kyx_state subject:scenes lists: ${doc.scenes.map((scene) => scene.name).join(", ") || "none"}`,
+      );
+    }
+    const scene =
+      doc.scenes.find((candidate) => candidate.id === wanted) ??
+      doc.scenes.find((candidate) => candidate.name.toLowerCase() === wanted.toLowerCase());
+    if (!scene) {
+      return mcpError("UNKNOWN_TARGET", `no scene "${wanted}" — kyx_state subject:scenes lists what exists`);
+    }
+    const rawBar = Number(record.bar);
+    if (!Number.isFinite(rawBar) || rawBar < 1) {
+      return mcpError("INVALID_ARGUMENTS", "add needs bar — the 1-based start bar for the new clip");
+    }
+    const rawBars = Number(record.bars);
+    const bars = Number.isFinite(rawBars) ? Math.round(rawBars) : 4;
+    if (bars < 1 || bars > 64) return mcpError("INVALID_ARGUMENTS", "bars must be 1..64");
+    const startBar = Math.round(rawBar) - 1;
+    ctx.execute(addArrangementClip(doc, scene.id, startBar, bars));
+    const knownIds = new Set(doc.arrangement.clips.map((clip) => clip.id));
+    const placed = ctx.getDoc().arrangement.clips.find((clip) => !knownIds.has(clip.id));
+    return {
+      text: `added ${placed ? describeClip(placed) : `"${scene.name}" bars ${startBar + 1}–${startBar + bars}`} — one undo step`,
+      mutated: true,
+      data: { op: "add", clipId: placed?.id ?? "", scene: scene.name, startBar: startBar + 1, lengthBars: bars },
+    };
+  }
+
+  // ── MIDI-clip surface (AS-001): pattern clips on instrument-track lanes ─
+  if (op === "midiList") {
+    const clips = doc.arrangement.midiClips ?? [];
+    if (clips.length === 0) {
+      return { text: "no MIDI clips — op:midiAdd places the active (or named) pattern", mutated: false };
+    }
+    const midiLabel = (clip: {
+      trackId: string;
+      patternId: string;
+      startTick: number;
+      lengthTicks: number;
+    }): string => {
+      const track = doc.tracks.find((t) => t.id === clip.trackId);
+      const pattern = doc.patterns.find((p) => p.id === clip.patternId);
+      const perBar = ticksPerBar(doc);
+      return `${track?.name ?? clip.trackId} pattern "${pattern?.name ?? clip.patternId}" bars ${(clip.startTick / perBar + 1).toFixed(2)}–${((clip.startTick + clip.lengthTicks) / perBar + 1).toFixed(2)}`;
+    };
+    const lines = clips.slice(0, 12).map((clip) => `${midiLabel(clip)} (id=${clip.id})`);
+    if (clips.length > 12) lines.push(`… and ${clips.length - 12} more MIDI clip(s)`);
+    return {
+      text: lines.join("\n"),
+      mutated: false,
+      data: {
+        clips: clips.slice(0, 24).map((clip) => ({
+          id: clip.id,
+          trackId: clip.trackId,
+          track: doc.tracks.find((t) => t.id === clip.trackId)?.name ?? clip.trackId,
+          patternId: clip.patternId,
+          pattern: doc.patterns.find((p) => p.id === clip.patternId)?.name ?? clip.patternId,
+          startTick: clip.startTick,
+          lengthTicks: clip.lengthTicks,
+          startBar: Math.round((clip.startTick / ticksPerBar(doc) + 1) * 100) / 100,
+          lengthBars: Math.round((clip.lengthTicks / ticksPerBar(doc)) * 100) / 100,
+        })),
+      },
+    };
+  }
+  if (op === "midiAdd") {
+    const ids = explicitTrackIds(doc, record);
+    if (typeof ids === "string") return mcpError("INVALID_ARGUMENTS", ids);
+    if (ids.length !== 1) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `midiAdd needs exactly ONE track — family matched ${ids.length}; pass trackId`,
+      );
+    }
+    const track = doc.tracks.find((t) => t.id === ids[0]);
+    if (track == null || track.kind !== "instrument") {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `track "${track?.name ?? ids[0]}" is a ${track?.kind ?? "unknown"} track — MIDI clips need an instrument track`,
+      );
+    }
+    const patternIdRaw = typeof record.patternId === "string" ? record.patternId.trim() : "";
+    const patternId = patternIdRaw !== "" ? patternIdRaw : doc.activePatternId;
+    const pattern = doc.patterns.find((p) => p.id === patternId);
+    if (pattern == null) return mcpError("UNKNOWN_TARGET", `no pattern with id "${patternId}" — kyx_pattern op:list`);
+    const rawBar = Number(record.bar);
+    if (!Number.isFinite(rawBar) || rawBar < 1) {
+      return mcpError("INVALID_ARGUMENTS", "midiAdd needs bar — the 1-based start bar");
+    }
+    const rawBars = Number(record.bars);
+    const bars = Number.isFinite(rawBars) ? Math.round(rawBars) : 4;
+    if (bars < 1 || bars > 64) return mcpError("INVALID_ARGUMENTS", "bars must be 1..64");
+    ctx.execute(addMidiClip(doc, track.id, pattern.id, tickAtBar(Math.round(rawBar), doc), bars * ticksPerBar(doc)));
+    const knownIds = new Set((doc.arrangement.midiClips ?? []).map((clip) => clip.id));
+    const placed = (ctx.getDoc().arrangement.midiClips ?? []).find((clip) => !knownIds.has(clip.id));
+    return {
+      text: `placed "${pattern.name}" on ${track.name} at bar ${Math.round(rawBar)} (${bars} bar(s)) — one undo step`,
+      mutated: true,
+      data: {
+        op: "midiAdd",
+        clipId: placed?.id ?? "",
+        trackId: track.id,
+        patternId: pattern.id,
+        startTick: placed?.startTick ?? tickAtBar(Math.round(rawBar), doc),
+        lengthTicks: placed?.lengthTicks ?? bars * ticksPerBar(doc),
+      },
+    };
+  }
+  if (op === "midiMove" || op === "midiResize" || op === "midiDelete") {
+    const clip = (doc.arrangement.midiClips ?? []).find((candidate) => candidate.id === clipId);
+    if (clip == null) return mcpError("UNKNOWN_TARGET", `no MIDI clip with id "${clipId}" — op:midiList`);
+    const perBar = ticksPerBar(doc);
+    const label = `${doc.tracks.find((t) => t.id === clip.trackId)?.name ?? clip.trackId} pattern "${doc.patterns.find((p) => p.id === clip.patternId)?.name ?? clip.patternId}"`;
+    if (op === "midiDelete") {
+      if (!destructiveAllowedWithCheckpoint(ctx, "kyx_clips")) return destructiveRefusal();
+      ctx.execute(deleteMidiClip(doc, clip.id));
+      return {
+        text: `deleted MIDI clip ${label} — one undo step`,
+        mutated: true,
+        data: { op, clipId: clip.id },
+      };
+    }
+    if (op === "midiMove") {
+      const rawTo = Number(record.toBar);
+      if (!Number.isFinite(rawTo) || rawTo < 1) {
+        return mcpError("INVALID_ARGUMENTS", "midiMove needs toBar — the 1-based destination start bar");
+      }
+      const toTick = tickAtBar(Math.round(rawTo), doc);
+      ctx.execute(moveMidiClip(doc, clip.id, toTick));
+      return {
+        text: `moved MIDI clip ${label} to bar ${Math.round(rawTo)} — one undo step`,
+        mutated: true,
+        data: { op, clipId: clip.id, startTick: toTick, startBar: Math.round(rawTo) },
+      };
+    }
+    const rawBars = Number(record.bars);
+    if (!Number.isFinite(rawBars) || rawBars < 1 || rawBars > 64) {
+      return mcpError("INVALID_ARGUMENTS", "midiResize needs bars 1..64");
+    }
+    const lengthTicks = Math.round(rawBars) * perBar;
+    ctx.execute(resizeMidiClip(doc, clip.id, lengthTicks));
+    return {
+      text: `resized MIDI clip ${label} to ${Math.round(rawBars)} bar(s) — one undo step`,
+      mutated: true,
+      data: { op, clipId: clip.id, lengthTicks, lengthBars: Math.round(rawBars) },
     };
   }
 

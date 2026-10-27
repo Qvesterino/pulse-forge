@@ -14,6 +14,7 @@ import {
 import { ProjectStore } from "../src/store/ProjectStore";
 import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
+import { ticksPerBar } from "../src/project-model/schema";
 import { clearAdjustmentLedger } from "../src/intent/adjustment-recording";
 
 /**
@@ -3746,5 +3747,101 @@ describe("kyx_import_sfz — user library import", () => {
     expect(result.mutated).toBe(false);
     expect(result.isError).toBe(true);
     expect(result.text).toContain("no pack on this machine");
+  });
+});
+
+describe("mcp clips — arrangement building (AS-001)", async () => {
+  it("add places a scene clip by name; the read-back carries the id; one undo removes it", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const before = store.doc.arrangement.clips.length;
+    const added = await executeMcpTool(ctx, "kyx_clips", { op: "add", scene: "Drop", bar: 9, bars: 4 });
+    expect(added.mutated, added.text).toBe(true);
+    expect(added.data).toMatchObject({ op: "add", scene: "Drop", startBar: 9, lengthBars: 4 });
+    const clipId = (added.data as { clipId: string }).clipId;
+    expect(clipId).not.toBe("");
+    expect(store.doc.arrangement.clips.length).toBe(before + 1);
+    const listed = await executeMcpTool(ctx, "kyx_clips", { op: "list" });
+    const listedClips = (listed.data as { arrangementClips: Array<{ id: string }> }).arrangementClips;
+    expect(listedClips.some((clip) => clip.id === clipId)).toBe(true);
+    store.undo();
+    expect(store.doc.arrangement.clips.length).toBe(before);
+  });
+
+  it("add refuses a missing and an unknown scene without mutating", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const noScene = await executeMcpTool(ctx, "kyx_clips", { op: "add", bar: 1 });
+    expect(noScene.isError).toBe(true);
+    expect(noScene.errorCode).toBe("INVALID_ARGUMENTS");
+    const unknown = await executeMcpTool(ctx, "kyx_clips", { op: "add", scene: "Nope", bar: 1 });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.errorCode).toBe("UNKNOWN_TARGET");
+    expect(store.undoStackLength).toBe(0);
+  });
+
+  it("midiAdd/midiList/midiMove/midiResize place and edit a pattern clip; midiDelete is D4-gated with checkpoint", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const instrument = store.doc.tracks.find((track) => track.kind === "instrument");
+    expect(instrument).toBeDefined();
+    const ctx = storeCtx(store);
+    const perBar = ticksPerBar(store.doc);
+
+    const placed = await executeMcpTool(ctx, "kyx_clips", {
+      op: "midiAdd",
+      trackId: instrument!.id,
+      bar: 5,
+      bars: 8,
+    });
+    expect(placed.mutated, placed.text).toBe(true);
+    const clipId = (placed.data as { clipId: string }).clipId;
+    expect(clipId).not.toBe("");
+    expect((placed.data as { startTick: number }).startTick).toBe(4 * perBar);
+    expect((placed.data as { lengthTicks: number }).lengthTicks).toBe(8 * perBar);
+
+    const listed = await executeMcpTool(ctx, "kyx_clips", { op: "midiList" });
+    const listedMidi = (listed.data as { clips: Array<{ id: string; startBar: number }> }).clips;
+    expect(listedMidi.some((clip) => clip.id === clipId)).toBe(true);
+
+    const moved = await executeMcpTool(ctx, "kyx_clips", { op: "midiMove", clipId, toBar: 9 });
+    expect(moved.mutated, moved.text).toBe(true);
+    expect((store.doc.arrangement.midiClips ?? []).find((clip) => clip.id === clipId)!.startTick).toBe(8 * perBar);
+
+    const resized = await executeMcpTool(ctx, "kyx_clips", { op: "midiResize", clipId, bars: 2 });
+    expect(resized.mutated, resized.text).toBe(true);
+    expect((store.doc.arrangement.midiClips ?? []).find((clip) => clip.id === clipId)!.lengthTicks).toBe(2 * perBar);
+
+    const locked = await executeMcpTool(storeCtx(store), "kyx_clips", { op: "midiDelete", clipId });
+    expect(locked.isError).toBe(true);
+    expect(locked.text).toContain("locked");
+    expect((store.doc.arrangement.midiClips ?? []).some((clip) => clip.id === clipId)).toBe(true);
+
+    const allowed = storeCtx(store, { allowDestructive: true });
+    const deleted = await executeMcpTool(allowed, "kyx_clips", { op: "midiDelete", clipId });
+    expect(deleted.mutated, deleted.text).toBe(true);
+    expect((store.doc.arrangement.midiClips ?? []).some((clip) => clip.id === clipId)).toBe(false);
+    const cpList = await executeMcpTool(allowed, "kyx_checkpoint", { op: "list" });
+    expect(cpList.text).toContain("auto-before-kyx_clips");
+  });
+
+  it("midiAdd refuses a non-instrument track and an unknown pattern without mutating", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const drum = store.doc.tracks.find((track) => track.kind === "drum")!;
+    const refusedTrack = await executeMcpTool(ctx, "kyx_clips", { op: "midiAdd", trackId: drum.id, bar: 1 });
+    expect(refusedTrack.isError).toBe(true);
+    expect(refusedTrack.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(refusedTrack.text).toContain("instrument");
+
+    const instrument = store.doc.tracks.find((track) => track.kind === "instrument")!;
+    const refusedPattern = await executeMcpTool(ctx, "kyx_clips", {
+      op: "midiAdd",
+      trackId: instrument.id,
+      patternId: "nope",
+      bar: 1,
+    });
+    expect(refusedPattern.isError).toBe(true);
+    expect(refusedPattern.errorCode).toBe("UNKNOWN_TARGET");
+    expect(store.undoStackLength).toBe(0);
   });
 });

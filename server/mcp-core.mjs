@@ -4012,7 +4012,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_clips",
     description:
-      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit. Every write accepts a stable clipId from list/audioList; the legacy anchor-bar form resolves the clip COVERING that bar: move/resize/split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple which close the gap after the edit the way the UI's RIPPLE toggle does, and copy/cut/paste for the clipboard (cut and delete are D4-gated; the MCP clipboard is per-session, never persisted). Audio ops address a track (trackId or family) + the anchor bar its clip covers: audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec - which part of the source plays)/audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate (bufferId + range)/audioCrossfade/audioDelete (D4). Values are native (gain linear, fades in seconds).",
+      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit. add places a scene's clip at a 1-based bar (scene by id or name — a pure add needs no D4 unlock). Every write accepts a stable clipId from list/audioList; the legacy anchor-bar form resolves the clip COVERING that bar: move/resize/split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple which close the gap after the edit the way the UI's RIPPLE toggle does, and copy/cut/paste for the clipboard (cut and delete are D4-gated; the MCP clipboard is per-session, never persisted). Audio ops address a track (trackId or family) + the anchor bar its clip covers: audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec - which part of the source plays)/audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate (bufferId + range)/audioCrossfade/audioDelete (D4). MIDI pattern clips live on instrument-track lanes: midiList, midiAdd (trackId or family + bar; patternId defaults to the active pattern), midiMove/midiResize (clipId + toBar/bars), midiDelete (D4-gated). Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
@@ -4020,6 +4020,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: [
             "list",
+            "add",
             "move",
             "resize",
             "duplicate",
@@ -4038,6 +4039,11 @@ export const MCP_TOOL_DEFS = [
             "audioStrip",
             "audioConsolidate",
             "audioDelete",
+            "midiList",
+            "midiAdd",
+            "midiMove",
+            "midiResize",
+            "midiDelete",
             "split",
             "moveRipple",
             "resizeRipple",
@@ -4061,13 +4067,23 @@ export const MCP_TOOL_DEFS = [
         toBar: {
           type: "integer",
           minimum: 1,
-          description: "For move/audioMove — 1-based destination start bar",
+          description: "For move/audioMove/midiMove — 1-based destination start bar",
         },
         bars: {
           type: "integer",
           minimum: 1,
           maximum: 64,
-          description: "For resize — new length in bars",
+          description: "For resize/add/midiAdd/midiResize — length in bars (add defaults to 4)",
+        },
+        scene: {
+          type: "string",
+          maxLength: 64,
+          description: "For add — target scene by id or name (case-insensitive); kyx_state subject:scenes lists them",
+        },
+        patternId: {
+          type: "string",
+          maxLength: 128,
+          description: "For midiAdd — pattern id to place (default: the active pattern)",
         },
         trackId: {
           type: "string",

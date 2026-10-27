@@ -133,8 +133,9 @@ export function effectiveRisk(name: string, args: unknown): ToolRisk {
     case "kyx_automation":
       return op === "listTargets" ? "read" : op === "clearLane" || op === "removeLane" ? "destructive" : "mutate";
     case "kyx_clips":
-      if (op === "list" || op === "audioList" || op === "copy") return "read";
-      if (op === "delete" || op === "cut" || op === "deleteRipple" || op === "audioDelete") return "destructive";
+      if (op === "list" || op === "audioList" || op === "copy" || op === "midiList") return "read";
+      if (op === "delete" || op === "cut" || op === "deleteRipple" || op === "audioDelete" || op === "midiDelete")
+        return "destructive";
       return "mutate";
     case "kyx_routing":
       return op === "list" ? "read" : op === "removeReturn" ? "destructive" : "mutate";
