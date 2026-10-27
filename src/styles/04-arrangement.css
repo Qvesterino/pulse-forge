@@ -972,12 +972,73 @@
   border: 1px solid #465065;
   border-radius: 4px;
   display: flex;
-  align-items: center;
+  /* The region's PICTURE (the pattern it plays) sits under the label, so the
+     label rides the TOP of the clip and the lower half is free for the
+     pattern. The label is 14px tall in a 46px clip — centred, it would sit
+     straight through the middle of the picture. */
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 0 var(--space-2);
+  padding: 3px var(--space-2) 0;
   cursor: grab;
   user-select: none;
   box-shadow: inset 3px 0 var(--scene-role-color, #465065);
+}
+
+/* The label is ABOVE the picture: the picture is drawn in the clip's own
+   layer, and a label the picture crossed would be a label nobody can read. */
+.arr-clip-copy,
+.arr-clip-bars {
+  position: relative;
+  z-index: 1;
+}
+
+/* THE SCENE REGION'S PICTURE — the pattern the region plays, drawn inside
+   the region: the melody as one bar per note (placed at the note's pitch and
+   as wide as the note sounds), the drums as one tick per hit. The picture is
+   decorative: it takes no pointer events, because the clip's gestures belong
+   to the clip. */
+.arr-scene-marks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 3px;
+  height: 22px;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.arr-scene-note-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 15px;
+}
+
+.arr-scene-note-mark {
+  position: absolute;
+  height: 2px;
+  min-width: 2px;
+  border-radius: 1px;
+  background: rgba(210, 248, 255, 0.85);
+  transform: translateY(-50%);
+}
+
+.arr-scene-drum-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+}
+
+.arr-scene-drum-mark {
+  position: absolute;
+  width: 2px;
+  height: 7px;
+  border-radius: 1px;
+  background: rgba(255, 198, 128, 0.9);
 }
 
 .arr-clip.current {

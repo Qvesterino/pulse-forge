@@ -24,7 +24,7 @@
  * import), and it is proven able to fail on synthetic sources.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 

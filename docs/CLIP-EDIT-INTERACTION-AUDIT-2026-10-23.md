@@ -982,3 +982,116 @@ spec that does not guard the fix is decoration, and this one was checked.
 | the full Vitest suite                                             | ⚠️ 21 failed files / 23 failed tests — **2 of them were MINE** (`commands.test.ts`, `editor-ultra-hardening.test.ts`, both fixed in this wave); the other 19 files / 21 tests are foreign (KOPA editor, MCP verified mutation, intent model, shortcuts, SamplerMapping, …) |
 | `tsc --noEmit`                                                    | ✅ clean for every file in this wave — the 6 errors on `main` are in a parallel session's `src/presets/struna-factory.ts` and `tests/struna/engine.test.ts`                                                                                                                |
 | Prettier                                                          | ✅ clean for every file in this wave — the committed `docs/CURRENT-STATE.md` still carries a pre-existing table-padding debt from a parallel session (measured: my changes add none)                                                                                       |
+
+## 16. Wave 7 — the scene lane's PICTURE leg
+
+### 16.1 The decision
+
+§15.5 listed, as the honest cost of the wave-6 repair: _"The scene lane still
+draws no content. The region is still a blank box in the arrangement view: the
+pattern it plays is audible but not visible. That is a separate, larger
+product step (draw the pattern), not part of this repair."_
+
+This is that step. A scene region in the arrangement now draws the pattern it
+plays.
+
+### 16.2 What the picture is
+
+- the **melody**: one small bar per note, placed at the note's pitch and as
+  wide as the note sounds;
+- the **drums**: one tick per hit;
+- both measured **from the region's own start**, in the **document's bar unit**
+  (so a 6/8 project is measured in eighths, like the music is).
+
+### 16.3 THE PICTURE IS THE SAME EVENTS — there is no second implementation
+
+`src/ui/arrangement/scenePatternResolver.ts` resolves the window with
+`patternBaseTickForClip` + `noteEventsInWindow` + `drumHitsInWindow` — the
+very calls the live scheduler and the offline renderer use (§14.3). So there
+is no second "which notes does this region play" implementation that could
+fall out of step with the sound; the picture is the sound's own event list,
+laid out.
+
+### 16.4 The measured picture (the house scene)
+
+The product's own default scene — a 4-bar region in 4/4, so 4 × 1920 = 7680
+ticks:
+
+| Thing                                     | Count |
+| ----------------------------------------- | ----- |
+| notes the region PLAYS (2 melodic tracks) | 40    |
+| note bars the region DRAWS                | 40    |
+| drum hits the region PLAYS                | 44    |
+| drum ticks the region DRAWS               | 44    |
+
+### 16.5 The detector must be able to FAIL
+
+`tests/ui/scene-pattern-marks-parity.test.tsx` — 7 specs. The oracle is the
+shared resolver (§16.3), and the drawn marks are read back from the DOM as
+**percentages** and converted back into ticks through the region's own
+length — a round-trip, not a read-back of the value the component wrote. So a
+component that measured its marks against the wrong bar unit, or against
+pixels instead of ticks, comes back with different ticks.
+
+Three negative controls, each measured by breaking the product and watching
+the suite go red:
+
+| Mutation                                          | What it breaks                                     | Specs that went red               |
+| ------------------------------------------------- | -------------------------------------------------- | --------------------------------- |
+| `sceneClipLengthTicks` hardcodes 1920 (a 4/4 bar) | the picture's unit in a 6/8 project                | **1 of 7** — the 6/8 spec         |
+| the pattern base shifted by one bar               | the picture sits on ticks the region does not play | **3 of 7**                        |
+| the vertical axis flattened to a constant         | the picture's height stops being the melody        | **1 of 7** — the pitch-order spec |
+
+The 4/4 specs stayed GREEN under the first mutation, and that is the point:
+in 4/4 the hardcoded bar _is_ the bar, so only the 6/8 spec can catch it.
+That spec earns its keep, and it is the one that would have been deleted as
+"redundant" first.
+
+### 16.6 The picture is DECORATIVE
+
+The overlay is `aria-hidden` and takes no pointer events. The region still
+belongs to the clip: move, resize, trim, select and the context menu are
+untouched. A picture that swallowed the clip's gestures would be a
+regression, not a feature.
+
+### 16.7 The label moved to the TOP of the clip
+
+The clip is 46px tall (a 56px lane, 5px in from each edge) and the label is
+~14px. Centred, the label sat straight through the middle of the picture. So
+the label rides the top of the clip (`align-items: flex-start`) and the
+picture takes the lower 22px; the label is above the picture in the stacking
+order, so a picture that reaches the text can never make it unreadable.
+
+### 16.8 The drag preview — and where it stops
+
+The picture follows the box while the box is dragged, because a **move** and
+a **resize** change the region's window and keep its phase — the preview is
+EXACT for both.
+
+A **trim** is different: `trimArrangementClipStart` advances the region's
+phase together with its performance offset (§15.3), and the drag preview does
+not carry the phase. So a trim keeps the **committed** picture instead of
+showing one that lies; the picture re-resolves the moment the trim commits.
+
+### 16.9 What did NOT change
+
+- The scene's audio path is untouched — no scheduler, renderer, model or
+  command change. This is a drawing, not a behaviour.
+- The picture is read-only. The region still cannot be edited note-by-note
+  from the arrangement lane; that is the piano roll's job.
+- The MIDI lane, the audio lane and the automation lane are untouched.
+- The scene's INTENSITY curve still does not loop.
+- The phase remains a stored field, and no document written before this wave
+  is read differently.
+
+### 16.10 The verification record
+
+| Check                                              | Result                                                                                                                                                                                                                                                                                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/ui/scene-pattern-marks-parity.test.tsx`     | ✅ green (7 specs) — the parity suite, + the 6/8 unit spec and the pitch-order spec                                                                                                                                                                                                                                                  |
+| the three negative controls                        | ✅ each mutation was measured red — 1 / 3 / 1 specs; the 4/4 specs correctly stayed green under the unit mutation                                                                                                                                                                                                                    |
+| `tests/scene-clip-audible-leg.test.ts`             | ✅ green (9 specs) — the scene lane's audible leg is untouched                                                                                                                                                                                                                                                                       |
+| `tests/ui/midi-note-marks-audible-parity.test.tsx` | ✅ green (3 specs) — the MIDI lane's picture leg is untouched                                                                                                                                                                                                                                                                        |
+| `tests/clip-verb-coverage.test.ts`                 | ✅ green (4 specs) — the standing verb guard, after dropping one unused import that `tsc` caught                                                                                                                                                                                                                                     |
+| `tsc --noEmit`                                     | ⚠️ 6 errors on `main` — **1 of them was MINE** (`tests/clip-verb-coverage.test.ts`: an unused `readdirSync` import, fixed here); the other 5 are a parallel session's (`src/project-model/schema.ts`, `tests/analysis/contract-timeline.test.ts`, `tests/param-range-coherence.test.ts`, `tests/e2e/31-analysis-window-pcm.spec.ts`) |
+| Prettier                                           | ✅ clean for every file in this wave                                                                                                                                                                                                                                                                                                 |

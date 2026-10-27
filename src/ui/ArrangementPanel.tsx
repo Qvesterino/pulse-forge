@@ -24,6 +24,7 @@ import {
   type CommittedViewport,
 } from "./arrangement/viewport";
 import { AutomationClipLanes } from "./arrangement/AutomationClipLanes";
+import { ScenePatternMarks } from "./arrangement/ScenePatternMarks";
 import {
   clearTimelineGroupDragPreview,
   groupDragPreviewStartBar,
@@ -5803,6 +5804,16 @@ export function ArrangementPanel() {
               const startBar =
                 groupStartBar ?? (multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar);
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
+              // THE REGION'S PICTURE. The clip draws the pattern it plays, so
+              // the picture must follow the box while it is dragged. A TRIM is
+              // the exception: it also advances the region's phase, and the
+              // drag preview does not carry the phase — so a trim keeps the
+              // committed picture instead of showing one that lies.
+              const pictureClip =
+                (isDragging && dragRef.current?.mode === "trimStart") ||
+                (startBar === clip.startBar && lengthBars === clip.lengthBars)
+                  ? clip
+                  : { ...clip, startBar, lengthBars };
               const nextClip = clips[index + 1];
               const selected = selectedClipId === clip.id || selectionStore.isClipSelected(clip.id);
               const isCurrentClip = clip.id === currentClipId;
@@ -5864,6 +5875,7 @@ export function ArrangementPanel() {
                       deleteClipsWithToast(ids);
                     })}
                   >
+                    <ScenePatternMarks doc={doc} clip={pictureClip} />
                     <span className="arr-clip-copy">
                       <span className="arr-clip-role">{role.toUpperCase()}</span>
                       <span className="arr-clip-name">{scene?.name ?? "?"}</span>
