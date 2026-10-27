@@ -3511,6 +3511,25 @@ export interface McpFxMeterSnapshot {
  * services (browser relay) or by a ProjectStore wrapper (headless tests). */
 export interface McpToolContext {
   getDoc(): ProjectDocument;
+  /**
+   * APPLY THE COMMAND INLINE — BEFORE THIS CALL RETURNS.
+   *
+   * The R-02 verification gate (`src/mcp/verified-mutation.ts`) reads the
+   * document immediately after the handler returns and compares it with the
+   * document from before. A host that DEFERS the command (queues it, posts it
+   * to a worker, merges it from a collaborator) leaves the document identical
+   * at that moment — so the gate answers _"nothing changed (the document is
+   * identical)"_ with `mutated: false`, and the mutation lands afterwards.
+   * A whole-surface truth gate failing OPEN is worse than no gate, because it
+   * is trusted (audit F-26).
+   *
+   * The TYPE cannot enforce this: TypeScript lets a Promise-returning
+   * function satisfy a `void`-returning signature, so a deferred host compiles
+   * cleanly and silently turns every mutation into "nothing changed". The
+   * precondition is therefore enforced by a GUARD
+   * (`tests/mcp-host-inline-execute.test.ts`), which fails when a registered
+   * host's `execute` stops being inline.
+   */
   execute(command: Command): void;
   undo(): void;
   redo(): void;

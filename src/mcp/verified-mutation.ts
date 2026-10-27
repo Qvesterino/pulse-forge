@@ -31,6 +31,15 @@ import type { McpToolResult } from "./tools";
  * The handler's OWN read-back is left alone: a value-level verification
  * ("mix 0.30→0.46 on Bass") knows more than the structural summary, and the
  * summary would only blur it.
+ *
+ * ONE PRECONDITION (audit F-26, ADR 0071): the gate compares the document
+ * from before the handler with the document from after it, so the host must
+ * APPLY the command INLINE — before `execute` returns. A deferred host leaves
+ * the document identical at that moment, and this gate would answer "nothing
+ * changed" for a mutation that lands afterwards: a truth gate failing OPEN.
+ * The precondition cannot be carried by the type (TypeScript lets a Promise
+ * satisfy a `void`-returning signature), so it is enforced by a guard —
+ * `tests/mcp-host-inline-execute.test.ts`.
  */
 
 /** "one undo step" — in any of the shapes the surface uses. */
