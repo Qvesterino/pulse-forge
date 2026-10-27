@@ -207,7 +207,7 @@ describe("PaletteOverlay", () => {
     deps.dawProfile = "pro-tools";
     renderWithContext(<PaletteOverlay open deps={deps} onClose={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Search commands"), { target: { value: "bounce mix" } });
-    expect(screen.getByText("Toggle export")).toBeInTheDocument();
+    expect(screen.getByText("Toggle export panel")).toBeInTheDocument();
     expect(screen.getByText("Pro Tools: Bounce Mix → Export panel")).toBeInTheDocument();
   });
 

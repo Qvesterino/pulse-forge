@@ -212,10 +212,10 @@ export const SHORTCUTS: Shortcut[] = [
   // previously bound the bare 1–5 keys — the map silently kept only the
   // panels, so "select track 1–5" was dead while 6–9 still worked.
   { key: "panelMix", label: "Toggle mixer panel", group: "Panels", keyHint: "1", alt: true },
-  { key: "panelFx", label: "Toggle track devices", group: "Panels", keyHint: "2", alt: true },
-  { key: "panelArr", label: "Toggle arrangement", group: "Panels", keyHint: "3", alt: true },
-  { key: "panelMod", label: "Toggle modulation", group: "Panels", keyHint: "4", alt: true },
-  { key: "panelExport", label: "Toggle export", group: "Panels", keyHint: "5", alt: true },
+  { key: "panelFx", label: "Toggle track devices panel", group: "Panels", keyHint: "2", alt: true },
+  { key: "panelArr", label: "Toggle arrangement panel", group: "Panels", keyHint: "3", alt: true },
+  { key: "panelMod", label: "Toggle modulation panel", group: "Panels", keyHint: "4", alt: true },
+  { key: "panelExport", label: "Toggle export panel", group: "Panels", keyHint: "5", alt: true },
   { key: "panelDice", label: "Toggle dice panel", group: "Panels", keyHint: "6", alt: true },
   { key: "panelIntent", label: "Toggle intent panel", group: "Panels", keyHint: "7", alt: true },
   { key: "panelMidi", label: "Toggle MIDI input panel", group: "Panels", keyHint: "8", alt: true },
@@ -343,7 +343,7 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   },
   {
     area: "Arrangement keys",
-    label: "Bounce the selected range to an audio clip",
+    label: "Bounce the selected range — A/B review, then commit",
     bindings: ["Ctrl + B"],
   },
   {

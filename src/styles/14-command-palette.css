@@ -230,6 +230,16 @@
   margin-top: 8px;
 }
 
+/* The visible section label. "MOD MATRIX" (the instrument's own matrix) and
+   the "MOD" dock panel (automation, LFOs, macros) are different features with
+   similar names — the caption says which one this is. */
+.mod-matrix-caption {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-faint);
+}
+
 /* MPE discoverability strip (MidiPanel): badge + per-note pressure/timbre bars */
 .mpe-indicator {
   display: inline-flex;

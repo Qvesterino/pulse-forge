@@ -6941,8 +6941,9 @@ export function ArrangementPanel() {
                 }
                 setAudioMenu(null);
               }}
+              title="Cuts the silent gaps out of this clip and rewrites it as one clip per audible part — the audio keeps its pitch and its speed, and undo restores the original clip."
             >
-              Strip Silence (PT)
+              Strip Silence
             </button>
             <button
               type="button"
@@ -6987,7 +6988,7 @@ export function ArrangementPanel() {
               disabled={consolidatingAudio}
               title="Render the selected clips into a persisted audio asset. Source takes remain intact; undo restores the original clips."
             >
-              {consolidatingAudio ? "Consolidating…" : "Consolidate"}
+              {consolidatingAudio ? "Consolidating…" : "Consolidate to one clip"}
             </button>
             <button
               type="button"

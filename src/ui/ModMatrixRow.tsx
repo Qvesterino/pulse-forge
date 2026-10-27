@@ -111,6 +111,7 @@ export function ModMatrixRow({
       aria-label="Mod matrix"
       title="Instrument mod matrix — MOD A / MOD B routing and the mod LFO. This is the instrument's own matrix, not the MOD panel (automation, LFOs and macros)."
     >
+      <div className="mod-matrix-caption">MOD MATRIX</div>
       {row("MOD A", "modASrc", "modADst", "modAAmt")}
       {row("MOD B", "modBSrc", "modBDst", "modBAmt")}
       <Slider
