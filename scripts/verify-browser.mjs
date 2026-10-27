@@ -23,6 +23,25 @@ const PORT = Number(process.env.PORT) || 5199;
 const BOOT_TIMEOUT_MS = 600_000;
 
 /**
+ * A `React.lazy` panel needs a budget that covers the MODULE boundary.
+ *
+ * The panels this flow drives are lazy chunks: Mixer, EffectRack,
+ * ArrangementPanel, ModPanel, ExportPanel (src/ui/App.tsx) and the nested
+ * lazy imports inside them (SampleBrowser in BrowserStrip.tsx, PresetBrowser
+ * in SampleBrowser.tsx, FxAddPopover in EffectRack.tsx). The first wait on a
+ * lazy panel's root element has to cover a chunk download AND the Vite
+ * transform that happens on the chunk's first request — not a network hiccup.
+ *
+ * MEASURED 2026-10-27 on this machine (isolated worktree at HEAD): the
+ * app-boot flow's `.master-meter` wait timed out at 5 s while the mixer chunk
+ * was still arriving — the app WAS mounted, the meter was not, and the gate
+ * reported it as "UI did not mount". The same 5 s budget sat on `.fx-device`
+ * in the plugin workflow, which failed for the same reason. A budget that
+ * measures the network cannot answer the question the gate asks.
+ */
+const LAZY_PANEL_TIMEOUT_MS = 30_000;
+
+/**
  * The gallery/collab server is an OPTIONAL process (server/collab-server.mjs).
  *
  * In dev it lives on the default relay port (src/collab/collabShared.ts →
@@ -201,6 +220,11 @@ try {
   // One reload gives Vite a second chance without masking real mount errors
   // — page errors still fail the check below.
   let mountRetry = false;
+  // The step the gate is on. Every failure inside this block was reported as
+  // "UI did not mount" — which is what a lazy-chunk timeout READ like, even
+  // though the app was mounted and the PANEL was not. A gate that names the
+  // step says what actually failed.
+  let bootStep = "mount the app";
   try {
     // First-time visitors get the landing page — exercise it: hero renders,
     // CTA enters the studio (and marks the browser onboarded). The landing
@@ -224,6 +248,7 @@ try {
     await appPage.evaluate(() => document.querySelectorAll(".pb-template")[0]?.click());
     await appPage.waitForSelector(".topbar", { timeout: 60_000 });
     await appPage.waitForSelector(".sequencer", { timeout: 60_000 });
+    bootStep = "dismiss the onboarding tour";
     // First-run onboarding tour: walk all four steps, then finish.
     // The card appears ~600 ms after studio mount — wait for it.
     {
@@ -243,14 +268,15 @@ try {
         await appPage.waitForSelector(".tour-card", { state: "detached", timeout: 5000 });
       }
     }
+    bootStep = "open the mixer panel";
     // MIX panel — the default is "mixer" open, so explicit toggle semantics:
     // ensure it's open, verify the master meter, toggle LIMIT/CLIP, then close.
     {
       const mixTab = appPage.locator('.dock-tabs button[aria-label="Toggle mixer panel"]').first();
       const mixOpen = await mixTab.evaluate((el) => el.getAttribute("aria-selected"));
       if (mixOpen !== "true") await mixTab.click();
-      await appPage.waitForSelector(".master-meter", { timeout: 5000 });
-      await appPage.waitForSelector(".master-headroom", { timeout: 5000 });
+      await appPage.waitForSelector(".master-meter", { timeout: LAZY_PANEL_TIMEOUT_MS });
+      await appPage.waitForSelector(".master-headroom", { timeout: LAZY_PANEL_TIMEOUT_MS });
       const limit = appPage.locator('.master-toggles button:has-text("LIMIT")').first();
       const clip = appPage.locator('.master-toggles button:has-text("CLIP")').first();
       const beforeLimit = await limit.getAttribute("aria-pressed");
@@ -274,6 +300,7 @@ try {
     // redo, export JSON, reload the app, and reopen the persisted project.
     // This is intentionally exercised through the real UI rather than an
     // internal store call so browser persistence and command history are both covered.
+    bootStep = "run the offline generation";
     const patternsBeforeGenerate = await appPage.locator(".pattern-chip").count();
     await appPage.locator('.pattern-actions button:has-text("GEN")').click();
     await appPage.waitForSelector('.generate-dialog-backdrop[role="dialog"]', { timeout: 5000 });
@@ -301,8 +328,9 @@ try {
       patternsAfterGenerate,
       { timeout: 5000 },
     );
+    bootStep = "export the project";
     await clickPanelAction(appPage, "EXPORT");
-    await appPage.waitForSelector('.export-panel[aria-label="Export"]', { timeout: 5000 });
+    await appPage.waitForSelector('.export-panel[aria-label="Export"]', { timeout: LAZY_PANEL_TIMEOUT_MS });
     // "EXPORT JSON ONLY" lives inside a COLLAPSED <details> ("MORE OPTIONS ·
     // LINKS · BUNDLES · BACKUP", ExportPanel.tsx:1570, since 2026-10-15). The
     // button exists but is not visible while the section is closed, so the
@@ -342,6 +370,7 @@ try {
           `NOTE: this check runs inside the app-boot block, so a failure here is an EXPORT-NAMING problem, not a boot problem.`,
       );
     }
+    bootStep = "reopen the saved project";
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload
     await appPage.reload({ waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
@@ -366,6 +395,7 @@ try {
       await clickPanelAction(appPage, "EXPORT");
       await appPage.waitForTimeout(250);
     }
+    bootStep = "open the groove and scene controls";
     // Groove workflow: controls visible, right-click step editor, scene strip.
     await appPage.waitForSelector(".pattern-groove", { timeout: 5000 });
     await appPage.waitForSelector(".scene-launcher .scene-action-launch", { timeout: 5000 });
@@ -437,11 +467,13 @@ try {
     const selectedSteps = await appPage.locator(".step.in-selection").count();
     if (selectedSteps < 2) throw new Error(`multi-select expected >=2 selected steps, got ${selectedSteps}`);
     await appPage.keyboard.press("Escape");
+    bootStep = "open the sample browser";
     // Curated content: sample browser (search/category/mood/preview/favorite).
-    await appPage.waitForSelector(".sample-browser", { timeout: 5000 });
-    await appPage.waitForSelector(".sample-fav", { timeout: 5000 });
+    await appPage.waitForSelector(".sample-browser", { timeout: LAZY_PANEL_TIMEOUT_MS });
+    await appPage.waitForSelector(".sample-fav", { timeout: LAZY_PANEL_TIMEOUT_MS });
     await appPage.locator("button.sample-preview").first().click();
     await appPage.locator(".sample-fav").first().click();
+    bootStep = "open the preset browser";
     // Switch to the 808 instrument track → preset browser with mood/favorite/recent filters.
     const instrTab = appPage.locator(".track-tab").filter({ hasText: "808" }).first();
     await instrTab.click();
@@ -450,12 +482,13 @@ try {
     // still has to download and mount, so the budget must cover the lazy
     // boundary — 5 s was a stable red that measured the network, not the app.
     await appPage.locator('button[aria-pressed]:has-text("PRESETS")').first().click();
-    await appPage.waitForSelector(".preset-browser", { timeout: 15_000 });
-    await appPage.waitForSelector(".preset-fav", { timeout: 5000 });
+    await appPage.waitForSelector(".preset-browser", { timeout: LAZY_PANEL_TIMEOUT_MS });
+    await appPage.waitForSelector(".preset-fav", { timeout: LAZY_PANEL_TIMEOUT_MS });
     await appPage.locator(".preset-fav").first().click();
+    bootStep = "open the arrangement";
     // Arrangement ruler seeks the transport.
     await clickPanelAction(appPage, "ARR");
-    await appPage.waitForSelector(".arr-ruler", { timeout: 5000 });
+    await appPage.waitForSelector(".arr-ruler", { timeout: LAZY_PANEL_TIMEOUT_MS });
     const ruler = appPage.locator(".arr-ruler").first();
     const box = await ruler.boundingBox();
     if (box) {
@@ -517,7 +550,7 @@ try {
       );
     }
   } catch (error) {
-    console.log("[FAIL] app boot — UI did not mount:", error?.stack ?? String(error));
+    console.log(`[FAIL] app boot — ${bootStep} failed:`, error?.stack ?? String(error));
     if (appErrors.length > 0) console.log("  console errors:", appErrors.slice(0, 5));
   }
   await appPage.close();
@@ -804,6 +837,10 @@ try {
 
   // ── Plugin workflow E2E: add flagship effect → collapse → bypass → macro → play ──
   let pluginWorkflowOk = false;
+  // The step this flow is on — the gate used to print only the first line of
+  // the error, which could not say WHICH step failed (the measured failure was
+  // a lazy-chunk timeout that read as a mystery).
+  let pluginStep = "open the project browser";
   try {
     const plugContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const plugPage = await plugContext.newPage();
@@ -816,21 +853,24 @@ try {
     await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
     // Open the device-chain dock panel and add the flagship FXEQ to the selected track.
+    pluginStep = "open the device chain";
     await clickPanelAction(plugPage, "FX");
-    await plugPage.waitForSelector(".devices-panel", { timeout: 5000 });
+    await plugPage.waitForSelector(".devices-panel", { timeout: LAZY_PANEL_TIMEOUT_MS });
     // The add-effect control is the ✚ ADD FX button and its picker dialog —
     // the old .devices-add-effect <select> is gone from the React tree, so a
     // selectOption against it could never pass again (and its red protected
     // nothing). Drive the REAL flow: open the popover, pick the PRISM tile.
+    pluginStep = "add the flagship effect";
     await plugPage.locator(".devices-panel .fx-add-trigger").first().click();
-    await plugPage.waitForSelector(".fx-add-popover", { timeout: 5000 });
+    await plugPage.waitForSelector(".fx-add-popover", { timeout: LAZY_PANEL_TIMEOUT_MS });
     await plugPage.locator('.fx-add-device:has-text("PRISM")').first().click();
-    await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
+    await plugPage.waitForSelector(".fx-device", { timeout: LAZY_PANEL_TIMEOUT_MS });
     // DEV renders the flagship device in editor mode, where rack-collapse
     // controls are intentionally hidden. Verify the actual PRISM editor UI.
     // The editor mounts only after the flagship's worklet runtime loads —
     // under the suite's own parallel pages that can exceed 30 s once; the
     // budget covers the runtime, not just the React render.
+    pluginStep = "verify the PRISM editor";
     await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 60_000 });
     const prismSource = plugPage.locator(".fx-sidechain-picker select").first();
     const sourceOptions = await prismSource.locator('option:not([value=""])').count();
@@ -842,6 +882,7 @@ try {
     // A/B is rendered once inside PRISM. Exercise both slots with a real
     // pointer drag so preview/history is covered, then verify the plugin undo
     // and redo buttons apply the asynchronous worklet reply back to the doc.
+    pluginStep = "store the A/B snapshots";
     const prismAb = plugPage.locator(".fxeq-panel .effect-ab").first();
     await prismAb.locator('button:has-text("STORE")').click();
     await plugPage.waitForTimeout(120);
@@ -923,6 +964,7 @@ try {
     await plugPage.waitForSelector(".fxeq-panel .effect-ab", { timeout: 5000 });
     // Reload is the user-facing persistence boundary: source, both snapshots
     // and the enabled morph control must survive the project rehydrate.
+    pluginStep = "reload and re-verify";
     await plugPage.waitForTimeout(1200); // allow command autosave to settle before reload
     await plugPage.reload({ waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await plugPage.waitForSelector(".project-browser", { timeout: 30_000 });
@@ -951,6 +993,7 @@ try {
     if (await plugPage.locator('input[aria-label="PRISM morph A to B"]').first().isDisabled()) {
       throw new Error("PRISM morph became disabled after reload");
     }
+    pluginStep = "bypass and undo";
     // Bypass flips the device state label.
     await plugPage.locator('button[title="Bypass effect"]').first().click();
     await plugPage.waitForSelector(".fx-device.bypassed", { timeout: 5000 });
@@ -959,9 +1002,10 @@ try {
     // Undo once — the bypass must roll back (command layer, not local state).
     await plugPage.keyboard.press("Control+z");
     await plugPage.waitForSelector(".fx-device:not(.bypassed)", { timeout: 5000 });
+    pluginStep = "nudge the macro";
     // Macro: focus the first macro slider in the MOD panel and nudge it.
     await clickPanelAction(plugPage, "MOD");
-    await plugPage.waitForSelector(".macro-card", { timeout: 5000 });
+    await plugPage.waitForSelector(".macro-card", { timeout: LAZY_PANEL_TIMEOUT_MS });
     const macroSliderBox = plugPage.locator(".macro-card .slider").first();
     const macroKnob = macroSliderBox.locator('[role="slider"]');
     const before = await macroSliderBox.textContent();
@@ -970,6 +1014,7 @@ try {
     await plugPage.waitForTimeout(150);
     const after = await macroSliderBox.textContent();
     if (!before || !after || before === after) throw new Error("macro slider did not move on ArrowRight");
+    pluginStep = "play and stop";
     // Transport: play then stop must toggle without errors.
     await plugPage.locator('button[title="Play / Pause (Space)"]').first().click();
     await plugPage.waitForTimeout(400);
@@ -978,7 +1023,7 @@ try {
     pluginWorkflowOk = true;
     console.log("[PASS] plugin workflow: add flagship effect, collapse, bypass, undo, macro nudge, play/stop");
   } catch (error) {
-    console.log("[FAIL] plugin workflow E2E:", String(error).split("\n")[0]);
+    console.log(`[FAIL] plugin workflow E2E — ${pluginStep} failed:`, error?.stack ?? String(error));
   }
 
   const total = results.length + 7;
