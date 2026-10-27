@@ -17,10 +17,18 @@
  * Apply compiles into existing MixDecisions (add-if-missing + clamp +
  * setEffectParam + ONE snapshot) — no new command machinery.
  */
-import type { EffectType } from "../project-model/types";
+import type { AutomationTarget, EffectType, ProjectDocument } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { EFFECT_META, EFFECT_PRIMARY_KNOB, clampEffectParam, defaultParamsOf } from "../effects/definitions";
 import type { Command } from "../commands/types";
+import { valueAt } from "../project-model/automation";
+import {
+  automationClipForTarget,
+  automationTargetKey,
+  canonicalizeDeprecatedTarget,
+  clampTargetValue,
+  targetParamDef,
+} from "../project-model/targets";
 import {
   effectWordIn,
   applyMixIntent,
@@ -674,6 +682,8 @@ export interface ParamPlanLine {
   next: number;
   clamped: boolean;
   adding: boolean;
+  /** Runtime automation that can mask the committed value change. */
+  automationWarning?: string;
   label: string;
 }
 
@@ -721,6 +731,165 @@ function paramTargetEntries(doc: Parameters<typeof applyMixIntent>[0], intent: P
   return entries;
 }
 
+export interface ParamAutomationControl {
+  trackName: string;
+  effectType: EffectType;
+  paramId: string;
+  source: "project lane" | "scene lane" | "arrangement clip";
+  id: string;
+  scope: string;
+  startTick: number;
+  endTick: number;
+  /** Arrangement clip end ticks are exclusive; lane ranges are authored-point ranges. */
+  endExclusive: boolean;
+  effectiveSamples: Array<{ tick: number; value: number }>;
+}
+
+function sameAutomationTarget(doc: ProjectDocument, a: AutomationTarget, b: AutomationTarget): boolean {
+  return (
+    automationTargetKey(canonicalizeDeprecatedTarget(doc, a)) ===
+    automationTargetKey(canonicalizeDeprecatedTarget(doc, b))
+  );
+}
+
+function selectedTicks(ticks: number[]): number[] {
+  const ordered = [...new Set(ticks.filter(Number.isFinite))].sort((a, b) => a - b);
+  if (ordered.length <= 3) return ordered;
+  return [ordered[0]!, ordered[Math.floor((ordered.length - 1) / 2)]!, ordered[ordered.length - 1]!];
+}
+
+function effectiveSamples(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  points: Array<{ tick: number; value: number }>,
+  ticks: number[],
+  curveTick: (projectTick: number) => number = (tick) => tick,
+): Array<{ tick: number; value: number }> {
+  const def = targetParamDef(doc, target);
+  if (!def || points.length === 0) return [];
+  return selectedTicks(ticks).map((tick) => ({
+    tick,
+    value: clampTargetValue(doc, target, valueAt(points, curveTick(tick), def.default)),
+  }));
+}
+
+/**
+ * Automation sources that can still own a parameter after a base-value write.
+ * Samples are taken from each source's authored curve; they are explicitly
+ * labelled by timeline scope so a plan never presents them as one live cursor
+ * read.
+ */
+function paramAutomationControls(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  trackName: string,
+  effectType: EffectType,
+  paramId: string,
+): ParamAutomationControl[] {
+  const controls: ParamAutomationControl[] = [];
+  for (const lane of doc.automation ?? []) {
+    if (lane.points.length === 0 || !sameAutomationTarget(doc, lane.target, target)) continue;
+    controls.push({
+      trackName,
+      effectType,
+      paramId,
+      source: "project lane",
+      id: lane.id,
+      scope: "project timeline",
+      startTick: lane.points[0]!.tick,
+      endTick: lane.points[lane.points.length - 1]!.tick,
+      endExclusive: false,
+      effectiveSamples: effectiveSamples(
+        doc,
+        target,
+        lane.points,
+        lane.points.map((point) => point.tick),
+      ),
+    });
+  }
+
+  for (const lane of doc.sceneAutomation ?? []) {
+    if (lane.points.length === 0 || !sameAutomationTarget(doc, lane.target, target)) continue;
+    const sceneName = doc.scenes.find((scene) => scene.id === lane.sceneId)?.name ?? lane.sceneId;
+    controls.push({
+      trackName,
+      effectType,
+      paramId,
+      source: "scene lane",
+      id: lane.id,
+      scope: `scene ${sceneName} (relative ticks)`,
+      startTick: lane.points[0]!.tick,
+      endTick: lane.points[lane.points.length - 1]!.tick,
+      endExclusive: false,
+      effectiveSamples: effectiveSamples(
+        doc,
+        target,
+        lane.points,
+        lane.points.map((point) => point.tick),
+      ),
+    });
+  }
+
+  for (const clip of doc.arrangement?.automationClips ?? []) {
+    if (clip.muted || clip.lengthTicks <= 0 || clip.points.length === 0) continue;
+    const targetMatches = [clip.target, ...(clip.linkedTargets ?? [])].some((candidate) =>
+      sameAutomationTarget(doc, candidate, target),
+    );
+    if (!targetMatches) continue;
+    const adapted = automationClipForTarget(doc, clip, target);
+    const endTick = clip.startTick + clip.lengthTicks;
+    const phaseOffset = clip.phaseOffsetTicks ?? 0;
+    const candidateTicks = [
+      clip.startTick,
+      endTick - 1,
+      ...adapted.points.map((point) => clip.startTick + point.tick - phaseOffset),
+    ].filter((tick) => tick >= clip.startTick && tick < endTick);
+    controls.push({
+      trackName,
+      effectType,
+      paramId,
+      source: "arrangement clip",
+      id: clip.id,
+      scope: "arrangement timeline",
+      startTick: clip.startTick,
+      endTick,
+      endExclusive: true,
+      effectiveSamples: effectiveSamples(
+        doc,
+        target,
+        adapted.points,
+        candidateTicks,
+        (tick) => tick - clip.startTick + phaseOffset,
+      ),
+    });
+  }
+  return controls;
+}
+
+function automationControlText(control: ParamAutomationControl, fmt: (value: number) => string): string {
+  const range = control.endExclusive
+    ? `${control.startTick}–${control.endTick} ticks (end exclusive)`
+    : `${control.startTick}–${control.endTick} ticks`;
+  const samples = control.effectiveSamples.map((sample) => `${sample.tick}=${fmt(sample.value)}`).join(", ");
+  return (
+    `${control.trackName} ${control.effectType}.${control.paramId} · ${control.source} ${control.id} · ` +
+    `${control.scope} · ${range}${samples ? ` · effective samples ${samples}` : ""}`
+  );
+}
+
+function formatAutomationWarning(
+  controls: ParamAutomationControl[],
+  fmt: (value: number) => string,
+): string | undefined {
+  if (controls.length === 0) return undefined;
+  const visible = controls.slice(0, 2).map((control) => automationControlText(control, fmt));
+  const omitted = controls.length - visible.length;
+  return (
+    `automation controls the effective value: ${visible.join("; ")}` +
+    `${omitted > 0 ? `; +${omitted} more automation source(s)` : ""}; edit a lane with kyx_automation`
+  );
+}
+
 export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIntent>[0]): ParamPlanLine[] {
   const param = paramDefOf(intent.effectType, intent.paramId);
   if (!param) return [];
@@ -752,6 +921,14 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
     const track = doc.tracks.find((candidate) => candidate.id === trackId);
     const trackName = entry.trackName;
     const adding = !(track && "effects" in track && track.effects.some((effect) => effect.type === intent.effectType));
+    const effect =
+      track && "effects" in track ? track.effects.find((candidate) => candidate.type === intent.effectType) : null;
+    const target: AutomationTarget | null = effect
+      ? { kind: "fxParam", trackId, fxId: effect.id, paramId: intent.paramId }
+      : null;
+    const automationWarning = target
+      ? formatAutomationWarning(paramAutomationControls(doc, target, trackName, intent.effectType, intent.paramId), fmt)
+      : undefined;
     const current = currentParamValue(doc, trackId, intent.effectType, intent.paramId);
     const preview = paramMovePreview(intent, current);
     if (!preview) continue;
@@ -764,7 +941,8 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
     const label =
       `${trackName}: ${intent.effectType}.${intent.paramId} ${values} · ` +
       `${preview.deltaLabel}${preview.family === "normalized" ? "" : ` (${preview.family})`}` +
-      `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}`;
+      `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}` +
+      `${automationWarning ? ` · ${automationWarning}` : ""}`;
     lines.push({
       target: entry.target,
       trackName,
@@ -779,6 +957,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
       next: preview.next,
       clamped,
       adding,
+      ...(automationWarning ? { automationWarning } : {}),
       label,
     });
   }
@@ -882,6 +1061,8 @@ export interface ParamReadbackReport {
   added: string[];
   unchanged: string[];
   skipped: string[];
+  automation: ParamAutomationControl[];
+  automationOmitted: number;
 }
 
 /**
@@ -901,6 +1082,21 @@ export function paramReadbackReportText(report: ParamReadbackReport): string {
   if (report.added.length > 0) parts.push(`added ${report.added.join(", ")}`);
   if (report.unchanged.length > 0) parts.push(`already at that value: ${report.unchanged.join(", ")}`);
   if (report.skipped.length > 0) parts.push(`skipped ${report.skipped.join(", ")} (no matching track)`);
+  if (report.automation.length > 0) {
+    const controls = report.automation
+      .slice(0, 3)
+      .map((control) =>
+        automationControlText(
+          control,
+          (value) => paramDefOf(control.effectType, control.paramId)?.format?.(value) ?? value.toFixed(2),
+        ),
+      );
+    const omitted = report.automationOmitted + report.automation.length - controls.length;
+    parts.push(
+      `base value stored; automation still controls the effective value: ${controls.join("; ")}` +
+        `${omitted > 0 ? `; +${omitted} more source(s)` : ""}; edit a lane with kyx_automation`,
+    );
+  }
   return parts.join("; ");
 }
 
@@ -922,7 +1118,14 @@ export function paramReadbackReport(
   intent: ParamIntent,
 ): ParamReadbackReport {
   const param = paramDefOf(intent.effectType, intent.paramId);
-  const report: ParamReadbackReport = { moved: [], added: [], unchanged: [], skipped: [] };
+  const report: ParamReadbackReport = {
+    moved: [],
+    added: [],
+    unchanged: [],
+    skipped: [],
+    automation: [],
+    automationOmitted: 0,
+  };
   const fmt = (value: number): string =>
     param?.format
       ? param.format(value)
@@ -942,6 +1145,18 @@ export function paramReadbackReport(
     if (!beforeTrack || !afterTrack || !("effects" in beforeTrack) || !("effects" in afterTrack)) continue;
     const beforeInstance = beforeTrack.effects.find((effect) => effect.type === intent.effectType);
     const afterInstance = afterTrack.effects.find((effect) => effect.type === intent.effectType);
+    if (afterInstance) {
+      const target: AutomationTarget = {
+        kind: "fxParam",
+        trackId,
+        fxId: afterInstance.id,
+        paramId: intent.paramId,
+      };
+      const controls = paramAutomationControls(after, target, entry.trackName, intent.effectType, intent.paramId);
+      const room = Math.max(0, 12 - report.automation.length);
+      report.automation.push(...controls.slice(0, room));
+      report.automationOmitted += controls.length - Math.min(room, controls.length);
+    }
     const beforeValue = beforeInstance?.params[intent.paramId] ?? defaultParamsOf(intent.effectType)[intent.paramId];
     const afterValue = afterInstance?.params[intent.paramId];
     if (afterValue === undefined) {

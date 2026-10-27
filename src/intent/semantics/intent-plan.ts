@@ -204,6 +204,7 @@ function paramSteps(
       noteParts.push(line.family === "db" ? line.deltaLabel : `${line.deltaLabel} (${line.family})`);
     }
     if (line.adding) noteParts.push("add effect");
+    if (line.automationWarning) noteParts.push(line.automationWarning);
     steps.push(
       numberStep(
         line.trackName,
@@ -510,8 +511,14 @@ export function planIntent(doc: ProjectDocument, route: RoutedIntent): IntentPla
   const steps = stepsFor(doc, after, route);
   const warnings: string[] = [];
   for (const step of steps) {
-    if (step.kind === "command") warnings.push(`${step.target}: ${step.note}`);
-    else if (step.kind === "number" && step.clamped) warnings.push(`${step.target}: ${step.parameter} will clamp`);
+    if (step.kind === "command") {
+      warnings.push(`${step.target}: ${step.note}`);
+    } else if (step.kind === "number") {
+      if (step.clamped) warnings.push(`${step.target}: ${step.parameter} will clamp`);
+      if (step.note?.includes("automation controls the effective value")) {
+        warnings.push(`${step.target}: ${step.note}`);
+      }
+    }
   }
   if (after === doc) warnings.push("nothing would change");
   return {

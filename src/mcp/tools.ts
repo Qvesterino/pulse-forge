@@ -14236,21 +14236,34 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
       // Say so, and say it in the structured envelope as well as the text.
       const partial = paramReport.skipped.length > 0;
       const moved = paramReport.moved.length > 0 || paramReport.added.length > 0;
-      const verification = partial
-        ? "read-back confirms the value on the resolved track; one target did not resolve"
-        : moved
-          ? "read-back confirms the value"
-          : "read-back found no value change";
+      const automationControlled = paramReport.automation.length > 0;
+      const verification = automationControlled
+        ? `${partial ? "stored-value read-back confirms the resolved track; one target did not resolve" : moved ? "stored-value read-back confirms the change" : "stored-value read-back found no value move"}; automation controls the effective value in the reported scope(s)`
+        : partial
+          ? "read-back confirms the value on the resolved track; one target did not resolve"
+          : moved
+            ? "read-back confirms the value"
+            : "read-back found no value change";
       return {
         text: `${command.label}${extra} — verification: ${verification}${undoLine}`,
         mutated: true,
         data: {
-          status: partial ? "partial" : moved ? "applied" : "no_value_moved",
+          status: partial
+            ? automationControlled
+              ? "partial_with_automation"
+              : "partial"
+            : automationControlled
+              ? "base_value_applied_with_automation"
+              : moved
+                ? "applied"
+                : "no_value_moved",
           changed: true,
           moved: paramReport.moved,
           added: paramReport.added,
           unchanged: paramReport.unchanged,
           skipped: paramReport.skipped,
+          automation: paramReport.automation,
+          automationOmitted: paramReport.automationOmitted,
         },
       };
     }
