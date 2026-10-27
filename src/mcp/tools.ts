@@ -4994,12 +4994,19 @@ ${preview.text}`,
   // envelope perimeter below both need the same answer — and the dry-run
   // policy is its single owner (see `mutatesProjectDocument`).
   const documentMutation = mutatesProjectDocument(name, args);
+  // Does this tool's output schema DECLARE a `readback` slot? Those tools
+  // have the receipt envelope, so the gate's structural read-back can ride
+  // in `data` there (audit F-24, S-1 gap 3). A tool whose schema is strict
+  // (`additionalProperties: false`) and has no such slot keeps its own
+  // payload — adding a key there would make the structured content INVALID.
+  const toolSchema = MCP_TOOLS.find((tool) => tool.name === name)?.outputSchema;
   result = verifiedMutation({
     before: docBefore,
     after: ctx.getDoc(),
     undoDepthBefore,
     undoDepthAfter: ctx.undoStackLength(),
     documentMutation,
+    structuredData: toolSchema?.properties?.readback != null,
     result,
   });
   // Audit F-12: the clamp disclosure rides in the TEXT — the one channel every
@@ -8827,9 +8834,7 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         "the automation point did not land — the command ran but the lane holds no such point",
       );
     }
-    const pointCount = landedLane.points.length;
     const def = targetParamDef(doc, target);
-    const clampNote = landed.value !== value ? ` — clamped into ${def ? `${def.min}..${def.max}` : "range"}` : "";
     ctx.execute(
       snapshot(
         "mcpAutomation",
@@ -8838,9 +8843,40 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         next,
       ),
     );
+    // Audit F-24: THE ACKNOWLEDGEMENT COMES FROM THE COMMITTED DOCUMENT.
+    // The chain above (`next`) is what the handler INTENDED to write; the
+    // document is what the project HOLDS. The normaliser may clamp further
+    // than the command did, and a point that did not land must never be
+    // reported as one that did. This is the convention the rest of the
+    // surface already follows (addRamp, movePoint, kyx_plugin_param).
+    const committedDoc = ctx.getDoc();
+    const committedLane = committedDoc.automation.find((candidate) => candidate.id === laneId);
+    const committed = committedLane?.points.filter((point) => point.tick === position).pop();
+    if (!committed || committedLane == null) {
+      return mcpError(
+        "PARTIAL_FAILURE",
+        `the automation point did not land in the committed document — lane ${laneId} holds no point at ${barBeat(position, doc)}; inspect the lane and undo if needed`,
+      );
+    }
+    const committedCount = committedLane.points.length;
+    const committedClampNote =
+      committed.value !== value ? ` — clamped into ${def ? `${def.min}..${def.max}` : "range"}` : "";
+    const committedPoint = `${barBeat(committed.tick, doc)}=${Math.round(committed.value * 1e4) / 1e4}`;
     return {
-      text: `${automationTargetLabel(doc, target)}: point ${barBeat(landed.tick, doc)}=${Math.round(landed.value * 1e4) / 1e4}${clampNote} — lane ${pointCount} pt(s), one undo step`,
+      text: `${automationTargetLabel(committedDoc, target)}: point ${committedPoint}${committedClampNote} — lane ${committedCount} pt(s), one undo step`,
       mutated: true,
+      stage: "applied",
+      data: {
+        status: "applied",
+        op: "addPoint",
+        laneId,
+        target: automationTargetLabel(committedDoc, target),
+        point: { tick: committed.tick, value: committed.value },
+        requestedValue: value,
+        clamped: committed.value !== value,
+        pointCount: committedCount,
+        readback: [`${automationTargetLabel(committedDoc, target)}: point ${committedPoint}`],
+      },
     };
   }
 
@@ -8869,11 +8905,31 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
       );
     }
-    const removed = lane.points[bestIndex];
+    const removed = lane.points[bestIndex]!;
     ctx.execute(deleteAutomationPoint(doc, lane.id, bestIndex));
+    // Audit F-24: the acknowledgement comes from the COMMITTED document.
+    const committedDoc = ctx.getDoc();
+    const committedLane = committedDoc.automation.find((candidate) => candidate.id === lane.id);
+    if (committedLane == null || committedLane.points.length >= lane.points.length) {
+      return mcpError(
+        "PARTIAL_FAILURE",
+        `the automation point was not removed in the committed document — lane ${lane.id} still holds ${committedLane?.points.length ?? 0} point(s); inspect the lane and undo if needed`,
+      );
+    }
+    const removedPoint = `${barBeat(removed.tick, doc)}=${Math.round(removed.value * 1e4) / 1e4}`;
     return {
-      text: `${automationTargetLabel(doc, target)}: removed point ${barBeat(removed!.tick, doc)}=${Math.round(removed!.value * 1e4) / 1e4} — one undo step`,
+      text: `${automationTargetLabel(committedDoc, target)}: removed point ${removedPoint} — lane ${committedLane.points.length} pt(s), one undo step`,
       mutated: true,
+      stage: "applied",
+      data: {
+        status: "applied",
+        op: "deletePoint",
+        laneId: lane.id,
+        target: automationTargetLabel(committedDoc, target),
+        removedPoint: { tick: removed.tick, value: removed.value },
+        pointCount: committedLane.points.length,
+        readback: [`${automationTargetLabel(committedDoc, target)}: removed point ${removedPoint}`],
+      },
     };
   }
 
@@ -8937,7 +8993,26 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     if (!lane) return mcpError("UNKNOWN_TARGET", `no automation lane for ${automationTargetLabel(doc, target)}`);
     if (op === "removeLane") {
       ctx.execute(removeAutomationLane(doc, lane.id));
-      return { text: `removed automation lane ${automationTargetLabel(doc, target)} — one undo step`, mutated: true };
+      // Audit F-24: the acknowledgement comes from the COMMITTED document.
+      const committedDoc = ctx.getDoc();
+      if (committedDoc.automation.some((candidate) => candidate.id === lane.id)) {
+        return mcpError(
+          "PARTIAL_FAILURE",
+          `the automation lane was not removed in the committed document — lane ${lane.id} is still there; inspect the lane and undo if needed`,
+        );
+      }
+      return {
+        text: `removed automation lane ${automationTargetLabel(committedDoc, target)} — one undo step`,
+        mutated: true,
+        stage: "applied",
+        data: {
+          status: "applied",
+          op: "removeLane",
+          laneId: lane.id,
+          target: automationTargetLabel(committedDoc, target),
+          readback: [`removed automation lane ${automationTargetLabel(committedDoc, target)}`],
+        },
+      };
     }
     if (lane.points.length === 0) return { text: "the lane already has no points", mutated: false, stage: "noop" };
     const cleared = lane.points.length;
@@ -8950,9 +9025,27 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     ctx.execute(
       snapshot("mcpAutomationClear", `MCP: clear automation ${automationTargetLabel(doc, target)}`, doc, next),
     );
+    // Audit F-24: the acknowledgement comes from the COMMITTED document.
+    const committedDoc = ctx.getDoc();
+    const committedLane = committedDoc.automation.find((candidate) => candidate.id === lane.id);
+    if (committedLane == null || committedLane.points.length > 0) {
+      return mcpError(
+        "PARTIAL_FAILURE",
+        `the automation lane was not cleared in the committed document — lane ${lane.id} still holds ${committedLane?.points.length ?? 0} point(s); inspect the lane and undo if needed`,
+      );
+    }
     return {
-      text: `cleared ${cleared} point(s) from ${automationTargetLabel(doc, target)} — one undo step`,
+      text: `cleared ${cleared} point(s) from ${automationTargetLabel(committedDoc, target)} — one undo step`,
       mutated: true,
+      stage: "applied",
+      data: {
+        status: "applied",
+        op: "clearLane",
+        laneId: lane.id,
+        target: automationTargetLabel(committedDoc, target),
+        clearedPoints: cleared,
+        readback: [`cleared ${cleared} point(s) from ${automationTargetLabel(committedDoc, target)}`],
+      },
     };
   }
 

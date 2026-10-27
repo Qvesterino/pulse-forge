@@ -71,6 +71,18 @@ export interface VerifiedMutationInput {
    */
   documentMutation?: boolean;
   /**
+   * TRUE when the tool's output schema DECLARES the `readback` slot — the
+   * receipt family.
+   *
+   * The structural read-back is mirrored into `data` only for those tools: a
+   * tool with a STRICT schema (`additionalProperties: false`, e.g. OUTPUT_TAKES)
+   * has no such slot, and a key that the schema does not declare makes the
+   * structured content invalid. A tool that produces its OWN precise `data`
+   * is already self-verifying; mixing the gate's structural summary into that
+   * payload would blur two vocabularies in one object.
+   */
+  structuredData?: boolean;
+  /**
    * TRUE for a REPLAY of an earlier call (audit F-06).
    *
    * The replay reports the ORIGINAL outcome — the ledger already verified
@@ -118,6 +130,8 @@ export function verifiedMutation(input: VerifiedMutationInput): McpToolResult {
 
   let text = result.text;
   let mutated = true;
+  /** The structural read-back this gate produced (audit F-24). */
+  let readback: string | null = null;
 
   // 1. THE UNDO CLAIM IS A CLAIM ABOUT THE STACK — and the stack knows.
   // A stack that SHRANK means the tool undid something (kyx_undo, redo); its
@@ -145,10 +159,26 @@ export function verifiedMutation(input: VerifiedMutationInput): McpToolResult {
     const summary = summarizeDocumentChange(before, after);
     const detail = summary.lines.length > 0 ? summary.lines.join("; ") : "document metadata changed";
     text = `${text} — read-back: ${detail}`;
+    readback = detail;
   }
 
-  if (mutated === result.mutated) return { ...result, text };
-  return {
+  /**
+   * The read-back rides in the ENVELOPE too (audit F-24, S-1 gap 3). The
+   * prose is the channel every transport forwards verbatim, but a client
+   * that reads only `data` must see the verification too — otherwise the
+   * structured answer says "applied" with nothing that proves it. The
+   * receipt schema already declares `readback: string[]`, so this rides in
+   * the vocabulary that exists.
+   */
+  const withReadback = (value: McpToolResult): McpToolResult => {
+    if (readback == null || input.structuredData !== true) return value;
+    const data = isPlainObject(value.data) ? value.data : {};
+    const existing = Array.isArray(data.readback) ? data.readback.filter((line) => typeof line === "string") : [];
+    return { ...value, data: { ...data, readback: [...existing, readback].slice(0, 32) } };
+  };
+
+  if (mutated === result.mutated) return withReadback({ ...result, text });
+  return withReadback({
     ...result,
     text,
     mutated: false,
@@ -158,5 +188,5 @@ export function verifiedMutation(input: VerifiedMutationInput): McpToolResult {
     data: isPlainObject(result.data)
       ? { ...result.data, status: "unchanged", changed: false }
       : { status: "unchanged", changed: false },
-  };
+  });
 }
