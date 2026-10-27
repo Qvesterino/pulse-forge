@@ -521,6 +521,81 @@ staged — so a peer's staged files can no longer be carried into a commit, and 
 exactly as it was. The same session's `PcmMicRecorder.ts` hunks were applied to that throwaway index
 as a PATCH, so the peer's uncommitted work in the same file stayed out of the commit.
 
+### 8h. The sixth session — F-15/F-16: the verifier was repaired, then MEASURED, and the measurement said the repair was half done
+
+The two browser-verifier defects had already been repaired in code (§12b): the add-effect flow drives
+the real popover, and the preset browser got a 15 s budget. What was missing was the **proof** — the
+report had never seen a green run of the two gates they protect. This session ran the verifier for
+the first time, in an **isolated detached worktree at HEAD** (so the measurement could not be
+contaminated by the in-flight work of four parallel sessions), and the run said something the
+report did not want to hear:
+
+**419/438 checks passed. BOTH F-15/F-16 gates were RED.**
+
+- **app boot** — `page.waitForSelector: Timeout 5000ms exceeded`, waiting for `.master-meter`.
+- **plugin workflow E2E** — `TimeoutError: Timeout 5000ms exceeded`.
+
+Both had the same cause, and it was the same cause F-16 named: **a 5 s budget on a `React.lazy`
+boundary**. The preset browser had been given a 15 s budget; every OTHER lazy panel still had 5 s.
+The Mixer (`.master-meter`), the EffectRack (`.fx-device`), the SampleBrowser, the PresetBrowser,
+the ArrangementPanel, the ModPanel and the ExportPanel are all lazy chunks
+(`src/ui/App.tsx` and the nested lazy imports inside them) — and a chunk that has to be fetched
+AND transformed on its first request cannot be measured by a 5 s window on a loaded machine.
+
+The failure also read as something it was not: the app-boot gate reported every error in its block
+as **"UI did not mount"**, so a timeout on a lazy panel was indistinguishable from a boot
+regression. That mislabel is why the defect could sit behind a "FIXED" row for two days.
+
+**The repair** (`scripts/verify-browser.mjs`):
+
+- **One owner for the lazy budget** — `LAZY_PANEL_TIMEOUT_MS` (30 s), applied to every wait whose
+  target is behind a `React.lazy` boundary. The EAGER controls (the tour card, the pattern bar,
+  the generate dialog, the scene launcher) keep the 5 s window: a module-boundary budget is right
+  for a lazy chunk and waste for a mounted element.
+- **Both gates name the step that failed** — `bootStep` and `pluginStep` replace the catch-all
+  "UI did not mount". This paid for itself immediately: the plugin workflow stopped dying
+  anonymously and named the step it was on.
+- **The reload step stopped driving two assumptions the product never made.** With the lazy budget
+  fixed, the plugin workflow reached its reload check and failed there too. A focused probe
+  (`output/_f15-reload-probe.mjs`, throwaway) found the product healthy: **the PRISM survived the
+  reload intact** — the probe found it on its track, with the editor mounting the moment that
+  track was selected. Two things in the flow were wrong:
+  1. **The selected track is UI state, not part of the saved document** (`SelectionStore` is not
+     persisted; the project model has no `selectedTrack`). A reopened project lands on a DEFAULT
+     track, so the rack shows a different chain than the one the flagship was added to — and the
+     flow waited for an editor that could not mount on a green product. The flow now identifies the
+     current track before the reload and re-selects it after, the way a user would.
+  2. **The dock TAB carries the open state** (`aria-expanded`). The panel element can be mounted
+     while its slot is closed, so `isVisible()` on the panel is not the signal — reading it toggled
+     the panel shut and then waited for an editor that could not mount.
+
+**The teeth** — `tests/browser-verifier-contract.test.ts` (10 cases). It reads BOTH sides of the
+contract: the script AND the React tree, so a selector that exists only in the script, or only in
+the tree, is a red gate instead of a mystery. It pins the live popover flow (F-15), the lazy
+budget owner and every lazy wait (F-16), the step-naming, the track identity and the dock's open
+state. **Falsified:** against the pre-fix verifier the spec is **5 RED / 5 GREEN** (budget owner,
+lazy waits, step naming, track identity, dock open state); with the fix **10/10 GREEN**.
+
+**What the second run measured** (same worktree, at the fix): **434/438**, the app-boot gate
+**green**, the perf and realtime-budget checks green on a less loaded machine, and the plugin
+workflow's failure moved from "the flagship never mounted" to the reload step — the defect this
+section describes.
+
+**The reds that remain are not this session's**, and each is attributed by measurement:
+
+| Red | Attribution |
+| --- | --- |
+| `presets: auditions finite/unclipped` — the VSCO orchestral presets render at `peak=0.0000` | the VSCO pack wave (the samples 404, per `f694c6c7`); the factory bank has no synthesis for them, so the audition is silence |
+| `live↔offline null test: failed=4/67` | the documented realtime-nondeterminism class (§7b) |
+| `stutter: gate pattern alternates delayed loop audibility — high=0.0000 low=0.0000` | the documented stutter 0/0-silence check (§7b) |
+| the perf and realtime budgets (1.35×–2.57× realtime) | load-correlated: the second run, on a less loaded machine, measured every one of them green |
+
+**Attribution note.** This session's source changes (`scripts/verify-browser.mjs`,
+`tests/browser-verifier-contract.test.ts`) and the report's own edits were **swept into a parallel
+session's commit** (`5dba8e75`, "aha") by its `git add .`. The content is intact and verified; the
+authorship is not this session's, and the pushed history is not rewritten in a shared tree. The
+note lives here instead of in an amend.
+
 ---
 
 ## 9. Prioritized hardening backlog
