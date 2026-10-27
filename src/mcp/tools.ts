@@ -5493,7 +5493,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       }
       const perInstance = hasInstance || fxId !== "";
       const instanceWanted = hasInstance ? (record.instance as number) : 1;
-      if (action === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      if (action === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_fx")) return destructiveRefusal();
       // eq (and any knob-less effect) has no single "primary knob" — never
       // pretend: point at kyx_plugin_param instead of throwing deep inside
       // the applier. remove/bypass/reorder do NOT need a knob.
@@ -8366,7 +8366,7 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
   }
 
   if (op === "clearLane" || op === "removeLane") {
-    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+    if (!destructiveAllowedWithCheckpoint(ctx, "kyx_automation")) return destructiveRefusal();
     if (!lane) return { text: `no automation lane for ${automationTargetLabel(doc, target)}`, mutated: false };
     if (op === "removeLane") {
       ctx.execute(removeAutomationLane(doc, lane.id));
@@ -8601,7 +8601,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         return { text: `copied ${clipboardSummary(built)} — paste with op:paste`, mutated: false };
       }
       // CUT is a delete: it must ride the D4 gate like every other removal.
-      if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      if (!destructiveAllowedWithCheckpoint(ctx, "kyx_clips")) return destructiveRefusal();
       ctx.execute(cutClips(doc, targets));
       return { text: `cut ${clipboardSummary(built)} - one undo step`, mutated: true };
     }
@@ -8828,7 +8828,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         };
       }
       if (op === "audioDelete") {
-        if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+        if (!destructiveAllowedWithCheckpoint(ctx, "kyx_clips")) return destructiveRefusal();
         ctx.execute(deleteAudioClip(doc, target.id));
         return { text: `deleted ${describe()} — one undo step`, mutated: true };
       }
@@ -9014,7 +9014,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       return { text: `split ${describeClip(clip)} at bar ${barValue} — one undo step`, mutated: true };
     }
     if (op === "delete") {
-      if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      if (!destructiveAllowedWithCheckpoint(ctx, "kyx_clips")) return destructiveRefusal();
       ctx.execute(deleteArrangementClip(doc, clip.id));
       return { text: `deleted ${describeClip(clip)} — one undo step`, mutated: true };
     }
@@ -9046,7 +9046,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       };
     }
     if (op === "deleteRipple") {
-      if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      if (!destructiveAllowedWithCheckpoint(ctx, "kyx_clips")) return destructiveRefusal();
       ctx.execute(deleteArrangementClipRipple(doc, clip.id));
       return {
         text: `deleted ${describeClip(clip)} (ripple: later clips close the gap) — one undo step`,
@@ -9690,7 +9690,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
     if (groupId === "" || takeId === "") {
       return mcpError("INVALID_ARGUMENTS", "deleteTake needs groupId and takeId — op:list for the groups");
     }
-    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+    if (!destructiveAllowedWithCheckpoint(ctx, "kyx_takes")) return destructiveRefusal();
     const group = groups.find((item) => item.id === groupId);
     if (!group) return mcpError("UNKNOWN_TARGET", `no take group "${groupId}"`);
     if (group.activeTakeId === takeId) {

@@ -3,6 +3,9 @@ import { executeMcpTool, resetMcpCheckpoints, type McpToolContext } from "../src
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { createScene, setSceneRole } from "../src/commands/scenes";
+import { addArrangementClip } from "../src/commands/arrangement";
+import type { ProjectDocument } from "../src/project-model/types";
 
 /**
  * kyx_checkpoint — the agent time machine (Fáza C, docs/AGENTIC-DAW-PLAN.md).
@@ -141,5 +144,113 @@ describe("kyx_checkpoint", async () => {
     await executeMcpTool(ctx, "kyx_tracks", { op: "remove", family: "drums" });
     const list = await executeMcpTool(ctx, "kyx_checkpoint", { op: "list" });
     expect(list.text).toContain("no checkpoints");
+  });
+});
+
+/**
+ * D4 gate parity (AS-004, docs/audits/2026-10-26-ai-action-space §13):
+ * EVERY destructive op must ride `destructiveAllowedWithCheckpoint`, not the
+ * bare `ctx.allowDestructive` check — the seven sites that skipped the
+ * auto-before snapshot (fx remove, automation clearLane/removeLane, clips
+ * cut/delete/deleteRipple/audioDelete, takes deleteTake) left recovery
+ * dependent on the ≤15-min-old session checkpoint. Each case proves the
+ * gate saved its own checkpoint BEFORE the op ran.
+ */
+describe("D4 gate parity (AS-004) — every destructive op saves auto-before-<tool>", async () => {
+  function sceneClipDoc(): ProjectDocument {
+    useDeterministicIds();
+    resetDeterministicIds();
+    let doc = createProjectFromTemplate("house");
+    doc = { ...doc, arrangement: { ...doc.arrangement, clips: [] }, markers: [] };
+    doc = createScene(doc, "Intro").execute(doc);
+    doc = setSceneRole(doc, doc.scenes[doc.scenes.length - 1].id, "intro").execute(doc);
+    doc = addArrangementClip(doc, doc.scenes[doc.scenes.length - 1].id, 0, 4).execute(doc);
+    return doc;
+  }
+
+  function audioTakeDoc(): ProjectDocument {
+    const doc = sceneClipDoc();
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const mkClip = (id: string, takeId: string) => ({
+      id,
+      trackId: drum.id,
+      bufferId: `buf-${takeId}`,
+      takeGroupId: "tg-1",
+      takeId,
+      startBar: 0,
+      lengthBars: 4,
+      offsetSec: 0,
+      trimStart: 0,
+      trimEnd: 0,
+      gain: 1,
+      fadeIn: 0,
+      fadeOut: 0,
+      stretchRate: 1,
+      reverse: false,
+    });
+    return {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        audioClips: [mkClip("ac-t1", "take-1"), mkClip("ac-t2", "take-2")],
+        takeGroups: [{ id: "tg-1", trackId: drum.id, activeTakeId: "take-1" }],
+      },
+    } as ProjectDocument;
+  }
+
+  async function run(
+    tool: string,
+    buildDoc: () => ProjectDocument,
+    args: Record<string, unknown>,
+    checkpoint: string,
+    textProbe?: (text: string) => void,
+  ): Promise<void> {
+    const store = new ProjectStore(buildDoc());
+    const ctx = storeCtx(store, { allowDestructive: true });
+    const result = await executeMcpTool(ctx, tool, args);
+    expect(result.text).not.toContain("locked");
+    textProbe?.(result.text);
+    const list = await executeMcpTool(ctx, "kyx_checkpoint", { op: "list" });
+    expect(list.text).toContain(checkpoint);
+  }
+
+  it("kyx_fx remove saves auto-before-kyx_fx after a real instance existed", async () => {
+    const store = new ProjectStore(createProjectFromTemplate("house"));
+    const ctx = storeCtx(store, { allowDestructive: true });
+    await executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "drums", action: "more" });
+    const result = await executeMcpTool(ctx, "kyx_fx", {
+      effect: "reverb",
+      family: "drums",
+      action: "remove",
+    });
+    expect(result.text).not.toContain("locked");
+    const list = await executeMcpTool(ctx, "kyx_checkpoint", { op: "list" });
+    expect(list.text).toContain("auto-before-kyx_fx");
+  });
+
+  it("kyx_automation clearLane gates BEFORE lane resolution — checkpoint even for a lane-less target", async () => {
+    await run(
+      "kyx_automation",
+      sceneClipDoc,
+      { op: "clearLane", family: "drums", param: "gain" },
+      "auto-before-kyx_automation",
+      (text) => expect(text).toContain("no automation lane"),
+    );
+  });
+
+  it("kyx_clips cut / delete / deleteRipple / audioDelete all save auto-before-kyx_clips", async () => {
+    await run("kyx_clips", sceneClipDoc, { op: "cut", bar: 1 }, "auto-before-kyx_clips");
+    await run("kyx_clips", sceneClipDoc, { op: "delete", bar: 1 }, "auto-before-kyx_clips");
+    await run("kyx_clips", sceneClipDoc, { op: "deleteRipple", bar: 1 }, "auto-before-kyx_clips");
+    await run("kyx_clips", audioTakeDoc, { op: "audioDelete", family: "drums", bar: 1 }, "auto-before-kyx_clips");
+  });
+
+  it("kyx_takes deleteTake saves auto-before-kyx_takes", async () => {
+    await run(
+      "kyx_takes",
+      audioTakeDoc,
+      { op: "deleteTake", groupId: "tg-1", takeId: "take-2" },
+      "auto-before-kyx_takes",
+    );
   });
 });
