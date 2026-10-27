@@ -221,6 +221,15 @@
   min-width: 0;
 }
 
+/* The honest absent state: nineteen instrument kinds have no mod matrix at
+   all. Silence read as a broken panel. */
+.mod-matrix-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 6px 0;
+  margin-top: 8px;
+}
+
 /* MPE discoverability strip (MidiPanel): badge + per-note pressure/timbre bars */
 .mpe-indicator {
   display: inline-flex;

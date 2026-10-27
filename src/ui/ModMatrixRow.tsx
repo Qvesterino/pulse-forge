@@ -35,7 +35,17 @@ export function ModMatrixRow({
   services: { store: { execute: (c: Command) => void } };
 }) {
   const defs = INSTRUMENT_DEFS[track.instrument].params.filter((p) => isModMatrixParam(p.id));
-  if (defs.length === 0) return null;
+  if (defs.length === 0) {
+    // Nineteen of the 31 instrument kinds define no mod-matrix params. The old
+    // `return null` made "this instrument has no mod matrix" look identical to
+    // "this panel is broken" — the user could not tell which. Say it.
+    return (
+      <div className="mod-matrix-empty">
+        {INSTRUMENT_DEFS[track.instrument]?.name ?? track.instrument} has no mod matrix — MOD A / MOD B routing is only
+        on instruments that define one.
+      </div>
+    );
+  }
   const commit = (id: string, v: number) => services.store.execute(setInstrumentParam(doc, track.id, id, v));
   const value = (id: string) => {
     const def = byId(defs, id);
@@ -95,7 +105,12 @@ export function ModMatrixRow({
   const lfo = byId(defs, "modLfoRate");
 
   return (
-    <div className="mod-matrix" role="group" aria-label="Mod matrix">
+    <div
+      className="mod-matrix"
+      role="group"
+      aria-label="Mod matrix"
+      title="Instrument mod matrix — MOD A / MOD B routing and the mod LFO. This is the instrument's own matrix, not the MOD panel (automation, LFOs and macros)."
+    >
       {row("MOD A", "modASrc", "modADst", "modAAmt")}
       {row("MOD B", "modBSrc", "modBDst", "modBAmt")}
       <Slider

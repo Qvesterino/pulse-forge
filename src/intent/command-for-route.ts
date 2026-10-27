@@ -25,6 +25,42 @@ import { applyParamIntent } from "./param-intent";
 import { applyCompoundIntent } from "./compound";
 import { addAutomationRamp } from "../commands/automation";
 
+/**
+ * The route kinds this switch can turn into a command.
+ *
+ * The MCP executor has to tell TWO different "nothing happened" cases apart:
+ * the applier ran and found nothing to do (an honest no-op) and the route kind
+ * has NO builder here at all (the capability simply is not wired). Only the
+ * first one may be reported as "nothing changed"; the second one used to be
+ * reported as a successful no-op, which told the agent the project already
+ * matched when it did not — a false success.
+ *
+ * `tests/intent-command-route-kinds.test.ts` parses this file with the
+ * TypeScript compiler API and fails if this set and the switch below drift
+ * apart.
+ */
+export const INTENT_COMMAND_ROUTE_KINDS: ReadonlySet<RoutedIntent["kind"]> = new Set<RoutedIntent["kind"]>([
+  "fader",
+  "tempo",
+  "exact",
+  "grooveIntent",
+  "sectionGrooveIntent",
+  "automationPlan",
+  "markerIntent",
+  "automateIntent",
+  "clips",
+  "arrange",
+  "preset",
+  "effectIntent",
+  "paramIntent",
+  "sendIntent",
+  "bypassIntent",
+  "soundSwapIntent",
+  "stepEditIntent",
+  "compound",
+  "production",
+]);
+
 export function buildIntentCommand(doc: ProjectDocument, route: RoutedIntent): Command | null {
   switch (route.kind) {
     case "fader":

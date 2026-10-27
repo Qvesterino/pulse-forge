@@ -348,6 +348,11 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   },
   {
     area: "Arrangement keys",
+    label: "Consolidate the selected range to one audio clip",
+    bindings: ["Ctrl + Shift + C"],
+  },
+  {
+    area: "Arrangement keys",
     label: "Crossfade the selected clips",
     bindings: ["X"],
   },

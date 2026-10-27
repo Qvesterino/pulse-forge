@@ -162,7 +162,8 @@ MixER / FADER (per family or track name):
   mute / unmute / solo ("mute the drums", "zníž basu")
 TEMPO:
   "set tempo to 140", bpm words ("polo času", genre tempo hints)
-MIX PROFILE (measured, whole-mix):
+MIX PROFILE (measured, whole-mix — IN-APP ONLY: refused over kyx_intent, they
+  need in-app auditioning/rendering):
   more/less reverb, delay, punch, pump (sidechain), wider, mono-ish
   tone: warmer/darker/brighter ("more reverb, punchier drums", "darker",
   SK: "viac dozvuku", "bez pumpy", "tmavší zvuk")
@@ -172,7 +173,8 @@ PRODUCTION CONCEPTS (target-aware, per family: drums/bass/lead/chords):
   sharper, reverse, crunchy, vinyl, wide, sub, air, deess, phone
   ("make the bass deeper", "warmer 808 please", "wobbly drill" -> generation,
   "phone-ready bass" / "na telefóne" -> GROW harmonics + air EQ)
-COMPLAINTS (measured diagnosis + executable proposals):
+COMPLAINTS (measured diagnosis + executable proposals — IN-APP ONLY: refused
+  over kyx_intent, they need in-app auditioning/rendering):
   empty / thin / muddy / harsh / no punch + role or family
   ("the drop is empty", "the lead is harsh", "no punch")
 STEP EDITS:

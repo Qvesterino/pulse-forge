@@ -90,7 +90,7 @@ import {
   type MixTarget,
 } from "../intent/mix";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
-import { buildIntentCommand as intentCommand } from "../intent/command-for-route";
+import { buildIntentCommand as intentCommand, INTENT_COMMAND_ROUTE_KINDS } from "../intent/command-for-route";
 import { paramReadbackReport, paramReadbackReportText } from "../intent/param-intent";
 import { formatPlan, planIntent } from "../intent/semantics/intent-plan";
 import { transcribeTrack } from "../reference/transcribe";
@@ -13941,6 +13941,19 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     const depthBefore = ctx.undoStackLength();
     const command = intentCommand(before, route);
     if (command == null) {
+      // Two different "nothing happened" cases arrive here. A route kind that
+      // HAS a builder may legitimately find nothing to do — that is a no-op.
+      // A route kind with NO builder at all was never wired for this surface,
+      // and reporting it as a no-op told the agent the project already matched
+      // when it did not: a false success (measured 2026-10-27 — "restore
+      // checkpoint" answered "nothing changed (already matches or no target)").
+      if (!INTENT_COMMAND_ROUTE_KINDS.has(route.kind)) {
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          `"${route.kind}" requests have no MCP command builder — they run inside the KYX app. ` +
+            "Use the structured kyx_* tool for this operation, or apply it in KYX.",
+        );
+      }
       return {
         text: "intent understood but nothing changed (already matches or no target)",
         mutated: false,

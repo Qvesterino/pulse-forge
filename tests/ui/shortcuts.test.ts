@@ -7,6 +7,7 @@ import {
   setShortcutBinding,
   shortcutDisplayBindings,
   SHORTCUTS,
+  EDITOR_SHORTCUTS,
 } from "../../src/ui/shortcuts";
 
 function key(
@@ -149,5 +150,15 @@ describe("shortcut bindings", () => {
     }
     expect(panelIdOfShortcut("panelExport")).toBe("exp");
     expect(panelIdOfShortcut("panelMix")).toBe("mixer");
+  });
+
+  it("documents the range consolidation binding in the editor shortcuts", () => {
+    // Ctrl+Shift+C consolidates the selected range to one audio clip
+    // (src/ui/App.tsx) and worked, but appeared in NO help surface: not in the
+    // shortcut registry, not in EDITOR_SHORTCUTS, not in the command palette.
+    const row = EDITOR_SHORTCUTS.find((entry) => entry.bindings.includes("Ctrl + Shift + C"));
+    expect(row, "Ctrl+Shift+C must be documented").toBeDefined();
+    expect(row?.area).toBe("Arrangement keys");
+    expect(row?.label.toLowerCase()).toContain("consolidate");
   });
 });

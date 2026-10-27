@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EFFECT_DEFS } from "../effects/registry";
+import { EFFECT_DEFS, FLAGSHIP_EFFECT_ORDER } from "../effects/registry";
 import { presetsForEffect } from "../effects/presets";
 import { EFFECT_BLURBS } from "../effects/blurbs";
 import { rolePresetFor, ROLE_LABELS, type FxTrackRole } from "../effects/role-presets";
@@ -20,8 +20,10 @@ import type { EffectType } from "../project-model/types";
  *  3. THE GRID — every device with its one-line blurb and a preset-count
  *     badge; clicking adds it.
  *
- * The old `<select>` list stays available as "ALL DEVICES" in the rack —
- * the popover replaces the first contact, not the pro path.
+ * The popover IS the device list — the rack has no separate "ALL DEVICES"
+ * select any more (every production call site renders `mode="devices"`).
+ * Search matches the display name, the one-line blurb and the registry id,
+ * so "fxeq" finds PRISM even though the grid only shows "PRISM".
  */
 
 const CATEGORY_LABELS: Record<string, { tile: string; caption: string }> = {
@@ -31,6 +33,15 @@ const CATEGORY_LABELS: Record<string, { tile: string; caption: string }> = {
   movement: { tile: "MOVEMENT", caption: "rhythm, motion & wobble" },
   space: { tile: "SPACE", caption: "rooms, echoes & width" },
 };
+
+/**
+ * The six vendored suites (PRISM, VLYX, DRIFT, RIFT, MORPH, REZONANS) each
+ * carry their own DSP core and a bespoke editor — orders of magnitude more
+ * capability than a one-knob utility. The tier existed in the registry but
+ * reached the user through nothing but a word in some blurbs, so the grid
+ * showed all 57 devices as visually equal tiles.
+ */
+const FLAGSHIP = new Set<EffectType>(FLAGSHIP_EFFECT_ORDER);
 
 interface FxAddPopoverProps {
   /** Track name shown in the header ("FX — 808 Sub"). */
@@ -102,7 +113,18 @@ export function FxAddPopover({
         if (category && def.category !== category) return false;
         if (!lower) return true;
         const blurb = EFFECT_BLURBS[type] ?? "";
-        return def.name.toLowerCase().includes(lower) || blurb.toLowerCase().includes(lower);
+        // The registry id is part of the searchable vocabulary: a user who
+        // knows the device as "fxeq"/"ultina"/"ozvena" (the ids used by the
+        // MCP tools and the intent parser) must be able to find it by that
+        // name too — the grid itself only shows the display name.
+        // "suite" is searchable for the same reason: the tier is now shown.
+        const tier = FLAGSHIP.has(type) ? "suite flagship" : "";
+        return (
+          def.name.toLowerCase().includes(lower) ||
+          blurb.toLowerCase().includes(lower) ||
+          type.toLowerCase().includes(lower) ||
+          tier.includes(lower)
+        );
       }),
     [devices, category, lower],
   );
@@ -186,8 +208,19 @@ export function FxAddPopover({
           const presetCount = presetsForEffect(type).length;
           const landed = rolePresetFor(type, role) !== null;
           return (
-            <button key={type} type="button" className="fx-add-device" onClick={() => onPick(type)}>
-              <span className="fx-add-device-name">{def.name}</span>
+            <button
+              key={type}
+              type="button"
+              className="fx-add-device"
+              onClick={() => onPick(type)}
+              title={
+                FLAGSHIP.has(type) ? `${def.name} — a flagship suite: its own DSP core and its own editor.` : undefined
+              }
+            >
+              <span className="fx-add-device-name">
+                {def.name}
+                {FLAGSHIP.has(type) && <span className="fx-add-suite">SUITE</span>}
+              </span>
               <span className="fx-add-device-blurb">{EFFECT_BLURBS[type] ?? ""}</span>
               <span className="fx-add-device-presets">
                 {landed ? `♪ tuned for ${ROLE_LABELS[role!]}` : presetCount > 0 ? `${presetCount} starts` : ""}

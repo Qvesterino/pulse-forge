@@ -106,4 +106,36 @@ describe("FxAddPopover", () => {
       expect(EFFECT_DEFS[type], `${type} in registry`).toBeDefined();
     }
   });
+
+  it("finds a device by its registry id, not only by its display name", () => {
+    // The grid shows "PRISM", but the id the MCP tools and the intent parser
+    // use is "fxeq" — a user (or an agent) who knows the plugin by that id
+    // found nothing. The search vocabulary is now the code's own vocabulary.
+    renderPopover();
+    fireEvent.change(screen.getByLabelText(/Describe what you want/i), { target: { value: "fxeq" } });
+    expect(screen.getByText("PRISM")).toBeDefined();
+  });
+
+  it("marks the flagship suites — the grid showed all 57 devices as equal tiles", () => {
+    // PRISM, VLYX, DRIFT, RIFT, MORPH and REZONANS each carry a vendored DSP
+    // core and their own editor. The tier existed in the registry but reached
+    // the user through nothing but a word in some blurbs.
+    renderPopover();
+    expect(screen.getByText("PRISM")).toBeDefined();
+    const suite = screen.getByText("PRISM").closest(".fx-add-device");
+    expect(suite?.querySelector(".fx-add-suite")?.textContent).toBe("SUITE");
+    // A plain utility device is NOT marked.
+    const plain = screen.getByText("Vinyl Suite").closest(".fx-add-device");
+    expect(plain?.querySelector(".fx-add-suite")).toBeNull();
+  });
+
+  it("searches the tier word", () => {
+    renderPopover();
+    // "flagship" is the tier word and matches nothing else — "Vinyl Suite"
+    // would match "suite", so the tier keyword is the one that isolates it.
+    fireEvent.change(screen.getByLabelText(/Describe what you want/i), { target: { value: "flagship" } });
+    expect(screen.getByText("PRISM")).toBeDefined();
+    expect(screen.getByText("VLYX")).toBeDefined();
+    expect(screen.queryByText("Vinyl Suite")).toBeNull();
+  });
 });

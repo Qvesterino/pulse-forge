@@ -69,4 +69,13 @@ describe("ModMatrixRow", () => {
     const wdst = screen.getByLabelText("MOD B destination") as HTMLSelectElement;
     expect([...wdst.options].some((o) => o.value === "0" && o.textContent === "MORPH")).toBe(true);
   });
+
+  it("says so when the instrument has no mod matrix instead of rendering nothing", () => {
+    // Nineteen of the 31 kinds define no mod-matrix params. The old
+    // `return null` made "this instrument has no mod matrix" indistinguishable
+    // from "this panel is broken".
+    renderRow("tsar");
+    expect(screen.getByText(/has no mod matrix/i)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Mod matrix" })).toBeNull();
+  });
 });

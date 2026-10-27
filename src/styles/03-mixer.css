@@ -1186,6 +1186,20 @@
   letter-spacing: 0.4px;
 }
 
+/* The six vendored suites get a tier marker — the grid showed all 57 devices
+   as visually equal tiles, so a user could not tell a full suite from a
+   one-knob utility. */
+.fx-add-suite {
+  margin-left: 6px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
+
 .fx-add-device-blurb {
   color: var(--text-faint);
   font-size: var(--fs-compact);

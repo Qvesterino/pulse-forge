@@ -149,4 +149,15 @@ describe("vocab pin — document samples must parse with the LIVE parsers", asyn
       expect(MCP_VOCAB_TEXT).toContain(concept);
     }
   });
+
+  it("the vocab doc marks the sections MCP refuses as in-app only", () => {
+    // MIX PROFILE and COMPLAINTS are refused over kyx_intent with
+    // UNAVAILABLE_ON_TRANSPORT (src/mcp/tools.ts) — they need in-app
+    // auditioning. The vocabulary used to promise them anyway, so an agent
+    // built a plan the transport could not run and had no way to know.
+    const mixSection = MCP_VOCAB_TEXT.slice(MCP_VOCAB_TEXT.indexOf("MIX PROFILE"));
+    expect(mixSection.slice(0, 200)).toContain("IN-APP ONLY");
+    const complaintSection = MCP_VOCAB_TEXT.slice(MCP_VOCAB_TEXT.indexOf("COMPLAINTS"));
+    expect(complaintSection.slice(0, 200)).toContain("IN-APP ONLY");
+  });
 });

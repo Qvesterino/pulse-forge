@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Mixer } from "../../src/ui/Mixer";
+import { Mixer, formatSendLevel } from "../../src/ui/Mixer";
 import { MasterProcessingControls } from "../../src/ui/MasterProcessingControls";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -261,5 +261,16 @@ describe("Mixer track reorder drag (Wave D)", () => {
     expect(cmd.label).not.toContain("(no-op)");
     const next = cmd.execute(doc);
     expect(next.tracks.map((t) => t.id)).toEqual([doc.tracks[1]!.id, doc.tracks[0]!.id, doc.tracks[2]!.id]);
+  });
+
+  it("prints the send level on the scale the hint describes", () => {
+    // The send model is 0..1.5 with 1.0 = unity (clampSendLevel). The old
+    // formatter divided by 1.5, so unity read "67%" while the hint under the
+    // control said "100% fully wet" — the number contradicted its own caption.
+    expect(formatSendLevel(0)).toBe("OFF");
+    expect(formatSendLevel(0.25)).toBe("25%");
+    expect(formatSendLevel(0.5)).toBe("50%");
+    expect(formatSendLevel(1)).toBe("100%");
+    expect(formatSendLevel(1.5)).toBe("+50%");
   });
 });
