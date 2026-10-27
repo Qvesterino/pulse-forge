@@ -1,5 +1,5 @@
 import type { AudioEngine } from "../audio-engine/AudioEngine";
-import { consolidateTimeRangeToAudio } from "../commands/commands";
+import { addAudioClip, consolidateTimeRangeToAudio } from "../commands/commands";
 import type { Command } from "../commands/types";
 import { type ProjectDocument } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
@@ -37,6 +37,218 @@ export interface PreparedRangeConsolidationPreview {
   readonly bankRevision: number;
   readonly fromBar: number;
   readonly toBar: number;
+}
+
+export interface RangeBouncePreviewRequest {
+  range: { fromTick: number; toTick: number };
+  trackIds: string[];
+  targetTrackId: string;
+}
+
+/** A selected-track bounce with A/B renders of the actual mix before and after adding the clip. */
+export interface PreparedRangeBouncePreview {
+  readonly sourceDoc: ProjectDocument;
+  readonly range: { fromTick: number; toTick: number };
+  readonly trackIds: readonly string[];
+  readonly targetTrackId: string;
+  readonly sourceDurationsByBufferId: ReadonlyMap<string, number>;
+  readonly candidate: AudioBuffer;
+  readonly before: AudioBuffer;
+  readonly after: AudioBuffer;
+  readonly beforeGain: number;
+  readonly afterGain: number;
+  readonly bankRevision: number;
+  readonly startBar: number;
+  readonly lengthBars: number;
+}
+
+/** Render original mix A, the selected-track bounce, and real post-bounce mix B without mutating project state. */
+export async function prepareRangeBouncePreview(
+  runtime: RangeConsolidationRuntime,
+  request: RangeBouncePreviewRequest,
+  isSelectionCurrent: () => boolean = () => true,
+  render?: typeof renderProject,
+): Promise<PreparedRangeBouncePreview> {
+  const store = runtime.store;
+  if (storesInFlight.has(store)) throw new Error("A range render is already in progress.");
+  storesInFlight.add(store);
+  try {
+    const sourceDoc = store.getDoc();
+    assertPreviewCurrent(store, sourceDoc, isSelectionCurrent);
+    const barUnit = ticksPerBar(sourceDoc);
+    const fromTick = Math.min(request.range.fromTick, request.range.toTick);
+    const toTick = Math.max(request.range.fromTick, request.range.toTick);
+    if (!Number.isSafeInteger(fromTick) || !Number.isSafeInteger(toTick) || fromTick < 0 || toTick <= fromTick) {
+      throw new Error("Select a valid, non-empty time range to bounce.");
+    }
+    const startBar = fromTick / barUnit;
+    const endBar = toTick / barUnit;
+    const lengthBars = endBar - startBar;
+    if (lengthBars < 0.25) throw new Error("Select at least a quarter bar to bounce.");
+    const trackById = new Map(sourceDoc.tracks.map((track) => [track.id, track]));
+    const trackIds = [...new Set(request.trackIds)].filter((id) => trackById.get(id)?.kind !== "group");
+    if (trackIds.length === 0 || trackIds.some((id) => !trackById.has(id))) {
+      throw new Error("The selected bounce tracks are no longer available.");
+    }
+    if (!trackIds.includes(request.targetTrackId) || trackById.get(request.targetTrackId)?.kind === "group") {
+      throw new Error("Choose an available instrument or audio track for the bounced clip.");
+    }
+    const sourceDurationsByBufferId = sourceDurationsForRange(runtime.bank, sourceDoc, startBar, endBar);
+    const allMixTrackIds = sourceDoc.tracks.filter((track) => track.kind !== "group").map((track) => track.id);
+    if (allMixTrackIds.length === 0) throw new Error("This project has no audio tracks to preview.");
+    const zone = { startBar, lengthBars };
+    const auditionOptions: RenderOptions = {
+      mode: "song",
+      sampleRate: runtime.engine.getLiveAudioContext()?.sampleRate ?? 44100,
+      tailSeconds: 2,
+      minimumDurationTicks: Math.ceil(lengthBars * barUnit),
+      arrangementOnly: true,
+    };
+    const renderFn = render ?? (await import("../rendering/renderer")).renderProject;
+    const beforeDoc = buildBounceZoneDoc(sourceDoc, allMixTrackIds, zone, {
+      preserveMixState: true,
+      includeSubQuarterAudioClips: true,
+      includeSubQuarterArrangementClips: true,
+      sourceDurationsByBufferId,
+    });
+    const candidateDoc = buildBounceZoneDoc(sourceDoc, trackIds, zone, {
+      includeSubQuarterAudioClips: true,
+      includeSubQuarterArrangementClips: true,
+      sourceDurationsByBufferId,
+    });
+    const previewId = `kyx-preview-bounce-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const temporaryCommand = addAudioClip(sourceDoc, request.targetTrackId, previewId, startBar, lengthBars, {
+      gain: 1,
+      stretchRate: 1,
+    });
+    const afterDoc = buildBounceZoneDoc(temporaryCommand.execute(sourceDoc), allMixTrackIds, zone, {
+      preserveMixState: true,
+      includeSubQuarterAudioClips: true,
+      includeSubQuarterArrangementClips: true,
+      sourceDurationsByBufferId,
+    });
+    const { estimateRenderPcmBytes, MAX_OFFLINE_RENDER_PCM_BYTES } = await import("../rendering/renderer");
+    const aggregateBytes =
+      estimateRenderPcmBytes(beforeDoc, auditionOptions) +
+      estimateRenderPcmBytes(candidateDoc, auditionOptions) +
+      estimateRenderPcmBytes(afterDoc, auditionOptions);
+    if (aggregateBytes > MAX_OFFLINE_RENDER_PCM_BYTES) {
+      throw new Error("This range is too long for an in-memory A/B preview. Select a shorter section and try again.");
+    }
+
+    const before = await renderFn(beforeDoc, runtime.bank, auditionOptions);
+    assertPreviewCurrent(store, sourceDoc, isSelectionCurrent);
+    assertUsablePrint(before);
+    const candidate = await renderFn(candidateDoc, runtime.bank, auditionOptions);
+    assertPreviewCurrent(store, sourceDoc, isSelectionCurrent);
+    assertUsablePrint(candidate);
+    const bankRevision = runtime.bank.revision;
+    const previewBank = new SampleBank();
+    for (const [id, buffer] of runtime.bank.entries()) previewBank.add(id, buffer);
+    previewBank.add(previewId, candidate);
+    const after = await renderFn(afterDoc, previewBank, auditionOptions);
+    assertPreviewCurrent(store, sourceDoc, isSelectionCurrent);
+    if (runtime.bank.revision !== bankRevision) {
+      throw new Error("The sample library changed while rendering. Review the range and prepare a fresh preview.");
+    }
+    assertUsablePrint(after);
+    const beforeRms = sampledRms(before);
+    const afterRms = sampledRms(after);
+    const targetRms = Math.min(beforeRms, afterRms);
+    return {
+      sourceDoc,
+      range: { fromTick: request.range.fromTick, toTick: request.range.toTick },
+      trackIds,
+      targetTrackId: request.targetTrackId,
+      sourceDurationsByBufferId,
+      candidate,
+      before,
+      after,
+      beforeGain: beforeRms > 0 ? targetRms / beforeRms : 1,
+      afterGain: afterRms > 0 ? targetRms / afterRms : 1,
+      bankRevision,
+      startBar,
+      lengthBars,
+    };
+  } finally {
+    storesInFlight.delete(store);
+  }
+}
+
+/** Persist and add a prepared track bounce as one undoable audio-clip command. */
+export async function commitRangeBouncePreview(
+  runtime: RangeConsolidationRuntime,
+  preview: PreparedRangeBouncePreview,
+  isSelectionCurrent: () => boolean = () => true,
+): Promise<Command> {
+  const store = runtime.store;
+  if (storesInFlight.has(store)) throw new Error("A range render is already in progress.");
+  if (consumedRangePreviews.has(preview))
+    throw new Error("This bounce preview has already been used. Prepare a fresh preview.");
+  storesInFlight.add(store);
+  let bufferId: string | undefined;
+  let saveAttempted = false;
+  let bankAdded = false;
+  let committed = false;
+  try {
+    assertPreviewCurrent(store, preview.sourceDoc, isSelectionCurrent);
+    if (runtime.bank.revision !== preview.bankRevision) {
+      throw new Error("The sample library changed after the A/B preview. Prepare it again before bouncing.");
+    }
+    assertUsablePrint(preview.candidate);
+    bufferId = userSampleId(`bounce-${Math.round(preview.startBar)}b-${Math.random().toString(36).slice(2, 7)}`);
+    saveAttempted = true;
+    await runtime.userSamples.save(
+      {
+        id: bufferId,
+        name: `Bounce bars ${preview.startBar + 1}–${preview.startBar + preview.lengthBars}`,
+        fileName: `${bufferId}.wav`,
+        category: "Custom",
+        duration: preview.candidate.duration,
+        sampleRate: preview.candidate.sampleRate,
+        channels: preview.candidate.numberOfChannels,
+        createdAt: new Date().toISOString(),
+      },
+      encodeWav(preview.candidate, 32),
+    );
+    runtime.bank.add(bufferId, preview.candidate);
+    bankAdded = true;
+    assertPreviewCurrent(store, preview.sourceDoc, isSelectionCurrent);
+    if (runtime.bank.revision !== preview.bankRevision + 1) {
+      throw new Error("The sample library changed while saving the bounce. The rendered result was discarded.");
+    }
+    const command = addAudioClip(
+      preview.sourceDoc,
+      preview.targetTrackId,
+      bufferId,
+      preview.startBar,
+      preview.lengthBars,
+      { gain: 1, stretchRate: 1 },
+    );
+    try {
+      store.execute(command);
+      committed = true;
+    } catch (error) {
+      committed = hasPrintClip(store.getDoc(), bufferId);
+      if (!committed) throw error;
+    }
+    consumedRangePreviews.add(preview);
+    return command;
+  } catch (error) {
+    if (!committed && bufferId) {
+      if (bankAdded) runtime.bank.remove(bufferId);
+      if (saveAttempted) {
+        try {
+          await runtime.userSamples.remove(bufferId);
+        } catch {
+          // Best-effort cleanup after persistence or project validation failed.
+        }
+      }
+    }
+    throw error;
+  } finally {
+    storesInFlight.delete(store);
+  }
 }
 
 /** Render A (source mix), the pre-master print, and B (the print through the project master). */

@@ -13,6 +13,7 @@ import { SelectionContext, ServicesContext, ToolContext } from "./context";
 import { useClipSelectionInvariant } from "./useClipSelectionInvariant";
 import { clearSongStarter, peekRegenFlag, peekSongStarter } from "../landing/handoff";
 import { ContextMenu, deriveContext, type ContextMenuState } from "./ContextMenu";
+import { RangeBounceReview, type RangeBounceReviewRequest } from "./RangeBounceReview";
 import { TopBar } from "./TopBar";
 import { TrackTabs } from "./TrackTabs";
 import { RackStrip } from "./RackStrip";
@@ -47,7 +48,6 @@ const IoPanel = lazy(() => import("./IoPanel").then((m) => ({ default: m.IoPanel
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
-  addAudioClip,
   clearSteps,
   deleteArrangementClip,
   deleteAutomationClip,
@@ -90,9 +90,6 @@ import type { PaletteDeps } from "./commandPalette";
 import { PPQ, STEP_TICKS } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { timelineItemsOf } from "../project-model/timeline";
-import { userSampleId } from "../persistence/UserSampleRepository";
-import { buildBounceZoneDoc } from "../rendering/bounce";
-import { encodeWav } from "../rendering/wav";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { CommandToast } from "./CommandToast";
 import { MixPreviewMount } from "./MixPreviewChip";
@@ -592,6 +589,7 @@ export function App({
   // always-mounted tab row keeps the dock reachable (ROADMAP-UI-2027 V1).
   const sheetCollapsed = dock.slotA === null && dock.slotB === null;
   const [bouncingRange, setBouncingRange] = useState(false);
+  const [rangeBounceRequest, setRangeBounceRequest] = useState<RangeBounceReviewRequest | null>(null);
   // Capture last take (Ableton) — offered after pause/stop when the ring has material
   const [captureOffer, setCaptureOffer] = useState(false);
   useEffect(() => {
@@ -1555,75 +1553,29 @@ export function App({
         }
       }
 
-      // Range Tool: Ctrl/Cmd+B bounce in Range (like Cubase Render in Place).
-      // This is deliberately async: the buffer must be rendered from the
-      // selected project content before the AudioClip is committed.
+      // Ctrl/Cmd+B opens a review flow. A/B renders stay runtime-only until
+      // the producer confirms adding the bounce as one undoable audio clip.
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "b") {
         if (selection.timeRange) {
-          const fromBar = selection.timeRange.fromTick / barUnit;
           const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / barUnit;
           if (lenBars >= 0.25) {
             event.preventDefault();
-            if (bouncingRange) return;
-            const trackIds = (selection.trackIds.length > 0 ? selection.trackIds : doc.tracks.map((t) => t.id)).filter(
-              (id) => doc.tracks.some((t) => t.id === id && t.kind !== "group"),
-            );
+            if (bouncingRange || rangeBounceRequest) return;
+            const sourceDoc = services.store.getDoc();
+            const range = { ...selection.timeRange };
+            const trackIds = (
+              selection.trackIds.length > 0 ? selection.trackIds : sourceDoc.tracks.map((t) => t.id)
+            ).filter((id) => sourceDoc.tracks.some((t) => t.id === id && t.kind !== "group"));
             const trackId = trackIds[0];
             if (!trackId) return;
-            const sourceDoc = doc;
-            setBouncingRange(true);
-            void (async () => {
-              try {
-                const zoneDoc = buildBounceZoneDoc(sourceDoc, trackIds, { startBar: fromBar, lengthBars: lenBars });
-                const liveContext = (
-                  services.engine as { getLiveAudioContext?: () => AudioContext | null }
-                ).getLiveAudioContext?.();
-                // Lazy: the offline renderer drags the worklet loaders into
-                // the boot graph — bounce happens long after boot, on demand.
-                const { renderProject } = await import("../rendering/renderer");
-                const buffer = await renderProject(zoneDoc, services.bank, {
-                  mode: "song",
-                  sampleRate: liveContext?.sampleRate ?? 44100,
-                  // 2 s tail so bounced texture beds keep their release —
-                  // extending the clip reveals real audio, not silence.
-                  tailSeconds: 2,
-                });
-                const bufferId = userSampleId(`bounce-${Math.round(fromBar)}b`);
-                services.bank.add(bufferId, buffer);
-                // Bank entries are runtime-only. Persist the rendered WAV so
-                // the new clip remains playable after a reload.
-                try {
-                  await services.userSamples.save(
-                    {
-                      id: bufferId,
-                      name: `Bounce ${Math.round(fromBar) + 1}`,
-                      fileName: `${bufferId}.wav`,
-                      category: "Custom",
-                      duration: buffer.duration,
-                      sampleRate: buffer.sampleRate,
-                      channels: buffer.numberOfChannels,
-                      createdAt: new Date().toISOString(),
-                    },
-                    encodeWav(buffer, 16),
-                  );
-                } catch (error) {
-                  console.warn("[App] bounce persistence failed; clip is available for this session:", error);
-                }
-                const currentDoc = services.store.doc;
-                if (currentDoc.tracks.some((track) => track.id === trackId)) {
-                  services.store.execute(
-                    addAudioClip(currentDoc, trackId, bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }),
-                  );
-                } else {
-                  services.bank.remove(bufferId);
-                  await services.userSamples.remove(bufferId);
-                }
-              } catch (error) {
-                console.error("[App] range bounce failed:", error);
-              } finally {
-                setBouncingRange(false);
-              }
-            })();
+            setContextMenu(null);
+            setRangeBounceRequest({
+              sourceDoc,
+              range,
+              trackIds,
+              targetTrackId: trackId,
+              selectedTrackIds: [...selection.trackIds],
+            });
             return;
           }
         }
@@ -1682,7 +1634,19 @@ export function App({
       transientJumpAbortRef.current = null;
       window.removeEventListener("keydown", handler);
     };
-  }, [services, doc, track, selection, helpOpen, selectionStore, tool, contextMenu, toolStore, bouncingRange]);
+  }, [
+    services,
+    doc,
+    track,
+    selection,
+    helpOpen,
+    selectionStore,
+    tool,
+    contextMenu,
+    toolStore,
+    bouncingRange,
+    rangeBounceRequest,
+  ]);
 
   // Hold RMB 220ms → context menu, RMB drag >6px cancels hold (lets lasso handle it)
   useEffect(() => {
@@ -2116,6 +2080,9 @@ export function App({
                   }
                 }}
               />
+              {rangeBounceRequest && (
+                <RangeBounceReview request={rangeBounceRequest} onClose={() => setRangeBounceRequest(null)} />
+              )}
               {/* QMR HUD chip (Qvester ecosystem) — lazy + error-bounded, the
                   app stays fully usable when the shared HUD chunk is slow. */}
               <QmrChipMount services={services} />
