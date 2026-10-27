@@ -688,6 +688,8 @@ function ChannelStrip({
           type="button"
           className={`btn btn-small${track.mute ? " active-mute" : ""}`}
           title={isGroup ? "Mute group (+ members) — one gesture for all" : "Mute track"}
+          aria-label={isGroup ? `Mute group ${track.name}` : `Mute ${track.name}`}
+          aria-pressed={track.mute}
           onClick={() => {
             if (isGroup) services.store.execute(setGroupMute(doc, track.id, !track.mute));
             else services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }));
@@ -699,6 +701,8 @@ function ChannelStrip({
           type="button"
           className={`btn btn-small${track.solo ? " active-solo" : ""}`}
           title={isGroup ? "Solo group (+ members)" : "Solo track"}
+          aria-label={isGroup ? `Solo group ${track.name}` : `Solo ${track.name}`}
+          aria-pressed={track.solo}
           onClick={() => {
             if (isGroup) services.store.execute(setGroupSolo(doc, track.id, !track.solo));
             else services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }));

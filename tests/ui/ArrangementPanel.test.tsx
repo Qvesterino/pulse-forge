@@ -458,6 +458,20 @@ describe("ArrangementPanel — arrangement ergonomics", () => {
     expect(services.store.undo).toHaveBeenCalled();
     expect(container.querySelector(".arr-delete-toast")).toBeNull();
   });
+
+  it("NEGATIVE: a stale toast's UNDO must not revert a newer edit (same contract as the mixer toast)", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    const { services, container } = renderErgo(docWithTwoClips());
+    const clips = [...container.querySelectorAll(".arr-clip")] as HTMLElement[];
+    fireEvent.contextMenu(clips[0]);
+    expect(container.querySelector(".arr-delete-toast")).not.toBeNull();
+    // The user kept working inside the toast's 6 s window: a newer command
+    // landed after the delete. The toast's UNDO (depth 0) is now stale.
+    (services.store as unknown as { undoStackLength: number }).undoStackLength = 1;
+    await user.click(screen.getByRole("button", { name: "UNDO" }));
+    expect(services.store.undo).not.toHaveBeenCalled();
+    expect(container.querySelector(".arr-delete-toast")).toBeNull();
+  });
 });
 
 describe("ArrangementPanel — SCENE SECS (wall-clock authoring)", () => {

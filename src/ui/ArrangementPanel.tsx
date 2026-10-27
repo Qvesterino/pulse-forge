@@ -668,7 +668,7 @@ export function ArrangementPanel() {
   const [marquee, setMarquee] = useState<{ from: number; to: number } | null>(null);
   const marqueeStartRef = useRef<number | null>(null);
   const [multiDrag, setMultiDrag] = useState<number | null>(null);
-  const [deleteToast, setDeleteToast] = useState<{ label: string } | null>(null);
+  const [deleteToast, setDeleteToast] = useState<{ label: string; undoDepth: number } | null>(null);
   // SCENE SECS authoring (VISION §10): type a wall-clock duration for the
   // selected clip — committed as whole bars at the clip's effective tempo.
   const [secsDraft, setSecsDraft] = useState<string | null>(null);
@@ -3353,7 +3353,7 @@ export function ArrangementPanel() {
       ...(nextDoc.arrangement.midiClips ?? []).map((c) => c.id),
       ...(nextDoc.arrangement.automationClips ?? []).map((c) => c.id),
     ]);
-    setDeleteToast({ label });
+    setDeleteToast({ label, undoDepth: services.store.undoStackLength });
   };
 
   const beginAudioDrag = (
@@ -6392,7 +6392,11 @@ export function ArrangementPanel() {
               type="button"
               className="btn btn-small"
               onClick={() => {
-                services.store.undo();
+                // Undo only when the delete is still the newest command — a
+                // stale toast (user kept working inside the 6 s window) must
+                // not revert their newer edit instead of the deletion. Same
+                // contract as the mixer's delete toast.
+                if (services.store.undoStackLength === deleteToast.undoDepth) services.store.undo();
                 setDeleteToast(null);
               }}
             >
