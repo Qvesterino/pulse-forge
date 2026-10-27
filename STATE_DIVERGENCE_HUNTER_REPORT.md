@@ -15,26 +15,26 @@
 > severity. This block says what has been **repaired since**, so the document
 > never claims a fix is still open when it is not.
 >
-> | Finding                                  | Severity     | Status                                                                                                                                                                                                                                                                                  | Commit                                    |
-> | ---------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-> | **F-28** PRISM write-back — canonical id | **Critical** | **FIXED** — the rack↔core id map is now bidirectional and the command canonicalises the id and the value into the document domain                                                                                                                                                       | `a53a13a6`                                |
-> | **F-29** automation-point undo           | High         | **FIXED** — the undo verifies the slot before splicing, then re-anchors by identity                                                                                                                                                                                                     | `9c016d92`                                |
-> | **F-25** stale AI write                  | High         | **FIXED** — per-field compare-and-swap: the write is REFUSED with a named conflict instead of overwriting the human's value                                                                                                                                                             | `5267cb2f`                                |
-> | **F-01** stale export                    | High         | **FIXED** — the stem and track exports capture the document at call time and assert it before and after each render                                                                                                                                                                     | `c0de98ae`                                |
-> | **F-10** track-gain lane                 | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane)                                                                                                                                       | `6452dadd`, `ca104349`                    |
-> | **F-06** idempotent replay               | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware                                                                                                                                         | `c050b03f` (partly carried by `4d7bf750`) |
-> | **F-16** collab normalisation            | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                                                                                                                                                                 | `04c41290` (parallel session), `faba6885` |
-> | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                             | `3d59627e`                                |
-> | **F-11** macro / modulator / lane        | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`) | `64e71cd3` · ADR 0067                     |
-> | **F-18** fallback runtime vs. the knobs  | Low          | **FIXED** — the controls themselves disclose the 1:1 passthrough (the engine's own reason, in the flagship panels' words), and the device chip says PASSTHROUGH instead of ACTIVE                                                                                                       | `361fb5b6`                                |
-> | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                    | —                                         |
+> | Finding                                  | Severity     | Status                                                                                                                                                                                                                                                                                                           | Commit                                    |
+> | ---------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+> | **F-28** PRISM write-back — canonical id | **Critical** | **FIXED** — the rack↔core id map is now bidirectional and the command canonicalises the id and the value into the document domain                                                                                                                                                                                | `a53a13a6`                                |
+> | **F-29** automation-point undo           | High         | **FIXED** — the undo verifies the slot before splicing, then re-anchors by identity                                                                                                                                                                                                                              | `9c016d92`                                |
+> | **F-25** stale AI write                  | High         | **FIXED** — per-field compare-and-swap: the write is REFUSED with a named conflict instead of overwriting the human's value                                                                                                                                                                                      | `5267cb2f`                                |
+> | **F-01** stale export                    | High         | **FIXED** — the stem and track exports capture the document at call time and assert it before and after each render                                                                                                                                                                                              | `c0de98ae`                                |
+> | **F-10** track-gain lane                 | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane)                                                                                                                                                                | `6452dadd`, `ca104349`                    |
+> | **F-06** idempotent replay               | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware                                                                                                                                                                  | `c050b03f` (partly carried by `4d7bf750`) |
+> | **F-16** collab normalisation            | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                                                                                                                                                                                          | `04c41290` (parallel session), `faba6885` |
+> | **F-09** effect knob vs. the DSP         | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                                                      | `3d59627e`                                |
+> | **F-11** macro / modulator / lane        | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`)                          | `64e71cd3` · ADR 0067                     |
+> | **F-18** fallback runtime vs. the knobs  | Low          | **FIXED** — the controls themselves disclose the 1:1 passthrough (the engine's own reason, in the flagship panels' words), and the device chip says PASSTHROUGH instead of ACTIVE                                                                                                                                | `361fb5b6`                                |
+> | **F-12** silent clamps                   | Medium       | **FIXED** — a value the domain had to change is now disclosed on the command and lands in `Command.detail` (the toast's channel). Two producers feed it: the **command layer** (the clamp the audit never named) and the **normaliser's footprint**, read from the document. The MCP answer states the clamp too | `51c6ec59` · ADR 0068                     |
+> | F-03, F-04, F-14                         | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                                             | —                                         |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 13 resolved, 16 open, 0 Critical.**
+> **29 findings, 14 resolved, 15 open, 0 Critical.**
 >
-> **Still open, and the next wave:** F-12 (the normaliser's and the commands'
-> silent clamps), and the rest of §11.
+> **Still open, and the next wave:** the rest of §11.
 
 ---
 
@@ -862,6 +862,30 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Smallest safe repair:** have the normaliser collect what it changed and surface it through
   `Command.detail` (the mechanism already exists).
 - **Regression plan:** a spec asserting that an out-of-range set reports the clamp in `detail`.
+- **REPAIR (2026-10-27, ADR 0068).** The disclosure now travels **on the command** and lands in
+  `Command.detail` — the toast's channel. Two producers feed it, because the measured reachable
+  silent clamps live in two places, not one:
+  - the **command layer** — the clamp helpers (`clampEffectParam`, `clampInstrumentParam`,
+    `clampTargetValue`, the output trim) take an optional sink and the command factories attach
+    the events to the command (`Command.clamps`). This is the clamp the audit never named: the
+    command clamps _before_ the normaliser sees the document, so on the parameter path the
+    normaliser has nothing left to clamp.
+  - the **normaliser's footprint** — `normalizeProject` returns the _same object_ when it changed
+    nothing, so the store compares the document the command produced with the one the normaliser
+    returned (`src/store/clampRepairs.ts`). The difference between the two IS the normaliser's
+    footprint and nothing else. Measured: a legal write, an out-of-range parameter write and a
+    track creation leave a footprint of **zero** ops; an out-of-range master write leaves exactly
+    the three clamped fields. **No noise on the common path.**
+  > **Correction to the audit text.** The prescription above ("have the normaliser collect what it
+  > changed") is necessary but not sufficient: it names only one of the two producers, and the
+  > one it names is the one that is silent on the parameter path. `setMasterConfig` — which the
+  > audit's master-family examples point at — does **not** clamp at all, so there the normaliser is
+  > the only clamp; every other parameter family clamps in the command. The repair therefore reads
+  > the normaliser's footprint from the document **and** instruments the command layer.
+  > The MCP keeps its own per-tool disclosure (`clamped: boolean`, `requestedValue` vs `value` —
+  > already correct) and gains the command-level disclosure in its answer text. The UI's own
+  > range enforcement stays (a typed value snaps to the control's range, the conventional
+  > behaviour); the command-layer report covers the API / script / agent callers.
 
 ---
 
