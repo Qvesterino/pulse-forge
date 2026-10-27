@@ -1,0 +1,280 @@
+# CREATIVE_FLOW_AUDIT_REPORT — KYX / Pulse Forge
+
+| Field          | Value                                                                                                                                                                                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audit date     | 2026-10-27 (UTC)                                                                                                                                                                                                                                                              |
+| Repository     | `D:\pulse-forge`, branch `main`, fixes pushed through `5f32ba99`                                                                                                                                                                                                              |
+| Mode           | Audit-to-optimization: read-only evidence sweep + four gate-passing fixes implemented and shipped. No redesigns, no schema changes, no dependency bumps.                                                                                                                      |
+| Deliverable    | `CREATIVE_FLOW_AUDIT_REPORT.md` (this file) + commits `f016e2cd`, `11d3e6b0`, `94cc06ef`, `5f32ba99`                                                                                                                                                                          |
+| Evidence class | Static source tracing with file:line citations (five parallel read-only sweeps over transport/keyboard, recording, clip editing, sound design, save/AI), existing suites executed locally, prior audits as corroboration. **No human listening, no human usability session.** |
+| Prior art      | `docs/audits/2026-10-25-experience-friction/` (F-01…F-15) — every finding re-checked at HEAD; status table in §4.1.                                                                                                                                                           |
+
+---
+
+## 1. Executive assessment
+
+**The one-paragraph verdict.** The studio's flow foundation is unusually strong: one command spine with honest undo, one-gesture-one-undo granularity everywhere it was measured, ghost previews that match the commit, crash-safe capture with a real recovery UI, and a keyboard system with one matcher, rebindable chords and a contextual Escape ladder. The interruptions that remain are not architectural — they are **asymmetries**: paths the engine already supports that the UI never wired (live knob preview existed for PRISM and faders but not the other 40+ devices; save existed but not while typing; the mixer's guarded undo toast existed but the arrangement's twin was unguarded), plus a short list of context-loss moments (Escape-as-stop, zoom lost on panel close, no follow-playhead, playhead not parked after a take) and trust gaps that survived the previous audit unchanged (the one-click MCP destructive toggle).
+
+**What this audit changed (shipped, verified, pushed):**
+
+| Fix   | One line                                                                                                                  | Commit     |
+| ----- | ------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| CF-01 | Arrangement delete-toast UNDO no longer reverts a newer edit (stale-guard, mirroring the mixer)                           | `f016e2cd` |
+| CF-02 | Mixer M/S announce the track name and pressed state (`aria-label` + `aria-pressed`)                                       | `11d3e6b0` |
+| CF-03 | Every generic device knob is audible **during** the drag, via the PRISM preview path, with automation/interruption guards | `94cc06ef` |
+| CF-04 | Ctrl+S (force save) works while typing; all other chords keep native text behavior                                        | `5f32ba99` |
+
+**Evidence limitations (read this before the findings).** No human musician touched the product during this audit; every "flow cost" claim is code-inferred reasoning about attention, not a measured user. Real-browser journeys were attempted (Playwright `keyboard-guards`, landing→studio) and are **currently unrunnable on the shared tree**: the dev server the runner booted took 36 s to serve the first document and `page.goto` exceeded its 45 s budget while a concurrent session was mid-edit on `src/project-model/schema.ts` and the commands layer (their wave, not this audit's diff — none of the failing steps touch a surface this audit changed). jsdom suites against the same source are green. `npm run typecheck` is red **from the concurrent wave** (7 errors, all in files that session has dirty — zero in files this audit touched). Interaction counts are lower bounds derived from code paths.
+
+---
+
+## 2. Existing strengths — do not change these
+
+These were verified in source during this audit and are the reason the fixes above were small:
+
+1. **One command spine, honest undo.** Every measured gesture commits exactly one undo entry: audio move/resize/stretch/trim/slip/fade/gain (`ArrangementPanel.tsx:3752-3845`), multi-clip move as one composite ("Move N audio clips", `:3697-3742`), PianoRoll note/velocity drags (`PianoRoll.tsx:1143-1189`), Alt-drag duplicate collapsed via `beginUndoFrame` (`PianoRoll.tsx:1095-1113`), mixer faders commit on release only (`Mixer.tsx:598,622,651`).
+2. **Gesture terminator.** Escape/blur/pointercancel cancels every drag machine without committing — the old failure mode ("Escape mid-drag, then release COMMITTED the move") is documented and guarded (`ArrangementPanel.tsx:3856-3889`), with a PianoRoll equivalent (`PianoRoll.tsx:1472-1489`).
+3. **Ghost previews equal commits.** "The geometry the user is shown is the geometry that lands" (`ArrangementPanel.tsx:3540-3544`), including ripple-mode downstream ghosts.
+4. **One shortcut registry feeds every surface.** Palette, help overlay, tooltips and statusbar all derive from `SHORTCUTS` (`commandPalette.ts:54`, `HelpOverlay.tsx:45`, `TopBar.tsx:97`), so bindings cannot disagree between surfaces. Auto-repeat is suppressed for transport chords (`App.tsx:1610-1627`).
+5. **Crash-safe capture with a real recovery UI.** PCM commits durably during recording; every failure path preserves staged audio and offers RESTORE TO TIMELINE / RECOVER TO SAMPLES / DISCARD (`ArrangementPanel.tsx:5058-5102`); silent takes are labelled honestly (`:1796-1798`).
+6. **Cross-surface destructive checkpoint net.** Intent and MCP share one `routeIsDestructive` predicate and one checkpoint store; restore is itself one undoable step (`route-guard.ts:17-52`, `IntentPanel.tsx:4366-4377`).
+7. **Honest export semantics.** Cancelled/failed/done are distinct outcomes with distinct copy and stated cancellation granularity (`ExportPanel.tsx:361-373, 1536`).
+8. **Doc-persisted effect A/B with single-command recall** on the flagship devices (`EffectAbControls.tsx:40-137`, `plugins.ts:299-353`), and a **declicked bypass** (15 ms wet/dry crossfade, tails preserved — `AudioEngine.ts:1817-1831`).
+9. **Snap done right:** persisted per-view, J-togglable, Shift-suspend, secondary targets within 8 px, delta-snap preserves internal spacing (`snap.ts:60-105`, `ArrangementPanel.tsx:3560-3579`).
+10. **Dock persistence:** 14 tabs / 2 slots, layout + slot assignment survive reload in versioned `pf-layout` (`DockChrome.tsx:34-129`, `dockLayout.ts:205-220`).
+
+---
+
+## 3. Creative journey maps (interruption inventory)
+
+Format: musical objective → where attention leaves the task. All citations verified at HEAD.
+
+**J1 — Idea → arranged clip → auditioned.** Template/drop → arrange → space to hear. Friction: zoom/scroll live in component state and die with the ARR tab (`ArrangementPanel.tsx:578`, unmount at `App.tsx:1928-1958`); the playhead leaves the viewport during playback and nothing follows it (`ArrPlayheadLine` only renders position, `:7438-7456`); Escape with nothing selected stops playback and rewinds to bar 1 (`Transport.ts:175-183` sets `pauseTick = 0`; binding `shortcuts.ts:121`).
+
+**J2 — Heard a problem → edit → A/B → keep or undo.** Select → trim/fade → compare. Friction: generic device knobs were silent during the drag (CF-02 — fixed); A/B exists only on the 5 flagship devices (`EffectRack.tsx:1268-1280`); an empty A/B slot click flips `active` with no audible change (`EffectAbControls.tsx:69-76`); bypass has no keyboard chord anywhere (`shortcuts.ts` has zero bypass entries) and its "B" button sits directly above the A/B slot "B" button on flagship editors — same letter, two meanings (`EffectRack.tsx:937-944`).
+
+**J3 — Arm → perform → take → retry/comp.** Friction: after STOP the transport keeps rolling and the playhead is not returned to the take start (`stopRec` contains no seek, `ArrangementPanel.tsx:1628-1846`), so an immediate SINGLE-TAKE retry records at the drifted playhead (`:4676` "at the playhead"); latency calibration — which produces the audio offset applied to mic takes — is reachable only from the MIDI panel (`MidiPanel.tsx:172-174`, no other mount in `src/ui`); live take-lane audition is Song-mode only (`:2632-2634` — Pattern mode gets an error, not an offer); the native WASAPI path can capture from a different source than the dropdown named, disclosed only after the take (`:1802-1810`).
+
+**J4 — MIDI REC.** Friction: selecting REPLACE while armed clears the active pattern **instantly**, straight from the dropdown's `onChange` (`TopBar.tsx:719` → `patternRecorder.ts:78-109` → `project.ts:88-115` zeroes the pattern); mitigation exists (the whole pass collapses into ONE "Recorded take" undo frame) but nothing tells the user that at the moment of the clear.
+
+**J5 — Ask the AI / agent.** Friction: the MCP destructive toggle (MAZANIE) is still one click, persisted across sessions, with no confirmation and no global badge — grep for it in `src/ui` matches only `IntentPanel.tsx:5351-5366`; the intent plan line is passive and blind to `arrange`/`clips` routes (`intent-plan.ts:450-468` falls to `default: []`); MixPreviewChip's APPLY executes the frozen command against the _current_ document with no staleness check (`MixPreviewChipLazy.tsx:140-144` vs the IntentPanel's `previewDocRef` revision guard at `IntentPanel.tsx:1741-1747`) — what lands can differ from what was heard.
+
+**J6 — Save → crash → recover → export.** Friction: recovery (uncommitted-work buffer) is offered only in the ProjectBrowser on next boot (`ProjectBrowser.tsx:550-591`), never in-session; a deep-link or "continue" user never sees the offer. Export itself is a strength (§2.7).
+
+---
+
+## 4. Finding register — top 15
+
+Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in source or an executed test) / Strongly indicated. Status reflects what this audit did.
+
+### CF-01 | High | Confirmed | **FIXED — commit `f016e2cd`**
+
+- **Goal:** undo a mis-clicked clip delete within the toast's 6 s window.
+- **Was:** the arrangement toast's UNDO called `store.undo()` unconditionally (`ArrangementPanel.tsx:6391-6397` pre-fix); after any newer edit, one click reverted _that edit_, not the deletion. The mixer's twin had carried the stale-guard since the 2026-10-25 audit (`Mixer.tsx:287-292`) — the inconsistency was the defect.
+- **Fix:** toast captures `undoDepth` at arm time; UNDO fires only while the delete is still the newest command. Negative spec added. Same contract, same words, both panels.
+
+### CF-02 | High | Confirmed | **FIXED — commit `94cc06ef`**
+
+- **Goal:** tweak a device knob while the loop plays and _hear_ the move.
+- **Was:** the shared `Slider` fires rAF-coalesced `onPreview` (`controls.tsx:320-327`) and the engine has a generic fire-and-forget preview write (`previewFxParam`, `AudioEngine.ts:3749-3771`, degraded-runtime-guarded) — but the generic `EffectParameterGrid` passed only `onCommit` (`EffectParameterGrid.tsx:100` pre-fix). Result: PRISM EQ and mixer faders were audible during drags; the other ~40 devices were silent until pointer-up. The product's most common sound-design gesture lacked its best-supported path on most of its surface.
+- **Fix:** grid forwards `onPreview`/`onCancelPreview` per param; the rack wires them to `previewFxParam` with two guards — an automation-driven parameter never previews (the lane owns the sound), and an interrupted drag re-writes the committed value through the runtime with no document command and no junk undo entry. Commit is still exactly one command on pointer-up. New seam `fx-knob-live-preview` in `tests/seam-manifest.json` (real drag + two negatives). `KitMultiview`'s overview columns stay commit-only (props optional).
+
+### CF-03 | Medium | Confirmed | **FIXED — commit `11d3e6b0`**
+
+- **Goal:** a screen-reader user mixing a session must know which channel they are muting and whether it is muted.
+- **Was:** F-08 of the 2026-10-25 audit, still open at HEAD: bare "M"/"S" text, state carried only by a CSS class (`Mixer.tsx:686-710` pre-fix). The a11y gate accepts any non-empty name, so it passed.
+- **Fix:** `aria-label` "Mute/Solo `<track>`" (group-aware) + `aria-pressed`; assertion added to the gesture seam spec.
+
+### CF-04 | Medium | Confirmed | **FIXED — commit `5f32ba99`**
+
+- **Goal:** force-save from anywhere, including mid-typing.
+- **Was:** the blanket typing guard sat before every chord handler (`App.tsx:1232`), so Ctrl+S did nothing while the caret was in any input/select/textarea — including the intent prompt and the project-name field. The registry documents Ctrl+S unconditionally (`shortcuts.ts:124-132`).
+- **Fix:** the save chord is handled before the bail (`App.tsx:1233-1240`); every other chord keeps native text behavior — Ctrl+Z inside a field is still text-level undo, pinned by a negative spec.
+
+### CF-05 | High | Confirmed | Status: PROTOTYPE (needs a decision — narrows an established binding)
+
+- **Finding:** bare **Tab** is bound to "next track" (`shortcuts.ts:157-158`) and the global matcher preventDefaults it whenever any focusable element holds focus (`App.tsx:1608-1628`). Keyboard-only users cannot traverse a single panel's controls: Tab from any button/slider jumps track selection instead. This is the single largest keyboard-accessibility gap in the product.
+- **Root cause:** the matcher does not distinguish "focus on the canvas/body" from "focus inside a panel control". The transient-jump branch (`App.tsx:1256-1261`) already handles the body-focus case — the asymmetry is that focused-element Tab is _hijacked_ rather than passed through.
+- **Proposed:** when the event target is an interactive element (button/select/[tabindex]), let the browser traverse; keep Tab = next track when focus is on the body/canvas. Shift+Tab unchanged. FL-style muscle memory is preserved for the dominant case (hands in the grid).
+- **Why not fixed now:** it changes the scope of an established, deliberate binding — exactly the class of change the implementation gate reserves for design review. Regression surface: every keyboard journey in `tests/e2e/05-keyboard-shortcuts.spec.ts`.
+- **Acceptance:** Tab from a mixer button moves DOM focus; Tab on the canvas still selects the next track; all existing shortcut specs stay green.
+
+### CF-06 | Medium-High | Confirmed | Status: DESIGN REVIEW
+
+- **Finding:** **Escape while playing stops playback and rewinds to bar 1.** Escape is the "back out" key; the contextual ladder (captureOffer → menu → help → selection → tool → blur, `App.tsx:1177-1215`) ends by falling through to the `stop` binding (`shortcuts.ts:121`), and `stop()` unconditionally resets `pauseTick = 0` (`Transport.ts:175-183`). A musician pressing Escape to dismiss a stray tooltip loses playback _and_ position. Space/Pause preserves position — the asymmetry has no documented rationale.
+- **Proposed:** decouple the ladder's exhausted case from transport stop (Escape with nothing to clear = no-op or blur), and/or give stop a "return to start" option instead of making rewind unconditional. This is a behavior contract change → design review, not a drive-by fix.
+
+### CF-07 | High (risk perception) | Confirmed | Status: PROTOTYPE
+
+- **Finding:** selecting **REPLACE while armed clears the active pattern instantly** — straight from the dropdown `onChange` (`TopBar.tsx:719`), via `setArmed`/`setMode` (`patternRecorder.ts:78-109`) into `prepareRecordPattern` (`project.ts:88-115`). During a performance, one mis-click empties the beat. The whole pass (clear + notes) is ONE "Recorded take" undo frame, but nothing surfaces that at the moment of the clear; the only guard is tooltip text.
+- **Proposed (no friction added to the happy path):** keep the behavior, disclose the recovery _at the moment it matters_ — a toast "Pattern cleared — Ctrl+Z restores the previous take" using the existing toast surface. Optionally require the transport to be stopped before REPLACE can be selected (punch mode already does this, `:1224-1226`).
+
+### CF-08 | High (for the recording journey) | Confirmed | Status: TIER B
+
+- **Finding:** **latency calibration is unreachable from the record flow.** The wizard's audio phase produces the per-device offset applied to mic takes (`recordingAlignment.ts:225-228`), and per-device storage is excellent (`:40-56`) — but the only mount in `src/ui` is a button inside the MIDI panel (`MidiPanel.tsx:172-174`). Nothing near the record toolbar says "un-calibrated / calibrated (+N ms)".
+- **Proposed:** a "CALIBRATE" affordance (or at least a status readout linking to the wizard) in the arrangement capture toolbar. Reuse the existing wizard; do not duplicate its logic.
+
+### CF-09 | Medium | Confirmed | Status: PROTOTYPE (F-13, still open)
+
+- **Finding:** **no follow-playhead.** The playhead line is a positioned leaf (`ArrangementPanel.tsx:7438-7456`) driven by `usePlayheadBar`; the only `scrollLeft` writes are zoom re-anchor (`:1011`) and FIT (`:4743`). During a long play the playhead exits the viewport and the user hand-scrolls to find it — for a mixing/auditing journey this is the recurring interruption.
+- **Proposed:** opt-in follow mode with hysteresis (page-jumps, paused when the user scrolls), built on the existing 1/8-bar playhead subscription; persist per view in the layout store, not the document. Not a drive-by fix: scroll interaction with zoom anchoring needs the DOM census gate (`tests/ui/arrangement-dom-census.test.tsx`) watching it.
+
+### CF-10 | Medium-High | Confirmed | Status: TIER B
+
+- **Finding:** **after a take, the playhead is not parked.** `stopRec` performs placement, compensation and toasts but no seek (`ArrangementPanel.tsx:1628-1846`). The take group stays selected, so take-group retry is one click — but SINGLE-TAKE retry records "at the playhead" (`:4676`), which has rolled on. The performer must remember to rewind between every single-take pass.
+- **Proposed:** after a single-take stop, offer (or default to) returning the playhead to the take's start bar; punch mode's post-roll semantics stay as documented. This is a deliberate-behavior change → needs a small design note, but it is the highest-frequency interruption in the record journey.
+
+### CF-11 | Medium | Confirmed | Status: TIER B
+
+- **Finding:** **arrangement zoom/scroll die with the dock tab.** `zoom` is `useState` (`ArrangementPanel.tsx:578`); panels unmount on tab close/re-route (`App.tsx:1928-1958`); nothing persists zoom or scrollLeft. The panel-local `selectedClipId` (which drives take lanes, warp pins, context menus) is likewise lost on a Mixer round-trip, while the shared `SelectionStore` selection survives (`context.ts:41-58`). Related: closing the panel that holds focus drops focus to `<body>` with no restore (the dock never uses the existing `useFocusRestore` hook).
+- **Proposed:** persist zoom (and follow-state, CF-09) per view in the versioned layout store — the pattern already exists (`dockLayout.ts:205-220`). Hoist single-clip focus to SelectionStore only if the take-lane surface can read it without a doc change; otherwise persist it in the layout store keyed by project.
+
+### CF-12 | Medium | Confirmed | Status: TIER B (F-10, still open)
+
+- **Finding:** **Time & pitch (and Spectral Lab) exist only in the audio right-click menu** (`ArrangementPanel.tsx:6768`, `:2163-2165`) — not in the palette, not in Help gestures, not on any selected-clip affordance. The capability is one undoable command once found (`updateAudioClip`, `:7038-7044`); discovery is the entire cost.
+- **Proposed:** a "Time & pitch…" action on the selected-audio-clip strip/inspector + a palette entry + a Help gesture line. Reuse the existing dialog and command; no new state.
+
+### CF-13 | Medium | Confirmed | Status: TIER B (F-07, still open)
+
+- **Finding:** **the project browser has no search/filter/sort.** The only inputs are import/rename fields; ordering is hard-coded `updatedAt` desc at module scope (`ProjectBrowser.tsx:84, 823-905`). Long-lived libraries degrade every session.
+- **Proposed:** local name/tag/BPM filter + sort toggle, recency default, no repository change.
+
+### CF-14 | Medium-High (trust) | Confirmed | Status: DESIGN REVIEW (F-05, unchanged at HEAD)
+
+- **Finding:** **the MCP destructive permission is a one-click, persisting toggle with no confirmation and no global badge.** `IntentPanel.tsx:5351-5366` flips it immediately; `pf:mcp-allow-destructive` survives reloads (`flags.ts:26-35`); grep shows no TopBar/ActivityCenter indicator — the closest is the risk-agnostic `AGENT n` chip (`ActivityCenter.tsx:161-168`). `flags.ts:15-23` itself documents the gap as recorded, not hidden. The consent toggle beside it is likewise single-click (`IntentPanel.tsx:535-556`).
+- **Proposed:** confirmation naming the scope on enable + a persistent TopBar badge while on + optional idle expiry. Keep the flag semantics; do not weaken the MCP gate.
+
+### CF-15 | Medium-Low | Confirmed | Status: TIER A
+
+- **Finding:** **the cut-tool indicator vanishes exactly when it matters.** The statusbar chip "TOOL CUT (V = select)" lives in `StatusHint`'s fallback (`App.tsx:1980-1983`), which any `[data-hint]` hover/focus replaces (`StatusHint.tsx:36-38`); the CUT toggle is only visible inside the ARR toolbar; the lane crosshair cursor exists only while hovering a lane (`04-arrangement.css:950-953`). Bare C/V also appear in neither `SHORTCUTS` nor `helpContent.ts` — the tool is documented nowhere user-facing (`App.tsx:1542-1544` is a code comment).
+- **Proposed:** hoist the active-tool chip out of the fallback (render it _before_ hint substitution, or pin it as its own element), and add C/V to the registry-derived surfaces. Small, additive, no gesture changes.
+
+### Secondary findings (verified, below the top-15 line)
+
+| ID    | Finding                                                                                                                                                                                                      | Evidence                                                        | Status                     |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | -------------------------- |
+| CF-16 | Take-lane live audition is Song-mode-only; Pattern mode gets an error, not an offer to switch                                                                                                                | `ArrangementPanel.tsx:2632-2634`                                | TIER B                     |
+| CF-17 | Two comp systems do not interoperate: arrangement take lanes vs the vocal-lane `planVocalComp` → vocalchop tracks (IntentPanel only)                                                                         | `IntentPanel.tsx:6266`, `vocal/comping.ts:72`                   | DESIGN REVIEW              |
+| CF-18 | Clicking an empty A/B slot flips `active` with no audible change (status does say EMPTY)                                                                                                                     | `EffectAbControls.tsx:69-76,132-134`                            | TIER A micro               |
+| CF-19 | MixPreviewChip APPLY has no staleness guard: the frozen command executes against the current doc — what lands can differ from what was heard                                                                 | `MixPreviewChipLazy.tsx:140-144` vs `IntentPanel.tsx:1741-1747` | PROTOTYPE                  |
+| CF-20 | Generative resample variations live in component state and are wiped by a track switch                                                                                                                       | `Inspector.tsx:159-176`                                         | TIER B                     |
+| CF-21 | Native WASAPI can capture a different source than the dropdown named; disclosed only after the take                                                                                                          | `ArrangementPanel.tsx:1802-1810`                                | TIER B (pre-REC indicator) |
+| CF-22 | Closing the dock panel that holds focus drops focus to `<body>`; the dock never uses `useFocusRestore`                                                                                                       | `App.tsx:1928-1958`, hook used only by 5 overlays               | TIER A                     |
+| CF-23 | ActivityCenter rows name tools, not musical actions (F-15); undo-history provenance is a `[agent-id]` label prefix only (F-12 partial, via `c9b56265`)                                                       | `ActivityCenter.tsx:35-45`, `attribution.ts:33-39`              | DEFER                      |
+| CF-24 | Melodic/pad QWERTY shadows plain-letter shortcuts (L, S, …) whenever a drum/instrument track is selected — intentional and help-documented, but "my loop key died" is a live trap when switching track kinds | `App.tsx:695-696, 1157-1166`, `melodicKeys.ts:43-48`            | DEFER (document)           |
+
+### 4.1 — Prior audit (2026-10-25, F-01…F-15) status at HEAD
+
+| Prior | Finding                            | Status at HEAD now                                                                                                                          |
+| ----- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-01  | In-studio Save a copy              | **FIXED by others** — TopBar ⋯ "SAVE AS" + dialog (`TopBar.tsx:479-488, 1071-1130`)                                                         |
+| F-02  | Track admin trapped in Mixer       | **FIXED by others** — TrackTabs context menu + Alt+Shift+↑/↓ (`TrackTabs.tsx:209-274`)                                                      |
+| F-03  | Track delete toast                 | **FIXED by others** — actionable UNDO with stale-guard (`Mixer.tsx:281-298`)                                                                |
+| F-04  | Unlabeled global REC               | **PARTIAL** — title/aria say MIDI, the visible button is still an unlabeled ⏺ (`TopBar.tsx:680-711`)                                        |
+| F-05  | MCP destructive one-click          | **UNCHANGED** → this audit's CF-14                                                                                                          |
+| F-06  | Palette coverage                   | **PARTIAL** — track actions indexed; save-copy and time-pitch absent (`commandPalette.ts:54-106`)                                           |
+| F-07  | Project browser search             | **OPEN** → CF-13                                                                                                                            |
+| F-08  | Mixer M/S accessible names         | **FIXED by this audit** → CF-03                                                                                                             |
+| F-09  | Clip handle hit areas              | **PARTIAL by others** — touch enlarged (`pointer: coarse`, fade 22², gain 44×14, warp pins 28 px hitbox); desktop sizes unchanged (8/12 px) |
+| F-10  | Time & pitch hidden in right-click | **OPEN** → CF-12                                                                                                                            |
+| F-11  | Mixed Slovak/English               | **OPEN** (not re-litigated here; prior audit's recommendation stands)                                                                       |
+| F-12  | Undo-history agent provenance      | **PARTIAL** — label prefix only (`attribution.ts:33-39`)                                                                                    |
+| F-13  | Follow-playhead                    | **OPEN** → CF-09                                                                                                                            |
+| F-14  | Intent scope preview               | **PARTIAL by others** — passive plan line + destructive checkpoints; no gating, arrange/clips routes blind (`intent-plan.ts:450-468`)       |
+| F-15  | ActivityCenter human-readable rows | **OPEN** → CF-23                                                                                                                            |
+
+---
+
+## 5. Root-cause pattern and before/after shapes
+
+Three root causes explain most of the register:
+
+1. **Capability wired at one surface, absent at its siblings.** The engine/plumbing already supports the interaction (`previewFxParam`, `useFocusRestore`, the stale-guard toast contract, the layout store); one call site got it and its siblings did not. CF-02/03/04 and CF-11/15/22 are all this shape. Before: knob silent until release → After: audible during drag, one commit, guards for automation and interruption. The fix pattern is always "route the sibling through the existing owner", never a parallel mechanism.
+2. **Transport/keyboard semantics doing double duty.** Escape = "back out of UI" AND "stop + rewind" (CF-06); Tab = "next track" AND "DOM traversal" (CF-05). The matcher needs one more distinction (what holds focus / what the ladder exhausted), not new chords.
+3. **Disclosure timing.** REPLACE clears silently (CF-07), WASAPI mis-capture is disclosed post-take (CF-21), MixPreview lands may differ from what was heard (CF-19), calibration state is invisible at the mic (CF-08). The information exists in every case; it arrives after the commitment.
+
+---
+
+## 6. Prioritization matrix
+
+Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher is better; effort⁻¹ 5 = hours, 1 = weeks).
+
+| ID                   | Impact | Freq | Conf | Effort⁻¹ | Risk⁻¹ | Sum   | Category                                  |
+| -------------------- | ------ | ---- | ---- | -------- | ------ | ----- | ----------------------------------------- |
+| CF-01                | 4      | 3    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                     |
+| CF-02                | 5      | 5    | 5    | 4        | 4      | 23    | **FIX NOW (shipped)**                     |
+| CF-03                | 3      | 5    | 5    | 5        | 5      | 23    | **FIX NOW (shipped)**                     |
+| CF-04                | 3      | 4    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                     |
+| CF-05                | 5      | 5    | 5    | 3        | 2      | 20    | PROTOTYPE (binding change — decide first) |
+| CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | PROTOTYPE (disclosure toast)              |
+| CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | PROTOTYPE (record loop)                   |
+| CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | PROTOTYPE (follow-playhead)               |
+| CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                 |
+| CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | TIER B                                    |
+| CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | TIER B                                    |
+| CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | TIER B                                    |
+| CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | TIER B                                    |
+| CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                    |
+| CF-22                | 2      | 3    | 5    | 4        | 5      | 19    | TIER A                                    |
+| CF-06                | 4      | 3    | 5    | 3        | 2      | 17    | DESIGN REVIEW                             |
+| CF-14                | 4      | 2    | 5    | 3        | 3      | 17    | DESIGN REVIEW                             |
+| CF-17                | 4      | 2    | 4    | 1        | 2      | 13    | DESIGN REVIEW                             |
+| CF-16/18/20/21/23/24 | 2–3    | 2–3  | 4–5  | 3–5      | 4      | 15–18 | TIER B / DEFER                            |
+
+Rejected proposals (would trade control for clicks, or add a second source of truth): a palette that reimplements commands instead of calling them; a second track-order array in React; auto-scroll that hijacks the user's scroll position without hysteresis; replacing REPLACE's semantics with a modal in the middle of a performance; serializing actor provenance into the project document.
+
+---
+
+## 7. Small fixes implemented (exact files)
+
+| Fix   | Files                                                                                                                                                                                                               | Why it passed the gate                                                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CF-01 | `src/ui/ArrangementPanel.tsx` (toast state + capture + guarded click), `tests/ui/ArrangementPanel.test.tsx` (negative spec)                                                                                         | Root cause evidenced by the mixer's own guarded twin; patch 4 lines + comment; mirrors an existing contract; no gesture/undo semantics change                       |
+| CF-02 | `src/ui/EffectParameterGrid.tsx` (optional props + forwarding), `src/ui/EffectRack.tsx` (rack wiring + guards), `tests/ui/EffectRack.test.tsx`, `tests/ui/EffectParameterGrid.test.tsx`, `tests/seam-manifest.json` | Reuses `previewFxParam` (shipped for PRISM), degraded-runtime-safe by construction; three specs enter the real drag seam incl. two negatives; commit path untouched |
+| CF-03 | `src/ui/Mixer.tsx` (aria-label + aria-pressed), `tests/ui/mixer-mute-solo-gesture.test.tsx`                                                                                                                         | Purely additive accessibility semantics; the existing seam spec asserts it; a11y gate re-run green                                                                  |
+| CF-04 | `src/ui/App.tsx` (save chord before the typing bail), `tests/ui/App.test.tsx` (positive + two negatives)                                                                                                            | Restores the documented global chord; text-editing chords explicitly unchanged and pinned; 10-line patch                                                            |
+
+Verification for the four (executed locally, 2026-10-27):
+
+- `tests/ui/EffectRack.test.tsx` + `EffectParameterGrid.test.tsx`: 56/56 green. `ArrangementPanel.test.tsx` toast specs 2/2. `mixer-mute-solo-gesture` 4/4. `App.test.tsx` + `track-reorder-shortcut` 19/19. `Mixer.test.tsx`, `MixerDeleteToast.test.tsx`, `mixer-fader-gesture.test.tsx`, `a11y-panels.test.tsx` green.
+- `node scripts/check-seam-coverage.mjs`: PASSED — 90 seams, no false claims.
+- `npx prettier --check` on all touched files: clean.
+- `npm run typecheck`: **red from the concurrent session's in-flight wave** (7 errors in `src/project-model/schema.ts`, `tests/analysis/contract-timeline.test.ts`, `tests/param-range-coherence.test.ts` — every one a file that session has dirty; zero errors in files this audit touched). Not drift:blessed, not "fixed" — their wave owns it.
+- `npm run drift:check`: three drifts (domain goldens, status.json, spec count 1284→1294) — all attributable to the same concurrent wave's new files; left for its owner.
+- Playwright real-browser journeys: **blocked on the shared tree** (dev-server boot storm while the parallel wave edits; `page.goto` exceeded 45 s before any of this audit's surfaces load). Retried after stopping the wedged runner-owned server (PID 43812, started by this audit's first run — stopped by PID); a fresh server hit the same wall. Honest gap: no browser-level observation of the four fixes; the jsdom suites drive the real components and stores.
+
+---
+
+## 8. Deferred for design review / approval
+
+1. **CF-05 (Tab traversal)** — needs an explicit decision that Tab-through-panels is wanted inside an FL-style binding map; then a prototype with the full `05-keyboard-shortcuts` e2e as the regression net.
+2. **CF-06 (Escape ≠ stop+rewind)** — a transport-behavior contract change; propose the written rule first ("Escape never touches the transport; Space pauses; Home returns"), then implement behind the existing stop binding.
+3. **CF-14 (MCP destructive authority)** — confirmation dialog + global badge + optional idle expiry; touches flag persistence and the token UX, so it belongs with the MCP surface owners.
+4. **CF-17 (unify the two comp systems)** — a capability-level design task (arrangement take lanes vs vocalchop), not a UI patch.
+5. **Desktop-size clip handles (F-09 remainder)** — invisible hit-area expansion without touching the visual affordance; needs the drag-arbitration probe the prior audit also flagged as untested.
+6. **F-11 (locale commitment)** — unchanged since the prior audit; a product decision, not an audit fix.
+
+---
+
+## 9. Verification results, measurements, gaps
+
+**Executed and green:** the suites listed in §7, seam gate (90 seams), prettier on touched files. **Red but not mine:** typecheck (7 errors, concurrent wave), drift (3 artifacts, same), full-suite ratchet not run (co-run with the parallel wave; the ledger labels in-flight files). **Blocked:** Playwright journeys (dev-server boot storm, documented above — this also means the audit adds no browser-level timing baseline). **Not attempted:** human usability sessions, audio listening, factory-preset browser QA (no audio surface was changed; `previewFxParam` reuses the shipped PRISM path).
+
+**Baseline honesty:** no task-completion timings exist before or after; the four fixes are justified by defect logic and seam tests, not measured seconds. The one quantitative flow number in this report — "generic knobs silent until pointer-up" — is a structural fact from the wiring, not a stopwatch claim.
+
+---
+
+## 10. 30/60/90-day optimization roadmap
+
+**30 days — disclosure and parking (small, mostly additive).**
+CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-07 REPLACE recovery toast; CF-10 take-start parking (behind a documented default); CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. Exit: each has a seam entry with a negative.
+
+**60 days — the listening loops.**
+CF-09 follow-playhead prototype (hysteresis, census gate watching); CF-08 calibration surfaced from the record toolbar; CF-19 MixPreview staleness guard; CF-13 project search; CF-11 zoom/focus persistence via the layout store; CF-05 Tab prototype if approved. Exit: time-to-audition journeys run in a real browser once the tree calms — this audit's blocked e2e pass is the first measurement to take.
+
+**90 days — trust and unification.**
+CF-14 destructive-authority confirmation + badge; CF-17 comp-system unification design (one lane model, two entries); F-11 locale decision; desktop hit-area expansion with a drag-arbitration probe; ActivityCenter human-readable rows (CF-23); re-run the 2026-10-25 audit's remaining owner gates (Firefox/Safari smoke) against the same journeys.
+
+---
+
+_Audit contract kept: architecture, audio paths, project format, shortcuts and deliberate confirmations preserved; the four shipped patches are additive or honesty-restoring, each falsifiable by its named negative spec; nothing in this report claims a measurement no one made._
