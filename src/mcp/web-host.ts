@@ -95,6 +95,27 @@ function depsFromServices(services: Services): McpBridgeDeps {
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
     export: async (request) => (await quickBounceDownload(services.store.getDoc(), services.bank, request)).report,
+    // AS-013: the pure-document formats serialize and download directly —
+    // same paths the ExportPanel MIDI/JSON buttons ride, lazy-imported.
+    exportDocument: async (kind) => {
+      const doc = services.store.getDoc();
+      if (kind === "json") {
+        const { exportProject } = await import("../export/project-io");
+        const sizeBytes = JSON.stringify(doc).length;
+        exportProject(doc);
+        return { report: `JSON project export started (${doc.name}.kyx)`, sizeBytes };
+      }
+      const { arrangementToMidi, patternToMidi, downloadMidi } = await import("../midi/midiProject");
+      const hasSongArrangement = doc.arrangement.clips.length > 0 || (doc.arrangement.midiClips?.length ?? 0) > 0;
+      const bytes = hasSongArrangement ? arrangementToMidi(doc) : patternToMidi(doc, doc.activePatternId);
+      downloadMidi(bytes, `${doc.name}-${hasSongArrangement ? "song" : "pattern"}`);
+      return {
+        report: hasSongArrangement
+          ? "Song arrangement MIDI export started"
+          : `Pattern MIDI export started (${doc.name})`,
+        sizeBytes: bytes.byteLength,
+      };
+    },
     audioPreview: (request) => mcpRenderAudioPreview(services, request),
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).

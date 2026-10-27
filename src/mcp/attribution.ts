@@ -24,12 +24,19 @@ import type { McpToolContext } from "./tools";
  * the human working the UI directly — UI edits carry no prefix). */
 export type McpAgentId = "desktop-stdio" | "web-relay" | "qmr" | "headless" | "local";
 
-export const AGENT_LABEL_PREFIX = /^\[([a-z-]+)\] /;
+/** Same charset the dispatcher validates per-call agentIds against (AS-010):
+ * lowercase letters, digits, dashes. */
+export const AGENT_LABEL_PREFIX = /^\[([a-z0-9-]+)\] /;
 
 /** Prefix a command's history label with the agent id (no-op for `local`,
- * so headless/test and human labels stay exactly as before). */
-export function attributeLabel(command: Command, agentId: McpAgentId): Command {
+ * so headless/test and human labels stay exactly as before). Attribution
+ * applies ONCE: contexts layer (transport wrap + per-call wrap, AS-010), and
+ * the innermost wrap executes first — a command that already carries a
+ * prefix passes through unchanged, so the label names the FIRST (most
+ * specific) actor and layering can never stack two prefixes. */
+export function attributeLabel(command: Command, agentId: McpAgentId | string): Command {
   if (agentId === "local") return command;
+  if (AGENT_LABEL_PREFIX.test(command.label)) return command;
   return {
     ...command,
     label: `[${agentId}] ${command.label}`,
@@ -38,7 +45,7 @@ export function attributeLabel(command: Command, agentId: McpAgentId): Command {
 
 /** Wrap a context so every mutation it executes is attributed. Reads,
  * undo/redo and undoStackLength pass through untouched. */
-export function withAgentAttribution(ctx: McpToolContext, agentId: McpAgentId): McpToolContext {
+export function withAgentAttribution(ctx: McpToolContext, agentId: McpAgentId | string): McpToolContext {
   if (agentId === "local") return ctx;
   return {
     ...ctx,

@@ -55,6 +55,7 @@ export interface McpBridgeDeps {
   /** Another KYX window took the relay: this window is no longer the executor. */
   onDisplaced?: (reason: string) => void;
   export?: (request: McpExportRequest) => Promise<string>;
+  exportDocument?: NonNullable<McpToolContext["exportDocument"]>;
   audioPreview?: NonNullable<McpToolContext["audioPreview"]>;
   meters?: () => McpMeterSnapshot | null;
   fxMeters?: () => McpFxMeterSnapshot | null;
@@ -166,6 +167,7 @@ export class McpBridge {
         isMicRecordingActive: () => this.deps.isMicRecordingActive(),
         transport: this.deps.transport,
         export: this.deps.export,
+        exportDocument: this.deps.exportDocument,
         audioPreview: this.deps.audioPreview,
         meters: this.deps.meters,
         fxMeters: this.deps.fxMeters,

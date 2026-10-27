@@ -790,6 +790,15 @@
       "seamEvent": "\"kyx_notes\", { op: \"resize\"",
       "negativeSpec": "refuse bad contracts without mutating",
       "note": "The edit-depth wave (AS-002/AS-003): note lengths and line transforms (resize/duplicate/split/glue over the piano-roll commands) and the step expressive layer (setVelocity on existing hits with off-cell disclosure; setMeta probability/microtiming/ratchet/amount with neutral-value clearing). Steps specs live in tests/mcp-tools.test.ts (AS-003 describe). Expressive ops reshape hits that exist — placing stays op:add."
+    },
+    {
+      "id": "mcp-document-export",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/tools.ts kyx_export format:midi|json via ctx.exportDocument (desktop-host + web-host wiring)",
+      "spec": "tests/mcp-ops-coverage.test.ts",
+      "seamEvent": "\"kyx_export\", { format: \"midi\"",
+      "negativeSpec": "refuses honestly without the host hook",
+      "note": "The pure-document delivery formats (AS-013): MIDI (song arrangement or active pattern) and the .kyx JSON document serialize and download in the KYX window — no render engine, honest UNAVAILABLE_ON_TRANSPORT where the host hook is absent. Specs for retryPolicy (AS-009p1), per-call agentId (AS-010) and warp-pin reads (AS-012) live in the same file; the /mcp rate limiter is pinned by tests/collab-mcp-rate-limit.test.ts and the ops-coverage gate (AS-008) by the AS-008 describe."
     }
   ]
 }

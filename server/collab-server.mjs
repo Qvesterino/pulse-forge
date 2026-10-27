@@ -791,7 +791,7 @@ class BattleStore {
 }
 
 /** Naive per-IP sliding-window limiter. Returns true when the request passes. */
-function makeRateLimiter(limit = POST_WINDOW_LIMIT) {
+export function makeRateLimiter(limit = POST_WINDOW_LIMIT) {
   const hits = new Map(); // ip → timestamps[]
   return function allow(ip) {
     const now = Date.now();
@@ -957,6 +957,11 @@ export function createCollabServer({
   const allowPlay = makeRateLimiter(60);
   const allowReport = makeRateLimiter(REPORT_WINDOW_LIMIT);
   const allowDelete = makeRateLimiter(DELETE_WINDOW_LIMIT);
+  // AS-010: the /mcp route had a token + body cap but NO pacing — a runaway
+  // web client could hammer the renderer. Desktop's bridge allows 30/min;
+  // the same budget here keeps transports on equal footing (the desktop one
+  // is a token bucket, this a sliding minute — same sustained rate).
+  const allowMcp = makeRateLimiter(30);
   const adminToken = String(adminTokenOverride ?? "").trim();
   const metrics = {
     activeConnections: 0,
@@ -1002,6 +1007,10 @@ export function createCollabServer({
       const auth = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
       if (!isValidToken(auth, mcpToken)) {
         sendJson(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (!allowMcp(req.socket.remoteAddress ?? "unknown")) {
+        sendJson(res, 429, { error: "rate limited: at most 30 MCP calls per minute per client" });
         return;
       }
       let raw = "";

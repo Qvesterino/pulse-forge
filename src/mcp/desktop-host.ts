@@ -93,6 +93,28 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
+    // AS-013: the pure-document formats serialize and download directly —
+    // same paths the ExportPanel MIDI/JSON buttons ride, lazy-imported so
+    // the boot path never pays for the MIDI writer.
+    exportDocument: async (kind) => {
+      const doc = services.store.getDoc();
+      if (kind === "json") {
+        const { exportProject } = await import("../export/project-io");
+        const sizeBytes = JSON.stringify(doc).length;
+        exportProject(doc);
+        return { report: `JSON project export started (${doc.name}.kyx)`, sizeBytes };
+      }
+      const { arrangementToMidi, patternToMidi, downloadMidi } = await import("../midi/midiProject");
+      const hasSongArrangement = doc.arrangement.clips.length > 0 || (doc.arrangement.midiClips?.length ?? 0) > 0;
+      const bytes = hasSongArrangement ? arrangementToMidi(doc) : patternToMidi(doc, doc.activePatternId);
+      downloadMidi(bytes, `${doc.name}-${hasSongArrangement ? "song" : "pattern"}`);
+      return {
+        report: hasSongArrangement
+          ? "Song arrangement MIDI export started"
+          : `Pattern MIDI export started (${doc.name})`,
+        sizeBytes: bytes.byteLength,
+      };
+    },
     audioPreview: (request) => mcpRenderAudioPreview(services, request),
     // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping
     // (the same importSfzLibrary core the web relay uses).

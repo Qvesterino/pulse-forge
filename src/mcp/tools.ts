@@ -11,7 +11,7 @@ import {
   tickAtBarBeat,
   ticksPerBar,
 } from "../project-model/schema";
-import { isForeignWork, labelsRevertedBy } from "./attribution";
+import { isForeignWork, labelsRevertedBy, withAgentAttribution } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
   completeAgentCall,
@@ -1854,14 +1854,17 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip " +
       "(stems: all | drums | bass | music — stem projects bypass the master chain, same as " +
-      "the ExportPanel stem flow). sampleRate selects the render rate. The render runs in " +
+      'the ExportPanel stem flow). format:"midi" exports the song arrangement (or the ' +
+      'active pattern when the arrangement is empty) as a standard MIDI file; format:"json" ' +
+      "exports the project document (.kyx). The document formats need no render engine. " +
+      "sampleRate selects the render rate. The render runs in " +
       "the KYX window and the tool AWAITS it — the result carries the completion report " +
       "(duration, size). Render/generation calls get an extended 60 s MCP window; exceptionally " +
       "long jobs may still time out, while the download lands in the app.",
     inputSchema: {
       type: "object",
       properties: {
-        format: { type: "string", enum: ["wav", "mp3"] },
+        format: { type: "string", enum: ["wav", "mp3", "midi", "json"] },
         sampleRate: { type: "number", enum: [44100, 48000, 96000], description: "Render sample rate (default 44100)" },
         bitDepth: { type: "number", enum: [16, 24, 32], description: "WAV bit depth (default 16; ignored for mp3)" },
         stems: {
@@ -3428,6 +3431,12 @@ const REQUEST_ID_PROPERTY: Record<string, unknown> = {
 };
 for (const def of MCP_TOOLS) {
   def.inputSchema.properties.requestId = { ...REQUEST_ID_PROPERTY };
+  def.inputSchema.properties.agentId = {
+    type: "string",
+    maxLength: 32,
+    description:
+      "Optional per-call agent identity (lowercase letters, digits, dashes). The relay token is the real gate — this makes the audit log, history-label attribution and foreign-work undo consent LEGIBLE when several agents share one transport. Declared by the caller, so treat it as a label, not an auth boundary.",
+  };
   def.inputSchema.properties.dryRun = {
     type: "boolean",
     description:
@@ -3645,6 +3654,13 @@ export interface McpToolContext {
    * Absent → honest refusal (standalone/headless servers cannot publish).
    */
   shareToGallery?: (input: { title: string; author: string; tags: string[]; agent: string }) => Promise<{ id: string }>;
+  /**
+   * AS-013: the pure-document export formats (kyx_export format:"midi"|"json").
+   * The HOST serializes and starts the download in the app window — the same
+   * delivery the ExportPanel buttons ride; the tool reports the receipt.
+   * Absent → honest refusal (headless contexts).
+   */
+  exportDocument?: (kind: "midi" | "json") => Promise<{ report: string; sizeBytes: number | null }>;
   /**
    * THE AGENT'S EARS (kyx_render_summary): offline-render the project and
    * report per-strip evidence (LUFS/peak/crest/duration) + the master vs
@@ -4171,6 +4187,8 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
     destructiveUnlock: ctx.allowDestructive?.() === true,
     hooks: {
       export: has(ctx.export),
+      exportMidi: has(ctx.exportDocument),
+      exportJson: has(ctx.exportDocument),
       audioPreview: has(ctx.audioPreview),
       meters: has(ctx.meters),
       fxMeters: has(ctx.fxMeters),
@@ -4217,6 +4235,25 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
         "MCP calls run synchronously in the owning window; long calls are visible in the Job Center but no cooperative abort is exposed over MCP yet.",
       revisit: "an AbortSignal threaded through renderProject would give render-class hooks cooperative abort",
     },
+    // AS-009 phase 1: retry etiquette as data. A timeout stops the CALLER
+    // from waiting — the work may still land — so retries must be deliberate:
+    // document mutations are idempotent-bound via requestId; the external
+    // effects below are NOT and must never be blind-retried.
+    retryPolicy: {
+      rule: "on timeout or transport error, first check current state (kyx_state / the tool's read op); re-send with the SAME requestId only for document mutations",
+      idempotentBound: "every document mutation (requestId replays the original outcome)",
+      notIdempotent: [
+        "kyx_publish_gallery",
+        "kyx_export",
+        "kyx_audio_preview",
+        "kyx_transport",
+        "kyx_save",
+        "kyx_blind_ab record/reset",
+        "kyx_checkpoint save/delete",
+        "kyx_import_sfz",
+      ],
+      readsAlwaysFresh: true,
+    },
     stages: ["read", "runtime", "applied", "persisted", "rendered", "dry-run", "replayed", "noop"],
   };
 }
@@ -4235,6 +4272,7 @@ function capabilitySummary(snapshot: Record<string, unknown>): string {
     `available: ${available.join(", ") || "none"}`,
     `unavailable: ${unavailable.join(", ") || "none"}`,
     `cancellation: ${snapshot.cancellation && (snapshot.cancellation as { supported?: boolean }).supported ? "supported" : "not supported"}`,
+    `retry: document mutations are requestId-bound; publish/export/preview/transport are NOT idempotent — re-read state before retrying`,
     `by design unavailable: ${Object.keys((snapshot.unavailableByDesign as Record<string, string>) ?? {}).join(", ")}`,
   ].join("; ");
 }
@@ -4400,7 +4438,9 @@ async function idempotencySignature(agent: string, tool: string, args: unknown):
   const requestArgs =
     args != null && typeof args === "object" && !Array.isArray(args)
       ? Object.fromEntries(
-          Object.entries(args as Record<string, unknown>).filter(([key]) => key !== "requestId" && key !== "dryRun"),
+          Object.entries(args as Record<string, unknown>).filter(
+            ([key]) => key !== "requestId" && key !== "dryRun" && key !== "agentId",
+          ),
         )
       : args;
   const source = canonicalJson({ agent, tool, args: requestArgs });
@@ -4482,8 +4522,58 @@ function invalidRequestIdMessage(args: unknown): string | null {
   return null;
 }
 
+/**
+ * AS-008: guard coverage by evidence, not convention. Every key documents a
+ * shipped tool:op whose commands are hand-written (no base/ops) BY DESIGN —
+ * the step edits carry applyToYDoc for collab, the legacy param setters
+ * predate the snapshot pattern. The suite asserts the recorded violation set
+ * stays exactly empty against this list, so the next hand-written command
+ * without an entry fails the gate instead of silently losing stale-write,
+ * scope and idempotency tracking.
+ */
+const OPS_COVERAGE_EXEMPT: ReadonlySet<string> = new Set([
+  // kyx_tracks rename rides the raw setTrackParams (project.ts) — legacy
+  // hand-written command; the other tracks ops wrap in snapshot("mcpMixer").
+  "kyx_tracks:rename",
+  // kyx_notes add rides the raw addNote (notes.ts) — hand-written with
+  // apply-time clamping; moves/velocity/quantize carry deltas.
+  "kyx_notes:add",
+  // kyx_pattern select rides the raw setActivePattern — a pointer flip, no
+  // payload worth a stale-write field.
+  "kyx_pattern:select",
+]);
+
+export interface OpsCoverageViolation {
+  tool: string;
+  op: string;
+  commandType: string;
+}
+const opsCoverageViolations: OpsCoverageViolation[] = [];
+
+/** Test/CI drain: returns and clears the ops-coverage violations recorded
+ * since the last drain. Non-empty after a call means a mutating tool executed
+ * an ops-less command that is not on the exemption list. */
+export function drainMcpOpsCoverageViolations(): OpsCoverageViolation[] {
+  return opsCoverageViolations.splice(0, opsCoverageViolations.length);
+}
+
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  // AS-010: a caller-declared per-call identity. The transport token remains
+  // the gate; this only makes attribution legible when several agents share
+  // one transport. Validated strictly, then the WHOLE call (idempotency
+  // signature, lattice external-agent gate, history labels, audit entry)
+  // runs under it.
+  const declaredAgent = envelope.agentId;
+  if (declaredAgent !== undefined) {
+    if (typeof declaredAgent !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(declaredAgent)) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        "agentId must be 1..32 chars of lowercase letters, digits or dashes (it becomes the audit + history label)",
+      );
+    }
+    if (declaredAgent !== ctx.agentId) ctx = withAgentAttribution(ctx, declaredAgent);
+  }
   const invalidRequestId = invalidRequestIdMessage(args);
   if (invalidRequestId !== null || envelope.dryRun === true) {
     return executeMcpToolCore(ctx, name, args);
@@ -4769,6 +4859,26 @@ ${preview.text}`,
         for (const op of command.ops ?? []) {
           if (written.length >= MAX_RECORDED_WRITES) break;
           if (op.k === "set" || op.k === "ins") written.push({ path: op.path, value: op.value });
+        }
+        // AS-008: stale-write, scope and idempotency written-field tracking
+        // all read command.ops — a mutating tool that executes a hand-written
+        // command (no base/ops) silently loses all three. Recorded, not
+        // thrown: the shipped command layer has deliberate hand-written
+        // commands (y-doc-synced step edits, legacy param setters), and the
+        // suite asserts the recorded set stays exactly the exempt list.
+        if (
+          command.ops == null &&
+          command.base == null &&
+          (risk === "mutate" || risk === "destructive") &&
+          !OPS_COVERAGE_EXEMPT.has(`${name}:${String(envelope.op ?? envelope.action ?? "")}`)
+        ) {
+          if (opsCoverageViolations.length < 64) {
+            opsCoverageViolations.push({
+              tool: name,
+              op: String(envelope.op ?? envelope.action ?? ""),
+              commandType: command.type,
+            });
+          }
         }
         ctx.execute(command);
       },
@@ -6984,6 +7094,23 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return readMcpResource(ctx, String(record.uri ?? ""));
     case "kyx_export": {
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      // AS-013: the pure-document formats need no render engine — a separate,
+      // lighter hook. Absent → honest refusal, same contract as the renderer.
+      if (record.format === "midi" || record.format === "json") {
+        if (ctx.exportDocument == null) {
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "document export (midi/json) is not available over this MCP transport — use the KYX export panel",
+          );
+        }
+        const delivered = await ctx.exportDocument(record.format);
+        return {
+          text: `${delivered.report} — size ${delivered.sizeBytes ?? "?"} bytes; the download lands in the KYX window`,
+          mutated: false,
+          stage: "delivered",
+          data: { status: "delivered", stage: "delivered", format: record.format, sizeBytes: delivered.sizeBytes },
+        };
+      }
       if (ctx.export == null) {
         return mcpError(
           "UNAVAILABLE_ON_TRANSPORT",
@@ -9091,12 +9218,16 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   if (op === "audioList") {
     const audio = doc.arrangement.audioClips ?? [];
     if (audio.length === 0) return { text: "no audio clips on track lanes", mutated: false };
-    const lines = audio
-      .slice(0, 12)
-      .map(
-        (clip) =>
-          `${ownerNameOf(doc, clip.trackId)} (id=${clip.id}): bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars} · gain ${clip.gain.toFixed(2)} · fade ${clip.fadeIn.toFixed(2)}/${clip.fadeOut.toFixed(2)}${clip.reverse ? " · reversed" : ""}${clip.loop ? " · loop" : ""}`,
-      );
+    // AS-012: warp pins are part of the OBSERVATION space — an agent that
+    // cannot see the timing map cannot reason about why a clip drags.
+    const lines = audio.slice(0, 12).map((clip) => {
+      const pins = clip.warpMarkers ?? [];
+      const warp =
+        pins.length > 0
+          ? ` · ${pins.length} warp pin(s)${pins.length <= 3 ? ` @${pins.map((pin) => `${(pin.tick / 480).toFixed(2)}b`).join(", ")}` : ""}`
+          : "";
+      return `${ownerNameOf(doc, clip.trackId)} (id=${clip.id}): bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars} · gain ${clip.gain.toFixed(2)} · fade ${clip.fadeIn.toFixed(2)}/${clip.fadeOut.toFixed(2)}${clip.reverse ? " · reversed" : ""}${clip.loop ? " · loop" : ""}${warp}`;
+    });
     if (audio.length > 12) lines.push(`… and ${audio.length - 12} more audio clip(s)`);
     return {
       text: lines.join("\n"),
@@ -9112,6 +9243,8 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
           fadeIn: clip.fadeIn,
           fadeOut: clip.fadeOut,
           reverse: clip.reverse,
+          warpPinCount: clip.warpMarkers?.length ?? 0,
+          warpPins: (clip.warpMarkers ?? []).slice(0, 16).map((pin) => ({ timeSec: pin.timeSec, tick: pin.tick })),
         })),
       },
     };
