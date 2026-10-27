@@ -104,7 +104,7 @@ describe("the LOW-END STACK card", () => {
     expect(new Set(notes.map((note) => note.pitch % 12))).toEqual(new Set([0]));
   });
 
-  it("CHECK THE FIT surfaces the measured verdict, not a guess", () => {
+  it("CHECK THE FIT surfaces the measured verdict, and says honestly when the render tier is unavailable", async () => {
     const root = parseKey("C Major")?.root ?? 0;
     const stacked = forgeLowEndStackCommand(docWithKey("C Major"), { keyRootPc: root }).execute(docWithKey("C Major"));
     const services = mockServices(stacked);
@@ -113,5 +113,8 @@ describe("the LOW-END STACK card", () => {
     const status = screen.getByRole("status");
     // No bass notes yet → the honest SILENT verdict, with the seed hint.
     expect(status).toHaveTextContent(/SILENT/i);
+    // jsdom has no OfflineAudioContext: the render tier must SAY SO, not
+    // silently show nothing (the model verdict above still stands).
+    expect(await screen.findByText(/Render measurement unavailable/i)).toBeInTheDocument();
   });
 });

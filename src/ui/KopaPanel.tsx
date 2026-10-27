@@ -4,6 +4,8 @@ import { Slider } from "./controls";
 import { kopaParams } from "../instruments/definitions";
 import { lowEndPlan } from "../instruments/lowEnd";
 import { measureLowEndFit, planBassline, type LowEndFit } from "../instruments/lowEndBass";
+import { describeBandMeasurement } from "../instruments/lowEndMeasure";
+import { renderLowEndBands } from "../instruments/lowEndRender";
 import {
   forgeKickCommand,
   forgeLowEndStackCommand,
@@ -88,12 +90,15 @@ function LowEndStackCard() {
   const plan = useMemo(() => lowEndPlan(doc), [doc]);
   const [status, setStatus] = useState<string | null>(null);
   const [fit, setFit] = useState<LowEndFit | null>(null);
+  const [measured, setMeasured] = useState<string | null>(null);
+  const [measuring, setMeasuring] = useState(false);
 
   const build = () => {
     const d = services.store.doc;
     const p = lowEndPlan(d);
     services.store.execute(forgeLowEndStackCommand(d, { keyRootPc: p.keyRootPc }));
     setFit(null);
+    setMeasured(null);
     setStatus(
       p.keyKnown
         ? `Stack built — kick tuned to the tonic (${p.kickTuneSt} st), 808 + sidechain wired`
@@ -106,14 +111,31 @@ function LowEndStackCard() {
     const p = planBassline(d, lowEndPlan(d));
     services.store.execute(seedBasslineCommand(d, {}));
     setFit(null);
+    setMeasured(null);
     const basisLabel =
       p.basis === "chords" ? "the chord track" : p.basis === "key" ? "the key tonic" : "the chromatic anchor";
     setStatus(`Bassline seeded: ${p.events.length} notes from ${basisLabel} — edit them in the piano roll.`);
   };
 
-  const checkFit = () => {
+  const checkFit = async () => {
     const d = services.store.doc;
-    setFit(measureLowEndFit(d, lowEndPlan(d)));
+    const p = lowEndPlan(d);
+    setFit(measureLowEndFit(d, p));
+    setMeasured(null);
+    // The render tier (report-only): one mixed offline render of the two
+    // stems — real effects, master bypassed — and the pump read from the
+    // PCM. Any environment without offline rendering (or an empty bass)
+    // fails with a named message; the model verdict above still stands.
+    if (!p.bassTrackId) return;
+    setMeasuring(true);
+    try {
+      const m = await renderLowEndBands(d, services.bank, p);
+      setMeasured(describeBandMeasurement(m));
+    } catch (error) {
+      setMeasured(`Render measurement unavailable: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      setMeasuring(false);
+    }
   };
 
   return (
@@ -149,10 +171,11 @@ function LowEndStackCard() {
         <button
           type="button"
           className="btn btn-small"
-          onClick={checkFit}
-          title="Measure rhythm lock, harmonic lock and the kick/bass register gap"
+          onClick={() => void checkFit()}
+          disabled={measuring}
+          title="Model fit + one offline render of the two stems: band energies and the measured pump"
         >
-          CHECK THE FIT
+          {measuring ? "MEASURING…" : "CHECK THE FIT"}
         </button>
       </div>
       {fit && (
@@ -160,6 +183,7 @@ function LowEndStackCard() {
           {fit.verdict.toUpperCase()}: {fit.summary}
         </div>
       )}
+      {measured && <div className="tsar-forge-status">{measured}</div>}
       {status && <div className="tsar-forge-status">{status}</div>}
     </section>
   );
