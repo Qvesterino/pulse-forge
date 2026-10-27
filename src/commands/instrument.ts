@@ -4,6 +4,7 @@ import { INSTRUMENT_META, clampInstrumentParam, defaultInstrumentParams } from "
 import { createInstrumentTrackModel } from "../project-model/schema";
 import { normalizeProject } from "../project-model/schema";
 import { uid } from "../shared/ids";
+import { collectClamps } from "../shared/clamp-report";
 import { planBassline } from "../instruments/lowEndBass";
 import { lowEndPlan } from "../instruments/lowEnd";
 import type { InstrumentPreset } from "../presets/types";
@@ -15,7 +16,9 @@ export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramI
   const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
   if (!track) throw new Error(`Instrument track ${trackId} not found`);
   const prev = track.params[paramId] ?? defaultInstrumentParams(track.instrument)[paramId];
-  const clamped = clampInstrumentParam(track.instrument, paramId, value);
+  // Audit F-12: a value that had to be clamped is disclosed on the command.
+  const { events, sink } = collectClamps();
+  const clamped = clampInstrumentParam(track.instrument, paramId, value, sink);
   const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
     ...d,
     tracks: d.tracks.map((t) =>
@@ -25,6 +28,7 @@ export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramI
   return {
     type: "setInstrumentParam",
     label: `Set ${INSTRUMENT_META[track.instrument].name} ${paramId}`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
@@ -64,8 +68,11 @@ export function setInstrumentParams(
   const defaults = defaultInstrumentParams(track.instrument);
   const prev: Record<string, number> = {};
   const next: Record<string, number> = {};
+  // Audit F-12: a bulk parameter write clamps every value it lands on — the
+  // toast names the ones that moved.
+  const { events, sink } = collectClamps();
   for (const [key, raw] of Object.entries(params)) {
-    const value = clampInstrumentParam(track.instrument, key, raw);
+    const value = clampInstrumentParam(track.instrument, key, raw, sink);
     if (!Number.isFinite(value)) continue;
     prev[key] = track.params[key] ?? defaults[key] ?? value;
     next[key] = value;
@@ -79,6 +86,7 @@ export function setInstrumentParams(
   return {
     type: "setInstrumentParams",
     label: `${INSTRUMENT_META[track.instrument].name} — ${label}`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, next),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
@@ -137,8 +145,12 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
   const prevLayers = track.velocityLayers ?? null;
 
   const nextParams: Record<string, number> = defaultInstrumentParams(track.instrument);
+  // Audit F-12: a preset whose values fall outside the parameter range is
+  // clamped — the toast says which one moved, instead of the patch simply
+  // landing on a different sound than the preset promised.
+  const { events, sink } = collectClamps();
   for (const [key, value] of Object.entries(preset.params)) {
-    nextParams[key] = clampInstrumentParam(track.instrument, key, value);
+    nextParams[key] = clampInstrumentParam(track.instrument, key, value, sink);
   }
   const nextSample = preset.sampleId !== undefined ? preset.sampleId : track.sampleId;
   const nextLayers = preset.velocityLayers !== undefined ? preset.velocityLayers : (track.velocityLayers ?? null);
@@ -165,6 +177,7 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
   return {
     type: "applyInstrumentPreset",
     label: `Apply preset "${preset.name}"`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, nextParams, nextSample, preset.id, nextLayers),
     undo: (d) => apply(d, prevParams, prevSample, prevPresetId, prevLayers),
   };
@@ -190,8 +203,11 @@ export function applyInstrumentPatch(
   const prevPresetId = track.presetId ?? null;
 
   const nextParams: Record<string, number> = { ...params };
+  // Audit F-12: a patch whose values fall outside the parameter range is
+  // clamped — disclosed on the command.
+  const { events, sink } = collectClamps();
   for (const key of Object.keys(nextParams)) {
-    nextParams[key] = clampInstrumentParam(track.instrument, key, nextParams[key]!);
+    nextParams[key] = clampInstrumentParam(track.instrument, key, nextParams[key]!, sink);
   }
 
   const apply = (d: ProjectDocument, patch: Record<string, number>, presetId: string | null): ProjectDocument => ({
@@ -203,6 +219,7 @@ export function applyInstrumentPatch(
   return {
     type: "applyInstrumentPatch",
     label: `${INSTRUMENT_META[track.instrument].name} — ${label}`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, nextParams, null),
     undo: (d) => apply(d, prevParams, prevPresetId),
   };
@@ -227,8 +244,11 @@ export function forgeKickCommand(
   const prevParams = { ...track.params };
   const prevPresetId = track.presetId ?? null;
   const nextParams: Record<string, number> = { ...track.params };
+  // Audit F-12: the forged plan's values are clamped like any other write —
+  // the disclosure rides on the command.
+  const { events, sink } = collectClamps();
   for (const [key, value] of Object.entries(plan.params)) {
-    nextParams[key] = clampInstrumentParam(track.instrument, key, value);
+    nextParams[key] = clampInstrumentParam(track.instrument, key, value, sink);
   }
   const apply = (d: ProjectDocument, patch: Record<string, number>, presetId: string | null): ProjectDocument => ({
     ...d,
@@ -239,6 +259,7 @@ export function forgeKickCommand(
   return {
     type: "forgeKick",
     label: `Kick Forge — ${plan.rootMidi !== null ? `root MIDI ${plan.rootMidi}, ` : ""}fitted patch`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, nextParams, null),
     undo: (d) => apply(d, prevParams, prevPresetId),
   };

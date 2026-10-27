@@ -2,6 +2,29 @@ import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
 import { normalizeProject } from "../project-model/schema";
 import { computeDocDelta } from "../commands/docDelta";
+import { describeClamps, type ClampEvent } from "../shared/clamp-report";
+import { normalizerRepairs } from "./clampRepairs";
+
+/**
+ * Fold a command's clamp disclosure into its `detail` (audit F-12).
+ *
+ * `Command.detail` is the declared mechanism for "this command did something
+ * beyond what its label says" — and a value that had to be clamped is exactly
+ * that. The command's own detail (a scene binding, a cleanup note) is kept;
+ * the clamp disclosure is appended to it.
+ *
+ * The disclosure is composed HERE, at the point where the command is
+ * accepted, because the store is the only layer that sees BOTH sources: the
+ * clamps the command reported (`Command.clamps`) and the repairs the
+ * normaliser made to the document it produced.
+ */
+function withClampDetail(command: Command, extra: readonly ClampEvent[] = []): Command {
+  const clamps = [...(command.clamps ?? []), ...extra];
+  if (clamps.length === 0) return command;
+  const clampText = describeClamps(clamps);
+  if (!clampText) return command;
+  return { ...command, clamps, detail: command.detail ? `${command.detail} · ${clampText}` : clampText };
+}
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
@@ -308,8 +331,10 @@ export class ProjectStore {
       // entry — redo lands on the newest state, undo returns to the state
       // before the whole gesture began.
       const merged: Command = { ...command, undo: (doc) => top.undo(doc) };
-      this.doc_ = normalizeProject(merged.execute(this.doc_));
-      this.undoStack[topIdx] = merged;
+      const applied = merged.execute(this.doc_);
+      const normalized = normalizeProject(applied);
+      this.undoStack[topIdx] = withClampDetail(merged, normalizerRepairs(applied, normalized));
+      this.doc_ = normalized;
       this.timestamps[topIdx] = Date.now();
       this.redoStack = [];
       // History shape changed: any cached `diffForIndex` results are
@@ -336,8 +361,12 @@ export class ProjectStore {
       if (inFrame) this.frameCommands!.push(command);
       return;
     }
-    this.doc_ = normalizeProject(applied);
-    this.undoStack.push(command);
+    const normalized = normalizeProject(applied);
+    // Audit F-12: the disclosure is composed from BOTH sources — the clamps
+    // the command reported, and the repairs the normaliser made to the
+    // document the command produced.
+    this.doc_ = normalized;
+    this.undoStack.push(withClampDetail(command, normalizerRepairs(applied, normalized)));
     this.timestamps.push(Date.now());
     this.diffCache.clear();
     this.recordHistoryDoc(this.doc_);

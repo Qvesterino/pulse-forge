@@ -6,7 +6,7 @@
  * offline renderer and a collab peer cannot disagree about what a parameter may hold.
  */
 import type { Command } from "./types";
-import type { EffectInstance, ProjectDocument } from "../project-model/types";
+import type { EffectInstance, EffectType, ProjectDocument } from "../project-model/types";
 import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, EFFECT_PARAM_ALIASES } from "../effects/definitions";
@@ -16,8 +16,34 @@ import type { BeatmakingEffectChain } from "../effects/chains";
 import { essentialKitChainFor, essentialKitSelection, type EssentialKitSlotId } from "../effects/essentialKit";
 import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { uid } from "../shared/ids";
+import { collectClamps, valueClamp, type ClampSink } from "../shared/clamp-report";
 import { snapshot } from "./core";
 import { trackEffectsOf, withTrackEffects } from "./docOps";
+
+/**
+ * Clamp a parameter that lives in a VENDORED rack schema rather than in
+ * EFFECT_META (ozvena's deep params) — the same rule as clampEffectParam and
+ * the same disclosure (audit F-12): a value that had to change is reported.
+ */
+function clampDeepParam(
+  type: EffectType,
+  paramId: string,
+  value: number,
+  def: { label: string; min: number; max: number },
+  sink: ClampSink,
+): number {
+  const applied = Math.min(def.max, Math.max(def.min, value));
+  const event = valueClamp(
+    `effect:${type}.${paramId}`,
+    `${EFFECT_META[type].name} ${def.label}`,
+    value,
+    applied,
+    def.min,
+    def.max,
+  );
+  if (event) sink(event);
+  return applied;
+}
 
 /* ---------------- effect params & steps ---------------- */
 /**
@@ -96,11 +122,23 @@ export function setEffectParam(
   if (def?.options?.length && !def.options.some((option) => option.value === safeValue)) {
     throw new Error(`Invalid enum value ${safeValue} for ${type}.${paramId}`);
   }
+  // Audit F-12: the clamp is RECORDED here, at the only place that knows both
+  // the requested value and the range it had to land in. The disclosure rides
+  // on the command, so the toast and an API/agent caller learn what was
+  // actually written.
+  const { events, sink } = collectClamps();
   const clamped = def
-    ? clampEffectParam(type, paramId, safeValue)
-    : Math.min(deepDef!.max, Math.max(deepDef!.min, safeValue));
+    ? clampEffectParam(type, paramId, safeValue, sink)
+    : clampDeepParam(type, paramId, safeValue, deepDef!, sink);
   const nextValues: Record<string, number> = { [paramId]: clamped };
-  if (canonicalId) nextValues[canonicalId] = clampEffectParam(type, canonicalId, safeValue);
+  if (canonicalId) {
+    // The alias write mirrors the SAME request — report it only when the
+    // canonical range produced a DIFFERENT value than the primary one.
+    nextValues[canonicalId] = clampEffectParam(type, canonicalId, safeValue, (event) => {
+      if (event.kind !== "value") return;
+      if (event.applied !== clamped) sink(event);
+    });
+  }
   const previousValues: Record<string, number> = {
     [paramId]: params[paramId] ?? def?.default ?? deepDef!.default,
   };
@@ -114,6 +152,7 @@ export function setEffectParam(
   return {
     type: "setEffectParam",
     label: `Set ${EFFECT_META[type].name} ${paramId}`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, nextValues),
     undo: (d) => apply(d, previousValues),
     applyToYDoc: (yMap) => {
@@ -169,7 +208,19 @@ export function setEffectOutputTrimDb(doc: ProjectDocument, trackId: string, fxI
   const target = trackEffectsOf(doc, trackId).find((effect) => effect.id === fxId);
   if (!target) throw new Error(`Effect ${fxId} not found`);
   const previous = target.outputTrimDb ?? 0;
-  const next = Number.isFinite(gainDb) ? clampFxOutputTrimDb(gainDb) : previous;
+  // Audit F-12: the trim the caller asked for and the trim that was written
+  // can differ (range, rounding) — the difference is disclosed, not silent.
+  const { events, sink } = collectClamps();
+  const next = Number.isFinite(gainDb)
+    ? clampFxOutputTrimDb(gainDb, (event) => {
+        if (event.kind !== "value") return;
+        sink({
+          ...event,
+          target: `effect:${target.type}.outputTrimDb`,
+          label: `${EFFECT_META[target.type].name} output trim`,
+        });
+      })
+    : previous;
   const apply = (d: ProjectDocument, value: number): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((fx) => {
@@ -181,6 +232,7 @@ export function setEffectOutputTrimDb(doc: ProjectDocument, trackId: string, fxI
   return {
     type: "setEffectOutputTrimDb",
     label: `Set ${EFFECT_META[target.type].name} output trim`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, next),
     undo: (d) => apply(d, previous),
   };

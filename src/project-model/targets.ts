@@ -15,6 +15,7 @@ import { INSTRUMENT_META, clampInstrumentParam } from "../instruments/definition
 import { defaultOzvenaStateV1 } from "../effects/ozvena-core/v2/types";
 import { ozvenaParamRange } from "../effects/ozvena-params";
 import { getDocIndex } from "./doc-index";
+import { valueClamp, type ClampSink } from "../shared/clamp-report";
 
 /** UI/engine-neutral parameter metadata for every valid modulation target. */
 export interface TargetParamDef {
@@ -320,11 +321,77 @@ export function isAutomationTargetValid(doc: ProjectDocument, target: Automation
   return targetParamDef(doc, target) !== null;
 }
 
+/**
+ * A human label for one automation target — the owner plus the parameter it
+ * drives ("Kick · PRISM Cutoff").
+ *
+ * The clamp disclosure (audit F-12) needs it: a lane command's own label
+ * ("Add automation point") does not name the parameter, so without this the
+ * toast would say WHAT moved but not WHERE.
+ */
+export function targetLabel(doc: ProjectDocument, target: AutomationTarget): string {
+  const owner = targetOwner(doc, target.trackId);
+  const ownerName = owner?.name ?? target.trackId;
+  if (target.kind === "trackGain") return `${ownerName} volume`;
+  if (target.kind === "trackPan") return `${ownerName} pan`;
+  const def = targetParamDef(doc, target);
+  const param = def?.label ?? target.paramId ?? "";
+  return param ? `${ownerName} · ${param}` : ownerName;
+}
+
+/**
+ * The disclosure sink for one automation target: the clamp event names the
+ * PARAMETER the helper knew ("Cutoff"), the lane knows the TRACK it drives
+ * ("Kick") — and the lane command's own label ("Add automation point") names
+ * neither. The two are joined, so the toast can say what moved AND where.
+ */
+export function targetClampSink(doc: ProjectDocument, target: AutomationTarget, record: ClampSink): ClampSink {
+  const label = targetLabel(doc, target);
+  return (event) => {
+    if (event.kind !== "value") return;
+    record({ ...event, label });
+  };
+}
+
+/**
+ * A stable machine id for one automation target — the id a clamp is reported
+ * under (audit F-12), so an agent can match a disclosure against the target it
+ * wrote without parsing the human label.
+ */
+function targetKey(target: AutomationTarget): string {
+  const parts = [target.kind, target.trackId];
+  if (target.fxId) parts.push(target.fxId);
+  if (target.paramId) parts.push(target.paramId);
+  return parts.join(":");
+}
+
 /** Clamp at the target's authoritative range before values reach audio DSP. */
-export function clampTargetValue(doc: ProjectDocument, target: AutomationTarget, value: number): number {
+export function clampTargetValue(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  value: number,
+  /**
+   * Audit F-12: when the value had to be CHANGED, report it here instead of
+   * letting the change travel silently. The sink is optional — with no sink
+   * (a read path, the engine's own sync) the behaviour is exactly as before.
+   */
+  sink?: ClampSink,
+): number {
   const def = targetParamDef(doc, target);
   if (!def) return value;
-  if (!Number.isFinite(value)) return def.default;
+  if (!Number.isFinite(value)) {
+    const event = valueClamp(
+      `target:${targetKey(target)}`,
+      def.label,
+      value,
+      def.default,
+      def.min,
+      def.max,
+      "not a number — the default was used",
+    );
+    if (event) sink?.(event);
+    return def.default;
+  }
   if (target.kind === "fxParam") {
     const effect = targetEffectsOf(doc, target.trackId).find((fx) => fx.id === target.fxId);
     // Rack-surface ids clamp against the rack registry FIRST: for ultina the
@@ -337,15 +404,18 @@ export function clampTargetValue(doc: ProjectDocument, target: AutomationTarget,
       target.paramId &&
       EFFECT_META[effect.type].params.some((param) => param.id === target.paramId)
     ) {
-      return clampEffectParam(effect.type, target.paramId, value);
+      return clampEffectParam(effect.type, target.paramId, value, sink);
     }
     if (effect?.type === "ultina" && target.paramId) return clampUltinaParam(target.paramId, value);
   }
   if (target.kind === "instParam") {
     const owner = targetOwner(doc, target.trackId);
     if (owner?.kind === "instrument" && target.paramId) {
-      return clampInstrumentParam(owner.instrument, target.paramId, value);
+      return clampInstrumentParam(owner.instrument, target.paramId, value, sink);
     }
   }
-  return Math.min(def.max, Math.max(def.min, value));
+  const applied = Math.min(def.max, Math.max(def.min, value));
+  const event = valueClamp(`target:${targetKey(target)}`, def.label, value, applied, def.min, def.max);
+  if (event) sink?.(event);
+  return applied;
 }

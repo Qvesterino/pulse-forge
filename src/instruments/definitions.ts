@@ -11,6 +11,7 @@
  */
 import type { InstrumentKind } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
+import { valueClamp, type ClampSink } from "../shared/clamp-report";
 import { ENV_SHAPE_OPTIONS } from "./envelope";
 import { modMatrixParams } from "./modmatrix";
 import { FACTORY_TABLE_OPTIONS, FACTORY_WAVETABLES } from "./wavetables";
@@ -1140,13 +1141,45 @@ export function defaultInstrumentParams(kind: InstrumentKind): Record<string, nu
   return Object.fromEntries(INSTRUMENT_META[kind].params.map((p) => [p.id, p.default]));
 }
 
-export function clampInstrumentParam(kind: InstrumentKind, paramId: string, value: number): number {
+export function clampInstrumentParam(
+  kind: InstrumentKind,
+  paramId: string,
+  value: number,
+  /**
+   * Audit F-12: when the value had to be CHANGED, report it here instead of
+   * letting the change travel silently. The sink is optional — with no sink
+   * (a read path, the engine's own sync) the behaviour is exactly as before.
+   */
+  sink?: ClampSink,
+): number {
   const def: ParamDef | undefined = INSTRUMENT_META[kind].params.find((p) => p.id === paramId);
   if (!def) return value;
   // A non-finite value must fall back to the default — Math.min/max both
   // return NaN unchanged, and a NaN reaching a voice graph's
   // setTargetAtTime/setValueAtTime throws TypeError in real browsers, killing
   // the engine sync (the same failure mode clampEffectParam already guards).
-  if (!Number.isFinite(value)) return def.default;
-  return Math.min(def.max, Math.max(def.min, value));
+  if (!Number.isFinite(value)) {
+    const event = valueClamp(
+      `instrument:${kind}.${paramId}`,
+      `${INSTRUMENT_META[kind].name} ${def.label}`,
+      value,
+      def.default,
+      def.min,
+      def.max,
+      "not a number — the default was used",
+    );
+    if (event) sink?.(event);
+    return def.default;
+  }
+  const applied = Math.min(def.max, Math.max(def.min, value));
+  const event = valueClamp(
+    `instrument:${kind}.${paramId}`,
+    `${INSTRUMENT_META[kind].name} ${def.label}`,
+    value,
+    applied,
+    def.min,
+    def.max,
+  );
+  if (event) sink?.(event);
+  return applied;
 }

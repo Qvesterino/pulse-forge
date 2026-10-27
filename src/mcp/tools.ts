@@ -10,7 +10,9 @@ import {
   tickAtBar,
   tickAtBarBeat,
   ticksPerBar,
+  normalizeProject,
 } from "../project-model/schema";
+import { normalizerRepairs } from "../store/clampRepairs";
 import { isForeignWork, labelsRevertedBy, withAgentAttribution } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
@@ -60,7 +62,7 @@ import { verifiedMutation } from "./verified-mutation";
 import { guardStaleWrites, describePath, readPath, WriteConflictError } from "./write-conflict";
 import { decidePermission, readAutonomyPolicy, readDeclaredRevision } from "./permissionLattice";
 import { guardScopedWrites, readScopeDeclaration, ScopeViolationError } from "./scope-guard";
-import { deepEqualRef, type DeltaPath } from "../commands/docDelta";
+import { applyDocDelta, deepEqualRef, type DeltaPath } from "../commands/docDelta";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import {
@@ -207,6 +209,7 @@ import {
 } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { clampInstrumentParam, INSTRUMENT_ORDER } from "../instruments/registry";
+import { describeClamps, type ClampEvent } from "../shared/clamp-report";
 import {
   EFFECT_CATALOG_TYPES,
   getEffectCatalogEntry,
@@ -4849,6 +4852,13 @@ ${preview.text}`,
   // reports what holds NOW for them (the replay's own outcome is the original
   // one, which is a pinned contract).
   const written: WrittenField[] = [];
+  /**
+   * Audit F-12: the values that had to be CHANGED before they could be
+   * applied. Collected at the ONE place every MCP write passes through, so
+   * the answer tells the agent what it actually wrote — not only what it
+   * asked for.
+   */
+  const clampEvents: ClampEvent[] = [];
   let result: McpToolResult;
   try {
     // Audit F-25: every AI write passes the stale-write guard — a field that
@@ -4856,6 +4866,7 @@ ${preview.text}`,
     const recordingCtx: McpToolContext = {
       ...ctx,
       execute: (command: Command) => {
+        const before = ctx.getDoc();
         for (const op of command.ops ?? []) {
           if (written.length >= MAX_RECORDED_WRITES) break;
           if (op.k === "set" || op.k === "ins") written.push({ path: op.path, value: op.value });
@@ -4881,6 +4892,24 @@ ${preview.text}`,
           }
         }
         ctx.execute(command);
+        // Audit F-12: the command carries its own clamp disclosure — the
+        // values the domain had to change. The answer repeats it, so the agent
+        // learns what LANDED, not only what it asked for.
+        if (command.clamps && command.clamps.length > 0) clampEvents.push(...command.clamps);
+        // The NORMALISER's footprint on the same write: the command's own
+        // delta, run through the normaliser, shows what the normaliser
+        // changed ON TOP of it — the master-config family clamps there (the
+        // command itself does not clamp). Best-effort: a command without a
+        // forward delta contributes no footprint.
+        if (command.ops && command.ops.length > 0) {
+          try {
+            const applied = applyDocDelta(before, command.ops);
+            const normalized = normalizeProject(applied);
+            if (normalized !== applied) clampEvents.push(...normalizerRepairs(applied, normalized));
+          } catch {
+            // The disclosure must never break a write.
+          }
+        }
       },
     };
     // ADR 0065: the scope guard wraps the stale-write guard — the caller's
@@ -4946,6 +4975,16 @@ ${preview.text}`,
     documentMutation: mutatesProjectDocument(name, args),
     result,
   });
+  // Audit F-12: the clamp disclosure rides in the TEXT — the one channel every
+  // transport forwards verbatim — so the agent reads what actually landed
+  // ("clamped PRISM Cutoff 999 → 20"), not only what it asked for. The
+  // per-tool `clamped` flag stays: it is the tool's OWN read-back, and it
+  // still answers for the values the tool clamps before the command sees
+  // them.
+  if (clampEvents.length > 0 && result.isError !== true) {
+    const clampText = describeClamps(clampEvents);
+    if (clampText) result.text = `${result.text}\n${clampText}`;
+  }
   // P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
   // GAP-06): every caller — desktop stdio, web relay, QMR — executes
   // against the ONE relay session's document (the hub forwards to a single
@@ -12655,8 +12694,19 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       };
     }
     let next = doc;
-    for (const { trackId, fxId } of targets) next = setEffectOutputTrimDb(next, trackId, fxId, trimDb).execute(next);
-    ctx.execute(snapshot("mcpMasterTrim", `MCP: ZENIT trim ${trimDb > 0 ? "+" : ""}${trimDb} dB`, doc, next));
+    // Audit F-12: the batch becomes ONE snapshot command — and the clamp
+    // disclosures the commands carry must survive the batching, or the agent
+    // never learns that the trim it asked for was changed.
+    const trimClamps: ClampEvent[] = [];
+    for (const { trackId, fxId } of targets) {
+      const command = setEffectOutputTrimDb(next, trackId, fxId, trimDb);
+      next = command.execute(next);
+      if (command.clamps) trimClamps.push(...command.clamps);
+    }
+    ctx.execute({
+      ...snapshot("mcpMasterTrim", `MCP: ZENIT trim ${trimDb > 0 ? "+" : ""}${trimDb} dB`, doc, next),
+      ...(trimClamps.length > 0 ? { clamps: trimClamps } : {}),
+    });
     return {
       text: `output trim ${trimDb > 0 ? "+" : ""}${trimDb} dB on ${targets.map((t) => t.trackName).join(", ")} — one undo step (clamped −18…+12)`,
       mutated: true,

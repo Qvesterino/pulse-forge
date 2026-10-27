@@ -1,4 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
+import type { ClampEvent } from "../shared/clamp-report";
 import type { DeltaOp } from "./docDelta";
 
 export interface Command {
@@ -11,6 +12,18 @@ export interface Command {
    * Undefined when the command did exactly what its label says.
    */
   readonly detail?: string;
+  /**
+   * Values the domain had to CHANGE before this command could apply them
+   * (audit F-12): the caller asked for 999, the parameter's range ends at 20,
+   * the command wrote 20. The disclosure travels on the command itself, so
+   * the store can fold it into `detail` and the toast can show it — and so an
+   * API/agent caller learns what was actually written.
+   *
+   * Structured rather than pre-rendered, because the same disclosure is read
+   * by two audiences: the toast (a line of prose) and the MCP answer (a
+   * machine-readable list). Absent when nothing was clamped.
+   */
+  readonly clamps?: readonly ClampEvent[];
   execute(doc: ProjectDocument): ProjectDocument;
   undo(doc: ProjectDocument): ProjectDocument;
   /**

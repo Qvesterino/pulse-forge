@@ -6,8 +6,9 @@
  */
 import type { Command } from "./types";
 import type { AutomationTarget, ProjectDocument, SceneAutomation } from "../project-model/types";
-import { clampTargetValue, isAutomationTargetValid, targetParamDef } from "../project-model/targets";
+import { clampTargetValue, isAutomationTargetValid, targetClampSink, targetParamDef } from "../project-model/targets";
 import { uid } from "../shared/ids";
+import { collectClamps } from "../shared/clamp-report";
 import { snapshot } from "./core";
 
 /* ---------------- scene automation ---------------- */ export function addSceneAutomation(
@@ -50,7 +51,10 @@ export function removeSceneAutomation(doc: ProjectDocument, laneId: string): Com
 export function addSceneAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
-  const clampedValue = clampTargetValue(doc, lane.target, value);
+  // Audit F-12: the value that lands may differ from the one that was asked
+  // for — the difference is disclosed on the command, not silent.
+  const { events, sink: record } = collectClamps();
+  const clampedValue = clampTargetValue(doc, lane.target, value, targetClampSink(doc, lane.target, record));
   const next = {
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) =>
@@ -64,7 +68,10 @@ export function addSceneAutomationPoint(doc: ProjectDocument, laneId: string, ti
         : l,
     ),
   };
-  return snapshot("addSceneAutomationPoint", "Add scene point", doc, next);
+  return {
+    ...snapshot("addSceneAutomationPoint", "Add scene point", doc, next),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
 }
 export function moveSceneAutomationPoint(
   doc: ProjectDocument,
@@ -75,7 +82,13 @@ export function moveSceneAutomationPoint(
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
   if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
-  const nextValue = delta.value === undefined ? undefined : clampTargetValue(doc, lane.target, delta.value);
+  // Audit F-12: a drag that overshoots the parameter's range is clamped — the
+  // toast says so instead of the curve quietly ending somewhere else.
+  const { events, sink: record } = collectClamps();
+  const nextValue =
+    delta.value === undefined
+      ? undefined
+      : clampTargetValue(doc, lane.target, delta.value, targetClampSink(doc, lane.target, record));
   // Audit 06 D3: re-anchor by identity/(tick,value) like the project lanes.
   const original = lane.points[index]!;
   const next = {
@@ -95,7 +108,10 @@ export function moveSceneAutomationPoint(
       return { ...l, points };
     }),
   };
-  return snapshot("moveSceneAutomationPoint", "Move scene point", doc, next);
+  return {
+    ...snapshot("moveSceneAutomationPoint", "Move scene point", doc, next),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
 }
 export function removeSceneAutomationPoint(doc: ProjectDocument, laneId: string, index: number): Command {
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);

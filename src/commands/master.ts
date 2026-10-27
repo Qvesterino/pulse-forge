@@ -1,6 +1,7 @@
 import type { Command } from "./types";
 import type { MasterConfig, ProjectDocument } from "../project-model/types";
 import { clamp } from "../shared/ids";
+import { valueClamp } from "../shared/clamp-report";
 
 /**
  * Master bus, track sends and return tracks.
@@ -68,6 +69,15 @@ export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: st
   if (!track) throw new Error(`Track ${trackId} not found`);
   const prev = track.sends[returnId] ?? 0;
   const clamped = clamp(level, 0, 1.5);
+  // Audit F-12: a send level that had to be clamped is disclosed on the command.
+  const sendEvent = valueClamp(
+    `send:${returnId}`,
+    `${doc.returns.find((r) => r.id === returnId)?.name ?? "Send"} send`,
+    level,
+    clamped,
+    0,
+    1.5,
+  );
   const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
     ...d,
     tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, sends: { ...t.sends, [returnId]: v } } : t)),
@@ -75,6 +85,7 @@ export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: st
   return {
     type: "setTrackSend",
     label: "Set send level",
+    ...(sendEvent ? { clamps: [sendEvent] } : {}),
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
@@ -93,6 +104,15 @@ export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: st
 export function setReturnGain(doc: ProjectDocument, returnId: string, gain: number): Command {
   const prev = doc.returns.find((r) => r.id === returnId)?.gain ?? 0.9;
   const clamped = clamp(gain, 0, 1.5);
+  // Audit F-12: a return gain that had to be clamped is disclosed on the command.
+  const gainEvent = valueClamp(
+    `return:${returnId}`,
+    `${doc.returns.find((r) => r.id === returnId)?.name ?? "Return"} gain`,
+    gain,
+    clamped,
+    0,
+    1.5,
+  );
   const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
     ...d,
     returns: d.returns.map((r) => (r.id === returnId ? { ...r, gain: v } : r)),
@@ -100,6 +120,7 @@ export function setReturnGain(doc: ProjectDocument, returnId: string, gain: numb
   return {
     type: "setReturnGain",
     label: "Set return gain",
+    ...(gainEvent ? { clamps: [gainEvent] } : {}),
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {

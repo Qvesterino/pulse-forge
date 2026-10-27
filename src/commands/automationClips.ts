@@ -10,10 +10,12 @@ import {
   automationTargetKey,
   clampTargetValue,
   isAutomationTargetValid,
+  targetClampSink,
   targetParamDef,
 } from "../project-model/targets";
 import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import { uid } from "../shared/ids";
+import { collectClamps } from "../shared/clamp-report";
 import { clipGroupsWithoutIds } from "./clipGroups";
 import { unlinkMarkersOfClips } from "./docOps";
 import { snapshot } from "./core";
@@ -72,11 +74,15 @@ export function addAutomationClip(
 ): Command {
   if (!isAutomationTargetValid(doc, target)) throw new Error("Invalid automation clip target");
   const geometry = safeGeometry(startTick, lengthTicks);
+  // Audit F-12: a curve built from out-of-range points is clamped — the toast
+  // says how many points moved, instead of the curve quietly ending elsewhere.
+  const { events, sink: record } = collectClamps();
+  const sink = targetClampSink(doc, target, record);
   const curve = points
     .filter((point) => Number.isFinite(point.tick) && Number.isFinite(point.value))
     .map((point) => ({
       tick: Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.max(0, Math.round(point.tick))),
-      value: clampTargetValue(doc, target, point.value),
+      value: clampTargetValue(doc, target, point.value, sink),
     }))
     .sort((a, b) => a.tick - b.tick)
     .slice(0, 16384);
@@ -97,7 +103,10 @@ export function addAutomationClip(
       automationClips: [...(doc.arrangement.automationClips ?? []), clip].sort((a, b) => a.startTick - b.startTick),
     },
   };
-  return snapshot("addAutomationClip", "Add arrangement automation clip", doc, next);
+  return {
+    ...snapshot("addAutomationClip", "Add arrangement automation clip", doc, next),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
 }
 
 export function linkAutomationClipTarget(doc: ProjectDocument, clipId: string, target: AutomationTarget): Command {
@@ -236,17 +245,23 @@ export function addAutomationClipPoint(
   editable(clip);
   if (!Number.isFinite(visibleTick) || !Number.isFinite(value)) throw new Error("Automation point must be finite");
   const tick = (clip.phaseOffsetTicks ?? 0) + Math.max(0, Math.min(clip.lengthTicks, Math.round(visibleTick)));
-  const point = { tick, value: clampTargetValue(doc, clip.target, value) };
+  // Audit F-12: the point's value may land outside the parameter's range —
+  // the disclosure rides on the command.
+  const { events, sink: record } = collectClamps();
+  const point = { tick, value: clampTargetValue(doc, clip.target, value, targetClampSink(doc, clip.target, record)) };
   const points = clip.points.filter((candidate) => candidate.tick !== tick);
-  return snapshot(
-    "addAutomationClipPoint",
-    "Add automation clip point",
-    doc,
-    withClip(doc, {
-      ...clip,
-      points: insertPointSorted(points, point),
-    }),
-  );
+  return {
+    ...snapshot(
+      "addAutomationClipPoint",
+      "Add automation clip point",
+      doc,
+      withClip(doc, {
+        ...clip,
+        points: insertPointSorted(points, point),
+      }),
+    ),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
 }
 
 export function removeAutomationClipPoint(doc: ProjectDocument, clipId: string, pointIndex: number): Command {
@@ -284,14 +299,20 @@ export function moveAutomationClipPoint(
     throw new Error("Automation point position and value must be valid");
   }
   const tick = (clip.phaseOffsetTicks ?? 0) + Math.max(0, Math.min(clip.lengthTicks, Math.round(visibleTick)));
-  const point = { tick, value: clampTargetValue(doc, clip.target, value) };
+  // Audit F-12: a drag that overshoots the parameter's range is clamped — the
+  // toast says so instead of the curve quietly ending somewhere else.
+  const { events, sink: record } = collectClamps();
+  const point = { tick, value: clampTargetValue(doc, clip.target, value, targetClampSink(doc, clip.target, record)) };
   const points = clip.points.filter((_candidate, index) => index !== pointIndex && _candidate.tick !== tick);
-  return snapshot(
-    "moveAutomationClipPoint",
-    "Move automation clip point",
-    doc,
-    withClip(doc, { ...clip, points: insertPointSorted(points, point) }),
-  );
+  return {
+    ...snapshot(
+      "moveAutomationClipPoint",
+      "Move automation clip point",
+      doc,
+      withClip(doc, { ...clip, points: insertPointSorted(points, point) }),
+    ),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
 }
 
 export function setAutomationClipMuted(doc: ProjectDocument, clipId: string, muted: boolean): Command {

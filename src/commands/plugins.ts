@@ -14,6 +14,7 @@ import {
   buildDefaultParams as buildMorphDefaults,
 } from "../effects/morph-dynamics-core/contracts/parameterSchema";
 import { sanitizeDeviceState } from "../project-model/schema";
+import { collectClamps, valueClamp, type ClampEvent } from "../shared/clamp-report";
 import { trackEffectsOf, withTrackEffects } from "./docOps";
 
 /**
@@ -70,11 +71,21 @@ export function setFxEqParam(
     ? (target.params[docId] ?? rackDef?.default ?? 1)
     : (target.params[fullId] ?? schema.defaultParams[fullId] ?? coreDef!.defaultValue);
   const safeValue = Number.isFinite(docValue) ? docValue : previous;
+  // Audit F-12: the value that lands on the document may differ from the one
+  // that was asked for — the disclosure rides on the command.
+  const { events, sink: record } = collectClamps();
   const clamped = rackDef
-    ? Math.max(rackDef.min, Math.min(rackDef.max, safeValue))
+    ? clampRackParam(`effect:fxeq.${docId}`, `PRISM ${rackDef.label}`, safeValue, rackDef.min, rackDef.max, record)
     : fullId === "crossoverOrder" || fullId === "crossoverEqualize"
-      ? clampEffectParam("fxeq", fullId, safeValue)
-      : Math.max(coreDef!.minValue, Math.min(coreDef!.maxValue, safeValue));
+      ? clampEffectParam("fxeq", fullId, safeValue, record)
+      : clampRackParam(
+          `effect:fxeq.${fullId}`,
+          `PRISM ${coreDef!.name}`,
+          safeValue,
+          coreDef!.minValue,
+          coreDef!.maxValue,
+          record,
+        );
 
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
@@ -83,9 +94,28 @@ export function setFxEqParam(
   return {
     type: "setFxEqParam",
     label: `PRISM ${docId}`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, { [docId]: clamped }),
     undo: (d) => apply(d, { [docId]: previous }),
   };
+}
+
+/**
+ * Clamp one plugin parameter and REPORT the change (audit F-12) — the range
+ * belongs to the rack/core def, the disclosure belongs to the caller.
+ */
+function clampRackParam(
+  target: string,
+  label: string,
+  value: number,
+  min: number,
+  max: number,
+  record: (event: ClampEvent) => void,
+): number {
+  const applied = Math.max(min, Math.min(max, value));
+  const event = valueClamp(target, label, value, applied, min, max);
+  if (event) record(event);
+  return applied;
 }
 
 /** Apply an FXEQ preset in ONE undoable gesture: schema defaults + preset params. */
@@ -103,13 +133,17 @@ export function applyFxEqPreset(
   // and an out-of-range or unknown id must never reach the DSP or the
   // persisted doc verbatim.
   const nextParams: Record<string, number> = { ...schema.defaultParams };
+  // Audit F-12: a preset whose values fall outside the parameter ranges is
+  // clamped — disclosed, so the patch that lands is not a silent relative of
+  // the preset that was chosen.
+  const { events, sink: record } = collectClamps();
   for (const [id, value] of Object.entries(presetParams)) {
     const def = schema.defs.find((d) => d.id === id);
     if (!def || typeof value !== "number" || !Number.isFinite(value)) continue;
     nextParams[id] =
       id === "crossoverOrder" || id === "crossoverEqualize"
-        ? clampEffectParam("fxeq", id, value)
-        : Math.max(def.minValue, Math.min(def.maxValue, value));
+        ? clampEffectParam("fxeq", id, value, record)
+        : clampRackParam(`effect:fxeq.${id}`, `PRISM ${def.name}`, value, def.minValue, def.maxValue, record);
   }
   const previousParams = { ...target.params };
   // Undo must restore a CANONICAL full map, not the raw partial previous
@@ -125,6 +159,7 @@ export function applyFxEqPreset(
   return {
     type: "applyFxEqPreset",
     label: `PRISM preset ${presetName}`,
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => apply(d, nextParams),
     undo: (d) => apply(d, undoParams),
   };
@@ -318,13 +353,18 @@ export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: st
   };
   const pluginParams = normalizePluginParams(target.type, shapeSource);
   const restored: Record<string, number> = pluginParams ?? { ...defaultParamsOf(target.type) };
+  let restoreClamps: ClampEvent[] = [];
   if (!pluginParams) {
+    // Audit F-12: a stored snapshot can hold values the current parameter
+    // ranges no longer accept — the restore clamps them, and says so.
+    const { events, sink: record } = collectClamps();
     for (const [id, value] of Object.entries(snapshot)) {
       const def = EFFECT_META[target.type].params.find((param) => param.id === id);
       if (def && typeof value === "number" && Number.isFinite(value)) {
-        restored[id] = clampEffectParam(target.type, id, value);
+        restored[id] = clampEffectParam(target.type, id, value, record);
       }
     }
+    if (events.length > 0) restoreClamps = events;
   }
   const nextDeviceState: DeviceState = {
     kind: "effect-ab-v1",
@@ -347,6 +387,7 @@ export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: st
   return {
     type: "loadEffectAbSlot",
     label: "A/B -> slot " + slot,
+    ...(restoreClamps.length > 0 ? { clamps: restoreClamps } : {}),
     execute: (d) => apply(d),
     undo: (d) => restore(d),
   };

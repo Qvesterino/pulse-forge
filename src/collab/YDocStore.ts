@@ -40,6 +40,8 @@ export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 /** Whether the crash buffer can hold this project. Mirrors `ProjectStore`. */
 export type { RecoveryStatus, StoreNotice } from "../store/ProjectStore";
 import type { RecoveryStatus, StoreNotice } from "../store/ProjectStore";
+import { normalizerRepairs } from "../store/clampRepairs";
+import { describeClamps } from "../shared/clamp-report";
 
 /**
  * Pre-first-sync guard window. `YDocStore.empty()` starts with an UNKNOWN
@@ -83,6 +85,14 @@ export class YDocStore {
   private noticeId_ = 0;
   private undoManager: Y.UndoManager;
   private pendingLabel: string | null = null;
+  /**
+   * Consequence note of the command in flight (audit F-12): the values that
+   * had to be clamped, or the fields the normaliser repaired. Stashed on the
+   * undo stack item like the label, so the toast can show it in collab too.
+   */
+  private pendingDetail: string | null = null;
+  /** Detail of the item just moved to the opposite stack by undo()/redo(). */
+  private lastUndoneDetail: string | null = null;
   /** Label of the item just moved to the opposite stack by undo()/redo(). */
   private lastUndoneLabel: string | null = null;
   private lastCoalesce: { key: string; at: number } | null = null;
@@ -131,6 +141,8 @@ export class YDocStore {
       stackItem.meta.set("label", label);
       stackItem.meta.set("timestamp", Date.now());
       stackItem.meta.set("type", "collab");
+      const detail = this.pendingDetail ?? this.lastUndoneDetail;
+      if (detail) stackItem.meta.set("detail", detail);
       void type;
     });
 
@@ -265,10 +277,14 @@ export class YDocStore {
     return (top?.meta.get("label") as string | undefined) ?? null;
   }
 
-  /** Consequence notes (Command.detail) are a local-undo-stack concept —
-   * collab entries have none today; the toast simply renders single-line. */
+  /**
+   * Consequence note of the most recent command (audit F-12): the values that
+   * had to be clamped, or the fields the normaliser repaired. It rides on the
+   * undo stack item next to the label, so the toast shows it in collab too.
+   */
   get lastCommandDetail(): string | null {
-    return null;
+    const top = this.undoManager.undoStack[this.undoManager.undoStack.length - 1];
+    return (top?.meta.get("detail") as string | undefined) ?? null;
   }
 
   /** Last N undo entries (for the history panel), matching ProjectStore. */
@@ -442,6 +458,12 @@ export class YDocStore {
         const projected = yDocToProject(this.yMap);
         const normalized = normalizeProject(projected);
         if (normalized !== projected) applyProjectToYMap(projected, normalized, this.yMap);
+        // Audit F-12: the clamp disclosure reaches the toast in collab too —
+        // the command's own clamps plus the normaliser's repairs. It is set
+        // INSIDE the transaction, because the undo manager's stack-item event
+        // fires while the transaction is still open.
+        this.pendingDetail =
+          describeClamps([...(command.clamps ?? []), ...normalizerRepairs(projected, normalized)]) ?? null;
       }, this);
     } catch (err) {
       // A throw from applyToYDoc / command.execute / applyProjectToYMap
@@ -460,6 +482,7 @@ export class YDocStore {
       return;
     } finally {
       this.pendingLabel = null;
+      this.pendingDetail = null;
     }
     // One undo step per command (matching ProjectStore), except for
     // continuous gestures marked with a coalesceKey (MIDI CC sweeps) which
@@ -522,6 +545,7 @@ export class YDocStore {
     }
     const top = this.undoManager.undoStack[this.undoManager.undoStack.length - 1];
     this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
+    this.lastUndoneDetail = (top?.meta.get("detail") as string | undefined) ?? null;
     this.undoManager.undo();
     this.afterMutation();
     try {
@@ -541,6 +565,7 @@ export class YDocStore {
     }
     const top = this.undoManager.redoStack[this.undoManager.redoStack.length - 1];
     this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
+    this.lastUndoneDetail = (top?.meta.get("detail") as string | undefined) ?? null;
     this.undoManager.redo();
     this.afterMutation();
   }

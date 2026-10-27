@@ -2,8 +2,15 @@ import type { Command } from "./types";
 import type { AutomationLane, AutomationTarget, Lfo, LfoKind, Macro, ProjectDocument } from "../project-model/types";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { insertPointSorted } from "../project-model/automation";
-import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
+import {
+  clampTargetValue,
+  isAutomationTargetValid,
+  targetClampSink,
+  targetOwner,
+  targetParamDef,
+} from "../project-model/targets";
 import { clamp, uid } from "../shared/ids";
+import { collectClamps, type ClampSink } from "../shared/clamp-report";
 import { snapshot } from "./core";
 
 /**
@@ -89,17 +96,26 @@ export function addAutomationRamp(
   );
   if (exists) throw new Error("Automation lane for this target already exists");
 
+  // Audit F-12: the ramp's own guard checks the TARGET def's range; the
+  // authoritative clamp may live in the effect registry. If the two ranges
+  // disagree, the value that lands differs from the one that was asked for —
+  // the disclosure rides on the command.
+  const { events, sink: record } = collectClamps();
+  const sink = targetClampSink(doc, target, record);
   const lane: AutomationLane = {
     id: uid("lane"),
     target: { ...target },
-    points: insertPointSorted([], { tick: startTick, value: clampAutomationPointValue(doc, target, startValue) }),
+    points: insertPointSorted([], { tick: startTick, value: clampAutomationPointValue(doc, target, startValue, sink) }),
   };
   lane.points = insertPointSorted(lane.points, {
     tick: endTick,
-    value: clampAutomationPointValue(doc, target, endValue),
+    value: clampAutomationPointValue(doc, target, endValue, sink),
   });
   const next: ProjectDocument = { ...doc, automation: [...doc.automation, lane] };
-  return snapshot("addAutomationRamp", "Add automation ramp", doc, next);
+  return {
+    ...snapshot("addAutomationRamp", "Add automation ramp", doc, next),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
 }
 
 export function removeAutomationLane(doc: ProjectDocument, laneId: string): Command {
@@ -118,8 +134,13 @@ function withLane(doc: ProjectDocument, laneId: string, fn: (lane: AutomationLan
  * Ultina deep params clamp through the vendored schema; other effect params
  * through their registry def. Non-finite values fall back to the default.
  */
-function clampAutomationPointValue(doc: ProjectDocument, target: AutomationTarget, value: number): number {
-  return clampTargetValue(doc, target, value);
+function clampAutomationPointValue(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  value: number,
+  sink?: ClampSink,
+): number {
+  return clampTargetValue(doc, target, value, sink);
 }
 
 export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
@@ -127,13 +148,17 @@ export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: n
   if (!lane) throw new Error(`Lane ${laneId} not found`);
   // Audit 06 D4: Math.max(0, NaN) === NaN — a non-finite tick sorted
   // nondeterministically and corrupted valueAt's scan. Gate it finite.
+  // Audit F-12: the value the point ends up with may differ from the one that
+  // was asked for — the difference is disclosed, not silent.
+  const { events, sink: record } = collectClamps();
   const point = {
     tick: Number.isFinite(tick) ? Math.max(0, Math.round(tick)) : 0,
-    value: clampAutomationPointValue(doc, lane.target, value),
+    value: clampAutomationPointValue(doc, lane.target, value, targetClampSink(doc, lane.target, record)),
   };
   return {
     type: "addAutomationPoint",
     label: "Add automation point",
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) })),
     undo: (d) =>
       withLane(d, laneId, (l) => {
@@ -177,10 +202,17 @@ export function moveAutomationPoint(
   // array used to make points[index] undefined (TypeError) or move the
   // WRONG point.
   const original = lane.points[index]!;
-  const nextValue = delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
+  // Audit F-12: a drag that overshoots the parameter's range is clamped — the
+  // toast says so instead of the curve quietly ending somewhere else.
+  const { events, sink: record } = collectClamps();
+  const nextValue =
+    delta.value === undefined
+      ? undefined
+      : clampAutomationPointValue(doc, lane.target, delta.value, targetClampSink(doc, lane.target, record));
   return {
     type: "moveAutomationPoint",
     label: "Move automation point",
+    ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) =>
       withLane(d, laneId, (l) => {
         let at = l.points.findIndex((p) => p === original);

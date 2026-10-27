@@ -13,6 +13,7 @@
 import type { EffectType } from "../project-model/types";
 import type { ParamDef } from "./types";
 import { wfSwingPlan } from "../shared/wowflutter-math.js";
+import { valueClamp, type ClampSink } from "../shared/clamp-report";
 import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -328,18 +329,59 @@ export function defaultParamsOf(type: EffectType): Record<string, number> {
   return Object.fromEntries(EFFECT_META[type].params.map((p) => [p.id, p.default]));
 }
 
-export function clampEffectParam(type: EffectType, paramId: string, value: number): number {
+export function clampEffectParam(
+  type: EffectType,
+  paramId: string,
+  value: number,
+  /**
+   * Audit F-12: when the value had to be CHANGED, report it here instead of
+   * letting the change travel silently. The sink is optional — with no sink
+   * (a read path, the engine's own sync) the behaviour is exactly as before.
+   */
+  sink?: ClampSink,
+): number {
   const def: ParamDef | undefined = EFFECT_META[type].params.find((p) => p.id === paramId);
   if (!def) return value;
   // A non-finite value must fall back to the default — Math.min/max both
   // return NaN unchanged, and a NaN reaching a factory's smooth() throws
   // TypeError in real browsers (setTargetAtTime), killing the engine sync.
-  if (!Number.isFinite(value)) return def.default;
+  if (!Number.isFinite(value)) {
+    const event = valueClamp(
+      `effect:${type}.${paramId}`,
+      `${EFFECT_META[type].name} ${def.label}`,
+      value,
+      def.default,
+      def.min,
+      def.max,
+      "not a number — the default was used",
+    );
+    if (event) sink?.(event);
+    return def.default;
+  }
   const clamped = Math.min(def.max, Math.max(def.min, value));
-  if (type === "fxeq" && paramId === "crossoverOrder") return snapCrossoverOrder(clamped);
-  if (type === "fxeq" && paramId === "crossoverEqualize") return clamped >= 0.5 ? 1 : 0;
-  if (type === "bitcrusher" && paramId === "downsample") return snapDownsamplePower(clamped);
-  return clamped;
+  let applied = clamped;
+  let note: string | undefined;
+  if (type === "fxeq" && paramId === "crossoverOrder") {
+    applied = snapCrossoverOrder(clamped);
+    note = "crossover order snaps to 1/2/4";
+  } else if (type === "fxeq" && paramId === "crossoverEqualize") {
+    applied = clamped >= 0.5 ? 1 : 0;
+    note = "on/off";
+  } else if (type === "bitcrusher" && paramId === "downsample") {
+    applied = snapDownsamplePower(clamped);
+    note = "power of two";
+  }
+  const event = valueClamp(
+    `effect:${type}.${paramId}`,
+    `${EFFECT_META[type].name} ${def.label}`,
+    value,
+    applied,
+    def.min,
+    def.max,
+    note,
+  );
+  if (event) sink?.(event);
+  return applied;
 }
 
 /**
