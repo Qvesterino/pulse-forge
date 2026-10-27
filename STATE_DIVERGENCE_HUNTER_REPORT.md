@@ -148,7 +148,7 @@ is deliberate rather than accidental.
 
 | Domain value                  | Authority                                                                                                               | Writers                                                | Consumers                                                | Transition contract                                                                                                                                        | Persistence                                                                                     | Potential drift                                                                          |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Project document (all slices) | `ProjectStore.doc_` (`src/store/ProjectStore.ts:75, 264`) — replaced, never mutated                                     | `store.execute` / `executeUserEdit` only; `replaceDoc` | UI hooks, engine, scheduler, renderer                    | command → `execute` → identity guard (`:256-263`) → `normalizeProject` (`:264`) → undo push (`:265`)                                                       | IndexedDB `projects`, whole doc, one transaction (`src/persistence/ProjectRepository.ts:50-62`) | none at this layer — verified                                                            |
+| Project document (all slices) | `ProjectStore.doc_` (`src/store/ProjectStore.ts:77, 264`) — replaced, never mutated                                     | `store.execute` / `executeUserEdit` only; `replaceDoc` | UI hooks, engine, scheduler, renderer                    | command → `execute` → identity guard (`:256-263`) → `normalizeProject` (`:264`) → undo push (`:265`)                                                       | IndexedDB `projects`, whole doc, one transaction (`src/persistence/ProjectRepository.ts:50-62`) | none at this layer — verified                                                            |
 | Undo / redo history           | `ProjectStore.undoStack` / `redoStack` (`:28-29`)                                                                       | `applyCommand` (`:265`), `undo`/`redo`                 | UI history panel, `kyx_undo`                             | delta snapshot (`src/commands/core.ts:34-45`), history capped at 256 (`:269-273`)                                                                          | not persisted                                                                                   | undo inside an open frame (F-22)                                                         |
 | Save status / watermark       | `ProjectStore.saveStatus_` / `lastSavedAt_`                                                                             | `services.doSave` only                                 | TopBar, `kyx_save`                                       | revision-guarded (`src/services.ts:1153, 1173-1179`)                                                                                                       | **never persisted**                                                                             | three notions of "when" (F-15)                                                           |
 | Unload recovery buffer        | `localStorage["kyx:recovery-buffer:v1:<projectId>"]` — one slot **per project**; a legacy single key is migrated        | `services.onUnload` (sync)                             | `ProjectBrowser`                                         | per-project slot; the write result is **discarded**                                                                                                        | localStorage                                                                                    | **a failed write is not surfaced (F-04, second half)**                                   |
@@ -160,7 +160,7 @@ is deliberate rather than accidental.
 | Track gain                    | `track.gain` (fader) + `modAutoGain` (automation **lane — a multiplier**) + `modMacroGain` (macro — a multiplier)       | commands                                               | mixer UI                                                 | chain `gain → modAutoGain → modAutoPan → modMacroGain` (`AudioEngine.ts:2016-2019`; the return strip is `gain → modAutoGain → modMacroGain`, `:1904-1906`) | with the document                                                                               | **the lane is a multiplier but is labelled and scaled like an absolute "Volume" (F-10)** |
 | Automation lane               | `doc.automation` points                                                                                                 | commands, MCP                                          | engine (runtime only), arrangement lanes                 | `writeAutomationTargetAt` (`src/audio-engine/automationBridge.ts:1291-1310`)                                                                               | with the document                                                                               | points have **no identity** → addressed by value and by position (F-07, F-29)            |
 | MCP read model                | **none** — tools read `ctx.getDoc()` live                                                                               | —                                                      | all tools                                                | —                                                                                                                                                          | —                                                                                               | idempotency ledger replay (F-06)                                                         |
-| Session checkpoint / A-B      | `masterAbStore`, outside the document (`src/mcp/tools.ts:75`)                                                           | MCP session                                            | `kyx_master`                                             | not invalidated on document change                                                                                                                         | not persisted                                                                                   | stale restore (F-08)                                                                     |
+| Session checkpoint / A-B      | `masterAbStore`, outside the document (`src/mcp/tools.ts:77`)                                                           | MCP session                                            | `kyx_master`                                             | not invalidated on document change                                                                                                                         | not persisted                                                                                   | stale restore (F-08)                                                                     |
 
 ### 2.2 Propagation graph (one intent → one transition → N representations)
 
@@ -368,7 +368,7 @@ _Hypothesis — not reproduced_** by the §5.7 probe. One remains a **Hypothesis
 >
 > `setTrackParams` drops fields equal to the current value and returns an **identity command**
 > (`execute: (d) => d`), and `ProjectStore.applyCommand` then hits its identity guard
-> (`src/store/ProjectStore.ts:256-263`) — so the document was byte-identical, **no undo entry
+> (`src/store/ProjectStore.ts:279-286`) — so the document was byte-identical, **no undo entry
 > existed**, the project was not even marked dirty, and the AI was nevertheless told
 > `mutated: true` and _"renamed to X"_.
 >
@@ -466,7 +466,7 @@ _Hypothesis — not reproduced_** by the §5.7 probe. One remains a **Hypothesis
 - **Affected journey:** any AI call that targets a stale entity.
 - **Authoritative state:** the MCP result envelope (`isError`, `errorCode`, `mutated`, `text`).
 - **Expected contract:** a refusal is machine-detectable. The repo has a shaped constructor for
-  exactly this — `src/mcp/tools.ts:3573-3579`: _"The single shaped constructor for error results —
+  exactly this — `src/mcp/tools.ts:3576-3582`: _"The single shaped constructor for error results —
   every `isError` result carries one"_ (`mcpError(code, text)` → `{text, mutated:false, isError:true,
 errorCode}`), and a documented code taxonomy at `:3550-3568`.
 - **Observed divergence — measured directly (probe P5):**
@@ -482,7 +482,7 @@ errorCode}`), and a documented code taxonomy at `:3550-3568`.
   | `kyx_notes` stale `noteId`           | `true`                   | `UNKNOWN_TARGET` | no          |
   | **`kyx_automation` stale `trackId`** | **unset (not an error)** | **none**         | no          |
 
-  `executeAutomationTool` returns refusals as plain prose: `src/mcp/tools.ts:7863`
+  `executeAutomationTool` returns refusals as plain prose: `src/mcp/tools.ts:7865`
   `if (typeof target === "string") return { text: target, mutated: false };` — and every other
   refusal in that handler follows the same shape (`:7864-7869, 7874, 7877-7881, 7897, 7919, 7922,
 7924, 7938, 7952, 7955, 7957, 7970`).
@@ -492,8 +492,8 @@ errorCode}`), and a documented code taxonomy at `:3550-3568`.
   SDK) that keys on `isError` / a status enum reads the refusal as a completed call. Only a model
   that reads the prose catches it. This is the "visibility gap" class in its purest form: internally
   correct, but the user cannot verify the outcome from the contract.
-- **Evidence:** probe P5 output (§5); `src/mcp/tools.ts:7863` and the refusal list above;
-  `src/mcp/tools.ts:3550-3568, 3573-3579` (the convention that exists).
+- **Evidence:** probe P5 output (§5); `src/mcp/tools.ts:7865` and the refusal list above;
+  `src/mcp/tools.ts:3553-3571, 3573-3579` (the convention that exists).
 - **Root-cause hypothesis:** `mcpError` was adopted tool-by-tool rather than enforced at the
   dispatch boundary.
 - **Smallest safe repair:** route the automation handler's refusals through
@@ -525,10 +525,10 @@ errorCode}`), and a documented code taxonomy at `:3550-3568`.
 
 - **Affected journey:** an agent retries a call with the same `requestId` after a human has edited
   the same value.
-- **Authoritative state:** the MCP idempotency ledger (`src/mcp/tools.ts:4033`).
+- **Authoritative state:** the MCP idempotency ledger (`src/mcp/tools.ts:4036`).
 - **Expected contract:** a replay tells the agent what is true _now_.
 - **Observed divergence:** on a repeated `requestId`, the tool returns the **cached result object**
-  (`src/mcp/tools.ts:4372-4397`):
+  (`src/mcp/tools.ts:4375-4400`):
   ```ts
   const cached = idempotencyLedger.get(requestId);
   …
@@ -542,7 +542,7 @@ errorCode}`), and a documented code taxonomy at `:3550-3568`.
   The response is also internally contradictory: `cached.result.mutated` is spread through
   unchanged, so the replay reports **`mutated: true`** while its own text says _"nothing
   re-executed"_, while the audit log for the same call records `mutated: false`
-  (`src/mcp/tools.ts:4448`).
+  (`src/mcp/tools.ts:4451`).
 - **Evidence — measured (§5.2):**
   ```
   [F-06] first  text: Drums: gain 0.250 (-12.0 dB) — read-back: track "Drums" gain 0.9 -> 0.25
@@ -602,7 +602,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 > undo removes the human's point outright — while F-07 keeps the duplication half. The two share one
 > root cause (an automation point has no identity) and one repair.
 > **The repair already exists in the sibling command:** `moveAutomationPoint` re-anchors by identity
-> then by `(tick, value)` — "Audit 06 D3" (`src/commands/automation.ts:112-115`), pinned by
+> then by `(tick, value)` — "Audit 06 D3" (`src/commands/automation.ts:128-131`), pinned by
 > `tests/automation-audit.test.ts:91-110`. `addAutomationPoint.undo` never got it.
 
 > **Measured (§5.2):** the identical write duplicated the point and grew the undo stack.
@@ -622,11 +622,11 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 - **Authoritative state:** `doc.automation[].points`.
 - **Expected contract:** an undo removes the point it created.
 - **Observed divergence:** an automation point carries only `tick` and `value` — **no identity**
-  (`src/commands/automation.ts:83-86`). The undo resolves by value:
+  (`src/commands/automation.ts:90-93`). The undo resolves by value:
   ```ts
   const idx = l.points.findIndex((p) => p.tick === point.tick && p.value === point.value);
   ```
-  (`src/commands/automation.ts:91-99`) — it removes the **first** match. When the human's point was
+  (`src/commands/automation.ts:105-113`) — it removes the **first** match. When the human's point was
   inserted first at the same `(tick, value)`, the AI's undo deletes the _human's_ point and leaves
   the AI's own point behind. Because the two are value-identical, the document JSON after the undo
   is indistinguishable from a correct undo — the damage is invisible to any document-level diff.
@@ -635,7 +635,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   so repeated identical `addPoint` calls each add a point and each push an undo entry. The MCP ack
   (`src/mcp/tools.ts` `addPoint` branch) reports only the _last_ point at that tick, so the
   duplication shows up only as a rising point count.
-- **Evidence:** `src/commands/automation.ts:78-101`; `src/project-model/automation.ts`
+- **Evidence:** `src/commands/automation.ts:85-108`; `src/project-model/automation.ts`
   `insertPointSorted`; `src/mcp/tools.ts` `executeAutomationTool` `addPoint` branch.
 - **Root-cause hypothesis:** automation points predate the need for identity; every other entity in
   the model (tracks, clips, effects, lanes) has an id.
@@ -656,7 +656,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 - **Affected journey:** AI restores an A/B snapshot after a human deleted the saved effect instance
   and added a different one of the same type.
 - **Authoritative state:** `EffectInstance.id`; the A/B snapshot lives _outside_ the document
-  (`src/mcp/tools.ts:75`, `masterAbStore`) and is never invalidated when the document changes.
+  (`src/mcp/tools.ts:77`, `masterAbStore`) and is never invalidated when the document changes.
 - **Expected contract:** a write aimed at a specific instance either hits it or fails.
 - **Observed divergence:** the restore resolves the instance by id **with an ordinal fallback**
   (`src/mcp/tools.ts`, `kyx_master` → `op: "ab"` → `restore`):
@@ -697,7 +697,7 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   into the runtime
   (`src/audio-engine/automationBridge.ts:1309` → `writeDeviceTargetAt` →
   `src/audio-engine/deviceLookup.ts`). The `param.secondary` affordance
-  (`src/effects/types.ts:39`, `src/effects/definitions.ts:937, 948`) is computed from the _same_
+  (`src/effects/types.ts:39`, `src/effects/definitions.ts:979, 948`) is computed from the _same_
   document values, so it does not disclose the gap. There is **no "under automation" indicator**
   anywhere in the rack or inspector.
 - **Consequence:** during playback the knob reads the committed value, the audio plays the lane
@@ -748,7 +748,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
      writes (`src/audio-engine/automationBridge.ts:1208-1218`) — the code's own comment: _"Gain
      modulators swing the channel multiplier around base 1"_. An absolute-gain param has no base 1.
   2. **A new lane starts at unity.** `targetParamDef` declares `default: 1` for `trackGain`
-     (`src/project-model/targets.ts:231`) and the lane editor creates a new lane at that default
+     (`src/project-model/targets.ts:232`) and the lane editor creates a new lane at that default
      (`src/ui/arrangement/AutomationClipLanes.tsx:250`) — so adding a lane **cannot change the
      sound**. Under absolute semantics a new lane would have to start at the fader's value, or adding
      a lane would jump the mix.
@@ -771,7 +771,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **What actually diverges.** The lane's number is a **multiplier**, but:
   - it is **labelled "Volume"** — `targetParamDef` returns
     `{ id: "gain", label: "Volume", min: 0, max: 1.5, default: 1 }` for `trackGain`
-    (`src/project-model/targets.ts:231`), the _same definition_ the absolute fader uses;
+    (`src/project-model/targets.ts:232`), the _same definition_ the absolute fader uses;
   - it is **drawn on the same 0..1.5 scale as the fader** — `clampFaderGain` bounds the fader at
     0..1.5 (`src/audio-engine/AudioEngine.ts:73-75`) and the lane is drawn on `def.min..def.max`
     (`src/ui/arrangement/AutomationClipLanes.tsx:122`);
@@ -782,7 +782,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   scale while meaning something else.
 - **Evidence:** measurement above; `src/audio-engine/automationBridge.ts:1208-1218, 1191-1210,
 1326-1353`; `src/audio-engine/AudioEngine.ts:2016-2019, 73-75`;
-  `src/project-model/targets.ts:231`; `src/ui/arrangement/AutomationClipLanes.tsx:122, 250`.
+  `src/project-model/targets.ts:232`; `src/ui/arrangement/AutomationClipLanes.tsx:122, 250`.
   The `mixer-audit3` suite already pins the _clamp_ on this lane (0..1.5) and never the
   _composition_ — `tests/mixer-audit3.test.ts:355-370`.
 - **Smallest safe repair — now purely additive, no ADR and no behaviour change:**
@@ -849,14 +849,14 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Authoritative state:** `normalizeProject` (`src/project-model/schema.ts`).
 - **Expected contract:** a value the user set is either honoured or the change is disclosed.
 - **Observed divergence:** `normalizeProject` runs after **apply, coalesce, undo and redo**
-  (`src/store/ProjectStore.ts:236, 264, 381, 414`) — not only on load. It clamps, among others:
+  (`src/store/ProjectStore.ts:235, 264, 381, 414`) — not only on load. It clamps, among others:
   limiter lookahead 1..20 ms and release 10..2000 ms; loudness trim ±12 dB; LUFS target −24..0;
   and **truncates `liveSets` at 32 — the 33rd set is silently dropped**. It also deletes the legacy
   `limiterStereoLink` field and copies it into transient/release links — a v20 migration
   implemented inside a normaliser. `Command.detail` exists precisely for _"silently cleaned something
-  up"_ (`src/store/ProjectStore.ts:100-104`), but normaliser clamps are **not** routed into it.
+  up"_ (`src/store/ProjectStore.ts:123-127`), but normaliser clamps are **not** routed into it.
 - **Evidence:** `src/project-model/schema.ts` (`normalizeProject` and its domain clamps);
-  `src/store/ProjectStore.ts:236, 264, 381, 414, 100-104`.
+  `src/store/ProjectStore.ts:235, 264, 381, 414, 100-104`.
 - **Root-cause hypothesis:** the normaliser grew from a load-time repair routine into a
   per-command invariant enforcer, keeping its silent-clamp semantics.
 - **Smallest safe repair:** have the normaliser collect what it changed and surface it through
@@ -958,7 +958,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   report.
 - **Observed divergence:** `ProjectRepository.save` stamps `updatedAt` on a **shallow copy**
   (`src/persistence/ProjectRepository.ts:52`) — the in-memory document keeps the previous value.
-  `setSaveStatus("saved")` stamps a _separate_ `lastSavedAt_` (`src/store/ProjectStore.ts:210`).
+  `setSaveStatus("saved")` stamps a _separate_ `lastSavedAt_` (`src/store/ProjectStore.ts:233`).
   The library list shows the stored `updatedAt`; the TopBar shows `lastSavedAt`; anything reading
   `doc.updatedAt` from the live document (export reports, share payloads) sees the **previous
   save's** timestamp.
@@ -976,10 +976,10 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Affected journey:** two people edit the same project in a collab session; the session ends (or
   the project is exported); the wet/dry the user hears changes under them.
 - **Observed divergence:** `YDocStore` re-projects with `normalize = false` for local-origin edits
-  (`src/collab/YDocStore.ts:139-143` — `this.doc_ = this.readDoc(origin !== this)`), and its
-  `execute()` path never normalises either (`src/collab/YDocStore.ts:391-399` — the command's raw
+  (`src/collab/YDocStore.ts:151-155` — `this.doc_ = this.readDoc(origin !== this)`), and its
+  `execute()` path never normalises either (`src/collab/YDocStore.ts:407-415` — the command's raw
   output goes straight into the Y.Doc). `ProjectStore` normalises after every command
-  (`src/store/ProjectStore.ts:264`). **The same command therefore yields a different document shape
+  (`src/store/ProjectStore.ts:287`). **The same command therefore yields a different document shape
   solo vs collab.**
 - **MEASURED (§5.9, T10).** The same command — `setFxEqParam(..., "globalMix", 30)` — applied to a
   solo store and to a collab store built from the _same_ document:
@@ -999,7 +999,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   command whose output is already normalised produces an identical document in both paths.
 - **THE COUPLING TO F-28 IS THE POINT.** In solo, the PRISM write-back is **discarded** by the
   normaliser (F-28: `normalizePluginParams` keeps `mix` as the source of truth and derives
-  `globalMix` from it — `src/effects/definitions.ts:415-418`). **In collab the same write-back
+  `globalMix` from it — `src/effects/definitions.ts:457-460`). **In collab the same write-back
   lands**, because the normaliser that discards it never runs. So **the Critical finding F-28
   behaves differently in the two modes**, and a fix for F-28 that only touches the solo path would
   leave the collab path untouched — and vice versa. T10c shows the consequence: the document the
@@ -1062,7 +1062,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Observed divergence:** `src/effects/registry.ts:979-981` —
   `case "detector": case "scHpf": break; // no native equivalent — parameter stays stored`.
   The worklet path honours them (`:949`). The UI shows DETECTOR and SC HPF knobs
-  (`src/effects/definitions.ts:809, 819`) that do nothing until the module loads.
+  (`src/effects/definitions.ts:851, 819`) that do nothing until the module loads.
 - **Smallest safe repair:** hide or disable the two knobs when the native fallback is active.
 
 ---
@@ -1106,7 +1106,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 
 - **Observed divergence:** `ProjectStore.undo()` never consults `frameCommands`, while
   `endUndoFrame()` builds the compound command from `frameCommands`, which still contains the
-  undone command. `jumpTo` seals the frame first (`src/store/ProjectStore.ts:432`) — the codebase
+  undone command. `jumpTo` seals the frame first (`src/store/ProjectStore.ts:461`) — the codebase
   knows this hazard — but `undo()` does not. With ≥3 commands in a frame and one undo, the
   compound's `execute` re-applies the undone command on redo and its `undo` applies that command's
   undo twice.
@@ -1125,14 +1125,14 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   ```
   The frame's undo restored the baseline **exactly** — no resurrection, no partial revert. The reason
   is visible in the code: `endUndoFrame` computes `grew = undoStack.length − frameOpenDepth`
-  (`src/store/ProjectStore.ts:385`) and the inner undo already reduced that count, so the compound
+  (`src/store/ProjectStore.ts:414`) and the inner undo already reduced that count, so the compound
   was built from a **shorter** command list than the frame recorded. §5.7 T9b confirms the
   underlying mechanism _does_ exist — the compound's undo re-runs a command that was already undone
   inside the frame — but for the commands exercised (snapshot-based) that re-run is idempotent and
   changes nothing.
 - **So the finding is narrowed, not dismissed:** the hazard is real in the _mechanism_ but it needs a
   **value-addressed** command (an automation point's undo removes "one instance of that
-  (tick, value)" — `src/commands/automation.ts:94`) **and** a duplicate point to remove twice
+  (tick, value)" — `src/commands/automation.ts:107`) **and** a duplicate point to remove twice
   (F-07). That combination was not exercised here.
 - **Smallest safe repair:** have `undo()` seal or reconcile the open frame, exactly as `jumpTo`
   does.
@@ -1198,7 +1198,7 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
   no expected-revision guard, and no conflict signal — `ProjectDocument` has no revision field
   (`src/project-model/types.ts:1405-1445` — the interface ends at `updatedAt`; there is no revision
   field) and `ProjectStore.execute` takes no expected-version argument
-  (`src/store/ProjectStore.ts:245`).
+  (`src/store/ProjectStore.ts:268`).
 - **Root-cause hypothesis:** last-write-wins is the documented design for _field-level_ safety, but
   the design never addressed **intent age**. A write that was _issued_ first and _applied_ last wins,
   and the AI's acknowledgement does not say so.
@@ -1306,7 +1306,7 @@ is the only finding that breaks the product's own central contract.
      the restored value to the live DSP (`values[entry.id] = entry.value`; and `values["globalMix"]`
      _is_ the audible wet/dry — `:591`), then returned the **core** id (`globalMix`) and the **core**
      value (0..100).
-  5. `src/effects/definitions.ts:415-418` — `normalizePluginParams` **overwrites** `params.globalMix`
+  5. `src/effects/definitions.ts:457-460` — `normalizePluginParams` **overwrites** `params.globalMix`
      with `params.mix`, because the rack id is the source of truth.
   6. `src/project-model/schema.ts:797` — the normaliser runs on **every** command execute.
   7. `src/audio-engine/AudioEngine.ts:1620-1625` — `syncFxParams` pushes only keys that **differ**
@@ -1382,7 +1382,7 @@ is the only finding that breaks the product's own central contract.
   The AI's undo removed the **human's** point and left the **AI's** point standing — the exact
   inverse of what the undo label claims. The human's authored work is gone.
 - **A dead undo step follows.** The human's own command is still on the stack, but its undo searches
-  for "one instance of that (tick, value)" (`src/commands/automation.ts:94`) and no longer finds it —
+  for "one instance of that (tick, value)" (`src/commands/automation.ts:107`) and no longer finds it —
   so the next Ctrl+Z changes nothing while consuming a history entry (the same dead-step class as
   F-28).
 - **The window is precisely scoped — the plain stack order is SAFE.** Probe T7d is the control: with
@@ -1406,7 +1406,7 @@ is the only finding that breaks the product's own central contract.
   point ops (D3)"_), which pins that **`moveAutomationPoint` already tolerates a shifted index**:
   _"move tolerates a shifted index by re-anchoring on the captured point"_ (`:91-110`) — a collab peer
   prepends a point, the captured index shifts, and the move must still move _B_, not the wrong point.
-  The source says why, in the codebase's own words (`src/commands/automation.ts:112-115`):
+  The source says why, in the codebase's own words (`src/commands/automation.ts:128-131`):
 
   > _Audit 06 D3: re-anchor by IDENTITY, then by (tick, value) — the index was validated against the
   > FACTORY doc only; a collab peer shifting the array used to make points[index] undefined
@@ -1433,11 +1433,11 @@ product but no probe or test in this audit exercised it.
 
 | Scenario                                                                        | Trigger                                                       | Expected invariant                                                        | Observed / untested                                                                                                              | Evidence                                                                                                                         | Risk                 | Proposed test                                                                                                                |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Human moves a plugin slider while the AI issues a parameter update              | both target the same `fxId`                                   | the later write wins; both writers see the same document                  | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice      | `src/store/ProjectStore.ts:245` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only) | medium               | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
+| Human moves a plugin slider while the AI issues a parameter update              | both target the same `fxId`                                   | the later write wins; both writers see the same document                  | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice      | `src/store/ProjectStore.ts:268` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only) | medium               | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
 | Two intents target the same track/clip using stale IDs                          | the human deleted the clip; the AI holds the old id           | a typed, machine-detectable refusal                                       | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — typed path at `:10074-10087`; ordinal fallback in the A/B restore and the instance resolvers                | high (F-08)          | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution    |
 | A command acknowledges before the queued audio update is applied                | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms)                   | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1298-1303`                                               | low — _not a defect_ | assert the applied value reaches 95 % of the commanded value within 3 × tc                                                   |
-| Tool output claims success though the command failed or was rejected            | an AI call on a stale target                                  | `isError` + a typed code                                                  | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result                                            | `src/mcp/tools.ts:7863`; measured §5.2                                                                                           | high (F-05)          | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy                                     |
-| A human edits between an AI's call and its retry (same `requestId`)             | the AI retries a timed-out call                               | the retry reports the document's current value                            | **Observed — diverges.** The replay serves the _first_ call's read-back                                                          | `src/mcp/tools.ts:4391` (returns) vs `:4471` (the gate); measured §5.2                                                           | high (F-06)          | edit, retry the same `requestId`, assert the reported value equals the document's current value                              |
+| Tool output claims success though the command failed or was rejected            | an AI call on a stale target                                  | `isError` + a typed code                                                  | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result                                            | `src/mcp/tools.ts:7865`; measured §5.2                                                                                           | high (F-05)          | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy                                     |
+| A human edits between an AI's call and its retry (same `requestId`)             | the AI retries a timed-out call                               | the retry reports the document's current value                            | **Observed — diverges.** The replay serves the _first_ call's read-back                                                          | `src/mcp/tools.ts:4394` (returns) vs `:4471` (the gate); measured §5.2                                                           | high (F-06)          | edit, retry the same `requestId`, assert the reported value equals the document's current value                              |
 | The AI's write is acknowledged late, after the human has edited the same field  | the AI's command is applied after the human's                 | the later _intent_ wins, or the conflict is reported                      | **Observed — diverges.** The later-_applied_ write wins: the human's 0.9 is overwritten by the AI's older 0.5                    | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1405-1445`)                                                   | high (F-25)          | already measured — assert the documented precedence instead of the accidental one                                            |
 | The AI's write is acknowledged late, after the human edited a _different_ field | same, different field                                         | the human's unrelated edit survives                                       | **Observed — holds.** The delta snapshot preserves it                                                                            | measured §5.3 (T2); `src/commands/core.ts:34-45`                                                                                 | low                  | —                                                                                                                            |
 
@@ -1446,10 +1446,10 @@ product but no probe or test in this audit exercised it.
 | Scenario                                                                      | Trigger                                           | Expected invariant                                   | Observed / untested                                                                | Evidence                                                                     | Risk          | Proposed test                                                                                               |
 | ----------------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
 | Trim / move / fade followed by undo/redo during playback                      | the gesture is committed while the transport runs | undo restores every coupled value; the audio follows | **Observed** — the delta round-trip is exact; the engine resyncs on the doc change | probe P2/P3 (4 shapes, 0 fallbacks); `src/commands/docDelta.ts`              | low           | extend the battery to entity reordering and instrument creation (the 2 shapes this audit could not measure) |
-| Rapid consecutive changes coalesced in history, only partially restored       | a drag gesture coalesces within the window        | the coalesced entry restores the pre-gesture state   | **Observed** — the coalesce branch keeps the original before-snapshot              | `src/store/ProjectStore.ts:225-252`                                          | low           | coalesce a gesture, undo once, assert the pre-gesture state                                                 |
+| Rapid consecutive changes coalesced in history, only partially restored       | a drag gesture coalesces within the window        | the coalesced entry restores the pre-gesture state   | **Observed** — the coalesce branch keeps the original before-snapshot              | `src/store/ProjectStore.ts:248-275`                                          | low           | coalesce a gesture, undo once, assert the pre-gesture state                                                 |
 | Drag preview cancelled or interrupted, leaving domain state modified          | the pointer is released outside the target        | the domain is untouched                              | **Untested** — not exercised by this audit                                         | `src/ui/ArrangementPanel.tsx`                                                | medium        | cancel a drag mid-flight and assert the document is byte-identical                                          |
 | Track/clip removal while dependent selections or automation references remain | the human deletes a track that has lanes          | the references are invalidated cleanly               | **Observed** — `deleteTrack` cleans cross-references; the undo round-trips         | probe P2 (`deleteTrack`); `tests/delete-track-undo-cross-references.test.ts` | low           | —                                                                                                           |
-| Undo while a previous write or background load is in flight                   | undo during an open undo frame                    | the undone command is not resurrected on redo        | **Untested / Strongly indicated** — `undo()` never consults `frameCommands`        | `src/store/ProjectStore.ts:333-364, 366-409, 432`                            | medium (F-22) | build a ≥3-command frame, undo inside it, redo, assert the undone command does not return                   |
+| Undo while a previous write or background load is in flight                   | undo during an open undo frame                    | the undone command is not resurrected on redo        | **Untested / Strongly indicated** — `undo()` never consults `frameCommands`        | `src/store/ProjectStore.ts:358-389, 366-409, 432`                            | medium (F-22) | build a ≥3-command frame, undo inside it, redo, assert the undone command does not return                   |
 
 #### C. Audio engine and plugin synchronization
 
@@ -1459,8 +1459,8 @@ product but no probe or test in this audit exercised it.
 | Parameter unit mapping mismatch (0–1 vs dB/Hz/ms/%)                    | the doc stores a normalized value, the DSP wants a native one | the same intent yields the same sound on every surface     | **Observed — two separate owners** for dB→linear, and percent-100 bridges hardcoded in 2 of 4 registered pairs                                                                                                                                     | `src/effects/scale-bridges.ts:32, 75-84` vs `src/effects/registry.ts:162`; `ozvenaNode.ts:143`; `morphDynamicsNode.ts:23`       | low today, **high if one is edited** (F-20)                                         | assert every `SCALE_BRIDGES` entry is the function the node actually calls (fails today for ozvena + morphdynamics) |
 | A plugin preset restores UI fields but misses runtime processor values | a preset is applied                                           | the processor holds what the UI shows                      | **Observed — one candidate left open**: the parameter cache is seeded from the document and only pushes _differences_, so a factory that does not apply every parameter would leave it permanently unsent                                          | `src/audio-engine/AudioEngine.ts:1519, 1620-1625`                                                                               | medium — **not confirmed**; the shipped factories read appear to apply the full set | for every effect type, assert the runtime holds every document parameter after a rebuild                            |
 | A plugin instance is closed and reopened                               | remove the effect, add it back                                | the instance state is preserved, or the reset is disclosed | **Observed — diverges.** The reopened instance starts at the **factory defaults** and mints a **new id**, invalidating every AI-held reference to the old one                                                                                      | measured §5.3 (T3)                                                                                                              | low-medium (F-27)                                                                   | assert the AI surface discloses the reset                                                                           |
-| A plugin's in-plugin undo writes back into the document                | the user presses PRISM's ↶ Undo                               | the document, the UI and the DSP all show the undone value | **Observed — diverges, and it is the only second writer.** The DSP applies the undo and posts it back; the write arrives under the plugin's internal id (`globalMix`, 0..100) and the normaliser discards it in favour of the canonical id (`mix`) | **measured §5.3 (T6)**; `src/ui/FxEqPanel.tsx:219-227`; `src/effects/fxeqNode.ts:249-250`; `src/effects/definitions.ts:415-418` | **critical (F-28)**                                                                 | assert the document's `mix` changes, that document and core agree, and that a reload reproduces the same wet/dry    |
-| Reordered effects change the render but the visual order stays stale   | the user drags an effect in the chain                         | the graph order and the visual order agree                 | **Observed — contract-compliant.** Doc order → signature → rebuild → serial connect                                                                                                                                                                | `src/audio-engine/AudioEngine.ts:1420, 1516-1517`; `src/commands/effectParams.ts:326-344`                                       | low                                                                                 | —                                                                                                                   |
+| A plugin's in-plugin undo writes back into the document                | the user presses PRISM's ↶ Undo                               | the document, the UI and the DSP all show the undone value | **Observed — diverges, and it is the only second writer.** The DSP applies the undo and posts it back; the write arrives under the plugin's internal id (`globalMix`, 0..100) and the normaliser discards it in favour of the canonical id (`mix`) | **measured §5.3 (T6)**; `src/ui/FxEqPanel.tsx:219-227`; `src/effects/fxeqNode.ts:249-250`; `src/effects/definitions.ts:457-460` | **critical (F-28)**                                                                 | assert the document's `mix` changes, that document and core agree, and that a reload reproduces the same wet/dry    |
+| Reordered effects change the render but the visual order stays stale   | the user drags an effect in the chain                         | the graph order and the visual order agree                 | **Observed — contract-compliant.** Doc order → signature → rebuild → serial connect                                                                                                                                                                | `src/audio-engine/AudioEngine.ts:1420, 1516-1517`; `src/commands/effectParams.ts:378-396`                                       | low                                                                                 | —                                                                                                                   |
 | The audio thread reads unsafe mutable state                            | a param change during a render quantum                        | no torn multi-field transitions                            | **Observed — clean.** No I/O, logging or unbounded allocation in a processor callback; change-gated `postMessage`                                                                                                                                  | `src/audio-worklets/*`; `src/effects/fxeq-core/**`                                                                              | low                                                                                 | —                                                                                                                   |
 
 #### D. Playback, recording and automation
@@ -1492,10 +1492,10 @@ product but no probe or test in this audit exercised it.
 | An old completion overwrites a newer intent                                  | two async results resolve out of order              | the newer result wins                                | **Observed — guarded** for the async onset path (`live` flag)                                                                                                                                                                                                                                                                                 | `src/ui/ArrangementPanel.tsx:7008-7019`                                                                             | low                        | —                                                                                            |
 | Mounted/unmounted UI subscribers miss updates or recreate stale local copies | a panel mounts while the document changes           | the panel reads the current document                 | **Observed — diverges.** Fine-grained subscriptions mean an edit to an _unsubscribed_ slice does not re-render the consumer — which is exactly F-01's mechanism                                                                                                                                                                               | `src/ui/context.ts:85-138`; `src/project-model/schema.ts` (`normalizeProject` structural sharing)                   | **high (F-01)**            | mount `ExportPanel`, edit `doc.arrangement`, assert the panel's captured document is current |
 | Worker restart / IPC interruption / plugin reload                            | a device is unplugged                               | the session recovers without lying                   | **Observed — contract-compliant for recording**: the recorder stops itself on device loss, the group stops every member before invoking `onFailure`, and the UI resets to idle                                                                                                                                                                | `src/audio-engine/PcmMicRecorder.ts:703-708, 716-721`; `PcmMicRecorderGroup.ts:245`                                 | low                        | —                                                                                            |
-| A collab session's document differs from the saved one                       | the session ends, or the project is exported        | the document the user sees is the document they get  | **Observed — diverges.** The collab path re-projects local edits **without** normalisation, so the same command yields `params.globalMix = 1` solo and `30` in collab; normalising on the way out rewrites it. **The difference is the DSP's wet/dry**                                                                                        | `src/collab/YDocStore.ts:139-143, 391-399`; measured §5.9 (T10)                                                     | medium-high (F-16)         | already measured — assert one command yields one document in both store modes                |
+| A collab session's document differs from the saved one                       | the session ends, or the project is exported        | the document the user sees is the document they get  | **Observed — diverges.** The collab path re-projects local edits **without** normalisation, so the same command yields `params.globalMix = 1` solo and `30` in collab; normalising on the way out rewrites it. **The difference is the DSP's wet/dry**                                                                                        | `src/collab/YDocStore.ts:151-155, 391-399`; measured §5.9 (T10)                                                     | medium-high (F-16)         | already measured — assert one command yields one document in both store modes                |
 | Browser refresh with unsaved work                                            | the tab is closed                                   | the work is recoverable                              | **Partly resolved.** The single global slot is gone — the buffer is now keyed per project. What survives: the synchronous recovery write's **result is discarded** at the call site, so a quota failure loses the unload edit with no signal, while the function's own doc comment claims the caller treats it as _"no protection this time"_ | `src/persistence/save-lifecycle.ts:86-103`; `src/persistence/recoveryBuffer.ts:73-75, 77`; `src/services.ts:1328`   | medium (F-04, second half) | assert the unload handler surfaces a failed buffer write                                     |
 | Repeated command delivery is non-idempotent without dedup rules              | the AI retries an identical automation write        | the document does not accumulate duplicates          | **Observed — diverges.** The point count and the undo stack both grow                                                                                                                                                                                                                                                                         | measured §5.2; `src/project-model/automation.ts` (`insertPointSorted`)                                              | medium (F-07)              | already measured — assert `lane.points.length` stays 1 and the undo stack does not grow      |
-| An AI undo removes the **human's** point                                     | the lane shifts between the AI's write and its undo | the undo removes the point the command created       | **Observed — diverges.** A point has no identity, so its undo is anchored to a _position_: the AI's undo removed the **human's** point and left the AI's, then the human's own undo became a dead step. The plain stack order is safe; the window is a shift between command and undo                                                         | measured §5.7 (T7c/T7d); `src/commands/automation.ts:91-99`; `src/commands/docDelta.ts:309-313`                     | high (F-29)                | already measured — apply audit 06 D3's identity re-anchoring to the add's undo               |
+| An AI undo removes the **human's** point                                     | the lane shifts between the AI's write and its undo | the undo removes the point the command created       | **Observed — diverges.** A point has no identity, so its undo is anchored to a _position_: the AI's undo removed the **human's** point and left the AI's, then the human's own undo became a dead step. The plain stack order is safe; the window is a shift between command and undo                                                         | measured §5.7 (T7c/T7d); `src/commands/automation.ts:105-113`; `src/commands/docDelta.ts:309-313`                   | high (F-29)                | already measured — apply audit 06 D3's identity re-anchoring to the add's undo               |
 | A host that defers `ctx.execute`                                             | a queued, transactional or collab-backed store      | the acknowledgement describes what actually happened | **Observed — diverges (not live today).** The R-02 gate compares the document around the handler; with a deferred execute it answers _"nothing changed"_ for a mutation that lands afterwards. All three real hosts are synchronous, but the `void` type does not enforce it                                                                  | measured §5.3 (T5); `src/mcp/verified-mutation.ts`; hosts at `src/mcp/web-host.ts:77`, `src/mcp/desktop-host.ts:58` | medium (F-26)              | assert every registered MCP host applies the command inline                                  |
 
 ---
@@ -1894,7 +1894,7 @@ command and its undo, so the positional delete hit the wrong slot.
 ```
 
 A repeated identical `kyx_tracks setGain` adds **no** history entry — the identity guard in
-`ProjectStore.applyCommand` (`src/store/ProjectStore.ts:256-263`) catches it. **P6 is a pass.** This
+`ProjectStore.applyCommand` (`src/store/ProjectStore.ts:279-286`) catches it. **P6 is a pass.** This
 also draws the contrast with **F-07**, where the _automation_ path does **not** have that guard.
 
 **T9 — F-22: NOT REPRODUCED.**
@@ -1945,7 +1945,7 @@ search results.
 | **F-14**        | `tests/recovery-overwrite.test.ts`                                                      | **RESOLVED — the same commit.** 6 tests pin that a malformed, foreign or newer buffer is refused **without writing**, and that an old schema is migrated before it is used. All three failure modes this finding named are closed.                                                                                                                                                                                                 |
 | **F-05**        | `tests/mcp-error-codes.test.ts:107-124`                                                 | **PARTIALLY GUARDED — the _other half_ of the gate exists.** The repo already gates _un-coded_ errors. F-05's refusal is `isError: undefined` — not an error at all — so that gate cannot see it. F-05 is the **missing complementary half of an existing gate**, not a new idea.                                                                                                                                                  |
 | **F-06**        | `tests/mcp-idempotency.test.ts:16-17, 22-23, 94, 143-153`                               | **DUPLICATE (the stale read-back) + a real finding (the envelope).** The spec pins the replay's exact text and pins that it survives an undo: _"the replay still returns the original outcome"_ (ID6). The stale value is a **deliberate, pinned contract** — a product judgement, not a defect. What survives: the replay returns **before** the R-02 gate, so `mutated: true` contradicts its own text.                          |
-| **F-07 + F-29** | `tests/automation-audit.test.ts` (audit 06, D3)                                         | **THE FIX PATTERN ALREADY EXISTS — for the sibling command.** The spec pins _"move tolerates a shifted index by re-anchoring on the captured point"_ (`:91-110`), and the source names it: _"Audit 06 D3: re-anchor by IDENTITY, then by (tick, value)"_ (`src/commands/automation.ts:112-115`). `addAutomationPoint.undo` never got it. **F-29 is the missed sibling, not a new mechanism.**                                      |
+| **F-07 + F-29** | `tests/automation-audit.test.ts` (audit 06, D3)                                         | **THE FIX PATTERN ALREADY EXISTS — for the sibling command.** The spec pins _"move tolerates a shifted index by re-anchoring on the captured point"_ (`:91-110`), and the source names it: _"Audit 06 D3: re-anchor by IDENTITY, then by (tick, value)"_ (`src/commands/automation.ts:128-131`). `addAutomationPoint.undo` never got it. **F-29 is the missed sibling, not a new mechanism.**                                      |
 | **F-22**        | —                                                                                       | **NOT GUARDED, and not reproducible** (§5.7 T9/T9b). The mechanism exists but is idempotent for the commands exercised.                                                                                                                                                                                                                                                                                                            |
 | **F-01**        | none                                                                                    | **NOT GUARDED.** The scan's only hit is an unrelated comment (_"The map was never stale"_). **No spec asserts that the stem/track export path checks the document's freshness** — the master path's `assertMasterSourceCurrent` has no sibling on the export side.                                                                                                                                                                 |
 | **F-28**        | `tests/fxeq-host-integration.test.ts`, `tests/ui/fxeq-crossover-numeric-entry.test.tsx` | **NOT GUARDED — and the gap is exactly the seam where the bug lives.** The repo tests both _ends_ of the write-back: the worklet→host protocol (`undoParam` posts, the history reply resolves with the restored entry) and the UI→`onParam` write. **Nothing tests the join** — that `onParam`'s value reaches the _document_ as the same value, and survives a save + reload. Both ends green, the middle untested: that is F-28. |
@@ -2090,10 +2090,10 @@ working tree, not on `main`.
    `mutated: false` by construction — so the gate can never correct a refusal that is not flagged
    as an error (**F-05**). **Fix:** extend the gate to classify results into _success_ / _refusal_ /
    _error_, and require a refusal to carry `isError` + a code from the taxonomy
-   (`src/mcp/tools.ts:3550-3568`) — i.e. route the automation handler's refusals through the
+   (`src/mcp/tools.ts:3553-3571`) — i.e. route the automation handler's refusals through the
    existing `mcpError(...)` constructor, and add a **meta-test** that every mutating tool's refusal
    sets `isError`.
-2. **The idempotency replay bypasses it entirely.** The replay returns at `src/mcp/tools.ts:4391`;
+2. **The idempotency replay bypasses it entirely.** The replay returns at `src/mcp/tools.ts:4394`;
    the gate is applied at `:4471`. **Fix:** move the replay inside the dispatch (or apply the gate to
    the replay result as well) — a choke point only works if every exit passes through it
    (**F-06**).
