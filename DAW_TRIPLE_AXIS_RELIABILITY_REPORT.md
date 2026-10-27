@@ -576,19 +576,28 @@ budget owner and every lazy wait (F-16), the step-naming, the track identity and
 state. **Falsified:** against the pre-fix verifier the spec is **5 RED / 5 GREEN** (budget owner,
 lazy waits, step naming, track identity, dock open state); with the fix **10/10 GREEN**.
 
-**What the second run measured** (same worktree, at the fix): **434/438**, the app-boot gate
-**green**, the perf and realtime-budget checks green on a less loaded machine, and the plugin
-workflow's failure moved from "the flagship never mounted" to the reload step — the defect this
-section describes.
+**What the three runs measured** (same isolated worktree, at each state):
+
+| Run                          | Checks  | app boot (F-16)                   | plugin workflow (F-15)                     |
+| ---------------------------- | ------- | --------------------------------- | ------------------------------------------ |
+| at HEAD, before the repair   | 419/438 | RED — `.master-meter`, 5 s budget | RED — `.fx-device`, 5 s budget             |
+| after the lazy-budget repair | 434/438 | **green**                         | RED — the failure moved to the reload step |
+| after the reload repair      | 427/438 | **green**                         | **green**                                  |
+
+The third run is lower than the second because the machine was busier, and the difference is
+**entirely** in the perf and realtime-budget checks: the second run measured every one of them
+green, the third measured the load-correlated ones red. Both gates this section is about went from
+red to green, and the plugin workflow now runs **end to end** — add flagship, collapse, bypass,
+undo, macro nudge, play/stop.
 
 **The reds that remain are not this session's**, and each is attributed by measurement:
 
-| Red | Attribution |
-| --- | --- |
+| Red                                                                                         | Attribution                                                                                                                  |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `presets: auditions finite/unclipped` — the VSCO orchestral presets render at `peak=0.0000` | the VSCO pack wave (the samples 404, per `f694c6c7`); the factory bank has no synthesis for them, so the audition is silence |
-| `live↔offline null test: failed=4/67` | the documented realtime-nondeterminism class (§7b) |
-| `stutter: gate pattern alternates delayed loop audibility — high=0.0000 low=0.0000` | the documented stutter 0/0-silence check (§7b) |
-| the perf and realtime budgets (1.35×–2.57× realtime) | load-correlated: the second run, on a less loaded machine, measured every one of them green |
+| `live↔offline null test: failed=4/67`                                                       | the documented realtime-nondeterminism class (§7b)                                                                           |
+| `stutter: gate pattern alternates delayed loop audibility — high=0.0000 low=0.0000`         | the documented stutter 0/0-silence check (§7b)                                                                               |
+| the perf and realtime budgets (1.37×–2.42× realtime)                                        | load-correlated: the same checks measured green on the second run, on a less loaded machine                                  |
 
 **Attribution note.** This session's source changes (`scripts/verify-browser.mjs`,
 `tests/browser-verifier-contract.test.ts`) and the report's own edits were **swept into a parallel
