@@ -276,7 +276,8 @@
         case "panic":
         case "bright":
         case "pick":
-          if (!Number.isFinite(message.when) && message.type !== "noteOn" && message.type !== "bright" && message.type !== "pick" && message.type !== "panic") break;
+          if (!Number.isFinite(message.when) && message.type !== "noteOn" && message.type !== "bright" && message.type !== "pick" && message.type !== "panic")
+            break;
           this.proc.postEvent({
             type: message.type,
             when: typeof message.when === "number" ? message.when : currentTime,

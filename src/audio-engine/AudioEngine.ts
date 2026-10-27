@@ -1228,6 +1228,11 @@ export class AudioEngine {
         // the console, never as an unhandled rejection. The graph may be
         // half-synced — the next setProject re-syncs (queueFxRebuild guards
         // the same hazard on its own path).
+        //
+        // Audit E-03: the console alone is not a signal the export can act on.
+        // The failure is recorded as a fact the export path consults, so a
+        // half-built graph can never be rendered, written and reported as
+        // "exported".
         this.lastProjectSyncFailure = {
           message: err instanceof Error ? err.message : String(err),
           at: Date.now(),

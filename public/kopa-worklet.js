@@ -17,6 +17,12 @@
     if (type === 2) return clamp(x * 2.6, -1, 1);
     return Math.sin(x * Math.PI);
   }
+  function pitchEnvAt(t, curve) {
+    if (curve === 0) return (1 - t) * (1 - t);
+    if (curve === 1) return 1 - t;
+    if (curve === 2) return t < 0.35 ? 1 : 0;
+    return t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85);
+  }
   var KopaProcessor = class {
     sampleRate;
     params = {};
@@ -212,14 +218,7 @@
           if (!voice.active) continue;
           voice.pitchT = pitchTimeSec > 0 ? Math.min(1, voice.samples / (pitchTimeSec * sr)) : 1;
           const t = voice.pitchT;
-          let pitchEnv;
-          if (pitchCurve === 0)
-            pitchEnv = (1 - t) * (1 - t);
-          else if (pitchCurve === 1)
-            pitchEnv = 1 - t;
-          else if (pitchCurve === 2)
-            pitchEnv = t < 0.35 ? 1 : 0;
-          else pitchEnv = t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85);
+          const pitchEnv = pitchEnvAt(t, pitchCurve);
           const f0 = voice.targetF0 * Math.pow(2, pitchAmount * pitchEnv / 12);
           voice.clickEnv = Math.max(0, voice.clickEnv - voice.clickEnv * clickCoef);
           voice.bodyEnv = Math.max(0, voice.bodyEnv - voice.bodyEnv * bodyCoef);

@@ -303,14 +303,6 @@ export class PcmMicRecorder {
   private persistenceError: string | null = null;
   private errorReported = false;
   /**
-   * Every error this recorder reported, in order (audit R-4).
-   *
-   * A take can fail twice: the input can be interrupted AND the storage can
-   * fail while the capture unwinds. The first error stopped the capture, the
-   * second explains the truncated take — and the second used to be dropped.
-   */
-  private readonly errorLog: string[] = [];
-  /**
    * The id of the source that ACTUALLY captured (audit R-2).
    *
    * Empty until the stream is open. In the browser path it is the selected
@@ -319,6 +311,14 @@ export class PcmMicRecorder {
    * device. The recording offset is looked up under THIS id.
    */
   private captureSourceId = "";
+  /**
+   * Every error this recorder reported, in order (audit R-4).
+   *
+   * A take can fail twice: the input can be interrupted AND the storage can
+   * fail while the capture unwinds. The first error stopped the capture, the
+   * second explains the truncated take — and the second used to be dropped.
+   */
+  private readonly errorLog: string[] = [];
   private readyResolve: ((value: { channels: number; sampleRate: number }) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
   private stoppedResolve: (() => void) | null = null;

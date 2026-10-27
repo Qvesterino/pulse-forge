@@ -129,7 +129,10 @@
     }
     noteOff(pitch) {
       for (const voice of this.voices) {
-        if (voice.active && voice.gate && voice.basePitch === pitch) voice.gate = false;
+        if (voice.active && voice.gate && voice.basePitch === pitch) {
+          voice.gate = false;
+          if (voice.stage === 0 || voice.stage === 1) voice.stage = 2;
+        }
       }
     }
     applyEvent(event) {
