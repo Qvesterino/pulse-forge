@@ -69,6 +69,7 @@ export interface McpBridgeDeps {
   mixPreview?: NonNullable<McpToolContext["mixPreview"]>;
   importSamples?: NonNullable<McpToolContext["importSamples"]>;
   loadSampleMono?: NonNullable<McpToolContext["loadSampleMono"]>;
+  separateStems?: NonNullable<McpToolContext["separateStems"]>;
   saveNow?: NonNullable<McpToolContext["saveNow"]>;
   listProjects?: NonNullable<McpToolContext["listProjects"]>;
   saveAsProject?: NonNullable<McpToolContext["saveAsProject"]>;
@@ -181,6 +182,7 @@ export class McpBridge {
         mixPreview: this.deps.mixPreview,
         importSamples: this.deps.importSamples,
         loadSampleMono: this.deps.loadSampleMono,
+        separateStems: this.deps.separateStems,
         saveNow: this.deps.saveNow,
         listProjects: this.deps.listProjects,
         saveAsProject: this.deps.saveAsProject,

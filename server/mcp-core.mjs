@@ -5952,6 +5952,53 @@ export const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_separate",
+    description:
+      'STEM SEPARATION — the step that feeds kyx_master op:stems. Splits a user-library audio asset into stem BUFFERS registered in the live bank (ids stem.<sourceId>.<role>). tier:"hpss" (default) is the deterministic harmonic/percussive split (ADR 0019 Tier-1): drums, bass and other lanes. tier:"model" is the OWNER-gated htdemucs tier (four lanes: vocals/drums/bass/other) — refused unless the owner already turned pf:stem-model on and the manifest gate passed; an agent call never downloads the model on its own. Report-only: nothing is imported — feed the returned bufferIds to kyx_master op:"stems" import:[{role, bufferId, durationSec}…] to build the STEMS bus and shape the lanes. Needs a live session with the sample bank (headless servers refuse honestly).',
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceId: {
+          type: "string",
+          description: "User-library audio id to separate — e.g. from kyx_import or the user samples list",
+        },
+        tier: {
+          type: "string",
+          enum: ["hpss", "model"],
+          description:
+            '"hpss" (default, deterministic, no download) or "model" (owner-gated htdemucs: pf:stem-model must already be on with the manifest gate passed)',
+        },
+        maxSeconds: {
+          type: "number",
+          description: "Optional analysis cap in seconds (default 120 for hpss, model default 240)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        agentId: {
+          type: "string",
+          maxLength: 32,
+          description:
+            "Optional per-call agent identity (lowercase letters, digits, dashes). The relay token is the real gate — this makes the audit log, history-label attribution and foreign-work undo consent LEGIBLE when several agents share one transport. Declared by the caller, so treat it as a label, not an auth boundary.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+      required: ["sourceId"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+  },
+  {
     name: "kyx_master",
     description:
       "Mastering read-back and ZENIT controls. status reports the ordered global KYX MASTER signal path, delivery profile, runtime fallbacks and a live meter snapshot when available; it also lists ZENIT instances. Other ops insert or manage the ZENIT composite mastering device (ADR 0020) on a track/group bus. op:ab saves, compares and restores session-only snapshots of ZENIT/APEX/SPAN/TIDE parameters and output trims. A group-hosted ZENIT shapes that stem before the final global master chain. Use platform/land for profile checks and explicit loudness adjustment; live meter snapshots are not full-song reports.",

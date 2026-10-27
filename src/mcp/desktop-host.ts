@@ -10,6 +10,7 @@ import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
 import { mcpRenderAudioPreview } from "./audio-preview";
 import { loadUserSampleMono } from "./sample-mono";
+import { separateStemsForAgent } from "./stem-separate";
 import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "./save-now";
 import type { Services } from "../services";
 
@@ -71,7 +72,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     fxMeters: () => mcpFxMetersFromServices(services),
     // THE AI's EARS (closed-loop iterate): renders the current doc → stereo
     // PCM for the measurement pipeline. Same render path as mcpRenderSummary.
-    renderMix: async () => {
+    renderMix: async (signal) => {
       const d = services.store.getDoc();
       const { renderProject } = await import("../rendering/renderer");
       const mode = d.arrangement.clips.length > 0 ? "song" : "pattern";
@@ -79,6 +80,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
         mode,
         sampleRate: 44100,
         tailSeconds: 0.6,
+        signal,
       });
       const channels: Float32Array[] = [];
       for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
@@ -88,8 +90,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     },
     beginUndoFrame: (label) => services.store.beginUndoFrame(label),
     endUndoFrame: () => services.store.endUndoFrame(),
-    measureLoudness: () => mcpMeasureLoudness(services),
-    applyLoudness: (input) => mcpApplyLoudness(services, input),
+    measureLoudness: (signal) => mcpMeasureLoudness(services, signal),
+    applyLoudness: (input, signal) => mcpApplyLoudness(services, input, signal),
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
@@ -115,7 +117,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
         sizeBytes: bytes.byteLength,
       };
     },
-    audioPreview: (request) => mcpRenderAudioPreview(services, request),
+    audioPreview: (request, signal) => mcpRenderAudioPreview(services, request, signal),
     // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping
     // (the same importSfzLibrary core the web relay uses).
     importSamples: async (input) => {
@@ -146,6 +148,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     // kyx_unsuno transcribe: the live user-sample bank (decoded) or the
     // repository fallback, mixed to mono for the transcription lanes.
     loadSampleMono: (sampleId) => loadUserSampleMono(services, sampleId),
+    separateStems: (input) => separateStemsForAgent(services, input.sourceId, input),
     // kyx_save: force the autosave pipeline and report the durable result.
     saveNow: () => flushServicesSave(services),
     listProjects: () => listSavedProjects(services),
@@ -165,11 +168,11 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
       return { id: item.id };
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
-    renderSummary: (request) => mcpRenderSummary(services, request),
+    renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
-    diagnoseMix: (request) => import("./mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request)),
-    mixPreview: (request) => import("./mix-preview").then((m) => m.previewMixIdea(services, request)),
+    diagnoseMix: (request, signal) => import("./mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request, signal)),
+    mixPreview: (request, signal) => import("./mix-preview").then((m) => m.previewMixIdea(services, request, signal)),
     allowDestructive: mcpAllowDestructive,
     // ADR 0065: the standing consent for an EXTERNAL agent to mutate.
     allowMutations: mcpAllowMutations,

@@ -76,6 +76,7 @@ import { stemMasteringPlan, stemRoleOf, type StemRole } from "./stem-mastering";
 import { iterateTowardTarget, isConverged, type IterateMeasurement } from "./master-iterate";
 import { analyzeMasterPcm } from "../mastering/analysis";
 import { addStemTracksCommand } from "../commands/stemTracks";
+import { describeSeparation } from "./stem-separate";
 import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from "./master-ab";
 
 const masterAbStore = new Map<string, Map<string, AbSnapshot>>();
@@ -3275,6 +3276,42 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_separate",
+    description:
+      "STEM SEPARATION — the step that feeds kyx_master op:stems. Splits a " +
+      "user-library audio asset into stem BUFFERS registered in the live " +
+      'bank (ids stem.<sourceId>.<role>). tier:"hpss" (default) is the ' +
+      "deterministic harmonic/percussive split (ADR 0019 Tier-1): drums, " +
+      'bass and other lanes. tier:"model" is the OWNER-gated htdemucs tier ' +
+      "(four lanes: vocals/drums/bass/other) — refused unless the owner " +
+      "already turned pf:stem-model on and the manifest gate passed; an " +
+      "agent call never downloads the model on its own. Report-only: " +
+      "nothing is imported — feed the returned bufferIds to kyx_master " +
+      'op:"stems" import:[{role, bufferId, durationSec}…] to build the ' +
+      "STEMS bus and shape the lanes. Needs a live session with the sample " +
+      "bank (headless servers refuse honestly).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceId: {
+          type: "string",
+          description: "User-library audio id to separate — e.g. from kyx_import or the user samples list",
+        },
+        tier: {
+          type: "string",
+          enum: ["hpss", "model"],
+          description:
+            '"hpss" (default, deterministic, no download) or "model" (owner-gated htdemucs: pf:stem-model must already be on with the manifest gate passed)',
+        },
+        maxSeconds: {
+          type: "number",
+          description: "Optional analysis cap in seconds (default 120 for hpss, model default 240)",
+        },
+      },
+      required: ["sourceId"],
+    },
+  },
+  {
     name: "kyx_master",
     description:
       "Mastering read-back and ZENIT controls. status reports the ordered global " +
@@ -3574,8 +3611,9 @@ export interface McpToolContext {
     metronome?: boolean;
     seek?: (tick: number) => void;
   };
-  /** THE AI's EARS (closed-loop): renders the current doc pre-master → stereo PCM. Populated by the transport bridge. */
-  renderMix?: () => Promise<{ channels: Float32Array[]; sampleRate: number } | null>;
+  /** THE AI's EARS (closed-loop): renders the current doc pre-master → stereo PCM. Populated by the transport bridge.
+   * AS-009 phase 2: the dispatcher's per-call signal arrives as the argument — render loops check it between passes. */
+  renderMix?: (signal?: AbortSignal) => Promise<{ channels: Float32Array[]; sampleRate: number } | null>;
   /** Present when the KYX window can render/downloads (browser relay). */
   export?: (
     request: McpExportRequest,
@@ -3583,7 +3621,18 @@ export interface McpToolContext {
     string | { report: string; health: unknown; fix: { tiltDb: number; masterGain: number; label: string } | null }
   >;
   /** Render a short, attached audio preview for listening MCP clients. */
-  audioPreview?: (request: McpAudioPreviewRequest) => Promise<McpAudioPreviewArtifact>;
+  audioPreview?: (request: McpAudioPreviewRequest, signal?: AbortSignal) => Promise<McpAudioPreviewArtifact>;
+  /**
+   * AS-009 phase 2 — COOPERATIVE CANCELLATION. The dispatcher owns one
+   * AbortController per call: render-class handlers receive `ctx.signal` and
+   * pass it into renderProject, which checks it at its stage boundaries. The
+   * signal auto-aborts at the call deadline (past the transports' own
+   * budgets, so a timed-out caller never loses an in-flight response) and
+   * cancelMcpCall(requestId) can abort early. COOPERATIVE, not preemptive:
+   * once OfflineAudioContext.startRendering begins, a pass runs to completion
+   * — the abort takes effect at the NEXT boundary.
+   */
+  signal?: AbortSignal;
   /** C6 attribution: which automation surface drives this context (absent
    * for the human working the UI directly / headless tests). */
   agentId?: string;
@@ -3643,6 +3692,21 @@ export interface McpToolContext {
    */
   loadSampleMono?: (sampleId: string) => Promise<{ mono: Float32Array; sampleRate: number } | null>;
   /**
+   * kyx_separate: the separation→bank step (src/mcp/stem-separate.ts) —
+   * decode a user-library asset, split it (hpss tier or the OWNER-gATED
+   * model tier) and register the stem buffers in the live bank so
+   * kyx_master op:"stems" import can build the lanes. Present on live
+   * browser/desktop hosts; absent → the tool refuses honestly (headless
+   * servers have no bank to register buffers into).
+   */
+  separateStems?: (input: { sourceId: string; tier?: "hpss" | "model"; maxSeconds?: number }) => Promise<
+    | {
+        ok: true;
+        result: import("./stem-separate").SeparateStemsResult;
+      }
+    | { ok: false; error: string }
+  >;
+  /**
    * kyx_save: force the app's autosave pipeline to flush and return the
    * observed persistence result. Present on live browser/desktop hosts;
    * absent on headless/standalone servers, which refuse honestly.
@@ -3678,8 +3742,11 @@ export interface McpToolContext {
    * UNEXECUTED command so the mutation still flows through ctx.execute.
    * Absent → honest refusal (headless contexts).
    */
-  measureLoudness?: () => Promise<{ integrated: number; measured: boolean }>;
-  applyLoudness?: (input: { targetDb?: number; direction: "louder" | "quieter" }) => Promise<
+  measureLoudness?: (signal?: AbortSignal) => Promise<{ integrated: number; measured: boolean }>;
+  applyLoudness?: (
+    input: { targetDb?: number; direction: "louder" | "quieter" },
+    signal?: AbortSignal,
+  ) => Promise<
     | {
         ok: true;
         command: Command;
@@ -3706,12 +3773,15 @@ export interface McpToolContext {
    * report per-strip evidence (LUFS/peak/crest/duration) + the master vs
    * the streaming reference. Absent → honest refusal (headless contexts).
    */
-  renderSummary?: (request: {
-    scope?: "master" | "tracks" | "all";
-    trackId?: string;
-    startTick?: number;
-    endTick?: number;
-  }) => Promise<import("./render-summary").RenderSummaryData>;
+  renderSummary?: (
+    request: {
+      scope?: "master" | "tracks" | "all";
+      trackId?: string;
+      startTick?: number;
+      endTick?: number;
+    },
+    signal?: AbortSignal,
+  ) => Promise<import("./render-summary").RenderSummaryData>;
 
   /**
    * THE AGENT'S EARS v2 (kyx_diagnose_mix): offline-render master + strips,
@@ -3719,12 +3789,18 @@ export interface McpToolContext {
    * suggestions. Absent → honest refusal (headless contexts), same as
    * renderSummary.
    */
-  diagnoseMix?: (request: {
-    scope?: "master" | "tracks" | "all";
-  }) => Promise<import("./mix-diagnosis").MixDiagnosisData>;
+  diagnoseMix?: (
+    request: {
+      scope?: "master" | "tracks" | "all";
+    },
+    signal?: AbortSignal,
+  ) => Promise<import("./mix-diagnosis").MixDiagnosisData>;
   /** kyx_mix_idea preview: render the before/after pair, measure, arm the
    * session lane the studio chip picks up. Read-only over the project. */
-  mixPreview?: (request: { idea: string; target?: string }) => Promise<import("./mix-preview").MixPreviewOutcome>;
+  mixPreview?: (
+    request: { idea: string; target?: string },
+    signal?: AbortSignal,
+  ) => Promise<import("./mix-preview").MixPreviewOutcome>;
 }
 
 /**
@@ -3821,6 +3897,10 @@ export interface McpCurrentState {
  *                           between the read and the apply). Nothing was
  *                           written — re-read the value and retry, or pass
  *                           `force` to overwrite regardless
+ *   CANCELLED               the call was aborted cooperatively (deadline
+ *                           auto-abort past the transport budgets, or an
+ *                           explicit cancelMcpCall) — the text says whether
+ *                           anything landed before the abort
  */
 export type McpErrorCode =
   | "UNKNOWN_TOOL"
@@ -3835,7 +3915,8 @@ export type McpErrorCode =
   | "INVALID_REQUEST_ID"
   | "WRITE_CONFLICT"
   | "CONFIRMATION_REQUIRED"
-  | "RESOURCE_LIMIT";
+  | "RESOURCE_LIMIT"
+  | "CANCELLED";
 
 /** The single shaped constructor for error results — every `isError`
  * result goes through here so the code set stays exhaustive. `overrides`
@@ -4277,10 +4358,13 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       },
     },
     cancellation: {
-      supported: false,
+      supported: true,
+      scope:
+        "cooperative — render-class tools (render summary, mix diagnosis, loudness, audio preview, mix preview, master iterate) check the per-call signal at render-stage boundaries and pass it into renderProject",
       reason:
-        "MCP calls run synchronously in the owning window; long calls are visible in the Job Center but no cooperative abort is exposed over MCP yet.",
-      revisit: "an AbortSignal threaded through renderProject would give render-class hooks cooperative abort",
+        "every MCP call owns an AbortController: the dispatcher auto-aborts at the call deadline (75 s long-running / 30 s otherwise — PAST the transports' own budgets, so a timed-out caller never loses an in-flight response) and cancelMcpCall(requestId) aborts early. Once OfflineAudioContext.startRendering begins, a pass runs to completion — the abort lands at the NEXT boundary. Client-initiated protocol cancellation (notifications/cancelled) is not wired through the transports yet.",
+      revisit:
+        "wire notifications/cancelled through the desktop stdio forwarder and the web relay to let ANY client abort; today cancelMcpCall is the seam (Job Center/tests).",
     },
     // AS-009 phase 1: retry etiquette as data. A timeout stops the CALLER
     // from waiting — the work may still land — so retries must be deliberate:
@@ -4318,7 +4402,7 @@ function capabilitySummary(snapshot: Record<string, unknown>): string {
     `destructive unlock: ${snapshot.destructiveUnlock === true ? "on" : "off"}`,
     `available: ${available.join(", ") || "none"}`,
     `unavailable: ${unavailable.join(", ") || "none"}`,
-    `cancellation: ${snapshot.cancellation && (snapshot.cancellation as { supported?: boolean }).supported ? "supported" : "not supported"}`,
+    `cancellation: ${snapshot.cancellation && (snapshot.cancellation as { supported?: boolean }).supported ? "cooperative (render-class; deadline auto-abort; cancelMcpCall)" : "not supported"}`,
     `retry: document mutations are requestId-bound; publish/export/preview/transport are NOT idempotent — re-read state before retrying`,
     `by design unavailable: ${Object.keys((snapshot.unavailableByDesign as Record<string, string>) ?? {}).join(", ")}`,
   ].join("; ");
@@ -4602,6 +4686,29 @@ const opsCoverageViolations: OpsCoverageViolation[] = [];
  * an ops-less command that is not on the exemption list. */
 export function drainMcpOpsCoverageViolations(): OpsCoverageViolation[] {
   return opsCoverageViolations.splice(0, opsCoverageViolations.length);
+}
+
+// ── AS-009 phase 2: COOPERATIVE CANCELLATION ────────────────────────────────
+// Deadlines sit PAST the transports' own call budgets (desktop 10 s/60 s, web
+// 15 s/60 s) + a grace window, so an abort can never race an in-flight
+// response — it only stops the work a caller has already given up on.
+const MCP_CALL_DEADLINE_MS = 30_000;
+const MCP_CALL_DEADLINE_LONG_MS = 75_000;
+const mcpCancellableCalls = new Map<string, AbortController>();
+
+/**
+ * Abort an in-flight MCP call by its requestId (AS-009 phase 2). Render-class
+ * handlers observe the abort at their next render-stage boundary; a finished
+ * or unknown id is a no-op returning false. This is the seam the next
+ * transport layer (notifications/cancelled) will call — the Job Center's
+ * cancel button and tests can call it today.
+ */
+export function cancelMcpCall(requestId: string, reason = "cancelled by the caller"): boolean {
+  const controller = mcpCancellableCalls.get(requestId);
+  if (controller == null) return false;
+  mcpCancellableCalls.delete(requestId);
+  controller.abort(new DOMException(reason, "AbortError"));
+  return true;
 }
 
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
@@ -4904,6 +5011,17 @@ ${preview.text}`,
    */
   const clampEvents: ClampEvent[] = [];
   let result: McpToolResult;
+  // AS-009 phase 2: the per-call cancellation channel (see the constants by
+  // cancelMcpCall). Created here — past every early return above — so no
+  // refusal path ever leaks a deadline timer. Render-class handlers observe
+  // ctx.signal at their render-stage boundaries.
+  const callController = new AbortController();
+  ctx = { ...ctx, signal: callController.signal };
+  const deadlineTimer = setTimeout(
+    () => callController.abort(new DOMException("MCP call deadline exceeded", "AbortError")),
+    LONG_RUNNING_AGENT_TOOLS.has(name) ? MCP_CALL_DEADLINE_LONG_MS : MCP_CALL_DEADLINE_MS,
+  );
+  if (requestId !== "") mcpCancellableCalls.set(requestId, callController);
   try {
     // Audit F-25: every AI write passes the stale-write guard — a field that
     // moved between the tool's read and the apply is refused, not overwritten.
@@ -4977,7 +5095,13 @@ ${preview.text}`,
       depth,
       mutated: false,
       isError: true,
-      errorCode: conflict ? "WRITE_CONFLICT" : scopeError ? "SCOPE_VIOLATION" : "THREW",
+      errorCode: conflict
+        ? "WRITE_CONFLICT"
+        : scopeError
+          ? "SCOPE_VIOLATION"
+          : callController.signal.aborted
+            ? "CANCELLED"
+            : "THREW",
       durationMs: Date.now() - startedAt,
       docId: docBefore.id,
       docName: docBefore.name,
@@ -4996,13 +5120,29 @@ ${preview.text}`,
     if (scopeError) {
       // ADR 0065: a write that would leave its declared scope is REFUSED
       // before anything lands. The agent is told WHICH path, so it can
-      // narrow the call or declare a wider scope honestly.
+      // narrow the call or declare the scope it really needs honestly.
       return mcpError(
         "POLICY_REFUSED",
         `${scopeError.message}. Nothing was written — narrow the call to its declared scope, or declare the scope it really needs.`,
       );
     }
+    if (callController.signal.aborted) {
+      // AS-009 phase 2: the call was aborted (deadline or cancelMcpCall).
+      // COOPERATIVE means the abort lands at a render-stage boundary — a
+      // document mutation that ALREADY executed stays executed, and the
+      // receipt says so instead of pretending "nothing happened".
+      const after = ctx.getDoc();
+      const landed = after !== docBefore;
+      return mcpError(
+        "CANCELLED",
+        `cancelled before completion${landed ? ` — the document DID change first (${ctx.undoStackLength() - undoDepthBefore} undo step(s) landed; inspect kyx_state history before retrying)` : " — nothing changed"}`,
+        { mutated: landed },
+      );
+    }
     throw error;
+  } finally {
+    clearTimeout(deadlineTimer);
+    if (requestId !== "") mcpCancellableCalls.delete(requestId);
   }
   mcpCallDepth -= 1;
   // R-02 — ONE PLACE WHERE A MUTATION BECOMES A CLAIM. Every handler above
@@ -6467,6 +6607,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return await executeMasterTool(ctx, record);
     case "kyx_unsuno":
       return executeUnsunoTool(ctx, record);
+    case "kyx_separate":
+      return await executeSeparateTool(ctx, record);
     case "kyx_takes":
       return executeTakesTool(ctx, record);
     case "kyx_batch":
@@ -7320,7 +7462,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       }
       const bars = rawBars == null ? 2 : Number(rawBars);
       try {
-        const preview = await ctx.audioPreview({ bars });
+        const preview = await ctx.audioPreview({ bars }, ctx.signal);
         return {
           text: `audio preview ready — ${preview.bars} bar(s), ${preview.durationSec.toFixed(1)} s, ${preview.sampleRate} Hz, ${(preview.byteLength / 1024).toFixed(0)} KiB. Listen to the attached audio content.`,
           mutated: false,
@@ -7352,7 +7494,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           );
         }
         try {
-          const reading = await ctx.measureLoudness();
+          const reading = await ctx.measureLoudness(ctx.signal);
           if (!reading.measured) {
             return mcpError("EXECUTION_FAILED", "could not measure loudness — the render was too quiet or empty");
           }
@@ -7379,7 +7521,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const targetDb =
         typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
       try {
-        const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) });
+        const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) }, ctx.signal);
         if (!outcome.ok) return mcpError("EXECUTION_FAILED", outcome.error ?? "the operation failed without a reason");
         // The hook returns the UNEXECUTED command so the mutation still flows
         // through this context's executor (same store, same undo semantics).
@@ -7554,10 +7696,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           if (ctx.measureLoudness == null || ctx.applyLoudness == null) {
             loudnessLine = " | loudness skipped: no render context bound";
           } else {
-            const reading = await ctx.measureLoudness();
+            const reading = await ctx.measureLoudness(ctx.signal);
             if (reading.measured) {
               const direction = reading.integrated < loudnessTarget ? ("louder" as const) : ("quieter" as const);
-              const outcome = await ctx.applyLoudness({ direction, targetDb: loudnessTarget });
+              const outcome = await ctx.applyLoudness({ direction, targetDb: loudnessTarget }, ctx.signal);
               if (outcome.ok) {
                 ctx.execute(outcome.command);
                 loudnessLine = ` | loudness ${outcome.report.measuredBefore} -> ${outcome.report.measuredAfter ?? "?"} LUFS (second undo step)`;
@@ -7618,6 +7760,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
                 endTick: record.endTick as number,
               }
             : { scope },
+          ctx.signal,
         );
         return { text: formatRenderSummary(data), mutated: false, stage: "runtime", data };
       } catch (error) {
@@ -7643,7 +7786,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // Lazy module: the diagnosis layer (analysis + formatting) stays off
         // the eager DAW graph — it loads on the first diagnose call.
         const { formatMixDiagnosis } = await import("./mix-diagnosis");
-        const data = await ctx.diagnoseMix({ scope });
+        const data = await ctx.diagnoseMix({ scope }, ctx.signal);
         // F2: the reaction ledger's report rides along with the ears. Silent
         // when nothing is resolved yet — a diagnose call must not grow a
         // section just because F1 exists.
@@ -7706,7 +7849,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         try {
           const { formatMixPreview } = await import("./mix-preview");
-          const outcome = await ctx.mixPreview({ idea, ...(target ? { target } : {}) });
+          const outcome = await ctx.mixPreview({ idea, ...(target ? { target } : {}) }, ctx.signal);
           const data = outcome.ok
             ? {
                 status: "previewed",
@@ -12227,6 +12370,29 @@ function masterSignalFlowStatus(doc: ProjectDocument): string[] {
  * trackId may name a GROUP bus deliberately — a ZENIT on a group IS stem
  * mastering (host position is the feature); families resolve non-group tracks.
  */
+/** kyx_separate — the separation step of the agent loop (stem-separate.ts). */
+async function executeSeparateTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
+  if (!ctx.separateStems) {
+    return {
+      text:
+        "kyx_separate needs a live session with the sample bank to separate and register buffers — this context cannot (headless?). " +
+        'Separate in the app (the separation panel), then kyx_master op:"stems" import still works with those buffer ids.',
+      mutated: false,
+    };
+  }
+  const sourceId = typeof record.sourceId === "string" ? record.sourceId.trim() : "";
+  if (!sourceId)
+    return { text: 'kyx_separate needs sourceId — a user-library audio id (tier defaults to "hpss").', mutated: false };
+  const tier = record.tier === "model" ? "model" : "hpss";
+  const maxSeconds =
+    typeof record.maxSeconds === "number" && Number.isFinite(record.maxSeconds) && record.maxSeconds > 0
+      ? record.maxSeconds
+      : undefined;
+  const outcome = await ctx.separateStems({ sourceId, tier, maxSeconds });
+  if (!outcome.ok) return { text: `kyx_separate: ${outcome.error}`, mutated: false };
+  return { text: describeSeparation(outcome.result), mutated: false, data: outcome.result };
+}
+
 /** kyx_unsuno — the track-to-project pipeline for agents. */
 async function executeUnsunoTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   const action = typeof record.action === "string" ? record.action : "";
@@ -12747,7 +12913,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
     let next = doc;
     let converged = false;
     for (let iteration = 0; iteration < 3; iteration++) {
-      const rendered = await ctx.renderMix();
+      const rendered = await ctx.renderMix(ctx.signal);
       if (!rendered) {
         lines.push(`render failed at iteration ${iteration + 1}`);
         break;

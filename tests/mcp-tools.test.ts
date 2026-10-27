@@ -127,7 +127,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", async () => {
-  it("tool surface: the 39 documented tools", async () => {
+  it("tool surface: the 40 documented tools", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_catalog")?.outputSchema).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -210,6 +210,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_song",
       "kyx_routing",
       "kyx_unsuno",
+      "kyx_separate",
       "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",

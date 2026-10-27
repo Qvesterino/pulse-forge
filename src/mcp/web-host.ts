@@ -8,6 +8,7 @@ import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters"
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { decodeAudioData } from "../services/audio-decode";
 import { loadUserSampleMono } from "./sample-mono";
+import { separateStemsForAgent } from "./stem-separate";
 import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "./save-now";
 // Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
 // enabled flag while mounting); the heavy bridge module re-exports it and
@@ -90,8 +91,8 @@ function depsFromServices(services: Services): McpBridgeDeps {
     fxMeters: () => mcpFxMetersFromServices(services),
     beginUndoFrame: (label) => services.store.beginUndoFrame(label),
     endUndoFrame: () => services.store.endUndoFrame(),
-    measureLoudness: () => mcpMeasureLoudness(services),
-    applyLoudness: (input) => mcpApplyLoudness(services, input),
+    measureLoudness: (signal) => mcpMeasureLoudness(services, signal),
+    applyLoudness: (input, signal) => mcpApplyLoudness(services, input, signal),
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
     export: async (request) => (await quickBounceDownload(services.store.getDoc(), services.bank, request)).report,
@@ -116,7 +117,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
         sizeBytes: bytes.byteLength,
       };
     },
-    audioPreview: (request) => mcpRenderAudioPreview(services, request),
+    audioPreview: (request, signal) => mcpRenderAudioPreview(services, request, signal),
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
     // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping
@@ -149,6 +150,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     // kyx_unsuno transcribe: the live user-sample bank (decoded) or the
     // repository fallback, mixed to mono for the transcription lanes.
     loadSampleMono: (sampleId) => loadUserSampleMono(services, sampleId),
+    separateStems: (input) => separateStemsForAgent(services, input.sourceId, input),
     // kyx_save: force the autosave pipeline and report the durable result.
     saveNow: () => flushServicesSave(services),
     listProjects: () => listSavedProjects(services),
@@ -166,11 +168,11 @@ function depsFromServices(services: Services): McpBridgeDeps {
       return { id: item.id };
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
-    renderSummary: (request) => mcpRenderSummary(services, request),
+    renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
-    diagnoseMix: (request) => import("../mcp/mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request)),
-    mixPreview: (request) => import("../mcp/mix-preview").then((m) => m.previewMixIdea(services, request)),
+    diagnoseMix: (request, signal) => import("../mcp/mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request, signal)),
+    mixPreview: (request, signal) => import("../mcp/mix-preview").then((m) => m.previewMixIdea(services, request, signal)),
   };
 }
 
