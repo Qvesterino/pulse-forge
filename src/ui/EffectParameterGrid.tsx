@@ -10,6 +10,7 @@ export function EffectParameterGrid({
   paged,
   contextHint,
   effectiveValues,
+  fallbackReason,
 }: {
   family: EffectEditorFamily;
   params: ParamDef[];
@@ -27,9 +28,23 @@ export function EffectParameterGrid({
    * below it discloses what the DSP is actually playing.
    */
   effectiveValues?: Record<string, number>;
+  /**
+   * The reason the RUNTIME fell back to a 1:1 passthrough (audit F-18).
+   *
+   * A fallback runtime ignores every `setParameter` — the knob still reads
+   * the document, so without this the user sees a parameter set that has no
+   * effect on the audio. The banner says so AT the controls, in the same
+   * words the flagship panels use.
+   */
+  fallbackReason?: string;
 }) {
   return (
     <div className={`fx-device-params${paged ? " is-paged" : ""}`} data-family={family}>
+      {fallbackReason ? (
+        <div className="fxeq-degraded" role="status" data-testid="fx-params-degraded">
+          {fallbackReason}
+        </div>
+      ) : null}
       {params.map((param) => {
         const modeHint = contextHint?.(param.id);
         const note = param.secondary?.(values);

@@ -36,6 +36,7 @@ export function EffectQuickControls({
   onChange,
   contextHint,
   effectiveValues,
+  fallbackReason,
 }: {
   params: readonly ParamDef[];
   values: Record<string, number>;
@@ -47,6 +48,12 @@ export function EffectQuickControls({
    * IS the value in effect, and nothing is disclosed.
    */
   effectiveValues?: Record<string, number>;
+  /**
+   * The reason the RUNTIME fell back to a 1:1 passthrough (audit F-18).
+   * A fallback runtime ignores every parameter write, so the control has to
+   * say that the value on it changes nothing.
+   */
+  fallbackReason?: string;
 }) {
   const controls = quickControlsOf(params);
   if (controls.length === 0) return null;
@@ -56,6 +63,11 @@ export function EffectQuickControls({
       className="fx-preset-controls"
       aria-label={`Preset quick controls: ${controls.map(({ label }) => label).join(", ")}`}
     >
+      {fallbackReason ? (
+        <div className="fxeq-degraded" role="status" data-testid="fx-quick-degraded">
+          {fallbackReason}
+        </div>
+      ) : null}
       <div className="fx-preset-controls-head">
         <span className="fx-preset-controls-title">PRESET CONTROLS</span>
         <span className="fx-preset-controls-hint">{controls.map(({ label }) => label).join(" · ")}</span>

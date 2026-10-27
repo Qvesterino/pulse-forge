@@ -814,7 +814,9 @@ function Device({
         <span className="fx-device-title">
           <span className="fx-device-name">{def.name}</span>
           <span className={`fx-device-family family-${editorSpec.family}`}>{editorSpec.family.toUpperCase()}</span>
-          <span className="fx-device-state">{fx.bypassed ? "BYPASSED" : "ACTIVE"}</span>
+          <span className={`fx-device-state`} title={fallbackReason ?? undefined}>
+            {fx.bypassed ? "BYPASSED" : fallbackReason ? "PASSTHROUGH" : "ACTIVE"}
+          </span>
           {isModified && (
             <span className="fx-device-dirty" title="Parameters differ from the factory defaults">
               MODIFIED
@@ -969,6 +971,7 @@ function Device({
               values={fx.params}
               effectiveValues={effectiveValues}
               contextHint={contextHint}
+              fallbackReason={fallbackReason}
               onChange={(paramId, value) =>
                 services.store.execute(
                   fx.type === "morphdynamics"
@@ -1311,6 +1314,7 @@ function Device({
             effectiveValues={effectiveValues}
             paged={devicesMode}
             contextHint={contextHint}
+            fallbackReason={fallbackReason}
             onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
           />
           <div className="fx-output-trim-row" aria-label="Effect output level">

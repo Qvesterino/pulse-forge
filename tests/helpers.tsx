@@ -41,6 +41,12 @@ export function mockServices(doc?: ProjectDocument): Services {
   let countInBars = 0;
   let preRollBars = 0;
   let metronome = false;
+  /**
+   * The degraded fallbacks the engine reports (audit F-18). A runtime that
+   * fell back to the 1:1 passthrough ignores every parameter write, so the
+   * rack has to disclose it. A test that needs a fallback sets it here.
+   */
+  let degradedFx: { fxId: string; reason: string }[] = [];
 
   return {
     core: {
@@ -269,6 +275,17 @@ export function mockServices(doc?: ProjectDocument): Services {
       // healthy path (monitor listen available → toggle latched = true).
       setMasterLimiterDeltaListen: vi.fn(() => true),
       getDegradedMasterStages: vi.fn(() => []),
+      // The rack reads the degraded fallbacks off the engine (audit F-18):
+      // a runtime that fell back to the 1:1 passthrough ignores every
+      // parameter write, so the controls have to disclose it.
+      getDegradedFx: vi.fn(() => degradedFx),
+      /**
+       * Test hook: report a degraded fallback for an effect. The rack polls
+       * the engine for it, so the disclosure appears on the next poll tick.
+       */
+      _setDegradedFx: (items: { fxId: string; reason: string }[]) => {
+        degradedFx = items;
+      },
       getTrackLevel: vi.fn(() => 0),
       getTrackMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
       getReturnLevel: vi.fn(() => 0),
