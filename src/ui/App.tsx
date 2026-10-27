@@ -1229,6 +1229,16 @@ export function App({
         services.playback.playPause();
         return;
       }
+      // Force save stays live while typing (CF-04): the chord means nothing
+      // to a text field, and a user who just typed into the intent prompt or
+      // the project-name field must not discover that Ctrl+S went dead only
+      // when the save they assumed never happened. Every other chord keeps
+      // the text field's native behavior (Ctrl+Z/C/V, arrows, …).
+      if (typing && matchedShortcut === "save") {
+        if (!event.repeat) runShortcutRef.current("save", event);
+        event.preventDefault();
+        return;
+      }
       if (typing) return;
 
       // A = Capture last take (when the offer is showing) — Ableton-style

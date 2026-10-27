@@ -300,3 +300,33 @@ describe("App (top-level shell)", () => {
     }
   });
 });
+
+describe("App — force save stays live while typing (CF-04)", () => {
+  function keyHarness() {
+    const services = mockServices();
+    const view = renderWithContext(<App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />, {
+      services,
+    });
+    return { services, view };
+  }
+
+  it("Ctrl+S inside the project-name field still force-saves", () => {
+    const { services } = keyHarness();
+    const nameField = screen.getByLabelText("Project name");
+    fireEvent.keyDown(nameField, { key: "s", ctrlKey: true });
+    expect(services.flushSave).toHaveBeenCalled();
+  });
+
+  it("NEGATIVE: Ctrl+S outside a field still saves (the chord is not broken everywhere)", () => {
+    const { services } = keyHarness();
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    expect(services.flushSave).toHaveBeenCalled();
+  });
+
+  it("NEGATIVE: Ctrl+Z inside a field keeps the text field's native undo — no project undo", () => {
+    const { services } = keyHarness();
+    const nameField = screen.getByLabelText("Project name");
+    fireEvent.keyDown(nameField, { key: "z", ctrlKey: true });
+    expect(services.store.undo).not.toHaveBeenCalled();
+  });
+});
