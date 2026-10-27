@@ -3,6 +3,7 @@ import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import { midiPhraseLengthTicks } from "../project-model/midiTime";
 import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
 import { clipGroupsWithoutIds } from "./clipGroups";
+import { clampResizeLength, clampTickSpan, clampValue } from "./geometry";
 import { snapshot } from "./core";
 import type { Command } from "./types";
 import { uid } from "../shared/ids";
@@ -88,24 +89,20 @@ function clonePatternForMidiClip(source: Pattern): Pattern {
   };
 }
 
-function clampFinite(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
 function editNote(note: NoteEvent, edit: MidiObjectNoteEdit): NoteEvent {
-  const start = clampFinite(Math.round(note.start + (edit.startOffsetTicks ?? 0)), 0, MAX_ARRANGEMENT_CLIP_TICKS - 1);
+  const start = clampValue(Math.round(note.start + (edit.startOffsetTicks ?? 0)), 0, MAX_ARRANGEMENT_CLIP_TICKS - 1);
   const durationScale = (edit.durationScalePercent ?? 100) / 100;
-  const duration = clampFinite(
+  const duration = clampValue(
     Math.round(note.duration * durationScale),
     1,
     Math.max(1, MAX_ARRANGEMENT_CLIP_TICKS - start),
   );
   const next: NoteEvent = {
     ...note,
-    pitch: clampFinite(Math.round(note.pitch + (edit.transposeSemitones ?? 0)), 0, 127),
+    pitch: clampValue(Math.round(note.pitch + (edit.transposeSemitones ?? 0)), 0, 127),
     start,
     duration,
-    velocity: clampFinite(note.velocity * ((edit.velocityScalePercent ?? 100) / 100), 0.05, 1),
+    velocity: clampValue(note.velocity * ((edit.velocityScalePercent ?? 100) / 100), 0.05, 1),
   };
   if (edit.slide !== undefined) next.slide = edit.slide;
   if (edit.slideNote !== undefined) next.slideNote = edit.slideNote;
@@ -113,7 +110,7 @@ function editNote(note: NoteEvent, edit: MidiObjectNoteEdit): NoteEvent {
 
   const expression: NoteExpression = { ...(note.expression ?? {}) };
   const setExpression = (key: keyof NoteExpression, value: number | undefined, min: number, max: number) => {
-    if (value !== undefined) expression[key] = clampFinite(value, min, max);
+    if (value !== undefined) expression[key] = clampValue(value, min, max);
   };
   if (edit.pitchOffsetSemitones !== undefined) {
     setExpression("pitchOffsetSemitones", (expression.pitchOffsetSemitones ?? 0) + edit.pitchOffsetSemitones, -12, 12);
@@ -217,7 +214,9 @@ export function editMidiClipNotes(doc: ProjectDocument, clipIds: readonly string
     if (!pattern) continue;
     const phraseTicks = midiPhraseLengthTicks(pattern.stepCount, notes);
     if (phraseTicks > clip.lengthTicks) {
-      clipLengths.set(clip.id, Math.min(phraseTicks, MAX_ARRANGEMENT_CLIP_TICKS - clip.startTick));
+      // The clip grows to the phrase — and the phrase may not reach past the
+      // timeline: the START stays, the LENGTH gives way (the shared rule).
+      clipLengths.set(clip.id, clampResizeLength(clip.startTick, phraseTicks, "MIDI"));
     }
   }
 
@@ -241,12 +240,7 @@ export function editMidiClipNotes(doc: ProjectDocument, clipIds: readonly string
 }
 
 function safeGeometry(startTick: number, lengthTicks: number): { startTick: number; lengthTicks: number } {
-  if (!Number.isFinite(startTick) || !Number.isFinite(lengthTicks)) {
-    throw new Error("MIDI clip position and length must be finite ticks");
-  }
-  const length = Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.max(1, Math.round(lengthTicks)));
-  const start = Math.min(MAX_ARRANGEMENT_CLIP_TICKS - length, Math.max(0, Math.round(startTick)));
-  return { startTick: start, lengthTicks: length };
+  return clampTickSpan(startTick, lengthTicks, "MIDI");
 }
 
 /**
@@ -266,12 +260,12 @@ function safeGeometry(startTick: number, lengthTicks: number): { startTick: numb
  * that could not bring it back. The property sweep found it; the hand-written
  * matrix missed it because its fixture sits at tick 0, where the old clamp
  * happened to land on a legal geometry.
+ *
+ * The rule itself now lives in ONE place — `src/commands/geometry.ts` — so
+ * every lane clamps the same way and no lane can invent its own.
  */
 function safeResizeLength(startTick: number, lengthTicks: number): number {
-  if (!Number.isFinite(lengthTicks)) throw new Error("MIDI clip length must be finite ticks");
-  const start = Math.max(0, Math.round(startTick));
-  const room = Math.max(1, MAX_ARRANGEMENT_CLIP_TICKS - start);
-  return Math.min(room, Math.max(1, Math.round(lengthTicks)));
+  return clampResizeLength(startTick, lengthTicks, "MIDI");
 }
 
 function modulo(value: number, period: number): number {

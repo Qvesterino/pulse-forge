@@ -11,12 +11,8 @@ import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { PPQ } from "../project-model/types";
 import { tempoAtTick } from "../project-model/scene-time";
-import {
-  MAX_ARRANGEMENT_CLIP_BARS,
-  normalizeProject,
-  sanitizeAudioTakeGroups,
-  ticksPerBar,
-} from "../project-model/schema";
+import { normalizeProject, sanitizeAudioTakeGroups, ticksPerBar } from "../project-model/schema";
+import { clampBarLength } from "./geometry";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
@@ -710,10 +706,7 @@ export function stretchAudioClip(
   // MAX_ARRANGEMENT_CLIP_BARS, and ProjectStore.applyCommand normalizes after
   // every command — so an unclamped value here did not store an oversized clip,
   // it silently DELETED the user's clip with no error and no undo entry.
-  const bars = Math.min(
-    MAX_ARRANGEMENT_CLIP_BARS,
-    Math.max(minEditableClipBars(clip), quantizeAudioBar(lengthBars, ticksPerBar(doc))),
-  );
+  const bars = clampBarLength(quantizeAudioBar(lengthBars, ticksPerBar(doc)), minEditableClipBars(clip));
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
   // Fades must stay inside the clip (clampClipFades) — same rule as resize.
   const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
@@ -739,10 +732,7 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   // drops the clip outright, and because normalization runs inside
   // applyCommand the clip vanished from the store with no error and no undo —
   // a drag past the limit destroyed the user's take.
-  const bars = Math.min(
-    MAX_ARRANGEMENT_CLIP_BARS,
-    Math.max(minEditableClipBars(clip), quantizeAudioBar(lengthBars, ticksPerBar(doc))),
-  );
+  const bars = clampBarLength(quantizeAudioBar(lengthBars, ticksPerBar(doc)), minEditableClipBars(clip));
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.

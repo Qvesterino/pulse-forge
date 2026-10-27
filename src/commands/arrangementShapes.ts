@@ -16,12 +16,8 @@ import type {
   ProjectDocument,
   SceneRole,
 } from "../project-model/types";
-import {
-  clampArrangementTransitionType,
-  MAX_ARRANGEMENT_CLIP_BARS,
-  sceneRoleOf,
-  ticksPerBar,
-} from "../project-model/schema";
+import { clampArrangementTransitionType, sceneRoleOf, ticksPerBar } from "../project-model/schema";
+import { clampBarLength, clampBarPosition, clampWholeBarLength } from "./geometry";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
@@ -237,7 +233,7 @@ export function autoArrangeSong(doc: ProjectDocument, targetBars?: number): Comm
   const templateBars = TEMPLATE.reduce((sum, slot) => sum + slot.lengthBars, 0);
   const desiredBars =
     typeof targetBars === "number" && Number.isFinite(targetBars)
-      ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(TEMPLATE.length, Math.round(targetBars)))
+      ? clampBarLength(Math.round(targetBars), TEMPLATE.length)
       : templateBars;
   // Reserve one bar for every section before distributing the remaining bars.
   // This keeps very short API requests from producing zero-length clips.
@@ -393,10 +389,8 @@ export function appendCapturedArrangement(
   const clips = captured.map((entry) => ({
     id: uid("clip"),
     sceneId: entry.sceneId,
-    startBar: baseBar + (Number.isFinite(entry.startBar) ? Math.max(0, Math.round(entry.startBar)) : 0),
-    lengthBars: Number.isFinite(entry.lengthBars)
-      ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(entry.lengthBars)))
-      : 1,
+    startBar: baseBar + clampBarPosition(entry.startBar),
+    lengthBars: clampWholeBarLength(entry.lengthBars),
   }));
   const allClips = [...doc.arrangement.clips, ...clips].sort((a, b) => a.startBar - b.startBar);
   if (

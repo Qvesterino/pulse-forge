@@ -29,7 +29,8 @@ import type {
   MidiClip,
   ProjectDocument,
 } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_TICKS, ticksPerBar } from "../project-model/schema";
+import { ticksPerBar } from "../project-model/schema";
+import { clampPointTick, clampTickLength, clampTickPosition } from "./geometry";
 import { clampTargetValue, isAutomationTargetValid } from "../project-model/targets";
 import { uid } from "../shared/ids";
 import { addAudioClip, deleteAudioClip } from "./audioClips";
@@ -250,11 +251,8 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   if (hasMidi) {
     const midiClips = [...(pasted.arrangement.midiClips ?? [])];
     for (const stored of clipboard.midiClips) {
-      const lengthTicks = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(stored.lengthTicks)));
-      const startTick = Math.max(
-        0,
-        Math.min(MAX_ARRANGEMENT_CLIP_TICKS - lengthTicks, Math.round(stored.startTick + deltaTicks)),
-      );
+      const lengthTicks = clampTickLength(stored.lengthTicks);
+      const startTick = clampTickPosition(stored.startTick + deltaTicks, lengthTicks);
       const copy: MidiClip = {
         ...structuredClone(stored),
         id: uid("midiclip"),
@@ -271,11 +269,8 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   if (hasAutomation) {
     const automationClips = [...(pasted.arrangement.automationClips ?? [])];
     for (const stored of clipboard.automationClips) {
-      const lengthTicks = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(stored.lengthTicks)));
-      const startTick = Math.max(
-        0,
-        Math.min(MAX_ARRANGEMENT_CLIP_TICKS - lengthTicks, Math.round(stored.startTick + deltaTicks)),
-      );
+      const lengthTicks = clampTickLength(stored.lengthTicks);
+      const startTick = clampTickPosition(stored.startTick + deltaTicks, lengthTicks);
       const copy: ArrangementAutomationClip = {
         ...structuredClone(stored),
         id: uid("autoclip"),
@@ -283,7 +278,7 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
         lengthTicks,
         target: { ...stored.target },
         points: stored.points.map((point) => ({
-          tick: Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(point.tick))),
+          tick: clampPointTick(point.tick),
           value: clampTargetValue(doc, stored.target, point.value),
         })),
       };

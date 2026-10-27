@@ -14,6 +14,7 @@ import {
   targetParamDef,
 } from "../project-model/targets";
 import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
+import { clampPointTick, clampResizeLength, clampTickSpan } from "./geometry";
 import { uid } from "../shared/ids";
 import { collectClamps } from "../shared/clamp-report";
 import { clipGroupsWithoutIds } from "./clipGroups";
@@ -32,12 +33,7 @@ function editable(clip: ArrangementAutomationClip): void {
 }
 
 function safeGeometry(startTick: number, lengthTicks: number): { startTick: number; lengthTicks: number } {
-  if (!Number.isFinite(startTick) || !Number.isFinite(lengthTicks)) {
-    throw new Error("Automation clip position and length must be finite ticks");
-  }
-  const length = Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.max(1, Math.round(lengthTicks)));
-  const start = Math.min(MAX_ARRANGEMENT_CLIP_TICKS - length, Math.max(0, Math.round(startTick)));
-  return { startTick: start, lengthTicks: length };
+  return clampTickSpan(startTick, lengthTicks, "Automation");
 }
 
 /**
@@ -50,12 +46,14 @@ function safeGeometry(startTick: number, lengthTicks: number): { startTick: numb
  * but wrong for a resize: a resize that asked for a length past the ceiling
  * TELEPORTED the clip to the timeline's beginning. The property sweep found
  * it: the resize touched a field it does not own.
+ *
+ * The rule itself now lives in ONE place — `src/commands/geometry.ts` — so
+ * every lane clamps the same way and no lane can invent its own. This lane
+ * adds one bound of its own: the clip's phase limits how far into its source
+ * curve the clip may reach, so the length may not push its end past it.
  */
 function safeResizeLength(startTick: number, lengthTicks: number, phaseCeiling: number): number {
-  if (!Number.isFinite(lengthTicks)) throw new Error("Automation clip length must be finite ticks");
-  const start = Math.max(0, Math.round(startTick));
-  const room = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - start, phaseCeiling));
-  return Math.min(room, Math.max(1, Math.round(lengthTicks)));
+  return clampResizeLength(startTick, lengthTicks, "Automation", phaseCeiling);
 }
 
 function withClip(doc: ProjectDocument, nextClip: ArrangementAutomationClip): ProjectDocument {
@@ -81,7 +79,7 @@ export function addAutomationClip(
   const curve = points
     .filter((point) => Number.isFinite(point.tick) && Number.isFinite(point.value))
     .map((point) => ({
-      tick: Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.max(0, Math.round(point.tick))),
+      tick: clampPointTick(point.tick),
       value: clampTargetValue(doc, target, point.value, sink),
     }))
     .sort((a, b) => a.tick - b.tick)

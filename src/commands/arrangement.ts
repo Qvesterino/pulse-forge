@@ -10,7 +10,8 @@ import type {
   ProjectDocument,
   SceneRole,
 } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeArrangementTransitions, ticksPerBar } from "../project-model/schema";
+import { sanitizeArrangementTransitions, ticksPerBar } from "../project-model/schema";
+import { clampBarPosition, clampWholeBarLength } from "./geometry";
 import { scenePatternPeriodTicks } from "../project-model/midiTime";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
@@ -78,13 +79,11 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
   // Math.max passes NaN through and NaN comparisons are all false — an
   // unguarded NaN/negative wrote a clip that normalize then silently
   // DELETED (as an "undoable move"). Clamp like the audio-clip path.
-  const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
+  const bar = clampBarPosition(startBar);
   // MAX on add as well as resize: normalize FILTERS (drops) an over-length clip
   // outright, so an unclamped add from a scripted caller would "succeed" while
   // the clip never lands. Clamp here so the stored clip is one normalize keeps.
-  const bars = Number.isFinite(lengthBars)
-    ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)))
-    : 1;
+  const bars = clampWholeBarLength(lengthBars);
   if (clipsOverlap(doc.arrangement.clips, null, bar, bars)) {
     throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }
@@ -120,10 +119,8 @@ export function createVariationAndPlaceClip(
   // clip is placed, and normalize only filters the bad CLIP, so an unguarded
   // NaN startBar left the doc with an orphan scene+pattern and the command
   // reporting success with nothing on the timeline.
-  const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
-  const bars = Number.isFinite(lengthBars)
-    ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)))
-    : 1;
+  const bar = clampBarPosition(startBar);
+  const bars = clampWholeBarLength(lengthBars);
   if (clipsOverlap(doc.arrangement.clips, null, bar, bars)) {
     throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }
@@ -146,7 +143,7 @@ export function moveArrangementClip(doc: ProjectDocument, clipId: string, startB
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   assertClipEditable(clip, "move");
   // NaN passes Math.max/round through — clamp to 0 like addArrangementClip.
-  const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
+  const bar = clampBarPosition(startBar);
   if (clipsOverlap(doc.arrangement.clips, clipId, bar, clip.lengthBars)) {
     throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }
@@ -177,9 +174,7 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
   // arrangement view allocates one bar-grid node PER BAR, so an unbounded
   // length (a typed SECS value, a scripted command, an imported document)
   // could ask for millions of DOM nodes and freeze the tab.
-  const bars = Number.isFinite(lengthBars)
-    ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)))
-    : 1;
+  const bars = clampWholeBarLength(lengthBars);
   if (clipsOverlap(doc.arrangement.clips, clipId, clip.startBar, bars)) {
     throw new Error(`Clip would overlap the next clip`);
   }

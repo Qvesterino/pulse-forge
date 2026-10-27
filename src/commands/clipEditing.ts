@@ -11,6 +11,7 @@ import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
 import { MAX_ARRANGEMENT_CLIP_TICKS, normalizeProject, ticksPerBar } from "../project-model/schema";
+import { clampTickPosition } from "./geometry";
 import { buildStemProject } from "../rendering/stems";
 import { audioClipSourceSecondsPerWallSecond, warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
@@ -884,13 +885,13 @@ export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], del
   const movedMidi = new Map<string, number>();
   for (const clip of doc.arrangement.midiClips ?? []) {
     if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id) || deltaTicks === 0) continue;
-    const target = Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - clip.lengthTicks, clip.startTick + deltaTicks));
+    const target = clampTickPosition(clip.startTick + deltaTicks, clip.lengthTicks);
     if (target !== clip.startTick) movedMidi.set(clip.id, target);
   }
   const movedAutomation = new Map<string, number>();
   for (const clip of doc.arrangement.automationClips ?? []) {
     if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id) || deltaTicks === 0) continue;
-    const target = Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - clip.lengthTicks, clip.startTick + deltaTicks));
+    const target = clampTickPosition(clip.startTick + deltaTicks, clip.lengthTicks);
     if (target !== clip.startTick) movedAutomation.set(clip.id, target);
   }
   if (movedArrangement.size === 0 && movedAudio.size === 0 && movedMidi.size === 0 && movedAutomation.size === 0) {

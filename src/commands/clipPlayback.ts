@@ -9,7 +9,8 @@
  */
 import type { Command } from "./types";
 import type { AudioClip, IntensityPoint, ProjectDocument } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_BARS, ticksPerBar } from "../project-model/schema";
+import { ticksPerBar } from "../project-model/schema";
+import { clampWholeBarLength } from "./geometry";
 import { midiLaneOf, automationLaneOf, rippleShiftTickClips } from "../project-model/timeline";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
@@ -211,7 +212,7 @@ export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string
   assertClipEditable(clip, "resize");
   if (!Number.isFinite(lengthBars)) return snapshot("resizeArrangementClipRipple", "Ripple resize (no-op)", doc, doc);
   // Same rendering invariant as resizeArrangementClip — see the comment there.
-  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)));
+  const bars = clampWholeBarLength(lengthBars);
   const deltaBars = bars - clip.lengthBars;
   const oldEnd = clip.startBar + clip.lengthBars;
   const clips = doc.arrangement.clips
