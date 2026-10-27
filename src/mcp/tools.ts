@@ -3901,6 +3901,7 @@ function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
   return {
     text: `transport: ${action} · ${describeTransport(transport, doc)}`,
     mutated: false,
+    stage: "runtime",
     data: transportData("applied", action, transport, doc),
   };
 }
@@ -4020,6 +4021,7 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
   return {
     text: `launched "${scene.name}"${scene.role ? ` (${scene.role})` : ""} at bar ${startBar + 1}${play ? " — playing" : " (transport stopped)"} · intensity ${Math.round(scene.intensity * 100)}%`,
     mutated: false,
+    stage: "runtime",
     data: transportData("applied", "launchScene", transport, doc, {
       sceneId: scene.id,
       sceneName: scene.name,
@@ -4068,6 +4070,7 @@ function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): Mc
   return {
     text: `seek → bar ${bar}${beat > 1 ? ` beat ${beat}` : ""} (tick ${tick}) · ${describeTransport(transport, doc)}`,
     mutated: false,
+    stage: "runtime",
     data,
   };
 }
@@ -4111,6 +4114,7 @@ function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown
   return {
     text: `loop region: bars ${startBar}–${endBar} (ticks ${startTick}..${endTick}) · ${describeTransport(ctx.transport, doc)}`,
     mutated: false,
+    stage: "runtime",
     data,
   };
 }
@@ -4967,12 +4971,16 @@ ${preview.text}`,
   // a success with an identical document is not a success, and a success
   // without a read-back gets one. Handlers with their OWN value-level
   // read-back are left alone — theirs knows more than the structural summary.
+  // Does this call land on the project DOCUMENT? The R-02 gate and the
+  // envelope perimeter below both need the same answer — and the dry-run
+  // policy is its single owner (see `mutatesProjectDocument`).
+  const documentMutation = mutatesProjectDocument(name, args);
   result = verifiedMutation({
     before: docBefore,
     after: ctx.getDoc(),
     undoDepthBefore,
     undoDepthAfter: ctx.undoStackLength(),
-    documentMutation: mutatesProjectDocument(name, args),
+    documentMutation,
     result,
   });
   // Audit F-12: the clamp disclosure rides in the TEXT — the one channel every
@@ -4999,6 +5007,19 @@ ${preview.text}`,
   // is appended exactly once per execution).
   const sideEffectCommitted = result.idempotencyCommitted === true;
   delete result.idempotencyCommitted;
+  // ADR 0070 — THE ENVELOPE SAYS WHAT HAPPENED. A result that did not change
+  // the document DECLARES its disposition: a refusal carries `isError` + a
+  // code, a no-op carries `stage: "noop"`, a non-document fact carries its
+  // own stage. A handler that changes nothing and says NOTHING would reach
+  // the agent as a successful read — the exact false-success class the R-02
+  // gate exists to prevent (audit F-05). The source gate
+  // (tests/mcp-refusal-taxonomy.test.ts) keeps the handlers honest; this is
+  // the PERIMETER for whatever reaches the dispatch without a declaration.
+  if (result.isError !== true && result.mutated === false && result.stage == null && documentMutation) {
+    // The handler's own data (if any) rides along — a refusal that loses the
+    // handler's read-back would be a second, quieter divergence.
+    result = mcpError("EXECUTION_FAILED", result.text, result.data !== undefined ? { data: result.data } : undefined);
+  }
   if (result.isError !== true && result.stage == null) {
     result.stage = result.mutated === true ? "applied" : RUNTIME_STAGE_TOOLS.has(name) ? "runtime" : "read";
   }
@@ -5081,7 +5102,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           const gated = gateModelRoute(trimmed, modelRoute, ctx.getDoc());
           if (gated == null) {
             logIntentMiningEvent({ prompt: trimmed, outcome: "clarify", reason: "model-route-rejected" });
-            return { text: clarifyMessage("model-route-rejected"), mutated: false };
+            return mcpError("POLICY_REFUSED", clarifyMessage("model-route-rejected"));
           }
           logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: gated.kind });
           const result = executeRoutedIntent(ctx, gated);
@@ -5143,7 +5164,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       // the MIXER view rides with a machine-readable twin: the same board as
       // structured rows, so a mixing agent can diff numbers without parsing
       const data = subject === "mixer" ? mixerSnapshotData(ctx.getDoc()) : {};
-      return { text, mutated: false, data: { status: "read", subject, ...data } };
+      return { text, mutated: false, stage: "read", data: { status: "read", subject, ...data } };
     }
     case "kyx_save": {
       const op = record.op === "saveAs" ? "saveAs" : "save";
@@ -5282,6 +5303,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return {
         text,
         mutated: done > 0,
+        stage: done > 0 ? "applied" : "noop",
         data: {
           action,
           requestedSteps: steps,
@@ -5317,7 +5339,12 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (action === "state") {
         const t = ctx.transport;
         const doc = ctx.getDoc();
-        return { text: describeTransport(t, doc), mutated: false, data: transportData("read", action, t, doc) };
+        return {
+          text: describeTransport(t, doc),
+          mutated: false,
+          stage: "read",
+          data: transportData("read", action, t, doc),
+        };
       }
       return dispatchTransport(ctx, action);
     }
@@ -5365,10 +5392,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       );
       const result = generateLocalResult(doc, spec, "apply");
       if (!result.proposal) {
-        return {
-          text: `generation rejected: ${result.diagnostics.errors[0] ?? "unknown"}`,
-          mutated: false,
-        };
+        return mcpError("EXECUTION_FAILED", `generation rejected: ${result.diagnostics.errors[0] ?? "unknown"}`);
       }
       ctx.execute(applyGenerationResultCommand(doc, result));
       const pattern = result.proposal.pattern;
@@ -5491,6 +5515,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
                 ? `groove change only partially landed${assumedNote}`
                 : `groove already at requested setting${assumedNote}`,
           mutated: changed,
+          stage: changed ? "applied" : "noop",
           ...(status === "partial" ? { isError: true, errorCode: "PARTIAL_FAILURE" as const } : {}),
           data,
         };
@@ -5559,6 +5584,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `groove already at requested setting in "${scene.name}"${assumedNote}`,
           mutated: false,
+          stage: "noop",
           data: baseData({
             status: "already_at_target",
             scope: "section",
@@ -5599,6 +5625,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             ? `${scoped.label}${assumedNote} · ${changedCells} cells verified`
             : `section groove change could not be verified${assumedNote}`,
         mutated: changedCells > 0,
+        stage: changedCells > 0 ? "applied" : "noop",
         ...(status === "partial" ? { isError: true, errorCode: "PARTIAL_FAILURE" as const } : {}),
         data: baseData({
           status,
@@ -5791,7 +5818,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             parts.push(`${track.name}: ${chain}`);
           }
           if (moved === 0) {
-            if (failed === 0) return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
+            if (failed === 0) return { text: `nothing changed — ${parts.join("; ")}`, mutated: false, stage: "noop" };
             return mcpError("EXECUTION_FAILED", `reorder failed — ${parts.join("; ")}`);
           }
           ctx.execute(snapshot("mcpFxReorder", `MCP: reorder ${effect}#${reorderIndex}`, before, next));
@@ -5884,7 +5911,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           }
           if (touched === 0) {
             if (failed > 0) return mcpError("EXECUTION_FAILED", `nothing changed — ${parts.join("; ")}`);
-            return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
+            return { text: `nothing changed — ${parts.join("; ")}`, mutated: false, stage: "noop" };
           }
           ctx.execute(snapshot("mcpFxInstance", `MCP: ${action} ${effect}#${instanceWanted}`, before, next));
           const text = `${parts.join("; ")} — one undo step`;
@@ -6004,6 +6031,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
               .map((marker) => `${marker.name} (id=${marker.id}) — bar ${marker.bar}, ${marker.type}`)
               .join("\n") || "no markers",
           mutated: false,
+          stage: "read",
           data: { status: "listed", markers },
         };
       }
@@ -6049,11 +6077,9 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           .sort((a, b) => Math.abs(a.tick - tick) - Math.abs(b.tick - tick))[0];
       }
       if (target === undefined) {
-        return {
-          text: `no marker near bar ${bar}`,
-          mutated: false,
+        return mcpError("UNKNOWN_TARGET", `no marker near bar ${bar}`, {
           data: { status: "missing", ...(bar !== undefined ? { bar } : {}), undoSteps: 0 },
-        };
+        });
       }
       if (op === "rename") {
         if (name === "") return mcpError("INVALID_ARGUMENTS", "rename needs a non-empty name");
@@ -6061,6 +6087,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `marker "${target.name}" is already named that — no change`,
             mutated: false,
+            stage: "noop",
             data: { status: "already_named", ...markerMutationReadback(target), undoSteps: 0 },
           };
         }
@@ -6135,17 +6162,17 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // track path the text layer uses ("load the Warm Sub preset on the
         // bass"), one undo snapshot, per-track verification read-back.
         const presetName = typeof record.presetName === "string" ? record.presetName.trim() : "";
-        if (presetName === "") return { text: "loadPreset needs presetName", mutated: false };
+        if (presetName === "") return mcpError("INVALID_ARGUMENTS", "loadPreset needs presetName");
         const family = (typeof record.family === "string" ? record.family : "bass") as PresetTargetFamily;
         // resolvePresetByName expects a PRE-normalized want (deaccent + lowercase) —
         // passing the raw name made every ask miss and fall to suggestions
         const want = presetName.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/s+/g, " ").trim().toLowerCase();
         const resolved = resolvePresetByName(presetName, want, family);
         if (!resolved.ok) {
-          return {
-            text: `unknown preset "${presetName}" for ${family} — did you mean: ${resolved.suggestions.join(", ")}? (kyx_tracks {op:"listPresets", family} lists the factory bank)`,
-            mutated: false,
-          };
+          return mcpError(
+            "UNKNOWN_TARGET",
+            `unknown preset "${presetName}" for ${family} — did you mean: ${resolved.suggestions.join(", ")}? (kyx_tracks {op:"listPresets", family} lists the factory bank)`,
+          );
         }
         try {
           ctx.execute(applyPresetIntentCommand(ctx.getDoc(), resolved.intent));
@@ -6187,6 +6214,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `${bank.length} factory presets; for ${family}${query !== "" ? ` matching "${query}"` : ""}: ${shown.join("; ")}${fitting.length + rest.length > 25 ? " …" : ""}`,
           mutated: false,
+          stage: "read",
           data: { family, fitting: fitting.length, total: bank.length },
         };
       }
@@ -6287,16 +6315,16 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           const dbValue = typeof record.gainDb === "number" ? record.gainDb : undefined;
           const linearValue = typeof record.gain === "number" ? record.gain : undefined;
           if (dbValue === undefined && linearValue === undefined) {
-            return { text: "setGain needs gainDb (−60..+3.5, absolute) or gain (linear 0..1.5)", mutated: false };
+            return mcpError("INVALID_ARGUMENTS", "setGain needs gainDb (−60..+3.5, absolute) or gain (linear 0..1.5)");
           }
           let linear: number;
           if (dbValue !== undefined) {
-            if (!Number.isFinite(dbValue)) return { text: "gainDb must be a finite number of dB", mutated: false };
+            if (!Number.isFinite(dbValue)) return mcpError("INVALID_ARGUMENTS", "gainDb must be a finite number of dB");
             const clampedDb = Math.min(3.5, Math.max(-60, dbValue));
             linear = Math.min(1.5, Math.max(0, 10 ** (clampedDb / 20)));
           } else {
             if (!Number.isFinite(linearValue!))
-              return { text: "gain must be a finite linear value (0..1.5)", mutated: false };
+              return mcpError("INVALID_ARGUMENTS", "gain must be a finite linear value (0..1.5)");
             linear = Math.min(1.5, Math.max(0, linearValue!));
           }
           for (const id of ids) next = setTrackParams(next, id, { gain: linear }).execute(next);
@@ -6309,7 +6337,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         } else if (op === "setPan") {
           const pan = Number(record.pan);
           if (!Number.isFinite(pan))
-            return { text: "setPan needs pan in −1..1 (−1 left, 0 center, 1 right)", mutated: false };
+            return mcpError("INVALID_ARGUMENTS", "setPan needs pan in −1..1 (−1 left, 0 center, 1 right)");
           const clamped = Math.min(1, Math.max(-1, pan));
           for (const id of ids) next = setTrackParams(next, id, { pan: clamped }).execute(next);
           for (const id of ids) {
@@ -6327,7 +6355,11 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           }
         }
         if (next === before) {
-          return { text: `nothing changed — ${parts.join("; ") || "values already match"}`, mutated: false };
+          return {
+            text: `nothing changed — ${parts.join("; ") || "values already match"}`,
+            mutated: false,
+            stage: "noop",
+          };
         }
         ctx.execute(snapshot("mcpMixer", `MCP: ${op} on ${ids.length} track(s)`, before, next));
         return { text: `${parts.join("; ")}${ids.length > 1 ? " (one undo step)" : ""}`, mutated: true };
@@ -6346,7 +6378,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             return `${index + 1}. "${pattern.name}" (${formatMetricalBars(bars)})${active}`;
           })
           .join("\n");
-        return { text: list || "no patterns", mutated: false };
+        return { text: list || "no patterns", mutated: false, stage: "read" };
       }
       // select — by 1-based index or case-insensitive name
       const wanted = String(record.pattern ?? "").trim();
@@ -6354,13 +6386,13 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const byIndex = /^\d+$/.test(wanted) ? patterns[Number(wanted) - 1] : undefined;
       const target = byIndex ?? patterns.find((pattern) => pattern.name.toLowerCase() === wanted.toLowerCase());
       if (!target) {
-        return {
-          text: `no pattern "${wanted}" — use kyx_pattern op:list (have: ${patterns.map((p) => p.name).join(", ") || "none"})`,
-          mutated: false,
-        };
+        return mcpError(
+          "UNKNOWN_TARGET",
+          `no pattern "${wanted}" — use kyx_pattern op:list (have: ${patterns.map((p) => p.name).join(", ") || "none"})`,
+        );
       }
       if (target.id === ctx.getDoc().activePatternId) {
-        return { text: `"${target.name}" is already the active pattern`, mutated: false };
+        return { text: `"${target.name}" is already the active pattern`, mutated: false, stage: "noop" };
       }
       ctx.execute(setActivePattern(ctx.getDoc(), target.id));
       const bars = barsPerPattern(ctx.getDoc(), target.stepCount);
@@ -6426,6 +6458,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
               ? `${lines.length} inserted effect(s):\n${lines.join("\n")}`
               : "no effects inserted on tracks, returns or the master chain",
           mutated: false,
+          stage: "read",
           data: fxSnapshot,
         };
       }
@@ -6455,7 +6488,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         if (snapshotMeters.tracks.length === 0) lines.push("no track meters live");
       }
-      return { text: lines.join("\n"), mutated: false, data: snapshotMeters };
+      return { text: lines.join("\n"), mutated: false, stage: "read", data: snapshotMeters };
     }
     case "kyx_mix":
       return executeMixTool(ctx, record);
@@ -6538,6 +6571,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: summary,
           mutated: false,
+          stage: "read",
           data: noteData("listed", notes.length, 0, {
             offset,
             limit,
@@ -6600,6 +6634,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `added ${midiToNoteName(added.pitch)} @${beat(added.start)}b ×${beat(added.duration)}b — ${trackName} now has ${after.length} notes`,
           mutated,
+          stage: mutated ? "applied" : "noop",
           data: noteData("added", after.length, mutated ? 1 : 0, {
             noteId: added.id,
             index: addedIndex,
@@ -6706,6 +6741,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `note ${target!.id} is already at the requested position`,
             mutated: false,
+            stage: "noop",
             data: noteData("already_moved", targetNotes.length, 0, {
               noteId: target!.id,
               index,
@@ -6749,6 +6785,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `note ${moved.id} is already at the requested position`,
             mutated: false,
+            stage: "noop",
             data: noteData("already_moved", afterNotes.length, 0, {
               noteId: moved.id,
               index: landedIndex,
@@ -6791,6 +6828,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `deleted ${describe(target!, index)} — ${afterNotes.length} notes left`,
           mutated,
+          stage: mutated ? "applied" : "noop",
           data: noteData("deleted", afterNotes.length, mutated ? 1 : 0, { noteId: target!.id, index }),
         };
       }
@@ -6803,6 +6841,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `velocity is already ${landedVelocity.toFixed(2)} for note ${target!.id}`,
             mutated: false,
+            stage: "noop",
             data: noteData("already_set", targetNotes.length, 0, {
               noteId: target!.id,
               index,
@@ -6828,6 +6867,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `velocity: ${describe(changed, landedIndex)}${changed.velocity !== velocity ? ` — clamped to ${changed.velocity.toFixed(2)}` : ""}`,
           mutated,
+          stage: mutated ? "applied" : "noop",
           data: noteData(mutated ? "velocity_set" : "already_set", afterNotes.length, mutated ? 1 : 0, {
             noteId: changed.id,
             index: landedIndex,
@@ -6852,6 +6892,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `duration is already ${beat(target!.duration)} beats for note ${target!.id}`,
             mutated: false,
+            stage: "noop",
             data: noteData("already_set", targetNotes.length, 0, {
               noteId: target!.id,
               index,
@@ -6878,6 +6919,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `resized ${describe(changed, landedIndex)}${clamped ? ` — clamped to ${beat(changed.duration)} beats` : ""}`,
           mutated,
+          stage: mutated ? "applied" : "noop",
           data: noteData(mutated ? "resized" : "already_set", afterNotes.length, mutated ? 1 : 0, {
             noteId: changed.id,
             index: landedIndex,
@@ -6914,6 +6956,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `track ${trackName} has no notes to ${op}`,
             mutated: false,
+            stage: "noop",
             data: noteData("no_notes", before.length, 0),
           };
         }
@@ -6937,6 +6980,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `${op}: nothing changed on ${trackName} (the command no-opped — e.g. glue found no same-pitch pair)`,
             mutated: false,
+            stage: "noop",
             data: noteData("no_change", after.length, 0, {
               beforeCount: before.length,
               targetedCount: resolved.length,
@@ -6946,6 +6990,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `${op} on ${trackName}: ${before.length} → ${after.length} notes — one undo step`,
           mutated,
+          stage: mutated ? "applied" : "noop",
           data: noteData(op, after.length, 1, { beforeCount: before.length, targetedCount: resolved.length }),
         };
       }
@@ -6978,6 +7023,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `track "${track?.name ?? trackId}" has no notes to quantize`,
             mutated: false,
+            stage: "noop",
             data: noteData("no_notes", 0, 0, {
               targetNoteCount: 0,
               changedNotes: 0,
@@ -7021,12 +7067,14 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `notes on ${track?.name ?? trackId} are already quantized${key ? ` to ${key}` : ` to ${gridName}`}`,
             mutated: false,
+            stage: "noop",
             data,
           };
         }
         return {
           text: `quantized ${changedNotes}/${beforeNotes.length} notes on ${track?.name ?? trackId}${key ? ` to ${key}` : ` to ${gridName}`} — one undo step`,
           mutated,
+          stage: mutated ? "applied" : "noop",
           data,
         };
       }
@@ -7049,6 +7097,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `track "${trackName}" has no notes to transpose`,
             mutated: false,
+            stage: "noop",
             data: noteData("no_notes", 0, 0, {
               targetNoteCount: 0,
               transposedNotes: 0,
@@ -7109,6 +7158,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `transposed ${transposed} notes on ${trackName} by ${semitones > 0 ? "+" : ""}${semitones} st — one undo step`,
           mutated: ctx.getDoc() !== before,
+          stage: ctx.getDoc() !== before ? "applied" : "noop",
           data: noteData("transposed", after.length, ctx.getDoc() !== before ? 1 : 0, {
             targetNoteCount: beforeNotes.length,
             transposedNotes: transposed,
@@ -7227,6 +7277,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `audio preview ready — ${preview.bars} bar(s), ${preview.durationSec.toFixed(1)} s, ${preview.sampleRate} Hz, ${(preview.byteLength / 1024).toFixed(0)} KiB. Listen to the attached audio content.`,
           mutated: false,
+          stage: "runtime",
           audio: preview.audio,
           data: {
             bars: preview.bars,
@@ -7261,6 +7312,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `current mix: ${reading.integrated.toFixed(1)} LUFS integrated (render-backed BS.1770)`,
             mutated: false,
+            stage: "runtime",
             data: { integratedLufs: reading.integrated },
           };
         } catch (error) {
@@ -7385,6 +7437,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `published to the gallery as AGENT-MADE: "${title}" (id ${id}, agent ${agent}) — it shows with the robot badge in the gallery feed`,
           mutated: false,
+          stage: "delivered",
           data: { galleryId: id, origin: "agent", agent },
         };
       } catch (error) {
@@ -7494,7 +7547,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
       try {
         const data = await ctx.renderSummary({ scope });
-        return { text: formatRenderSummary(data), mutated: false, data };
+        return { text: formatRenderSummary(data), mutated: false, stage: "runtime", data };
       } catch (error) {
         return mcpError(
           "EXECUTION_FAILED",
@@ -7528,6 +7581,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: reactions ? `${text}\n\n${reactions.text}` : text,
           mutated: false,
+          stage: "runtime",
           data: reactions ? { ...data, reactions: reactions.data } : data,
         };
       } catch (error) {
@@ -7600,7 +7654,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
                 },
               }
             : { status: "rejected", ok: false, applied: false, reason: outcome.reason };
-          return { text: formatMixPreview(outcome), mutated: false, data };
+          return { text: formatMixPreview(outcome), mutated: false, stage: "runtime", data };
         } catch (error) {
           return mcpError(
             "EXECUTION_FAILED",
@@ -7612,12 +7666,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         const { planMixIdea, formatMixIdea } = await import("./mix-idea");
         const plan = planMixIdea(ctx.getDoc(), idea, target);
         if (!plan.ok) {
-          return {
-            text: plan.reason,
-            mutated: false,
-            isError: apply,
-            data: { status: "rejected", ok: false, applied: false, reason: plan.reason },
-          };
+          // Audit F-05: a REJECTED PLAN is two different facts. When the
+          // caller asked to apply it, the call failed — and an error without
+          // a code is an error the agent cannot branch on (`isError: apply`
+          // produced one whenever `apply` was true). When the caller only
+          // asked for a proposal, it is a dry-run that could not be planned.
+          const rejection = { status: "rejected", ok: false, applied: false, reason: plan.reason };
+          return apply
+            ? mcpError("EXECUTION_FAILED", plan.reason, { data: rejection })
+            : { text: plan.reason, mutated: false, stage: "dry-run", data: rejection };
         }
         if (apply) {
           ctx.execute(plan.command);
@@ -7625,6 +7682,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: formatMixIdea(plan, apply),
           mutated: apply,
+          stage: apply ? "applied" : "dry-run",
           data: {
             status: apply ? "applied" : "planned",
             ok: true,
@@ -7656,6 +7714,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `${plan.note} — apply these playback gains before the comparison so neither side is privileged`,
           mutated: false,
+          stage: "runtime",
           data: { op: "plan", status: "planned", gains: plan.gains },
         };
       }
@@ -7697,6 +7756,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `trial recorded: ${entry.correct ? "correct" : "incorrect"} (lane "${entry.lane}")`,
           mutated: false,
+          stage: "runtime",
           data: { op: "record", status: "recorded", trial: entry },
           idempotencyCommitted: true,
         };
@@ -7712,15 +7772,20 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         const lane = typeof laneValue === "string" ? laneValue : "default";
         const summary = summarizeBlindAb(lane);
         if (summary == null) {
+          // A VERDICT ON A LANE WITH NO TRIALS IS A READ, not a refusal: the
+          // verdict is well-formed and its answer is "no trials yet" (audit
+          // F-05 — the disposition is declared, not guessed).
           return {
             text: "no trials recorded for this lane yet — record trials with op:record (the human listens, you count)",
             mutated: false,
+            stage: "read",
             data: { op: "verdict", status: "no_trials", lane },
           };
         }
         return {
           text: `blind A/B "${summary.lane}": ${summary.correct}/${summary.total} correct (p = ${summary.pValue.toFixed(4)}${summary.hastyExcluded > 0 ? `, ${summary.hastyExcluded} hasty excluded` : ""}) — ${summary.verdict}`,
           mutated: false,
+          stage: "runtime",
           data: {
             op: "verdict",
             status: "summarized",
@@ -7742,6 +7807,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `blind A/B trial log cleared (${cleared.clearedTrials} trial(s) across ${cleared.clearedLanes} lane(s))`,
           mutated: false,
+          stage: "runtime",
           data: { op: "reset", status: "cleared", ...cleared },
           idempotencyCommitted: true,
         };
@@ -7824,9 +7890,9 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
   const labels = () => ctx.historyLabels();
   switch (uri) {
     case "kyx://project/overview":
-      return { text: stateSnapshot(ctx.getDoc(), "overview", undefined, labels), mutated: false };
+      return { text: stateSnapshot(ctx.getDoc(), "overview", undefined, labels), mutated: false, stage: "read" };
     case "kyx://project/pattern":
-      return { text: stateSnapshot(ctx.getDoc(), "pattern", undefined, labels), mutated: false };
+      return { text: stateSnapshot(ctx.getDoc(), "pattern", undefined, labels), mutated: false, stage: "read" };
     case "kyx://project/mix":
       return {
         text: [
@@ -7835,6 +7901,7 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
           stateSnapshot(ctx.getDoc(), "groove", undefined, labels),
         ].join("\n"),
         mutated: false,
+        stage: "read",
       };
     case "kyx://project/arrangement":
       return {
@@ -7844,9 +7911,10 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
           `markers: ${stateSnapshot(ctx.getDoc(), "markers", undefined, labels)}`,
         ].join("\n"),
         mutated: false,
+        stage: "read",
       };
     case "kyx://project/history":
-      return { text: stateSnapshot(ctx.getDoc(), "history", undefined, labels), mutated: false };
+      return { text: stateSnapshot(ctx.getDoc(), "history", undefined, labels), mutated: false, stage: "read" };
     case "kyx://session/capabilities": {
       const snapshot = capabilitySnapshot(ctx);
       return {
@@ -7857,9 +7925,9 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
       };
     }
     case "kyx://playbook":
-      return { text: MCP_PLAYBOOK_TEXT, mutated: false };
+      return { text: MCP_PLAYBOOK_TEXT, mutated: false, stage: "read" };
     case "kyx://vocab":
-      return { text: MCP_VOCAB_TEXT, mutated: false };
+      return { text: MCP_VOCAB_TEXT, mutated: false, stage: "read" };
     default:
       return mcpError("UNKNOWN_REQUEST", `unknown resource: ${uri} — see resources/list`);
   }
@@ -7944,6 +8012,7 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
     return {
       text: "mix profile is neutral for this genre/mood (no decisions) - nothing to apply",
       mutated: false,
+      stage: "noop",
       data: { status: "neutral", genre, decisionCount: 0, summary: [] },
     };
   }
@@ -7956,6 +8025,7 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
       return {
         text: "mix already matches the profile - changed nothing",
         mutated: false,
+        stage: "noop",
         data: { status: "already_matched", genre, decisionCount: profile.decisions.length, summary: profile.summary },
       };
     }
@@ -8014,6 +8084,7 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
     return {
       text: "the genre produced an empty form - nothing to arrange",
       mutated: false,
+      stage: "noop",
       data: {
         status: "empty",
         genre,
@@ -8347,6 +8418,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
       return {
         text: "no checkpoints — kyx_checkpoint {op: save, name} creates one; destructive ops auto-save when allowed",
         mutated: false,
+        stage: "read",
       };
     }
     const lines: string[] = [];
@@ -8359,6 +8431,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     return {
       text: lines.join("\n"),
       mutated: false,
+      stage: "read",
       data: { op: "list", checkpoints: [...checkpoints.keys()].slice(0, 8) },
     };
   }
@@ -8376,6 +8449,10 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     return {
       text: `checkpoint "${saved}" saved (${entry.summary}) — ${durable}, ${checkpoints.size}/${CHECKPOINT_LIMIT} in memory`,
       mutated: false,
+      // A checkpoint is SESSION state, not a document change — and the
+      // receipt vocabulary of this tool says so (the checkpoint save is
+      // pinned as stage "read" in tests/mcp-ai-control-hardening).
+      stage: "read",
     };
   }
   if (name === "") {
@@ -8394,6 +8471,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     return {
       text: `checkpoint "${name}" deleted (${checkpoints.size} left)`,
       mutated: false,
+      stage: "runtime",
       data: { op: "delete", name },
     };
   }
@@ -8433,7 +8511,11 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     const fxNow = doc.tracks.reduce((sum, t) => sum + t.effects.length, 0);
     if (fxThen !== fxNow) delta.push(`~ FX instances: ${fxThen} -> ${fxNow}`);
     if (delta.length === 0) {
-      return { text: `checkpoint "${name}": no differences — the document matches the checkpoint`, mutated: false };
+      return {
+        text: `checkpoint "${name}": no differences — the document matches the checkpoint`,
+        mutated: false,
+        stage: "read",
+      };
     }
     return {
       text:
@@ -8443,6 +8525,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
         (delta.length > 12 ? `\n... and ${delta.length - 12} more` : "") +
         "\nrestore replaces ALL of this in one undo step.",
       mutated: false,
+      stage: "read",
     };
   }
   if (op === "restore") {
@@ -8561,10 +8644,11 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
   const doc = ctx.getDoc();
   if (op === "listTargets") {
     const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
-    if (!trackId) return { text: "listTargets needs an exact trackId from kyx_state subject:tracks", mutated: false };
+    if (!trackId)
+      return mcpError("INVALID_ARGUMENTS", "listTargets needs an exact trackId from kyx_state subject:tracks");
     const track = doc.tracks.find((candidate) => candidate.id === trackId);
     if (!track)
-      return { text: `no track with id "${trackId}" — list ids via kyx_state subject:tracks`, mutated: false };
+      return mcpError("UNKNOWN_TARGET", `no track with id "${trackId}" — list ids via kyx_state subject:tracks`);
     const effects = track.effects.map((effect) => ({
       fxId: effect.id,
       effectType: effect.type,
@@ -8591,17 +8675,18 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     };
   }
   const target = resolveAutomationTarget(doc, record);
-  if (typeof target === "string") return { text: target, mutated: false };
+  if (typeof target === "string") return mcpError("UNKNOWN_TARGET", target);
   if (!isAutomationTargetValid(doc, target)) {
-    return {
-      text: "invalid automation target — check the track/effect/param exists (kyx_catalog, kyx_state fxChain)",
-      mutated: false,
-    };
+    return mcpError(
+      "UNKNOWN_TARGET",
+      "invalid automation target — check the track/effect/param exists (kyx_catalog, kyx_state fxChain)",
+    );
   }
   const lane = automationLaneForTarget(doc, target);
 
   if (op === "addRamp") {
-    if (target.kind !== "fxParam") return { text: "addRamp currently requires an inserted FX target", mutated: false };
+    if (target.kind !== "fxParam")
+      return mcpError("INVALID_ARGUMENTS", "addRamp currently requires an inserted FX target");
     const startBar = record.startBar;
     const endBar = record.endBar;
     const fromValue = record.fromValue;
@@ -8616,10 +8701,10 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
       endBar <= startBar ||
       endBar > MAX_ARRANGEMENT_CLIP_BARS
     ) {
-      return {
-        text: `addRamp needs integer bars satisfying 1 ≤ startBar < endBar ≤ ${MAX_ARRANGEMENT_CLIP_BARS}`,
-        mutated: false,
-      };
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `addRamp needs integer bars satisfying 1 ≤ startBar < endBar ≤ ${MAX_ARRANGEMENT_CLIP_BARS}`,
+      );
     }
     if (
       typeof fromValue !== "number" ||
@@ -8627,18 +8712,18 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
       typeof toValue !== "number" ||
       !Number.isFinite(toValue)
     ) {
-      return { text: "addRamp needs finite native fromValue and toValue numbers", mutated: false };
+      return mcpError("INVALID_ARGUMENTS", "addRamp needs finite native fromValue and toValue numbers");
     }
     const def = targetParamDef(doc, target);
-    if (!def) return { text: "the resolved FX target has no parameter definition", mutated: false };
+    if (!def) return mcpError("UNKNOWN_TARGET", "the resolved FX target has no parameter definition");
     if (def.kind && ["toggle", "enum", "discrete", "unknown"].includes(def.kind)) {
-      return { text: `${def.label} is discrete and cannot be represented as a continuous ramp`, mutated: false };
+      return mcpError("INVALID_ARGUMENTS", `${def.label} is discrete and cannot be represented as a continuous ramp`);
     }
     if (fromValue < def.min || fromValue > def.max || toValue < def.min || toValue > def.max) {
-      return {
-        text: `${def.label} accepts ${def.min}..${def.max}${def.unit ? ` ${def.unit}` : ""}; values outside the range are rejected, not clamped`,
-        mutated: false,
-      };
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `${def.label} accepts ${def.min}..${def.max}${def.unit ? ` ${def.unit}` : ""}; values outside the range are rejected, not clamped`,
+      );
     }
     try {
       const startTick = tickAtBar(startBar, doc);
@@ -8672,19 +8757,19 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         },
       };
     } catch (error) {
-      return { text: error instanceof Error ? error.message : String(error), mutated: false };
+      return mcpError("EXECUTION_FAILED", error instanceof Error ? error.message : String(error));
     }
   }
 
   if (op === "addPoint") {
     const position = positionFromRecord(record, doc);
-    if (typeof position === "string") return { text: position, mutated: false };
+    if (typeof position === "string") return mcpError("UNKNOWN_TARGET", position);
     if (record.value == null || !Number.isFinite(Number(record.value))) {
       const def = targetParamDef(doc, target);
-      return {
-        text: `addPoint needs a finite NATIVE value${def ? ` (${target.paramId ?? target.kind}: ${def.min}..${def.max}, default ${def.default})` : ""}`,
-        mutated: false,
-      };
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `addPoint needs a finite NATIVE value${def ? ` (${target.paramId ?? target.kind}: ${def.min}..${def.max}, default ${def.default})` : ""}`,
+      );
     }
     // ONE snapshot for lane-create + point (a fresh lane alone would leave
     // the caller two undo steps for one call).
@@ -8704,14 +8789,24 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     const tick = Math.max(0, Math.round(position));
     const clamped = clampTargetValue(doc, lane?.target ?? target, value);
     if (lane?.points.some((p) => p.tick === tick && p.value === clamped)) {
-      return { text: "automation point did not land (already present with this value?)", mutated: false };
+      return {
+        text: "automation point did not land (already present with this value?)",
+        mutated: false,
+        stage: "noop",
+      };
     }
     next = addAutomationPoint(next, laneId, tick, value).execute(next);
     const landedLane = next.automation.find((candidate) => candidate.id === laneId);
     // Last match wins: the engine samples the most recent point at a tick.
     const landed = landedLane?.points.filter((point) => point.tick === position).pop();
     if (!landed || landedLane == null) {
-      return { text: "automation point did not land (already present with this value?)", mutated: false };
+      // Audit F-05: this branch is a FAILURE (the command ran and the point
+      // is not in the lane) — not the duplicate above, which is a no-op. The
+      // two used to carry the SAME text, so a failure read as a duplicate.
+      return mcpError(
+        "EXECUTION_FAILED",
+        "the automation point did not land — the command ran but the lane holds no such point",
+      );
     }
     const pointCount = landedLane.points.length;
     const def = targetParamDef(doc, target);
@@ -8732,13 +8827,13 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
 
   if (op === "deletePoint") {
     if (!lane)
-      return {
-        text: `no automation lane for ${automationTargetLabel(doc, target)} — nothing to delete`,
-        mutated: false,
-      };
-    if (lane.points.length === 0) return { text: "the lane has no points", mutated: false };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no automation lane for ${automationTargetLabel(doc, target)} — nothing to delete`,
+      );
+    if (lane.points.length === 0) return mcpError("UNKNOWN_TARGET", "the lane has no points");
     const position = positionFromRecord(record, doc);
-    if (typeof position === "string") return { text: position, mutated: false };
+    if (typeof position === "string") return mcpError("UNKNOWN_TARGET", position);
     // Nearest point within one bar window (same etiquette as kyx_markers).
     let bestIndex = -1;
     let bestDistance = ticksPerBar(doc);
@@ -8750,10 +8845,10 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
       }
     });
     if (bestIndex === -1) {
-      return {
-        text: `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
+      );
     }
     const removed = lane.points[bestIndex];
     ctx.execute(deleteAutomationPoint(doc, lane.id, bestIndex));
@@ -8765,13 +8860,13 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
 
   if (op === "movePoint") {
     if (!lane)
-      return {
-        text: `no automation lane for ${automationTargetLabel(doc, target)} — nothing to move`,
-        mutated: false,
-      };
-    if (lane.points.length === 0) return { text: "the lane has no points", mutated: false };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no automation lane for ${automationTargetLabel(doc, target)} — nothing to move`,
+      );
+    if (lane.points.length === 0) return mcpError("UNKNOWN_TARGET", "the lane has no points");
     const position = positionFromRecord(record, doc);
-    if (typeof position === "string") return { text: position, mutated: false };
+    if (typeof position === "string") return mcpError("UNKNOWN_TARGET", position);
     let bestIndex = -1;
     let bestDistance = ticksPerBar(doc);
     lane.points.forEach((point, index) => {
@@ -8782,28 +8877,29 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
       }
     });
     if (bestIndex === -1) {
-      return {
-        text: `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
+      );
     }
     const original = lane.points[bestIndex];
     const hasNewPosition = record.newBar != null;
     const newTick = hasNewPosition
       ? positionFromRecord({ bar: record.newBar, beat: record.newBeat }, doc)
       : original!.tick;
-    if (typeof newTick === "string") return { text: newTick, mutated: false };
+    if (typeof newTick === "string") return mcpError("UNKNOWN_TARGET", newTick);
     const delta: { tick?: number; value?: number } = {};
     if (hasNewPosition && newTick !== original!.tick) delta.tick = newTick;
     if (record.value != null) {
       if (!Number.isFinite(Number(record.value)))
-        return { text: "value must be a finite NATIVE number", mutated: false };
+        return mcpError("INVALID_ARGUMENTS", "value must be a finite NATIVE number");
       if (Number(record.value) !== original!.value) delta.value = Number(record.value);
     }
     if (delta.tick === undefined && delta.value === undefined) {
       return {
         text: `nothing to change — point ${barBeat(original!.tick, doc)}=${original!.value} already matches`,
         mutated: false,
+        stage: "noop",
       };
     }
     const valueChangedOnly = delta.tick === undefined;
@@ -8819,12 +8915,12 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
 
   if (op === "clearLane" || op === "removeLane") {
     if (!destructiveAllowedWithCheckpoint(ctx, "kyx_automation")) return destructiveRefusal();
-    if (!lane) return { text: `no automation lane for ${automationTargetLabel(doc, target)}`, mutated: false };
+    if (!lane) return mcpError("UNKNOWN_TARGET", `no automation lane for ${automationTargetLabel(doc, target)}`);
     if (op === "removeLane") {
       ctx.execute(removeAutomationLane(doc, lane.id));
       return { text: `removed automation lane ${automationTargetLabel(doc, target)} — one undo step`, mutated: true };
     }
-    if (lane.points.length === 0) return { text: "the lane already has no points", mutated: false };
+    if (lane.points.length === 0) return { text: "the lane already has no points", mutated: false, stage: "noop" };
     const cleared = lane.points.length;
     const next = {
       ...doc,
@@ -8841,10 +8937,10 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     };
   }
 
-  return {
-    text: `unknown op: ${op} (listTargets | addPoint | addRamp | movePoint | deletePoint | clearLane | removeLane)`,
-    mutated: false,
-  };
+  return mcpError(
+    "UNKNOWN_REQUEST",
+    `unknown op: ${op} (listTargets | addPoint | addRamp | movePoint | deletePoint | clearLane | removeLane)`,
+  );
 }
 
 /** Resolve the tool's target fields into an AutomationTarget. Returns an
@@ -8988,7 +9084,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   try {
     if (op === "copy" || op === "cut" || op === "paste") {
       if (op === "paste") {
-        if (!mcpClipClipboard) return { text: "clipboard is empty — copy or cut first", mutated: false };
+        if (!mcpClipClipboard) return mcpError("EXECUTION_FAILED", "clipboard is empty — copy or cut first");
         // Paste at the playhead unless a bar is named; the UI pastes at the
         // playhead, so an agent that passes no bar lands where a user would.
         const rawPasteBar = Number(record.bar);
@@ -9006,7 +9102,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       const rawBar = typeof record.bar === "number" ? record.bar : null;
       if (clipId === "") {
         if (rawBar === null || !Number.isFinite(rawBar) || rawBar < 1) {
-          return { text: `${op} needs clipId or a 1-based anchor bar`, mutated: false };
+          return mcpError("INVALID_ARGUMENTS", `${op} needs clipId or a 1-based anchor bar`);
         }
       }
       let targets: string[] = [];
@@ -9041,16 +9137,13 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         }
       }
       if (targets.length === 0) {
-        return {
-          text: `no clip covers bar ${Math.round(rawBar!)} — read the layout via op:list`,
-          mutated: false,
-        };
+        return mcpError("UNKNOWN_TARGET", `no clip covers bar ${Math.round(rawBar!)} — read the layout via op:list`);
       }
       const built = buildClipClipboard(doc, targets);
-      if (!built) return { text: "nothing copyable at that address", mutated: false };
+      if (!built) return mcpError("UNKNOWN_TARGET", "nothing copyable at that address");
       mcpClipClipboard = built;
       if (op === "copy") {
-        return { text: `copied ${clipboardSummary(built)} — paste with op:paste`, mutated: false };
+        return { text: `copied ${clipboardSummary(built)} — paste with op:paste`, mutated: false, stage: "runtime" };
       }
       // CUT is a delete: it must ride the D4 gate like every other removal.
       if (!destructiveAllowedWithCheckpoint(ctx, "kyx_clips")) return destructiveRefusal();
@@ -9086,6 +9179,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     return {
       text: lines.join("\n"),
       mutated: false,
+      stage: "read",
       data: {
         arrangementClips: sorted.map((clip) => ({
           id: clip.id,
@@ -9137,7 +9231,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   if (op === "midiList") {
     const clips = doc.arrangement.midiClips ?? [];
     if (clips.length === 0) {
-      return { text: "no MIDI clips — op:midiAdd places the active (or named) pattern", mutated: false };
+      return { text: "no MIDI clips — op:midiAdd places the active (or named) pattern", mutated: false, stage: "read" };
     }
     const midiLabel = (clip: {
       trackId: string;
@@ -9155,6 +9249,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     return {
       text: lines.join("\n"),
       mutated: false,
+      stage: "read",
       data: {
         clips: clips.slice(0, 24).map((clip) => ({
           id: clip.id,
@@ -9256,7 +9351,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   // ── audio-clip surface (track-lane waveforms) ────────────────────────────
   if (op === "audioList") {
     const audio = doc.arrangement.audioClips ?? [];
-    if (audio.length === 0) return { text: "no audio clips on track lanes", mutated: false };
+    if (audio.length === 0) return { text: "no audio clips on track lanes", mutated: false, stage: "read" };
     // AS-012: warp pins are part of the OBSERVATION space — an agent that
     // cannot see the timing map cannot reason about why a clip drags.
     const lines = audio.slice(0, 12).map((clip) => {
@@ -9271,6 +9366,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     return {
       text: lines.join("\n"),
       mutated: false,
+      stage: "read",
       data: {
         clips: audio.slice(0, 12).map((clip) => ({
           id: clip.id,
@@ -9302,10 +9398,10 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     }
     const rawAnchor = record.bar === undefined ? null : Number(record.bar);
     if (clipId === "" && (rawAnchor === null || !Number.isFinite(rawAnchor) || Math.round(rawAnchor) < 1)) {
-      return { text: `a 1-based anchor bar or clipId is required for ${op}`, mutated: false };
+      return mcpError("INVALID_ARGUMENTS", `a 1-based anchor bar or clipId is required for ${op}`);
     }
     if (op === "audioSplit" && (rawAnchor === null || !Number.isFinite(rawAnchor) || Math.round(rawAnchor) < 1)) {
-      return { text: "audioSplit needs a 1-based bar as the split point", mutated: false };
+      return mcpError("INVALID_ARGUMENTS", "audioSplit needs a 1-based bar as the split point");
     }
     const anchor = rawAnchor !== null && Number.isFinite(rawAnchor) ? Math.round(rawAnchor) - 1 : null;
     const audio = doc.arrangement.audioClips ?? [];
@@ -9328,16 +9424,16 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         );
       }
     } else {
-      if (ownerId == null) return { text: `audio ops need trackId or family (op ${op})`, mutated: false };
+      if (ownerId == null) return mcpError("INVALID_ARGUMENTS", `audio ops need trackId or family (op ${op})`);
       target = audio.find(
         (clip) => clip.trackId === ownerId && anchor! >= clip.startBar && anchor! < clip.startBar + clip.lengthBars,
       );
     }
     if (target == null) {
-      return {
-        text: `no audio clip on ${ownerNameOf(doc, ownerId ?? "")} covers bar ${anchor! + 1} — op:audioList to see the lanes`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no audio clip on ${ownerNameOf(doc, ownerId ?? "")} covers bar ${anchor! + 1} — op:audioList to see the lanes`,
+      );
     }
     const splitAnchor = anchor;
     const describe = (): string =>
@@ -9346,7 +9442,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       if (op === "audioMove") {
         const toBar = Math.round(Number(record.toBar));
         if (!Number.isFinite(toBar) || toBar < 1)
-          return { text: "audioMove needs toBar (1-based destination start bar)", mutated: false };
+          return mcpError("INVALID_ARGUMENTS", "audioMove needs toBar (1-based destination start bar)");
         ctx.execute(moveAudioClip(doc, target.id, toBar - 1));
         return { text: `moved ${describe()} → starts at bar ${toBar} — one undo step`, mutated: true };
       }
@@ -9387,10 +9483,10 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
           notes.push(`pitch ${pitch > 0 ? "+" : ""}${pitch} st`);
         }
         if (notes.length === 0) {
-          return {
-            text: "audioUpdate needs at least one of gain / fadeIn / fadeOut / pitchSemitones / reverse / loop",
-            mutated: false,
-          };
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "audioUpdate needs at least one of gain / fadeIn / fadeOut / pitchSemitones / reverse / loop",
+          );
         }
         ctx.execute(updateAudioClip(doc, target.id, patch));
         return { text: `updated ${describe()}: ${notes.join(", ")} — one undo step`, mutated: true };
@@ -9546,10 +9642,10 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
           mutated: true,
         };
       }
-      return {
-        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDuplicate | audioMute | audioNudge | audioSlice | audioStrip | audioConsolidate | audioCrossfade | audioDelete | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple | copy | cut | paste)`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_REQUEST",
+        `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDuplicate | audioMute | audioNudge | audioSlice | audioStrip | audioConsolidate | audioCrossfade | audioDelete | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple | copy | cut | paste)`,
+      );
     } catch (error) {
       return mcpError(
         "EXECUTION_FAILED",
@@ -9561,13 +9657,13 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   const rawBar = record.bar === undefined ? null : Number(record.bar);
   const barValue = rawBar !== null && Number.isFinite(rawBar) && Math.round(rawBar) >= 1 ? Math.round(rawBar) : null;
   if (clipId === "" && barValue === null) {
-    return {
-      text: "a 1-based anchor bar or clipId is required — the clip is the target (list first)",
-      mutated: false,
-    };
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      "a 1-based anchor bar or clipId is required — the clip is the target (list first)",
+    );
   }
   if (op === "split" && barValue === null) {
-    return { text: "split needs a 1-based bar as the split point", mutated: false };
+    return mcpError("INVALID_ARGUMENTS", "split needs a 1-based bar as the split point");
   }
   const clip = clipId !== "" ? sceneClipById : clipCoveringBar(doc, barValue!);
   if (!clip) {
@@ -9592,7 +9688,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     if (op === "move") {
       const toBar = Math.round(Number(record.toBar));
       if (!Number.isFinite(toBar) || toBar < 1) {
-        return { text: "move needs toBar (1-based destination start bar)", mutated: false };
+        return mcpError("INVALID_ARGUMENTS", "move needs toBar (1-based destination start bar)");
       }
       ctx.execute(moveArrangementClip(doc, clip.id, toBar - 1));
       return { text: `moved ${describeClip(clip)} → starts at bar ${toBar} — one undo step`, mutated: true };
@@ -9600,7 +9696,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     if (op === "resize") {
       const bars = Math.round(Number(record.bars));
       if (!Number.isFinite(bars) || bars < 1 || bars > 64) {
-        return { text: "resize needs bars 1..64 (new clip length)", mutated: false };
+        return mcpError("INVALID_ARGUMENTS", "resize needs bars 1..64 (new clip length)");
       }
       ctx.execute(resizeArrangementClip(doc, clip.id, bars));
       return {
@@ -9638,7 +9734,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     if (op === "moveRipple") {
       const toBar = Math.round(Number(record.toBar));
       if (!Number.isFinite(toBar) || toBar < 1) {
-        return { text: "moveRipple needs toBar (1-based destination start bar)", mutated: false };
+        return mcpError("INVALID_ARGUMENTS", "moveRipple needs toBar (1-based destination start bar)");
       }
       ctx.execute(moveArrangementClipRipple(doc, clip.id, toBar - 1));
       return {
@@ -9649,7 +9745,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     if (op === "resizeRipple") {
       const bars = Math.round(Number(record.bars));
       if (!Number.isFinite(bars) || bars < 1 || bars > 64) {
-        return { text: "resizeRipple needs bars 1..64 (new clip length)", mutated: false };
+        return mcpError("INVALID_ARGUMENTS", "resizeRipple needs bars 1..64 (new clip length)");
       }
       ctx.execute(resizeArrangementClipRipple(doc, clip.id, bars));
       return {
@@ -9665,10 +9761,10 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         mutated: true,
       };
     }
-    return {
-      text: `unknown op: ${op} (list | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple)`,
-      mutated: false,
-    };
+    return mcpError(
+      "UNKNOWN_REQUEST",
+      `unknown op: ${op} (list | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple)`,
+    );
   } catch (error) {
     // Arrangement commands throw on invariants (overlap, bounds) — honest
     // failure over MCP, never a thrown crash into the relay.
@@ -9803,6 +9899,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
     return {
       text: lines.join("\n") || "no tracks",
       mutated: false,
+      stage: "read",
       data: { status: "listed", ...readback },
     };
   }
@@ -9864,6 +9961,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
         return {
           text: `already routed to ${ownerNameOf(doc, groupId)} — no change`,
           mutated: false,
+          stage: "noop",
           data: { status: "already_routed", groupId, trackIds: ids, changedTrackIds: [], undoSteps: 0 },
         };
       }
@@ -9924,6 +10022,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
         return {
           text: "nothing changed — every target is already on master",
           mutated: false,
+          stage: "noop",
           data: { status: "already_unrouted", trackIds: ids, changedTrackIds: [], undoSteps: 0 },
         };
       }
@@ -10080,6 +10179,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
           return {
             text: `send to ${returnTrack.name} is already ${appliedLevel} — no change`,
             mutated: false,
+            stage: "noop",
             data: {
               status: "send_unchanged",
               returnId,
@@ -10137,6 +10237,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
         return {
           text: `${returnTrack.name}: return gain is already ${appliedLevel.toFixed(2)} — no change`,
           mutated: false,
+          stage: "noop",
           data: {
             status: "return_gain_unchanged",
             returnId,
@@ -10228,6 +10329,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
       return {
         text: "no take groups (takes appear when a lane holds alternative passes)",
         mutated: false,
+        stage: "read",
         data: { status: "empty", groups: [] },
       };
     }
@@ -10238,7 +10340,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
           .map(({ takeId, clipCount }) => `take ${takeId ?? "(none)"} ×${clipCount} clip(s)`)
           .join(", ")}${group.compTakeId ? ` · comp: ${group.compTakeId}` : ""}`,
     );
-    return { text: lines.join("\n"), mutated: false, data: { status: "listed", groups: data } };
+    return { text: lines.join("\n"), mutated: false, stage: "read", data: { status: "listed", groups: data } };
   }
 
   if (op === "activate") {
@@ -10256,6 +10358,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
         return {
           text: `take ${takeId} is already the active comp of group ${groupId}`,
           mutated: false,
+          stage: "noop",
           data: {
             status: "already_active",
             groupId,
@@ -10315,6 +10418,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
       return {
         text: `no clips for take ${takeId} in group ${groupId}`,
         mutated: false,
+        stage: "noop",
         data: {
           status: "already_absent",
           groupId,
@@ -10475,6 +10579,7 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
   return {
     text,
     mutated: mutations > 0,
+    stage: mutations > 0 ? "applied" : "noop",
     data: { results, mutations, failures, skipped, singleUndo: framed, atomic },
   };
 }
@@ -10515,6 +10620,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     return {
       text: `${lines.length} instrument kinds:\n${lines.join("\n")}`,
       mutated: false,
+      stage: "read",
       data: { status: "listed", subject, instruments },
     };
   }
@@ -10555,6 +10661,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     return {
       text: lines.join("\n"),
       mutated: false,
+      stage: "read",
       data: {
         status: "listed",
         subject,
@@ -10606,6 +10713,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     return {
       text: lines.join("\n"),
       mutated: false,
+      stage: "read",
       data: {
         status: "listed",
         subject,
@@ -10639,6 +10747,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       "details: kyx_catalog subject:effect + effect <type>):\n" +
       lines.join("\n"),
     mutated: false,
+    stage: "read",
     data: { status: "listed", subject, effects },
   };
 }
@@ -10683,6 +10792,7 @@ function executeInstrumentParamTool(ctx: McpToolContext, record: Record<string, 
     return {
       text: `${track.instrument} track "${track.name}" (${track.id}) — ${params.length} parameters:\n${lines.join("\n")}`,
       mutated: false,
+      stage: "read",
       data: {
         status: "listed",
         op,
@@ -10775,6 +10885,7 @@ function executeInstrumentParamTool(ctx: McpToolContext, record: Record<string, 
   return {
     text: `${track.instrument}.${paramId}: ${before} → ${value}${param.unit ? ` ${param.unit}` : ""}${clampText}${changed ? " — one undo step" : " — already at that value"}`,
     mutated: changed,
+    stage: changed ? "applied" : "noop",
     data,
   };
 }
@@ -11067,6 +11178,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     return {
       text,
       mutated: false,
+      stage: "read",
       data: resultData(status, { instances, truncatedCount }),
     };
   }
@@ -11261,7 +11373,12 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   if (unmatched.length > 0 || readBackMismatch) {
     return mcpError("PARTIAL_FAILURE", text, { mutated, data });
   }
-  return { text: needsCommit ? `${text} — read-back verified` : `${text} — already at requested value`, mutated, data };
+  return {
+    text: needsCommit ? `${text} — read-back verified` : `${text} — already at requested value`,
+    mutated,
+    stage: mutated ? "applied" : "noop",
+    data,
+  };
 }
 
 /**
@@ -11292,7 +11409,7 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
   });
   const unchanged = (fields: Record<string, unknown>, text: string): McpToolResult => {
     const data = { status: "already_set", op, ...fields, undoSteps: 0 };
-    return { text, mutated: false, data };
+    return { text, mutated: false, stage: "noop", data };
   };
   const commit = (
     command: Command,
@@ -11317,7 +11434,7 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
           data,
         });
       }
-      return { text: resultText(after), mutated, data };
+      return { text: resultText(after), mutated, stage: mutated ? "applied" : "noop", data };
     } catch (error) {
       return mcpError(
         "EXECUTION_FAILED",
@@ -11512,7 +11629,7 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
       partialNotes: 0,
       undoSteps: 0,
     };
-    return { text: `no active-pattern notes for ${target}; nothing was changed`, mutated: false, data };
+    return { text: `no active-pattern notes for ${target}; nothing was changed`, mutated: false, stage: "noop", data };
   }
   const command = applyExactIntentCommand(before, plan([{ kind: "transpose", target, semitones }]));
   try {
@@ -11555,6 +11672,7 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
     return {
       text: `transposed ${transposedNotes} notes in ${target} by ${semitones > 0 ? "+" : ""}${semitones} semitones (one undo step)`,
       mutated,
+      stage: mutated ? "applied" : "noop",
       data,
     };
   } catch (error) {
@@ -11577,7 +11695,7 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
   const before = ctx.getDoc();
   if (op === "list") {
     const data = sectionResultData(before, "listed", undefined, undefined, 0);
-    return { text: formatSectionResult(data), mutated: false, data };
+    return { text: formatSectionResult(data), mutated: false, stage: "read", data };
   }
   if (
     record.sceneId !== undefined &&
@@ -11624,7 +11742,12 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
           data,
         });
       }
-      return { text: formatSectionResult(data), mutated: after !== before, data };
+      return {
+        text: formatSectionResult(data),
+        mutated: after !== before,
+        stage: after !== before ? "applied" : "noop",
+        data,
+      };
     } catch (error) {
       return mcpError(
         "EXECUTION_FAILED",
@@ -11647,7 +11770,7 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
     }
     if (scene.intensity === value) {
       const data = sectionResultData(before, "already_set", scene.id, previous, 0);
-      return { text: formatSectionResult(data), mutated: false, data };
+      return { text: formatSectionResult(data), mutated: false, stage: "read", data };
     }
     try {
       ctx.execute(setSceneIntensity(before, scene.id, value));
@@ -11661,7 +11784,12 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
         });
       }
       const data = sectionResultData(after, "intensity_set", scene.id, previous, after === before ? 0 : 1);
-      return { text: formatSectionResult(data), mutated: after !== before, data };
+      return {
+        text: formatSectionResult(data),
+        mutated: after !== before,
+        stage: after !== before ? "applied" : "noop",
+        data,
+      };
     } catch (error) {
       return mcpError(
         "EXECUTION_FAILED",
@@ -11677,7 +11805,7 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
       (direction === "later" && previousIndex === before.scenes.length - 1)
     ) {
       const data = sectionResultData(before, "already_ordered", scene.id, previous, 0);
-      return { text: formatSectionResult(data), mutated: false, data };
+      return { text: formatSectionResult(data), mutated: false, stage: "read", data };
     }
   }
   if (op === "resize") {
@@ -11686,7 +11814,7 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
     }
     if (previous.bars === record.bars) {
       const data = sectionResultData(before, "already_set", scene.id, previous, 0);
-      return { text: formatSectionResult(data), mutated: false, data };
+      return { text: formatSectionResult(data), mutated: false, stage: "read", data };
     }
     if (!before.arrangement.clips.some((clip) => clip.sceneId === scene.id)) {
       return mcpError("UNKNOWN_TARGET", `section ${scene.name} has no arrangement clip to resize`);
@@ -11726,7 +11854,12 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
         data,
       });
     }
-    return { text: formatSectionResult(data), mutated: after !== before, data };
+    return {
+      text: formatSectionResult(data),
+      mutated: after !== before,
+      stage: after !== before ? "applied" : "noop",
+      data,
+    };
   } catch (error) {
     return mcpError("EXECUTION_FAILED", `section op failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -12071,21 +12204,22 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
         `${liveMeterLines.length ? `\n${liveMeterLines.join("\n")}` : ""}` +
         "\nMeasure a full master with MASTER → Analyze / Export; live meter values above are only a current snapshot.",
       mutated: false,
+      stage: "read",
     };
   }
   let ids: string[];
   const exactId = typeof record.trackId === "string" ? record.trackId.trim() : "";
   if (exactId !== "") {
-    if (!doc.tracks.some((t) => t.id === exactId)) return { text: `track ${exactId} not found`, mutated: false };
+    if (!doc.tracks.some((t) => t.id === exactId)) return mcpError("UNKNOWN_TARGET", `track ${exactId} not found`);
     ids = [exactId];
   } else {
     ids = tracksInFamily(doc, String(record.family ?? ""));
     // Import-only calls create their own lanes — no early refusal.
     if (ids.length === 0 && !Array.isArray(record.import)) {
-      return {
-        text: `no track matches family "${String(record.family ?? "")}" — pass trackId (group buses allowed and encouraged: that IS stem mastering)`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no track matches family "${String(record.family ?? "")}" — pass trackId (group buses allowed and encouraged: that IS stem mastering)`,
+      );
     }
   }
 
@@ -12138,20 +12272,24 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
     };
     const first = readMeter();
     if (!first) {
-      return { text: `${op} needs live audio meters (play a few seconds for LUFS-I to settle)`, mutated: false };
+      return mcpError(
+        "UNAVAILABLE_ON_TRANSPORT",
+        `${op} needs live audio meters (play a few seconds for LUFS-I to settle)`,
+      );
     }
     if (op === "platform") {
       const verdicts = verdictAgainst(first, profile);
       return {
         text: `${worstStatus(verdicts).toUpperCase()} — ${verdicts.map((v) => v.line).join("\n")}`,
         mutated: false,
+        stage: "read",
       };
     }
     if (first.lufs == null) {
-      return {
-        text: "land needs measurable LUFS-I (play the full song or use op:platform to read available checks)",
-        mutated: false,
-      };
+      return mcpError(
+        "UNAVAILABLE_ON_TRANSPORT",
+        "land needs measurable LUFS-I (play the full song or use op:platform to read available checks)",
+      );
     }
     // op:land — bounded closed loop on the MASTER loudness trim. Each
     // iteration APPLIES the trim through the command layer (the engine syncs
@@ -12185,7 +12323,11 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       );
     }
     if (meter.lufs == null) {
-      return { text: "NOT LANDED — LUFS-I became unavailable after a trim; remeasure the master", mutated };
+      return {
+        text: "NOT LANDED — LUFS-I became unavailable after a trim; remeasure the master",
+        mutated,
+        stage: mutated ? "applied" : "noop",
+      };
     }
     const finalDelta = targetLufs - meter.lufs;
     const landed = Math.abs(finalDelta) <= 0.5;
@@ -12196,6 +12338,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
         (steps.length > 0 ? `${steps.join("\n")}\n` : "") +
         verdicts.map((v) => v.line).join("\n"),
       mutated,
+      stage: mutated ? "applied" : "noop",
     };
   }
 
@@ -12218,10 +12361,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
         }))
         .filter((spec) => ["vocals", "drums", "bass", "other"].includes(spec.role) && spec.bufferId !== "");
       if (specs.length === 0) {
-        return {
-          text: "import needs entries {role: vocals|drums|bass|other, bufferId, durationSec}",
-          mutated: false,
-        };
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "import needs entries {role: vocals|drums|bass|other, bufferId, durationSec}",
+        );
       }
       doc = addStemTracksCommand(doc, specs).execute(doc);
       // The imported lanes are the mastering targets (matched by role name).
@@ -12264,10 +12407,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
     }
     if (matched === 0) {
       const detail = lines.length > 0 ? ` — ${lines.join("; ")}` : "";
-      return {
-        text: `no stem lanes matched — stem mastering needs lanes named vocals/drums/bass/other${detail}`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `no stem lanes matched — stem mastering needs lanes named vocals/drums/bass/other${detail}`,
+      );
     }
     ctx.execute(snapshot("mcpStemMastering", `MCP: stem mastering on ${matched} lane(s)`, originalDoc, next));
     return {
@@ -12292,26 +12435,28 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
             ? "no snapshots — op:ab {action:save, name} captures the bus mastering state"
             : names.map((n) => snapshotSummary(snapshots.get(n)!)).join("\n"),
         mutated: false,
+        stage: "read",
       };
     }
     const name = typeof record.name === "string" ? record.name.trim() : "";
     if (action === "save") {
-      if (name === "") return { text: "save needs a snapshot name", mutated: false };
+      if (name === "") return mcpError("INVALID_ARGUMENTS", "save needs a snapshot name");
       const devices = ids.flatMap((id) => {
         const track = doc.tracks.find((t) => t.id === id)!;
         return collectDevices(track);
       });
       if (devices.length === 0) {
-        return { text: "no mastering devices on the bus — add ZENIT/APEX/SPAN/TIDE first", mutated: false };
+        return mcpError("UNKNOWN_TARGET", "no mastering devices on the bus — add ZENIT/APEX/SPAN/TIDE first");
       }
       snapshots.set(name, { name, savedAt: new Date().toISOString(), devices });
       return {
         text: `snapshot '${name}' saved — ${devices.length} device(s); mutate freely, then compare/restore`,
         mutated: false,
+        stage: "persisted",
       };
     }
     const snap = snapshots.get(name);
-    if (!snap) return { text: `no snapshot '${name}' — op:ab {action:list}`, mutated: false };
+    if (!snap) return mcpError("UNKNOWN_TARGET", `no snapshot '${name}' — op:ab {action:list}`);
     if (action === "compare") {
       const current: AbSnapshot = {
         name: "current",
@@ -12330,7 +12475,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
                 return `${device}.${row.param}: ${row.a == null ? "—" : row.a.toFixed(2)} → ${row.b == null ? "—" : row.b.toFixed(2)}`;
               })
               .join("\n") + "\nlevel-match hint: restore, then offset op:trim by the trims shown in the list";
-      return { text: `'${name}' vs current:\n${body}`, mutated: false };
+      return { text: `'${name}' vs current:\n${body}`, mutated: false, stage: "read" };
     }
     if (action === "restore") {
       let next = doc;
@@ -12360,10 +12505,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
         );
       }
       if (applied.length === 0)
-        return {
-          text: `nothing to restore — the saved mastering devices are missing: ${skipped.join(", ") || "unknown"}`,
-          mutated: false,
-        };
+        return mcpError(
+          "UNKNOWN_TARGET",
+          `nothing to restore — the saved mastering devices are missing: ${skipped.join(", ") || "unknown"}`,
+        );
       ctx.execute(snapshot("mcpMasterAbRestore", `MCP: restore A/B '${name}'`, doc, next));
       const skippedReadback = skipped.length > 0 ? `; skipped missing ${skipped.join(", ")}` : "";
       return { text: `restored '${name}' on ${applied.join(", ")}${skippedReadback} — one undo step`, mutated: true };
@@ -12375,10 +12520,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
     // CLOSED-LOOP TONAL ITERATOR: render → measure → adjust → re-render.
     // Bounded at 3 iterations; ctx.renderMix is the AI's ears.
     if (!ctx.renderMix) {
-      return {
-        text: "iterate needs ctx.renderMix (the transport bridge must provide the render callback)",
-        mutated: false,
-      };
+      return mcpError(
+        "UNAVAILABLE_ON_TRANSPORT",
+        "iterate needs ctx.renderMix (the transport bridge must provide the render callback)",
+      );
     }
     const targetLufs = typeof record.targetLufs === "number" ? record.targetLufs : -14;
     const targetHf = typeof record.targetHfShare === "number" ? record.targetHfShare : 0.2;
@@ -12445,7 +12590,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       }
     }
     if (next === doc) {
-      return { text: `iterate: ${lines.join("\n") || "already converged"}`, mutated: false };
+      return { text: `iterate: ${lines.join("\n") || "already converged"}`, mutated: false, stage: "noop" };
     }
     ctx.execute(snapshot("mcpMasterIterate", `MCP: iterate (${converged ? "converged" : "capped at 3"})`, doc, next));
     // Structured iteration data for the light-show UI: each line parsed into
@@ -12474,10 +12619,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
     const meter = ctx.meters?.();
     const master = (meter as { master?: Record<string, unknown> } | null)?.master;
     if (!master) {
-      return {
-        text: "assist needs live audio meters (play a few seconds first) — or use op:preset + op:trim with explicit values",
-        mutated: false,
-      };
+      return mcpError(
+        "UNAVAILABLE_ON_TRANSPORT",
+        "assist needs live audio meters (play a few seconds first) — or use op:preset + op:trim with explicit values",
+      );
     }
     const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
     const lufs = num(master.lufsIntegrated) ?? num(master.lufsShortTerm);
@@ -12542,6 +12687,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
           ? "assist found no actionable difference in the supplied reference measurements"
           : "assist found nothing to change",
         mutated: false,
+        stage: "noop",
       };
     }
 
@@ -12605,10 +12751,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
             );
           }
           if (record.insert !== true) {
-            return {
-              text: `${track.name}: ${step.device} not inserted — pass insert:true to let assist add missing devices`,
-              mutated: false,
-            };
+            return mcpError(
+              "UNKNOWN_TARGET",
+              `${track.name}: ${step.device} not inserted — pass insert:true to let assist add missing devices`,
+            );
           }
           next = addEffectToTracks(next, [id], wantedType).execute(next);
           const created = next.tracks
@@ -12630,6 +12776,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       return {
         text: `assist found no applicable setting changes${lines.length ? `:\n${lines.join("\n")}` : ""}`,
         mutated: false,
+        stage: "noop",
       };
     }
     ctx.execute(snapshot("mcpMasterAssist", "MCP: master assistant plan", doc, next));
@@ -12665,7 +12812,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
           `${track.name}: ZENIT instance #${String(record.instance)} does not exist`,
         );
       }
-      return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
+      return mcpError("UNKNOWN_TARGET", `${track.name} carries no ZENIT instance — op:add first`);
     }
     targets.push({ trackId: id, trackName: track.name, fxId });
   }
@@ -12673,7 +12820,7 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
   if (op === "preset") {
     const target = String(record.target ?? "");
     const preset = presetsForEffect("zenit").find((candidate) => candidate.id === `zenit-${target}`);
-    if (!preset) return { text: "preset needs target: streaming | club | vinyl", mutated: false };
+    if (!preset) return mcpError("INVALID_ARGUMENTS", "preset needs target: streaming | club | vinyl");
     let next = doc;
     for (const { trackId, fxId } of targets)
       for (const [paramId, value] of Object.entries(preset.params))
@@ -12688,10 +12835,10 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
   if (op === "trim") {
     const trimDb = Number(record.trimDb);
     if (record.trimDb == null || !Number.isFinite(trimDb)) {
-      return {
-        text: "trim needs trimDb = target LUFS − measured LUFS (measure with kyx_loudness first)",
-        mutated: false,
-      };
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        "trim needs trimDb = target LUFS − measured LUFS (measure with kyx_loudness first)",
+      );
     }
     let next = doc;
     // Audit F-12: the batch becomes ONE snapshot command — and the clamp
@@ -13363,7 +13510,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   };
   if (affected.size === 0) {
     const data = makeData("no_change", doc, 0);
-    return { text: `nothing changed (${op} on ${family}: steps already match)`, mutated: false, data };
+    return { text: `nothing changed (${op} on ${family}: steps already match)`, mutated: false, stage: "noop", data };
   }
   const command = snapshot("mcpSteps", `MCP steps: ${op} ${family} ×${affected.size}`, doc, next);
   ctx.execute(command);
@@ -13389,7 +13536,12 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
     });
   }
   if (!mutated)
-    return { text: `nothing changed (${op} on ${family}: committed state already matches)`, mutated: false, data };
+    return {
+      text: `nothing changed (${op} on ${family}: committed state already matches)`,
+      mutated: false,
+      stage: "noop",
+      data,
+    };
   const bars = barsPerPattern(doc, stepCount);
   const touchedText =
     data.changedSteps.length <= 12 ? data.changedSteps.join(", ") : `${data.changedSteps.length} steps`;
@@ -13403,6 +13555,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   return {
     text: `${family} ${op}: ${beforeHitCount} → ${data.afterHitCount} hits across ${targets.length} pad(s); ${data.changedCellCount} pad-step cell(s) changed (steps: ${touchedText})${skippedText} · pattern "${pattern.name}" (${formatMetricalBars(bars)}) · one undo step`,
     mutated,
+    stage: mutated ? "applied" : "noop",
     data,
   };
 }
@@ -13460,7 +13613,7 @@ function automationPlanProposalResult(route: Extract<RoutedIntent, { kind: "auto
 
 function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = false): McpToolResult {
   const trimmed = instruction.trim();
-  if (trimmed.length === 0) return { text: "empty instruction", mutated: false };
+  if (trimmed.length === 0) return mcpError("INVALID_ARGUMENTS", "empty instruction");
   if (dryRun) {
     // DRY RUN — the same route and the same canonical command the executor
     // would build, applied to the document VALUE only. Nothing is committed,
@@ -13476,6 +13629,7 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
     return {
       text,
       mutated: false,
+      stage: "dry-run",
       data: {
         dryRun: true,
         routeKind: route.kind,
@@ -13503,25 +13657,24 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
   if (route.kind === "pattern" || route.kind === "revise") {
-    return {
-      text:
-        "generation requests run inside the KYX app (candidates need auditioning) — " +
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      "generation requests run inside the KYX app (candidates need auditioning) — " +
         "rephrase as a mixer/groove command or open KYX",
-      mutated: false,
-    };
+    );
   }
   if (route.kind === "clarify") {
     // The sentence, not the machine key — an agent reading "negated-mutation-
     // command" learns nothing about what to say next.
     const message = clarifyMessage(route.reason);
     const suggestions = route.suggestions.length > 0 ? ` suggestions: ${route.suggestions.join(" | ")}` : "";
-    return { text: `${message}${suggestions}`, mutated: false };
+    return mcpError("POLICY_REFUSED", `${message}${suggestions}`);
   }
   if (route.kind === "presetUnknown") {
-    return { text: `unknown preset "${route.name}" — try: ${route.suggestions.join(", ")}`, mutated: false };
+    return mcpError("UNKNOWN_TARGET", `unknown preset "${route.name}" — try: ${route.suggestions.join(", ")}`);
   }
   if (route.kind === "save" || route.kind === "export" || route.kind === "record") {
-    return { text: "save/export/record run in the KYX window — not available over MCP v1", mutated: false };
+    return mcpError("UNAVAILABLE_ON_TRANSPORT", "save/export/record run in the KYX window — not available over MCP v1");
   }
   if (route.kind === "transport") {
     // Bare transport words ("stop", "loop on") — same dispatch as the
@@ -13536,6 +13689,7 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
       return {
         text: labels.length > 0 ? `last action: ${labels[labels.length - 1]}` : "no actions yet",
         mutated: false,
+        stage: "read",
       };
     }
     const subject =
@@ -13551,13 +13705,14 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
         ctx.historyLabels(),
       ),
       mutated: false,
+      stage: "read",
     };
   }
   if (route.kind === "undoIntent") {
     // Session control through the store hooks — the SAME guards as the
     // structured kyx_undo (mic pin + honest step counting).
     if (route.intent.kind === "undo" && ctx.isMicRecordingActive()) {
-      return { text: "declined: a mic take is recording — stop it before undo", mutated: false };
+      return mcpError("POLICY_REFUSED", "declined: a mic take is recording — stop it before undo");
     }
     const docBefore = ctx.getDoc();
     let done = 0;
@@ -13584,7 +13739,7 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     const depthBefore = ctx.undoStackLength();
     const outcome = reviseSectionTransitions(before, route.targetRole, route.transition);
     if (!outcome.ok || !outcome.command) {
-      return { text: outcome.error ?? "transition failed", mutated: false };
+      return mcpError("EXECUTION_FAILED", outcome.error ?? "transition failed");
     }
     ctx.execute(outcome.command);
     const after = ctx.getDoc();
@@ -13617,10 +13772,10 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     route.kind === "complaintIntent" ||
     route.kind === "select"
   ) {
-    return {
-      text: `"${route.kind}" requests run inside the KYX app (they need in-app auditioning/rendering) — not available over MCP v1`,
-      mutated: false,
-    };
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      `"${route.kind}" requests run inside the KYX app (they need in-app auditioning/rendering) — not available over MCP v1`,
+    );
   }
 
   try {

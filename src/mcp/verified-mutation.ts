@@ -143,7 +143,9 @@ export function verifiedMutation(input: VerifiedMutationInput): McpToolResult {
     ...result,
     text,
     mutated: false,
-    ...(result.stage == null ? { stage: "noop" as const } : {}),
+    // The gate's own verdict is a DISPOSITION, and it says so: a run that
+    // changed nothing is a no-op, not a successful read (audit F-05).
+    stage: result.stage ?? "noop",
     data: isPlainObject(result.data)
       ? { ...result.data, status: "unchanged", changed: false }
       : { status: "unchanged", changed: false },
