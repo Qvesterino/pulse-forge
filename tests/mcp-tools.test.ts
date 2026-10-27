@@ -1917,7 +1917,7 @@ describe("mcp P1 automation — lanes, points, FX targeting", async () => {
     expect(result.text).toContain("one undo step");
     const lead = store.doc.tracks.find((t) => t.id === "track-lead-x")!;
     const lane = store.doc.automation.find((l) => l.target.kind === "trackGain" && l.target.trackId === lead.id)!;
-    expect(lane.points).toEqual([{ tick: 4 * 1920 + 2 * 480, value: 0.4 }]);
+    expect(lane.points).toMatchObject([{ tick: 4 * 1920 + 2 * 480, value: 0.4 }]);
     expect(store.undoStackLength).toBe(1);
     store.undo();
     expect(store.doc.automation).toHaveLength(0);
@@ -1936,7 +1936,7 @@ describe("mcp P1 automation — lanes, points, FX targeting", async () => {
     });
     expect(result.mutated).toBe(true);
     expect(result.text).toContain("2.6=0.4");
-    expect(store.doc.automation[0]?.points).toEqual([{ tick: 2640, value: 0.4 }]);
+    expect(store.doc.automation[0]?.points).toMatchObject([{ tick: 2640, value: 0.4 }]);
 
     const read = await executeMcpTool(ctx, "kyx_state", { subject: "automation" });
     expect(read.text).toContain("2.6=0.4");
@@ -2595,7 +2595,7 @@ describe("mcp P2 automation movePoint", async () => {
     expect(moved.mutated).toBe(true);
     expect(moved.text).toContain("3.1=0.9 → 7.3=0.9");
     const lane = store.doc.automation[0];
-    expect(lane.points).toEqual([{ tick: 6 * 1920 + 2 * 480, value: 0.9 }]);
+    expect(lane.points).toMatchObject([{ tick: 6 * 1920 + 2 * 480, value: 0.9 }]);
   });
 
   it("moves value-only and clamps honestly", async () => {

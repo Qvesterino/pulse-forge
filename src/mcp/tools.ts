@@ -9003,7 +9003,7 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
       );
     }
-    const original = lane.points[bestIndex];
+    const original = lane.points[bestIndex]!;
     const hasNewPosition = record.newBar != null;
     const newTick = hasNewPosition
       ? positionFromRecord({ bar: record.newBar, beat: record.newBeat }, doc)
@@ -9025,7 +9025,16 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     }
     const valueChangedOnly = delta.tick === undefined;
     ctx.execute(moveAutomationPoint(doc, lane.id, bestIndex, delta));
-    const after = ctx.getDoc().automation.find((candidate) => candidate.id === lane.id)?.points[bestIndex];
+    // Audit F-07 + F-24: the acknowledgement names the point that MOVED, and
+    // it is found by its IDENTITY in the committed document. Reading it back
+    // by INDEX reported whatever point took that slot after the lane re-sorted
+    // — measured: a point moved from bar 1 to bar 8 was acknowledged as
+    // "1.1=0.1 → 1.2=0.2", naming a point the move never touched.
+    const committedDoc = ctx.getDoc();
+    const committedLane = committedDoc.automation.find((candidate) => candidate.id === lane.id);
+    const after =
+      committedLane?.points.find((candidate) => candidate.id !== undefined && candidate.id === original.id) ??
+      committedLane?.points[bestIndex];
     const clampedNote =
       delta.value !== undefined && after && after.value !== delta.value ? " — value clamped into range" : "";
     return {

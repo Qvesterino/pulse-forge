@@ -7,6 +7,7 @@
 import type { Command } from "./types";
 import type { AutomationTarget, ProjectDocument, SceneAutomation } from "../project-model/types";
 import { clampTargetValue, isAutomationTargetValid, targetClampSink, targetParamDef } from "../project-model/targets";
+import { reanchorPointIndex } from "./automation";
 import { uid } from "../shared/ids";
 import { collectClamps } from "../shared/clamp-report";
 import { snapshot } from "./core";
@@ -37,7 +38,8 @@ import { snapshot } from "./core";
     id: uid("sceneAuto"),
     sceneId,
     target: { ...target },
-    points: [{ tick: 0, value: initial }],
+    // Audit F-07: the opening point carries an identity from birth.
+    points: [{ id: uid("pt"), tick: 0, value: initial }],
   };
   const next = { ...doc, sceneAutomation: [...doc.sceneAutomation, lane] };
   return snapshot("addSceneAutomation", "Add scene lane", doc, next);
@@ -55,15 +57,18 @@ export function addSceneAutomationPoint(doc: ProjectDocument, laneId: string, ti
   // for — the difference is disclosed on the command, not silent.
   const { events, sink: record } = collectClamps();
   const clampedValue = clampTargetValue(doc, lane.target, value, targetClampSink(doc, lane.target, record));
+  const point = { id: uid("pt"), tick: Math.max(0, Math.floor(tick)), value: clampedValue };
+  // Audit F-07: an identical point would duplicate the curve point and grow
+  // the history for nothing. The guard sits at the command boundary, so every
+  // entry point inherits it.
+  const duplicate = lane.points.some((p) => p.tick === point.tick && p.value === point.value);
   const next = {
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) =>
       l.id === laneId
         ? {
             ...l,
-            points: [...l.points, { tick: Math.max(0, Math.floor(tick)), value: clampedValue }].sort(
-              (a, b) => a.tick - b.tick,
-            ),
+            points: duplicate ? l.points : [...l.points, point].sort((a, b) => a.tick - b.tick),
           }
         : l,
     ),
@@ -95,11 +100,12 @@ export function moveSceneAutomationPoint(
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) => {
       if (l.id !== laneId) return l;
-      let at = l.points.findIndex((p) => p === original);
-      if (at === -1) at = l.points.findIndex((p) => p.tick === original.tick && p.value === original.value);
+      const at = reanchorPointIndex(l.points, original);
       if (at === -1) return l;
       const points = [...l.points];
       points[at] = {
+        // Audit F-07: the point KEEPS its identity across the move.
+        ...original,
         tick:
           delta.tick !== undefined && Number.isFinite(delta.tick) ? Math.max(0, Math.floor(delta.tick)) : original.tick,
         value: nextValue ?? original.value,
@@ -122,9 +128,10 @@ export function removeSceneAutomationPoint(doc: ProjectDocument, laneId: string,
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) => {
       if (l.id !== laneId) return l;
-      // Audit 06 D3: same re-anchor as the project-lane delete.
-      let at = l.points.findIndex((p) => p === removed);
-      if (at === -1) at = l.points.findIndex((p) => p.tick === removed.tick && p.value === removed.value);
+      // Audit 06 D3: same re-anchor as the project-lane delete — by IDENTITY
+      // (the id) first, so a shifted lane does not delete the point that took
+      // the captured slot.
+      const at = reanchorPointIndex(l.points, removed);
       if (at === -1) return l;
       const points = [...l.points];
       points.splice(at, 1);

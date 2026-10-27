@@ -115,7 +115,9 @@ describe("an automation undo removes the point it created (F-29)", () => {
     const undoDepth = store.undoStackLength;
     expect(() => store.execute(aiCommand)).toThrow(/stale write refused/);
     expect(store.undoStackLength).toBe(undoDepth);
-    expect(laneOf(store.doc, track.id)!.points).toEqual([{ tick: 0, value: 0.9 }]);
+    expect(laneOf(store.doc, track.id)!.points.map((p) => ({ tick: p.tick, value: p.value }))).toEqual([
+      { tick: 0, value: 0.9 },
+    ]);
   });
 
   it("the plain stack order still undoes in order (the control)", async () => {

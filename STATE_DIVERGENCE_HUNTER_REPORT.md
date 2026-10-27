@@ -2,7 +2,7 @@
 
 **Audit type:** Cross-layer consistency and reliability audit (state authority, synchronization, persistence, audible truth)
 **Date:** 2026-10-25
-**Repository:** `D:\pulse-forge` — KYX (display name) / Pulse Forge (repo name), `SCHEMA_VERSION = 38`
+**Repository:** `D:\pulse-forge` — KYX (display name) / Pulse Forge (repo name), `SCHEMA_VERSION = 39`
 **Mode:** READ-ONLY. No production code, schema, project asset or user data was modified.
 **Deliverable:** this file.
 
@@ -15,37 +15,46 @@
 > severity. This block says what has been **repaired since**, so the document
 > never claims a fix is still open when it is not.
 >
-> | Finding                                     | Severity     | Status                                                                                                                                                                                                                                                                                                                                                                                                                     | Commit                                    |
-> | ------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-> | **F-28** PRISM write-back — canonical id    | **Critical** | **FIXED** — the rack↔core id map is now bidirectional and the command canonicalises the id and the value into the document domain                                                                                                                                                                                                                                                                                          | `a53a13a6`                                |
-> | **F-29** automation-point undo              | High         | **FIXED** — the undo verifies the slot before splicing, then re-anchors by identity                                                                                                                                                                                                                                                                                                                                        | `9c016d92`                                |
-> | **F-25** stale AI write                     | High         | **FIXED** — per-field compare-and-swap: the write is REFUSED with a named conflict instead of overwriting the human's value                                                                                                                                                                                                                                                                                                | `5267cb2f`                                |
-> | **F-01** stale export                       | High         | **FIXED** — the stem and track exports capture the document at call time and assert it before and after each render                                                                                                                                                                                                                                                                                                        | `c0de98ae`                                |
-> | **F-02** REC reads "recording"              | High         | **FIXED** — the button reads the ARMED state, and "recording" is a separate claim that also needs playback and content; the two are no longer one flag                                                                                                                                                                                                                                                                     | `0c476798` (parallel session)             |
-> | **F-05** refusal signalling                 | Medium-High  | **FIXED** — a result that changed no document now **declares its disposition**: a refusal carries `isError` + a code, a no-op carries `stage`, a non-document fact carries its own stage. **The measured population was six times the audit's one handler** (191 sites across 25 handlers), and the dispatch had been labelling every one of them `stage: "read"` — a refusal was handed to the agent as a successful read | `761392a1` · ADR 0070                     |
-> | **F-10** track-gain lane                    | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane)                                                                                                                                                                                                                                                                          | `6452dadd`, `ca104349`                    |
-> | **F-06** idempotent replay                  | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware                                                                                                                                                                                                                                                                            | `c050b03f` (partly carried by `4d7bf750`) |
-> | **F-16** collab normalisation               | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                                                                                                                                                                                                                                                                                                    | `04c41290` (parallel session), `faba6885` |
-> | **F-09** effect knob vs. the DSP            | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                                                                                                                                                                | `3d59627e`                                |
-> | **F-11** macro / modulator / lane           | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`)                                                                                                                                    | `64e71cd3` · ADR 0067                     |
-> | **F-18** fallback runtime vs. the knobs     | Low          | **FIXED** — the controls themselves disclose the 1:1 passthrough (the engine's own reason, in the flagship panels' words), and the device chip says PASSTHROUGH instead of ACTIVE                                                                                                                                                                                                                                          | `361fb5b6`                                |
-> | **F-12** silent clamps                      | Medium       | **FIXED** — a value the domain had to change is now disclosed on the command and lands in `Command.detail` (the toast's channel). Two producers feed it: the **command layer** (the clamp the audit never named) and the **normaliser's footprint**, read from the document. The MCP answer states the clamp too                                                                                                           | `51c6ec59` · ADR 0069                     |
-> | **F-26** gate assumes `execute` is sync     | Medium       | **FIXED** — the precondition that `ctx.execute` applies the command **inline** is stated on the contract and enforced by a guard. The type cannot carry it (TypeScript lets a Promise satisfy a `void` signature), so the guard is: the store applies inline, the headless host applies inline, and no registered host's `execute` is async, awaits or defers                                                              | `e32f8052` · ADR 0071                     |
-> | **F-24** acknowledgement from a local chain | Low          | **FIXED** — the acknowledgement is read back from the **committed document** (four mutating branches of `kyx_automation`), and a change that did not land is `PARTIAL_FAILURE` instead of a success. The R-02 gate's structural read-back now also rides in `data`                                                                                                                                                         | `ac0dee62` · ADR 0072                     |
-> | **F-17** bypass as a structural removal     | Low          | **FIXED** — the bypass flag is not part of the chain's signature: a bypassed effect STAYS in the chain, so toggling it is a parameter write, not a cold restart                                                                                                                                                                                                                                                            | `af1d05dc` · ADR 0068                     |
-> | **F-20** duplicated unit conversions        | Low          | **FIXED** — one dB→linear owner (`src/effects/scale-bridges.ts`); the registry delegates to it instead of keeping a second implementation                                                                                                                                                                                                                                                                                  | `5f4d96c8`                                |
-> | F-03, F-04, F-14                            | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                                                                                                                                                       | —                                         |
+> | Finding                                     | Severity     | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Commit                                              |
+> | ------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+> | **F-28** PRISM write-back — canonical id    | **Critical** | **FIXED** — the rack↔core id map is now bidirectional and the command canonicalises the id and the value into the document domain                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `a53a13a6`                                          |
+> | **F-29** automation-point undo              | High         | **FIXED** — the undo verifies the slot before splicing, then re-anchors by identity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `9c016d92`                                          |
+> | **F-25** stale AI write                     | High         | **FIXED** — per-field compare-and-swap: the write is REFUSED with a named conflict instead of overwriting the human's value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `5267cb2f`                                          |
+> | **F-01** stale export                       | High         | **FIXED** — the stem and track exports capture the document at call time and assert it before and after each render                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `c0de98ae`                                          |
+> | **F-02** REC reads "recording"              | High         | **FIXED** — the button reads the ARMED state, and "recording" is a separate claim that also needs playback and content; the two are no longer one flag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `0c476798` (parallel session)                       |
+> | **F-05** refusal signalling                 | Medium-High  | **FIXED** — a result that changed no document now **declares its disposition**: a refusal carries `isError` + a code, a no-op carries `stage`, a non-document fact carries its own stage. **The measured population was six times the audit's one handler** (191 sites across 25 handlers), and the dispatch had been labelling every one of them `stage: "read"` — a refusal was handed to the agent as a successful read                                                                                                                                                                                                                             | `761392a1` · ADR 0070                               |
+> | **F-10** track-gain lane                    | Medium       | **FIXED (display)** — the lane says it is a multiplier and draws the unity line; the mixer now shows the **composed** channel gain (fader × lane)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `6452dadd`, `ca104349`                              |
+> | **F-06** idempotent replay                  | Medium       | **FIXED** — the replay keeps its pinned original outcome and gains a sibling `current` field carrying what moved; the R-02 gate is replay-aware                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `c050b03f` (partly carried by `4d7bf750`)           |
+> | **F-16** collab normalisation               | High         | **FIXED** — local collab writes are normalised in the CRDT; the general contract is pinned by a test on a second domain                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `04c41290` (parallel session), `faba6885`           |
+> | **F-09** effect knob vs. the DSP            | Medium       | **FIXED** — the rack discloses the value IN EFFECT: an AUTO badge on the knobs a lane drives, and the lane's value beside the committed one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `3d59627e`                                          |
+> | **F-11** macro / modulator / lane           | Medium       | **FIXED** — one write gate with an explicit precedence (automation > modulator > macro > MIDI CC); the UI names the owner of a parameter the macro cannot win. **Code-verified, not listening-verified** (§10's perceptual check was not executed — jsdom has no `OfflineAudioContext`)                                                                                                                                                                                                                                                                                                                                                                | `64e71cd3` · ADR 0067                               |
+> | **F-18** fallback runtime vs. the knobs     | Low          | **FIXED** — the controls themselves disclose the 1:1 passthrough (the engine's own reason, in the flagship panels' words), and the device chip says PASSTHROUGH instead of ACTIVE                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `361fb5b6`                                          |
+> | **F-12** silent clamps                      | Medium       | **FIXED** — a value the domain had to change is now disclosed on the command and lands in `Command.detail` (the toast's channel). Two producers feed it: the **command layer** (the clamp the audit never named) and the **normaliser's footprint**, read from the document. The MCP answer states the clamp too                                                                                                                                                                                                                                                                                                                                       | `51c6ec59` · ADR 0069                               |
+> | **F-26** gate assumes `execute` is sync     | Medium       | **FIXED** — the precondition that `ctx.execute` applies the command **inline** is stated on the contract and enforced by a guard. The type cannot carry it (TypeScript lets a Promise satisfy a `void` signature), so the guard is: the store applies inline, the headless host applies inline, and no registered host's `execute` is async, awaits or defers                                                                                                                                                                                                                                                                                          | `e32f8052` · ADR 0071                               |
+> | **F-24** acknowledgement from a local chain | Low          | **FIXED** — the acknowledgement is read back from the **committed document** (four mutating branches of `kyx_automation`), and a change that did not land is `PARTIAL_FAILURE` instead of a success. The R-02 gate's structural read-back now also rides in `data`                                                                                                                                                                                                                                                                                                                                                                                     | `ac0dee62` · ADR 0072                               |
+> | **F-17** bypass as a structural removal     | Low          | **FIXED** — the bypass flag is not part of the chain's signature: a bypassed effect STAYS in the chain, so toggling it is a parameter write, not a cold restart                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `af1d05dc` · ADR 0068                               |
+> | **F-20** duplicated unit conversions        | Low          | **FIXED** — one dB→linear owner (`src/effects/scale-bridges.ts`); the registry delegates to it instead of keeping a second implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `5f4d96c8`                                          |
+> | **F-07** automation points have no identity | Medium       | **FIXED** — every authored automation point carries a stable `id` (`SCHEMA_VERSION` 38 → 39), so an undo re-anchors on the entity it created, the structural delta anchors on the id instead of a slot, and a duplicated write is refused **at the command boundary** (every entry point inherits it). Re-measured first: the finding's single defect was **four** — the command layer duplicated a point, the MCP's `movePoint` acknowledged a point it never touched (it read the committed point back by index), an undo of an **edited** point removed nothing while consuming a history entry, and a positional capture deleted the human's point | `54b61f09` (core, by a parallel session) · ADR 0075 |
+> | F-03, F-04, F-14                            | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | —                                                   |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 20 resolved, 9 open, 0 Critical.**
+> **29 findings, 21 resolved, 8 open, 0 Critical.**
 >
 > **Still open, and the next wave:** §6's TOP 10 is now **fully closed** (all ten
 > entries); what remains is the systemic improvements in §7 — **S-1 is closed**,
 > its four gaps were F-05, F-06, F-24 and F-26, so **S-2 … S-5 remain** — the
-> remaining phases in §8, and the nine findings still listed as open above.
+> remaining phases in §8, and the seven findings still listed as open above:
+> **F-08, F-13, F-15, F-19, F-21, F-22, F-23 and F-27**.
 > _(An earlier revision of this block said "the rest of §11" — §11 is the
 > method appendix, not a work list; the pointer is corrected here.)_
+>
+> **Attribution note (2026-10-27, F-07):** the core of the F-07 repair — the
+> `AutomationPoint.id` field, the `assignPointIds` helper and the normaliser
+> that backfills it — was swept into a **parallel session's** commit `54b61f09`
+> ("hej je") by a whole-tree stage. The **content is intact and correct**; the
+> **authorship is not mine**. The command layer, the delta, the collab adapter,
+> the MCP read-back, the gate and the ADR are in my own commits.
 
 ---
 
@@ -479,7 +488,7 @@ _Hypothesis — not reproduced_** by the §5.7 probe. One remains a **Hypothesis
 - **Expected contract:** a refusal is machine-detectable. The repo has a shaped constructor for
   exactly this — `src/mcp/tools.ts:3819-3826`: _"The single shaped constructor for error results —
   every `isError` result carries one"_ (`mcpError(code, text)` → `{text, mutated:false, isError:true,
-errorCode}`), and a documented code taxonomy at `src/mcp/tools.ts:3804-3817`.
+errorCode}`), and a documented code taxonomy at `src/mcp/tools.ts:3804-3817` (`:3905` today).
 - **Observed divergence — measured directly (probe P5):**
 
   | Tool + stale input                   | `isError`                | `errorCode`      | doc changed |
@@ -639,7 +648,8 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 > undo removes the human's point outright — while F-07 keeps the duplication half. The two share one
 > root cause (an automation point has no identity) and one repair.
 > **The repair already exists in the sibling command:** `moveAutomationPoint` re-anchors by identity
-> then by `(tick, value)` — "Audit 06 D3" (`src/commands/automation.ts:128-131`), pinned by
+> then by `(tick, value)` — "Audit 06 D3" (`src/commands/automation.ts:128-131` at the time of the
+> audit; the comment survives at `:250` today), pinned by
 > `tests/automation-audit.test.ts:91-110`. `addAutomationPoint.undo` never got it.
 
 > **Measured (§5.2):** the identical write duplicated the point and grew the undo stack.
@@ -659,7 +669,8 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
 - **Authoritative state:** `doc.automation[].points`.
 - **Expected contract:** an undo removes the point it created.
 - **Observed divergence:** an automation point carries only `tick` and `value` — **no identity**
-  (`src/commands/automation.ts:90-93`). The undo resolves by value:
+  (`src/commands/automation.ts:90-93`; the type is at `src/project-model/types.ts:1020-1023`, and it
+  carried no `id` before the repair). The undo resolves by value:
   ```ts
   const idx = l.points.findIndex((p) => p.tick === point.tick && p.value === point.value);
   ```
@@ -673,7 +684,10 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   (`src/mcp/tools.ts` `addPoint` branch) reports only the _last_ point at that tick, so the
   duplication shows up only as a rising point count.
 - **Evidence:** `src/commands/automation.ts:85-108`; `src/project-model/automation.ts`
-  `insertPointSorted`; `src/mcp/tools.ts` `executeAutomationTool` `addPoint` branch.
+  `insertPointSorted` (now `:75`); `src/mcp/tools.ts` `executeAutomationTool` `addPoint` branch.
+  _The line numbers in this bullet are the ones the audit read; the repair moved the code — today
+  `addAutomationPoint` is at `src/commands/automation.ts:198` and the identity re-anchor helper at
+  `:67`._
 - **Root-cause hypothesis:** automation points predate the need for identity; every other entity in
   the model (tracks, clips, effects, lanes) has an id.
 - **Smallest safe repair (two options, both bounded):**
@@ -683,6 +697,35 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
     should be scheduled deliberately (see §7).
 - **Regression plan:** a spec that adds a human point, adds an identical AI point, undoes, and
   asserts by _object identity_ which point survived (a JSON diff cannot see this).
+- **REPAIR (2026-10-27, ADR 0075).** The population was **re-measured** against today's tree, not
+  against the snapshot the audit was written from — and the finding was **one defect wider** than the
+  text above describes. A point with no identity produced **four** measurable failures:
+  1. **the command layer duplicated an identical point** (`addAutomationPoint` twice → lane points
+     1 → 2, undo stack 2 → 3). The MCP had grown a guard of its own; the UI, the intent pipeline and
+     collab did not — the guard was a shadow of the rule.
+  2. **the MCP's `movePoint` acknowledged a point it never touched** — it read the committed point
+     back **by index**, and after the lane re-sorted, index 0 held a different point (measured: a
+     point moved from bar 1 to bar 8 was acknowledged as `1.1=0.1 → 1.2=0.2`).
+  3. **an undo of an EDITED point removed nothing** — the delta carried the point as it was, the
+     content no longer matched, the removal found no match — while the history entry was still
+     consumed. (The audit's content-based fix at the delta layer is exact only while no two points in
+     a curve are value-identical, and it is defeated outright by a point whose content _changed_.)
+  4. **a positional capture pointed at whatever took the slot** — the AI's delete, built against the
+     doc it saw, removed the **human's** point after a collaborator inserted an earlier one.
+
+  The repair is the one the report named as _correct_: **every authored automation point carries a
+  stable `id`** (`SCHEMA_VERSION` 38 → 39). The id is what a point is addressed by — the undo
+  re-anchors on it, the structural delta anchors on it, and a positional capture keeps pointing at
+  the same point after the lane shifts. The duplicate guard moved to the **command boundary**, so
+  every entry point inherits it instead of one surface growing a guard of its own. The delta's
+  array classification now follows the side that has elements, so a curve that gains its **first**
+  point is diffed by identity and not by slot. The id travels through the collab adapter, and a
+  missing id is backfilled **deterministically** (carrier + slot), so two clients loading the same
+  legacy file derive the same identity.
+  `tests/automation-point-identity.test.ts` (8 specs) is the gate.
+  _Attribution: the core of the repair (the `id` field, the `assignPointIds` helper, the
+  normaliser) was swept into a parallel session's whole-tree commit `54b61f09` — the content is
+  intact, the authorship is not mine. See the attribution note in the status block._
 
 ---
 
@@ -717,6 +760,22 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   legitimate "recreated the same effect" case; disclosure is the right minimum.)
 - **Regression plan:** delete the saved instance, add a different instance of the same type, run the
   restore, assert the acknowledgement discloses the substitution.
+
+  The fallback **stays** — the "recreated the same device" case is real, and removing it would be a
+  different lie. What changed is that the substitution is **named**:
+  - the acknowledgement reports the instance the write **actually landed on** — its id and its
+    ordinal among the same-type instances that exist **now**. The saved ordinal is never used as a
+    label for a write that did not land there (it was: the applied list was built from the saved
+    ordinal, so the label could name a slot the write never touched);
+  - the prose says so — _"NOTE: 1 saved instance(s) no longer exist, so the write landed on a
+    DIFFERENT one: Drums/zenit [fx-d826…] → Drums/zenit (fx-09f5…)"_;
+  - the receipt envelope carries the same fact as `data.substitutions[]` (`savedFxId`, `appliedFxId`,
+    `savedInstance`, `appliedInstance`).
+
+  A restore that hits the saved instance discloses **nothing** — the note is a fact, not noise.
+  `tests/mcp-target-substitution.test.ts` (4 specs) is the gate: it also counts the ordinal fallbacks
+  in the MCP layer and asserts there is exactly **one**, and that it sits next to the disclosure —
+  so a second silent substitution cannot be added without failing the gate.
 
 ---
 
@@ -1438,9 +1497,12 @@ is the only finding that breaks the product's own central contract.
   `{ tick, value }` (`src/project-model/types.ts:1019-1022`), with no id. The command layer therefore
   _cannot_ address a point by identity, and the undo delta it builds is **positional**:
   `diffPlainArray` — "Lists of primitives or plain objects without ids (rows, points, tags…)"
-  (`src/commands/docDelta.ts:227-241`) — diffs the points array **by index**. The `del` op even
+  (`src/commands/docDelta.ts:227-241` at the time of the audit; **`diffPlainArray` is at `:243-256`
+  today** — the repair also changed WHICH diff a points array gets: an id-bearing curve is now
+  diffed by `diffEntityArray`, not by index) — diffs the points array **by index**. The `del` op even
   _carries_ the point it removed, but `applyOp` splices **whatever occupies that index now** and
-  never compares it (`src/commands/docDelta.ts:309-313`).
+  never compares it (`src/commands/docDelta.ts:309-313` at the time of the audit; the slot check is
+  at `:324-341` today).
 - **Measured (§5.7 T7a–T7d):**
   ```
   [T7a] point own keys : ["tick","value"]      (has an id? false)
@@ -1503,15 +1565,15 @@ product but no probe or test in this audit exercised it.
 
 #### A. Human / AI contention
 
-| Scenario                                                                        | Trigger                                                       | Expected invariant                                                        | Observed / untested                                                                                                              | Evidence                                                                                                                         | Risk                 | Proposed test                                                                                                                |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Human moves a plugin slider while the AI issues a parameter update              | both target the same `fxId`                                   | the later write wins; both writers see the same document                  | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice      | `src/store/ProjectStore.ts:268` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only) | medium               | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
-| Two intents target the same track/clip using stale IDs                          | the human deleted the clip; the AI holds the old id           | a typed, machine-detectable refusal                                       | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — the ordinal fallback at `:12604-12606`; the typed path at `:11074-11075`                                    | high (F-08)          | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution    |
-| A command acknowledges before the queued audio update is applied                | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms)                   | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1298-1303`                                               | low — _not a defect_ | assert the applied value reaches 95 % of the commanded value within 3 × tc                                                   |
-| Tool output claims success though the command failed or was rejected            | an AI call on a stale target                                  | `isError` + a typed code                                                  | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result                                            | `src/mcp/tools.ts:8704`; measured §5.2                                                                                           | high (F-05)          | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy                                     |
-| A human edits between an AI's call and its retry (same `requestId`)             | the AI retries a timed-out call                               | the retry reports the document's current value                            | **Observed — diverges.** The replay serves the _first_ call's read-back                                                          | `src/mcp/tools.ts:4805` (the replay builds its result) vs `src/mcp/tools.ts:5003` (the gate); measured §5.2                      | high (F-06)          | edit, retry the same `requestId`, assert the reported value equals the document's current value                              |
-| The AI's write is acknowledged late, after the human has edited the same field  | the AI's command is applied after the human's                 | the later _intent_ wins, or the conflict is reported                      | **Observed — diverges.** The later-_applied_ write wins: the human's 0.9 is overwritten by the AI's older 0.5                    | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1405-1445`)                                                   | high (F-25)          | already measured — assert the documented precedence instead of the accidental one                                            |
-| The AI's write is acknowledged late, after the human edited a _different_ field | same, different field                                         | the human's unrelated edit survives                                       | **Observed — holds.** The delta snapshot preserves it                                                                            | measured §5.3 (T2); `src/commands/core.ts:34-45`                                                                                 | low                  | —                                                                                                                            |
+| Scenario                                                                        | Trigger                                                       | Expected invariant                                                        | Observed / untested                                                                                                              | Evidence                                                                                                                                                                 | Risk                 | Proposed test                                                                                                                |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Human moves a plugin slider while the AI issues a parameter update              | both target the same `fxId`                                   | the later write wins; both writers see the same document                  | **Observed** — last-write-wins, no version, no conflict signal; the AI's read-back is truthful but the human gets no notice      | `src/store/ProjectStore.ts:268` (`execute` takes no expected version); `src/project-model/types.ts:1405-1445` (`updatedAt` only)                                         | medium               | apply an AI write, assert the human's UI re-reads the new value and that the AI's ack carries the value that actually landed |
+| Two intents target the same track/clip using stale IDs                          | the human deleted the clip; the AI holds the old id           | a typed, machine-detectable refusal                                       | **Observed** — mostly typed (`UNKNOWN_TARGET`) and correct; **but** the ordinal fallbacks redirect the write instead of refusing | `src/mcp/tools.ts` — the ordinal fallback at `:12604-12606`; the typed path at `:11074-11075`            | high (F-08)          | delete the saved instance, add a different one of the same type, assert the restore refuses or discloses the substitution    |
+| A command acknowledges before the queued audio update is applied                | a parameter write returns while the scheduler has not yet run | the ack says "pending", or the audio catches up within a documented bound | **Observed, contract-compliant** — the lag is bounded and documented (scheduler tick 25 ms, smoothing 8–20 ms)                   | `src/scheduler/Scheduler.ts:149`; `src/audio-engine/automationBridge.ts:1298-1303`                                                                                       | low — _not a defect_ | assert the applied value reaches 95 % of the commanded value within 3 × tc                                                   |
+| Tool output claims success though the command failed or was rejected            | an AI call on a stale target                                  | `isError` + a typed code                                                  | **Observed — diverges.** `kyx_automation` returns a refusal as a **non-error** result                                            | `src/mcp/tools.ts:8704`; measured §5.2                                                                                                                                   | high (F-05)          | the meta-test: every mutating tool's refusal sets `isError` and a code from the taxonomy                                     |
+| A human edits between an AI's call and its retry (same `requestId`)             | the AI retries a timed-out call                               | the retry reports the document's current value                            | **Observed — diverges.** The replay serves the _first_ call's read-back                                                          | `src/mcp/tools.ts:4805` (the replay builds its result) vs `src/mcp/tools.ts:5003` (the gate — the dispatch's `verifiedMutation` call is at `:4946` today); measured §5.2 | high (F-06)          | edit, retry the same `requestId`, assert the reported value equals the document's current value                              |
+| The AI's write is acknowledged late, after the human has edited the same field  | the AI's command is applied after the human's                 | the later _intent_ wins, or the conflict is reported                      | **Observed — diverges.** The later-_applied_ write wins: the human's 0.9 is overwritten by the AI's older 0.5                    | measured §5.3 (T2); no revision field (`src/project-model/types.ts:1405-1445`)                                                                                           | high (F-25)          | already measured — assert the documented precedence instead of the accidental one                                            |
+| The AI's write is acknowledged late, after the human edited a _different_ field | same, different field                                         | the human's unrelated edit survives                                       | **Observed — holds.** The delta snapshot preserves it                                                                            | measured §5.3 (T2); `src/commands/core.ts:34-45`                                                                                                                         | low                  | —                                                                                                                            |
 
 #### B. Editing and history
 
@@ -2124,7 +2186,9 @@ effort and regression risk.
 | retained as a worked example in §4 rather than as an open finding. **F-07** left this list too:       |
 | it and **F-29** share one root cause — automation points have no identity, so they are addressed by   |
 | value and by position — and **one repair (give the point an identity, or verify the slot before       |
-| splicing) closes both**. **F-04** left this list in this pass: the duplicate-guard scan (§5.8) found  |
+| splicing) closes both**. _Both halves are now closed: the point carries an identity (ADR 0075) and    |
+| the slot is verified before splicing. The one repair the audit named — "give the point an identity" — |
+| is the one that shipped._ **F-04** left this list in this pass: the duplicate-guard scan (§5.8) found |
 | `tests/recovery-overwrite.test.ts`, and the per-project recovery slots landed in `9d2fc17c` six       |
 | minutes before this report's last commit — **F-14 left with it**, because the same commit made        |
 | `recoverProject` refuse an unvalidated, un-migrated or foreign document instead of writing it into    |
@@ -2230,6 +2294,23 @@ migration, and migrations are exactly what F-13 says is currently missing. **S-3
 
 **Migration:** `SCHEMA_VERSION` 38 → 39; add a `MIGRATIONS` map that assigns ids to existing
 points; the normalisation continues to tolerate points without ids until the migration has run.
+
+> **SHIPPED (2026-10-27, ADR 0075) — the automation-point half of S-3.** `SCHEMA_VERSION` is 39 and
+> every authored automation point carries a stable id. Two deviations from the plan above, both
+> deliberate:
+>
+> - **The migration IS the normaliser.** No `MIGRATIONS` map was added — that map is F-13's business,
+>   and it is still open. For an _additive optional_ field the normaliser is the honest migration:
+>   `migrateProject` normalises, and a v38 file comes back with an id on every point. The
+>   backfill is **deterministic** (carrier + slot), so two clients loading the same legacy file
+>   derive the same identity — a random id would have made their collab merge treat every point as
+>   new. Existing ids are never renumbered.
+> - **The id is optional in the type.** The same `AutomationPoint` shape serves EPHEMERAL curves
+>   (interpolated ramp samples, live intensity curves) that never enter the document; a required id
+>   would have forced meaningless identities on them. The guarantee lives where the truth lives —
+>   the normaliser — and the gate asserts it.
+>
+> S-3's remaining half — effect instances and lane points — is not started.
 
 ### S-4 — A single unit/scale ownership layer, a **bidirectional** id map, and a documented composed signal path
 
@@ -2347,6 +2428,12 @@ yields the same document as today (locked in by a spec); the three timestamps ag
 _last_ match), then the correct variant (**S-3**: stable point ids + the `MIGRATIONS` chain, both
 landing in one `SCHEMA_VERSION` bump). Then **F-08** (disclose the ordinal substitution) and
 **F-22** (undo seals the open frame).
+
+> **F-07 is DONE (2026-10-27, ADR 0075).** The **correct** variant shipped,
+> not the cheap one: `SCHEMA_VERSION` is 39 and every authored automation point carries a stable id.
+> The `MIGRATIONS` chain from **F-13** did **not** land with it — for an additive optional field the
+> normaliser IS the migration, and F-13 stays open. **F-08** (disclose the ordinal substitution) and
+> **F-22** (undo seals the open frame) are the remaining entries in this phase.
 
 _Gate:_ the identity-based reproduction (object identity, not JSON) passes; projects written by
 v38 still open; a round-trip of every project fixture is byte-identical.

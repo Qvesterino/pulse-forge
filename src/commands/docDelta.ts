@@ -128,7 +128,22 @@ function diffAny(a: unknown, b: unknown, path: DeltaPath, ops: DeltaOp[]): void 
     return;
   }
   if (Array.isArray(a) && Array.isArray(b)) {
-    if (isEntityList(a) && isEntityList(b)) {
+    const aEntity = isEntityList(a);
+    const bEntity = isEntityList(b);
+    if (aEntity && bEntity) {
+      diffEntityArray(a, b, path, ops);
+      return;
+    }
+    // An EMPTY array carries NO evidence about its element type — the other
+    // side does. Classify by whichever side has elements, so the transition
+    // is diffed the same way the non-empty/non-empty transition already is.
+    //
+    // Audit F-07: a curve that gains its FIRST point was diffed by SLOT,
+    // because the empty side failed the entity test. The undo of that insert
+    // then spliced whatever occupied the slot — and after the point had been
+    // EDITED, the content check found nothing and the undo removed NOTHING
+    // while still consuming a history entry. The id makes the removal exact.
+    if ((a.length === 0 && bEntity) || (b.length === 0 && aEntity)) {
       diffEntityArray(a, b, path, ops);
       return;
     }

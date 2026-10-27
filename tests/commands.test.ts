@@ -960,7 +960,7 @@ describe("automation, lfo and macros", () => {
     store.execute(addAutomationPoint(store.doc, lane.id, 480, 0));
     expect(store.doc.automation[0].points.map((p) => p.tick)).toEqual([0, 480]);
     store.execute(moveAutomationPoint(store.doc, lane.id, 1, { tick: 240, value: 0.5 }));
-    expect(store.doc.automation[0].points[1]).toEqual({ tick: 240, value: 0.5 });
+    expect(store.doc.automation[0].points[1]).toMatchObject({ tick: 240, value: 0.5 });
     store.undo();
     store.undo();
     expect(store.doc.automation[0].points).toHaveLength(1);

@@ -395,12 +395,32 @@ function richDoc(): ProjectDocument {
     markers: [...doc.markers, { id: "mk-1", name: "Drop", type: "drop", tick: 0, linkedClipId: sceneClipId }],
     sceneAutomation: [
       ...doc.sceneAutomation,
-      { id: "sa-1", sceneId, target: { kind: "trackGain", trackId: drum.id }, points: [{ tick: 0, value: 0.5 }] },
+      {
+        id: "sa-1",
+        sceneId,
+        target: { kind: "trackGain", trackId: drum.id },
+        // Audit F-07: an authored point carries its identity — the fixture
+        // must be a CANONICAL document, and the canonical form of a point
+        // that lives in the document has one.
+        points: [{ id: "pt-sa-1-0", tick: 0, value: 0.5 }],
+      },
     ],
     automation: [
       ...doc.automation,
-      { id: "au-1", target: { kind: "trackPan", trackId: drum.id }, points: [{ tick: 0, value: 0 }] },
-      ...(ccTarget ? [{ id: "au-2", target: ccTarget, points: [{ tick: 0, value: 0 }] }] : []),
+      {
+        id: "au-1",
+        target: { kind: "trackPan", trackId: drum.id },
+        points: [{ id: "pt-au-1-0", tick: 0, value: 0 }],
+      },
+      ...(ccTarget
+        ? [
+            {
+              id: "au-2",
+              target: ccTarget,
+              points: [{ id: "pt-au-2-0", tick: 0, value: 0 }],
+            },
+          ]
+        : []),
     ],
     lfos: [
       ...doc.lfos,

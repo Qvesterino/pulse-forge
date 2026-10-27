@@ -379,7 +379,15 @@ function yMapToMarker(m: unknown): Marker {
 // .get(), plain property access on a Y.Map always yields undefined.
 function yPointToAutomation(p: unknown): AutomationPoint {
   if (!(p instanceof Y.Map)) return { tick: 0, value: 0 };
-  return { tick: Number(p.get("tick")) || 0, value: Number(p.get("value")) || 0 };
+  // Audit F-07: the point's identity travels with it. A peer that received a
+  // point without one would mint its own — and the two would then be
+  // different points to every undo, the delta and the next merge.
+  const id = p.get("id");
+  return {
+    ...(typeof id === "string" && id !== "" ? { id } : {}),
+    tick: Number(p.get("tick")) || 0,
+    value: Number(p.get("value")) || 0,
+  };
 }
 
 function yMapToAutomation(m: unknown): AutomationLane {
@@ -826,6 +834,11 @@ function syncPoints(pointsArr: Y.Array<unknown>, points: AutomationPoint[]): voi
     const target = pointsArr.get(i) as Y.Map<unknown>;
     setIfChanged(target, "tick", points[i].tick);
     setIfChanged(target, "value", points[i].value);
+    // Audit F-07: the id is part of the point, so it is synced like any other
+    // field — otherwise a peer would keep the OLD identity for a REPLACED
+    // point, and two points would share one id.
+    const id = points[i].id;
+    if (id !== undefined) setIfChanged(target, "id", id);
   }
 }
 

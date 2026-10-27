@@ -6,6 +6,7 @@ import type {
 } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { insertPointSorted } from "../project-model/automation";
+import { sameAutomationPoint } from "./automation";
 import {
   automationTargetKey,
   clampTargetValue,
@@ -79,6 +80,11 @@ export function addAutomationClip(
   const curve = points
     .filter((point) => Number.isFinite(point.tick) && Number.isFinite(point.value))
     .map((point) => ({
+      // Audit F-07: the point KEEPS its identity through the clip's own
+      // normalisation; a point that arrives without one gets a fresh id, so
+      // the clip's points are addressable like every other authored point.
+      ...point,
+      id: point.id ?? uid("pt"),
       tick: clampPointTick(point.tick),
       value: clampTargetValue(doc, target, point.value, sink),
     }))
@@ -86,7 +92,7 @@ export function addAutomationClip(
     .slice(0, 16384);
   if (curve.length === 0) {
     const value = targetParamDef(doc, target)?.default ?? 0;
-    curve.push({ tick: 0, value }, { tick: geometry.lengthTicks, value });
+    curve.push({ id: uid("pt"), tick: 0, value }, { id: uid("pt"), tick: geometry.lengthTicks, value });
   }
   const clip: ArrangementAutomationClip = {
     id: uid("autoclip"),
@@ -246,7 +252,12 @@ export function addAutomationClipPoint(
   // Audit F-12: the point's value may land outside the parameter's range —
   // the disclosure rides on the command.
   const { events, sink: record } = collectClamps();
-  const point = { tick, value: clampTargetValue(doc, clip.target, value, targetClampSink(doc, clip.target, record)) };
+  // Audit F-07: the new point carries an identity from birth.
+  const point = {
+    id: uid("pt"),
+    tick,
+    value: clampTargetValue(doc, clip.target, value, targetClampSink(doc, clip.target, record)),
+  };
   const points = clip.points.filter((candidate) => candidate.tick !== tick);
   return {
     ...snapshot(
@@ -267,13 +278,17 @@ export function removeAutomationClipPoint(doc: ProjectDocument, clipId: string, 
   editable(clip);
   if (!Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= clip.points.length)
     return snapshot("removeAutomationClipPoint", "Remove automation point", doc, doc);
+  // Audit F-07: the point is addressed by its IDENTITY, not by the slot it
+  // occupied. The captured id survives a curve that shifted, so the delete
+  // removes the point the caller meant — not the one that took its place.
+  const captured = clip.points[pointIndex]!;
   return snapshot(
     "removeAutomationClipPoint",
     "Remove automation clip point",
     doc,
     withClip(doc, {
       ...clip,
-      points: clip.points.filter((_point, index) => index !== pointIndex),
+      points: clip.points.filter((candidate) => !sameAutomationPoint(candidate, captured)),
     }),
   );
 }
@@ -300,8 +315,17 @@ export function moveAutomationClipPoint(
   // Audit F-12: a drag that overshoots the parameter's range is clamped — the
   // toast says so instead of the curve quietly ending somewhere else.
   const { events, sink: record } = collectClamps();
-  const point = { tick, value: clampTargetValue(doc, clip.target, value, targetClampSink(doc, clip.target, record)) };
-  const points = clip.points.filter((_candidate, index) => index !== pointIndex && _candidate.tick !== tick);
+  // Audit F-07: the moved point KEEPS the identity it was captured with — a
+  // fresh id would make the drag look like a different point to every undo.
+  const captured = clip.points[pointIndex]!;
+  const point = {
+    ...captured,
+    tick,
+    value: clampTargetValue(doc, clip.target, value, targetClampSink(doc, clip.target, record)),
+  };
+  const points = clip.points.filter(
+    (candidate) => !sameAutomationPoint(candidate, captured) && candidate.tick !== tick,
+  );
   return {
     ...snapshot(
       "moveAutomationClipPoint",

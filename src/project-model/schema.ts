@@ -1867,7 +1867,9 @@ function normalizeArrangementDomain(s: NormalizeState): void {
               : 0;
           const points: AutomationPoint[] = Array.isArray(clip.points)
             ? assignPointIds(
-                clip.id,
+                // The filter above guarantees a non-empty clip id; the
+                // fallback only satisfies the type for a malformed clip.
+                clip.id ?? "autoclip",
                 clip.points
                   .filter(
                     (point): point is AutomationPoint =>

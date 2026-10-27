@@ -1,5 +1,13 @@
 import type { Command } from "./types";
-import type { AutomationLane, AutomationTarget, Lfo, LfoKind, Macro, ProjectDocument } from "../project-model/types";
+import type {
+  AutomationLane,
+  AutomationPoint,
+  AutomationTarget,
+  Lfo,
+  LfoKind,
+  Macro,
+  ProjectDocument,
+} from "../project-model/types";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { insertPointSorted } from "../project-model/automation";
 import {
@@ -29,6 +37,45 @@ import { snapshot } from "./core";
 
 export function automationLaneOf(doc: ProjectDocument, laneId: string): AutomationLane | undefined {
   return doc.automation.find((l) => l.id === laneId);
+}
+
+/**
+ * Are these the same authored point?
+ *
+ * The id decides it (SCHEMA v39+). Object identity is the fallback for a
+ * document that predates ids, and (tick, value) the last resort — two points
+ * that agree on both are indistinguishable in the document, so treating them
+ * as one is the only honest answer.
+ */
+export function sameAutomationPoint(a: AutomationPoint, b: AutomationPoint): boolean {
+  if (a.id !== undefined && b.id !== undefined) return a.id === b.id;
+  if (a === b) return true;
+  return a.tick === b.tick && a.value === b.value;
+}
+
+/**
+ * Re-anchor on the point a command captured.
+ *
+ * The ID is the authority (SCHEMA v39+): it survives the point being edited,
+ * the lane being re-sorted and the document being rebuilt, so an undo still
+ * finds the point it created. Object identity is the fallback for a document
+ * that predates ids, and (tick, value) is the last resort — it takes the LAST
+ * match, because a stable sorted insert puts THIS command's point after an
+ * identical earlier one, and the first match may be somebody else's point
+ * (the human's).
+ */
+export function reanchorPointIndex(points: AutomationPoint[], captured: AutomationPoint): number {
+  if (captured.id !== undefined) {
+    const byId = points.findIndex((p) => p.id === captured.id);
+    if (byId !== -1) return byId;
+  }
+  const byIdentity = points.findIndex((p) => p === captured);
+  if (byIdentity !== -1) return byIdentity;
+  for (let i = points.length - 1; i >= 0; i--) {
+    const candidate = points[i]!;
+    if (candidate.tick === captured.tick && candidate.value === captured.value) return i;
+  }
+  return -1;
 }
 
 export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget): Command {
@@ -105,9 +152,14 @@ export function addAutomationRamp(
   const lane: AutomationLane = {
     id: uid("lane"),
     target: { ...target },
-    points: insertPointSorted([], { tick: startTick, value: clampAutomationPointValue(doc, target, startValue, sink) }),
+    points: insertPointSorted(
+      [],
+      // Audit F-07: the ramp's two points carry identities from birth.
+      { id: uid("pt"), tick: startTick, value: clampAutomationPointValue(doc, target, startValue, sink) },
+    ),
   };
   lane.points = insertPointSorted(lane.points, {
+    id: uid("pt"),
     tick: endTick,
     value: clampAutomationPointValue(doc, target, endValue, sink),
   });
@@ -152,34 +204,32 @@ export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: n
   // was asked for — the difference is disclosed, not silent.
   const { events, sink: record } = collectClamps();
   const point = {
+    // Audit F-07: a point carries a stable identity from birth. It is what
+    // the undo re-anchors on and what the structural delta anchors on.
+    id: uid("pt"),
     tick: Number.isFinite(tick) ? Math.max(0, Math.round(tick)) : 0,
     value: clampAutomationPointValue(doc, lane.target, value, targetClampSink(doc, lane.target, record)),
   };
+  // Audit F-07: an identical point already in the lane would be a no-op that
+  // still grows the history and DUPLICATES the point — two points at one tick
+  // with one value, which no document-level diff can tell apart, and which
+  // makes the undo ambiguous. The guard lives HERE, at the command boundary,
+  // so EVERY entry point inherits it (MCP, UI, intent, collab) instead of one
+  // surface growing a guard of its own.
+  const duplicate = lane.points.some((p) => p.tick === point.tick && p.value === point.value);
   return {
     type: "addAutomationPoint",
     label: "Add automation point",
     ...(events.length > 0 ? { clamps: events } : {}),
-    execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) })),
+    execute: (d) =>
+      duplicate ? d : withLane(d, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) })),
     undo: (d) =>
       withLane(d, laneId, (l) => {
-        // Audit F-29 — the D3 treatment `moveAutomationPoint` already has
-        // (Audit 06 D3): re-anchor by IDENTITY first. `point` is the very
-        // object this command inserted into the lane.
-        let idx = l.points.findIndex((p) => p === point);
-        if (idx === -1) {
-          // Fall back to (tick, value) — the array was rebuilt (normalisation
-          // clones every point), so identity is gone. Remove the LAST match,
-          // not the first: a stable sorted insert puts THIS command's point
-          // after an identical earlier one, and the first match may be
-          // somebody else's point (the human's).
-          for (let i = l.points.length - 1; i >= 0; i--) {
-            const candidate = l.points[i]!;
-            if (candidate.tick === point.tick && candidate.value === point.value) {
-              idx = i;
-              break;
-            }
-          }
-        }
+        // Audit F-29 / F-07: re-anchor on the point's IDENTITY. The point is
+        // the very object this command inserted, and the id survives an edit
+        // of that point — so an undo still removes the point it created even
+        // after the human moved it.
+        const idx = reanchorPointIndex(l.points, point);
         if (idx === -1) return l;
         const points = [...l.points];
         points.splice(idx, 1);
@@ -215,11 +265,14 @@ export function moveAutomationPoint(
     ...(events.length > 0 ? { clamps: events } : {}),
     execute: (d) =>
       withLane(d, laneId, (l) => {
-        let at = l.points.findIndex((p) => p === original);
-        if (at === -1) at = l.points.findIndex((p) => p.tick === original.tick && p.value === original.value);
+        const at = reanchorPointIndex(l.points, original);
         if (at === -1) return l;
         const points = [...l.points];
         points[at] = {
+          // Audit F-07: the point KEEPS its identity across the move — a new
+          // id would make the edit look like a different point to every
+          // undo, the delta and the collaborator.
+          ...original,
           // Audit 16 D1: gate the tick on finite, exactly as addAutomationPoint
           // does (Audit 06 D4) and as moveSceneAutomationPoint already did.
           // `Math.max(0, Math.round(NaN))` is NaN, not 0: the non-finite point
@@ -248,9 +301,10 @@ export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, inde
     label: "Delete automation point",
     execute: (d) =>
       withLane(d, laneId, (l) => {
-        // Same re-anchor as moveAutomationPoint (Audit 06 D3).
-        let at = l.points.findIndex((p) => p === removed);
-        if (at === -1) at = l.points.findIndex((p) => p.tick === removed.tick && p.value === removed.value);
+        // Same re-anchor as moveAutomationPoint (Audit 06 D3) — by IDENTITY
+        // first, so a lane that shifted between the capture and the delete
+        // still deletes the captured point and not the one that took its slot.
+        const at = reanchorPointIndex(l.points, removed);
         if (at === -1) return l;
         const points = [...l.points];
         points.splice(at, 1);
@@ -261,7 +315,10 @@ export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, inde
         // Re-insert SORTED: splicing at the creation-time index after the
         // array shifted (delete B, add tick-5, undo) produced an unsorted
         // array and wrong interpolation between ticks.
-        if (l.points.some((p) => p.tick === removed.tick && p.value === removed.value)) return l;
+        // Audit F-07: the point comes back WITH its identity — a restored
+        // point that lost its id would be a different point to every undo
+        // that follows.
+        if (l.points.some((p) => p.id !== undefined && p.id === removed.id)) return l;
         return { ...l, points: insertPointSorted(l.points, removed) };
       }),
   };
