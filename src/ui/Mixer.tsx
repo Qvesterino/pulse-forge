@@ -340,6 +340,22 @@ function savePreMeterTracks(ids: string[]): void {
   }
 }
 
+/**
+ * Send level readout.
+ *
+ * The model stores a send in 0..1.5 where 1.0 is unity (the engine clamps the
+ * same band — `clampSendLevel`, `src/audio-engine/AudioEngine.ts`). The old
+ * formatter divided by 1.5, so unity printed "67%" while the hint printed
+ * right under it said "100% fully wet" — the number contradicted the sentence
+ * describing it. The scale is now the documented one: 0..100% of the send,
+ * and anything above unity is shown as an explicit push.
+ */
+export function formatSendLevel(value: number): string {
+  if (!Number.isFinite(value) || value < 0.005) return "OFF";
+  if (value <= 1) return `${Math.round(value * 100)}%`;
+  return `+${Math.round((value - 1) * 100)}%`;
+}
+
 function ChannelStrip({
   track,
   playheadTick,
@@ -642,12 +658,12 @@ function ChannelStrip({
               <Slider
                 compact
                 label={`→ ${ret.name.toUpperCase()}`}
-                hint={`How much of this track feeds the ${ret.name} return's FX — OFF is dry, 100% fully wet (up to 150% for pushes)`}
+                hint={`How much of this track feeds the ${ret.name} return's FX — POST-FADER (the send follows this track's fader, volume lane and macros), OFF is dry, 100% fully wet, above 100% pushes`}
                 value={track.sends[ret.id] ?? 0}
                 min={0}
                 max={1.5}
                 defaultValue={0}
-                format={(v) => (v < 0.005 ? "OFF" : `${Math.round((v / 1.5) * 100)}%`)}
+                format={formatSendLevel}
                 onCommit={(level) => services.store.execute(setTrackSend(doc, track.id, ret.id, level))}
                 onPreview={(level) => services.engine.previewTrackSend(track.id, ret.id, level)}
                 onCancel={() => services.engine.previewTrackSend(track.id, ret.id, track.sends[ret.id] ?? 0)}

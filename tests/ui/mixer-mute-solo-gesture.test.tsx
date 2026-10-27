@@ -84,4 +84,25 @@ describe("mixer mute / solo gesture (seam: mixer-mute-solo)", () => {
     expect(trackOf(project, trackId).mute).toBe(false);
     expect(project.undoStackLength).toBe(2);
   });
+
+  it("M/S announce the track and their pressed state to assistive tech (CF-02)", async () => {
+    const { project, trackId } = setup();
+    const user = userEvent.setup();
+    const strip = stripOf(trackId);
+    const trackName = trackOf(project, trackId).name;
+
+    const mute = within(strip).getByTitle("Mute track");
+    const solo = within(strip).getByTitle("Solo track");
+    // A screen reader hears "Mute <track> button", not "M button", and the
+    // pressed state is exposed rather than carried only by a CSS class.
+    expect(mute).toHaveAttribute("aria-label", `Mute ${trackName}`);
+    expect(solo).toHaveAttribute("aria-label", `Solo ${trackName}`);
+    expect(mute).toHaveAttribute("aria-pressed", "false");
+    expect(solo).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(mute);
+    await user.click(solo);
+    expect(within(strip).getByTitle("Mute track")).toHaveAttribute("aria-pressed", "true");
+    expect(within(strip).getByTitle("Solo track")).toHaveAttribute("aria-pressed", "true");
+  });
 });
