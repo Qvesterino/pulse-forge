@@ -26,6 +26,52 @@ describe("AI control hardening — output schemas and per-call risk", () => {
     }
   });
 
+  it("declares the receipt envelope for the previously text-first five (AS-011)", () => {
+    for (const name of ["kyx_generate", "kyx_pattern", "kyx_checkpoint", "kyx_song", "kyx_unsuno"]) {
+      const schema = MCP_TOOLS.find((tool) => tool.name === name)?.outputSchema;
+      expect(schema, name).toBeDefined();
+      expect(schema?.required, name).toContain("status");
+      expect(schema?.required, name).toContain("stage");
+    }
+  });
+
+  it("returns structured status/stage from the previously text-first tools", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const gen = await host.call("kyx_generate", { genre: "house", seed: "receipt-1" });
+    expect(gen.isError, gen.text).not.toBe(true);
+    expect(gen.data).toMatchObject({ status: "applied", stage: "applied", replaceMode: "new" });
+    expect(typeof (gen.data as { patternId?: string }).patternId).toBe("string");
+
+    const list = await host.call("kyx_pattern", { op: "list" });
+    expect(list.data).toMatchObject({ status: "read", stage: "read" });
+
+    const saved = await host.call("kyx_checkpoint", { op: "save", name: "envelope-probe" });
+    expect(saved.data).toMatchObject({ status: "read", stage: "read" });
+    const cpList = await host.call("kyx_checkpoint", { op: "list" });
+    expect((cpList.data as { checkpoints?: string[] }).checkpoints).toContain("envelope-probe");
+  });
+
+  it("publishes every by-design boundary as a policy record with reason and revisit (AS-005)", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const result = await host.call("kyx_state", { subject: "capabilities" });
+    const capabilities = (
+      result.data as {
+        capabilities: {
+          unavailableByDesign: Record<string, { supported: boolean; reason: string; revisit: string }>;
+          cancellation: { supported: boolean; reason: string; revisit: string };
+        };
+      }
+    ).capabilities;
+    expect(Object.keys(capabilities.unavailableByDesign).sort()).toEqual(["audioImport", "projectOpen", "recording"]);
+    for (const [key, policy] of Object.entries(capabilities.unavailableByDesign)) {
+      expect(policy.supported, key).toBe(false);
+      expect(policy.reason.length, key).toBeGreaterThan(10);
+      expect(policy.revisit.length, key).toBeGreaterThan(10);
+    }
+    expect(capabilities.cancellation.supported).toBe(false);
+    expect(capabilities.cancellation.revisit.length).toBeGreaterThan(10);
+  });
+
   it("returns a stage/status receipt and the per-call risk", async () => {
     const host = createHeadlessMcpHost({ document: createDefaultProject() });
     const state = await host.call("kyx_state", { subject: "overview" });

@@ -773,6 +773,43 @@ const MCP_TOOL_DEFS = [
       },
       required: ["genre"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        patternId: {
+          type: "string",
+        },
+        patternName: {
+          type: "string",
+        },
+        replaceMode: {
+          type: "string",
+          enum: ["new", "replace"],
+        },
+        seed: {
+          type: "string",
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1633,6 +1670,40 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        patternId: {
+          type: "string",
+        },
+        patternName: {
+          type: "string",
+        },
+        index: {
+          type: "integer",
+          minimum: 1,
+        },
+      },
+      required: ["status", "stage"],
     },
     annotations: {
       readOnlyHint: false,
@@ -4618,6 +4689,44 @@ const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        op: {
+          type: "string",
+          enum: ["save", "list", "diff", "restore", "delete"],
+        },
+        name: {
+          type: "string",
+        },
+        checkpoints: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 8,
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5002,6 +5111,38 @@ const MCP_TOOL_DEFS = [
       },
       required: ["genre"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        genre: {
+          type: "string",
+        },
+        sections: {
+          type: "integer",
+          minimum: 0,
+          maximum: 512,
+        },
+      },
+      required: ["status", "stage"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5292,6 +5433,34 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["action"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        action: {
+          type: "string",
+          enum: ["transcribe", "restyle", "regen", "similarity"],
+        },
+      },
+      required: ["status", "stage"],
     },
     annotations: {
       readOnlyHint: false,

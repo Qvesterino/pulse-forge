@@ -1572,6 +1572,29 @@ const OUTPUT_EXPORT = receiptSchema({
   durationSeconds: { type: ["number", "null"] },
   sizeBytes: { type: ["integer", "null"] },
 });
+const OUTPUT_GENERATE = receiptSchema({
+  patternId: { type: "string" },
+  patternName: { type: "string" },
+  replaceMode: { type: "string", enum: ["new", "replace"] },
+  seed: { type: "string" },
+});
+const OUTPUT_PATTERN = receiptSchema({
+  patternId: { type: "string" },
+  patternName: { type: "string" },
+  index: { type: "integer", minimum: 1 },
+});
+const OUTPUT_CHECKPOINT = receiptSchema({
+  op: { type: "string", enum: ["save", "list", "diff", "restore", "delete"] },
+  name: { type: "string" },
+  checkpoints: { type: "array", items: { type: "string" }, maxItems: 8 },
+});
+const OUTPUT_SONG = receiptSchema({
+  genre: { type: "string" },
+  sections: { type: "integer", minimum: 0, maximum: 512 },
+});
+const OUTPUT_UNSUNO = receiptSchema({
+  action: { type: "string", enum: ["transcribe", "restyle", "regen", "similarity"] },
+});
 const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
   kyx_state: OUTPUT_STATE,
   kyx_intent: OUTPUT_INTENT,
@@ -1581,6 +1604,11 @@ const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
   kyx_automation: OUTPUT_AUTOMATION,
   kyx_master: OUTPUT_MASTER,
   kyx_export: OUTPUT_EXPORT,
+  kyx_generate: OUTPUT_GENERATE,
+  kyx_pattern: OUTPUT_PATTERN,
+  kyx_checkpoint: OUTPUT_CHECKPOINT,
+  kyx_song: OUTPUT_SONG,
+  kyx_unsuno: OUTPUT_UNSUNO,
 };
 const RECEIPT_TOOLS: ReadonlySet<string> = new Set(Object.keys(RECEIPT_SCHEMAS));
 
@@ -4047,17 +4075,33 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       undoFrames: has(ctx.beginUndoFrame),
     },
     longRunningTools: [...LONG_RUNNING_AGENT_TOOLS],
+    // AS-005: every deliberate boundary is a POLICY RECORD, not a refusal to
+    // discover by failure — { supported, reason, revisit } says what is
+    // withheld, why, and what would change the answer.
     unavailableByDesign: {
-      projectOpen:
-        "switching the open project rebuilds services and is owned by the human ProjectBrowser; use subject:projects to list and ask the user to open one",
-      audioImport:
-        "requires a human file picker; MCP has no binary channel and the 1 MB body cap is not an audio transport",
-      recording: "requires a device permission gesture and the ArrangementPanel recording state; not exposed to MCP",
+      projectOpen: {
+        supported: false,
+        reason:
+          "switching the open project rebuilds services and is owned by the human ProjectBrowser; use subject:projects to list and ask the user to open one",
+        revisit: "a host-mediated open with a user-confirmed picker handshake could make this agent-assisted",
+      },
+      audioImport: {
+        supported: false,
+        reason:
+          "requires a human file picker; MCP has no binary channel and the 1 MB body cap is not an audio transport",
+        revisit: "a host file-picker handshake, or a textual notation channel (SFZ already ships), would be the door",
+      },
+      recording: {
+        supported: false,
+        reason: "requires a device permission gesture and the ArrangementPanel recording state; not exposed to MCP",
+        revisit: "keep human-only: a take is unrecoverable live audio, not a document edit",
+      },
     },
     cancellation: {
       supported: false,
       reason:
         "MCP calls run synchronously in the owning window; long calls are visible in the Job Center but no cooperative abort is exposed over MCP yet.",
+      revisit: "an AbortSignal threaded through renderProject would give render-class hooks cooperative abort",
     },
     stages: ["read", "runtime", "applied", "persisted", "rendered", "dry-run", "replayed", "noop"],
   };
@@ -5069,6 +5113,12 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return {
         text: `generated "${pattern.name}" — ${pattern.stepCount} sixteenth-note steps (~${formatMetricalBars(stepBars)}) · project ${doc.bpm} BPM (one undo step in KYX)`,
         mutated: true,
+        data: {
+          patternId: pattern.id,
+          patternName: pattern.name,
+          replaceMode: record.replaceMode === "replace" ? "replace" : "new",
+          ...(typeof record.seed === "string" ? { seed: record.seed } : {}),
+        },
       };
     }
     case "kyx_groove": {
@@ -6054,6 +6104,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return {
         text: `active pattern: "${target.name}" (${formatMetricalBars(bars)}) — step edits and generation act on it now`,
         mutated: true,
+        data: { patternId: target.id, patternName: target.name, index: patterns.indexOf(target) + 1 },
       };
     }
     case "kyx_steps":
@@ -7913,7 +7964,11 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
       const timing = cp.reloaded ? "↻ reloaded (steps reset)" : `${stepsSince} step(s) since`;
       lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${timing}${scope}`);
     }
-    return { text: lines.join("\n"), mutated: false };
+    return {
+      text: lines.join("\n"),
+      mutated: false,
+      data: { op: "list", checkpoints: [...checkpoints.keys()].slice(0, 8) },
+    };
   }
   const name = typeof record.name === "string" ? record.name.trim() : "";
   if (op === "save") {
@@ -7944,7 +7999,11 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
   if (op === "delete") {
     checkpoints.delete(name);
     if (repo != null) void repo.remove(projectId, name).catch(() => {});
-    return { text: `checkpoint "${name}" deleted (${checkpoints.size} left)`, mutated: false };
+    return {
+      text: `checkpoint "${name}" deleted (${checkpoints.size} left)`,
+      mutated: false,
+      data: { op: "delete", name },
+    };
   }
   if (op === "diff") {
     // C7.5: WHAT changed since the checkpoint — the agent decides whether to
@@ -8001,6 +8060,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     return {
       text: `restored "${name}" (${cp.summary}) — one undo step returns to the pre-restore state`,
       mutated: true,
+      data: { op: "restore", name },
     };
   }
   return mcpError("UNKNOWN_REQUEST", `unknown checkpoint op: ${op}`);
