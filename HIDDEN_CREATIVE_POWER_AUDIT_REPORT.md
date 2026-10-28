@@ -1525,7 +1525,7 @@ to render two bars and measure the second. The remaining wart is a **product** d
 wet stutter **mutes its track for the first loop**. Recorded here, not fixed — changing it is an audible
 product decision, and it belongs to the owner.
 
-### 10.13 The live↔offline class — a question asked, a measurement made, a handoff delivered
+### 10.13 The live↔offline class — a question, a measurement, two refutations, and a handoff
 
 A parallel session asked a direct question: had this audit found anything new about the `live↔offline null test`
 class? The honest answer is **no**, and it is worth recording why rather than leaving it implied.
@@ -1535,9 +1535,10 @@ the product can do, and where a working capability cannot be reached from. Engin
 order of work. The report contains **no** mention of `live↔offline`, `null test`, `parity` or `determinism`,
 verified by search rather than by memory.
 
-**What this session measured anyway.** `scripts/verify-parity-probe.mjs` — the probe the parallel session had
-built for exactly this purpose — run on this machine with
-`KYX_PARITY_CASES=bitcrusher,ozvena,instrument:texture`:
+#### What this session measured
+
+`scripts/verify-parity-probe.mjs` — the probe the parallel session had built for exactly this purpose — run on
+this machine with `KYX_PARITY_CASES=bitcrusher,ozvena,instrument:texture`:
 
 | case                   | liveNull     | corr   | liveRepeat | control   | rt-nondet | segHead  | segTail      |
 | ---------------------- | ------------ | ------ | ---------- | --------- | --------- | -------- | ------------ |
@@ -1545,35 +1546,79 @@ built for exactly this purpose — run on this machine with
 | `ozvena`               | **−40.0 dB** | 1.0000 | −323.3 dB  | −323.3 dB | false     | −62.1 dB | **−34.4 dB** |
 | `instrument:texture`   | −81.5 dB     | 1.0000 | −83.1 dB   | −86.1 dB  | false     | −63.5 dB | −81.5 dB     |
 
-Three readings, none of them speculative:
+#### Two of this session's three readings were wrong
 
-- **All three pass here.** The correlation is **1.0000** in every case and both determinism controls are
-  identical to the floor — the live and the offline render are the same signal. What separates them is a residual
-  sitting **on the acceptance floor**: `PARITY_NULL_FLOOR_DB = -40`, and `ozvena` measures **exactly −40.0 dB**.
-  A tenth of a decibel either way flips the verdict, which is the most plausible explanation for a corpus that
-  reports 6 of 67 on one machine and 22 of 67 on another with no code change between them.
-- **The divergence is in the tail.** For `ozvena` the head segment measures −62.1 dB (clean) while the tail
-  measures −34.4 dB (worse than the floor); `texture` is clean in both. For the flagship reverb the
-  live↔offline difference lives in the **reverb tail**, not in the body of the signal.
-- **The hypothesis this session started with was wrong.** The parallel session's working theory was a phase
-  offset — the live branch waits `CAPTURE_START_LEAD_SEC` from context construction
-  (`src/testing/live-offline-parity.ts:381`) while the offline branch starts at `t = 0` (`:280`). The measurement
-  does not support it: with `corr = 1.0000` there is no phase divergence in these cases. The refuted hypothesis is
-  kept here because a measurement that kills a plausible theory is worth more than a silent correction.
+The parallel session measured the corpus itself and refuted both of the conclusions this session drew from the
+table above. The corrections are recorded here because the report's own standard is that a refuted reading is
+reported, not quietly dropped.
 
-**The structural observation that does survive.** The harness derives its exemption from a **property**, not a
-name list (`live-offline-parity.ts:1113-1118`) — the offline control must be clean and the live branch must be
-nondeterministic against itself. That is the right shape. But it names only two classes, and the corpus's own
-error message says what is missing: _"the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an
-acceptance criterion"_ (`:786`). The harness computes three phase-insensitive comparisons and the
-note-expression corpus accepts on them (`phaseInsensitiveParityAgrees`, `:645`), while the effect and instrument
-corpus refuses. A case whose only defect is phase therefore has **no derived class** and falls through to red.
+**Refutation 1 — "corr = 1.0000 means the live and offline render are the same signal" is mathematically
+invalid.** `correlationAt` (`src/testing/live-offline-parity.ts:671-687`) is a true Pearson coefficient, so for
+a small error `corr ≈ 1 − e²/2` where `e = 10^(null/20)`: the correlation is **quadratic** in the error, not
+linear. Independently recomputed here against the parallel session's five corpus cases:
 
-**What was handed over, and what was not done here.** The measurement, the reading, and the re-pin rule — the
-spec count is correct at **1325 claimed / 1325 measured**, and re-pinning to 1326 _before_ the untracked spec
-file is tracked would turn the gate red — were handed to the parallel session that owns the corpus. This
-session did not change the harness: the acceptance policy is a product decision, and the corpus is not this
-audit's to close.
+| corpus case         | null     | corr predicted | corr measured |
+| ------------------- | -------- | -------------- | ------------- |
+| `fx:ozvena`         | −39.2 dB | 0.999940       | 0.9999        |
+| `fx:morphdynamics`  | −29.7 dB | 0.999464       | 0.9997        |
+| `fx:bassHarmonic`   | −27.2 dB | 0.999047       | 0.9991        |
+| `fx:portal`         | −7.1 dB  | 0.902508       | 0.9019        |
+| `instrument:analog` | −13.7 dB | 0.978671       | 0.9789        |
+
+`corr = 1.0000` to four decimals therefore bounds the error at **below ≈ −40 dB** and cannot separate −40 dB
+from −45 dB. **The criterion this session proposed on top of it — accept the case when the correlation is high
+and the magnitude spectrum and RMS agree — would have waved through exactly the cases it was meant to catch.**
+A saturated metric cannot gate a threshold it cannot resolve.
+
+**Refutation 2 — "the failures sit on the acceptance floor, so the difference between 6 of 67 and 22 of 67 is
+environment rounding" was unfounded.** The probe does **not** measure the corpus: `__runParityCaseForProbe`
+(`:1140-1157`) renders a plain `noteOn` on `effectDoc(createProjectFromTemplate("house"), type)`, while the
+corpus builds its own per-family documents and scripts — a filter expression for `direct-filter`, a modulation
+expression for `modulation`, a held slide for the rest (`:1349-1379`). **Probe numbers and corpus numbers are
+not comparable**, so the −40.0 dB measured above says nothing about the corpus's −39.2 dB. And the corpus's own
+values are **identical on Windows and on the Linux runner** — `ozvena` −39.2/−332.9, `morphdynamics`
+−29.7/−331.0, `bassHarmonic` −27.2/−332.2, `portal` −7.1/−331.6, `analog` −13.7/corr 0.9789. Those are not at
+a knife edge, and they are **stable across platforms** — which inverts this session's conclusion: a
+reproducible live↔offline difference is a **divergence in the engine**, not rounding in the environment.
+
+**What the corpus actually shows, per the parallel session's two CI runs.** The run-to-run difference is in the
+**instrument** cases — 22 of 67, then 21 of 67, the latter mostly instruments (`808`, `texture`, `keys`,
+`organ`, `strings`, `bell`, `reese`, `clav`, `acid`, `brass`, `fm`, `pluck`, `flute`, `logdrum`, `drumsynth`,
+`ladic`, `analog`) that pass on a desktop and fail in CI, with the count moving between runs. The **stable**
+set is five cases: four effects (the documented class) plus `analog`, whose correlation of 0.9789 sits just
+under the 0.99 threshold. A corpus whose verdict moves run-to-run on the same commit cannot serve as a CI gate.
+
+#### The structural observation that does survive
+
+The harness derives its exemption from a **property**, not a name list (`live-offline-parity.ts:1113-1118`) —
+the offline control must be clean and the live branch must be nondeterministic against itself. That is the right
+shape. But it names only two classes, and the corpus's own error message says what is missing: _"the
+phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion"_ (`:786`). The
+harness computes three phase-insensitive comparisons and the note-expression corpus accepts on them
+(`phaseInsensitiveParityAgrees`, `:645`), while the effect and instrument corpus refuses. A case whose only
+defect is phase therefore has **no derived class** and falls through to red.
+
+#### The discriminator the corpus already prints
+
+The open decision — whether the five stable cases are a phase difference to be fixed in the engine or a
+different processing path to be fixed in the product — is answerable **from numbers the corpus already prints
+in its failure message** (`:780-788`) and the parallel session has just made those names visible in the CI
+annotation:
+
+- `spectrum=` (live↔offline magnitude), `offlineSpectrum=`, `liveRepeatSpectrum=`, `RMS=` — if the magnitude
+  spectrum agrees (cosine ≥ 0.98) and the RMS ratio sits in 0.9–1.1 while only the waveform null is bad, the
+  two branches compute the **same spectrum** and differ in phase or alignment; if the spectrum itself differs,
+  the export is **not** the live branch and invariant 3 is violated.
+- `liveRepeat=` — if the second realtime capture is also bad on CI, the realtime branch was starved by the
+  runner rather than diverged by the engine; if it is clean, the divergence is the engine's.
+
+#### What was handed over, and what was not done here
+
+The probe measurement, the reading, the re-pin rule — the spec count is correct at **1325 claimed / 1325
+measured**, and re-pinning to 1326 _before_ the untracked spec file is tracked would turn the gate red — were
+handed to the parallel session that owns the corpus, together with the two corrections above. This session did
+not change the harness: the acceptance policy is a product decision, and the corpus is not this audit's to
+close.
 
 ---
 
