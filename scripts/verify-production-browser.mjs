@@ -75,49 +75,33 @@ try {
   await page.waitForSelector(".topbar", { timeout: 30_000 });
   await page.waitForSelector(".sequencer", { timeout: 30_000 });
 
-  const fx = page.locator('.topbar button[aria-label="Toggle track device chain"]').first();
+  // The devices tab lives in the DOCK's tab row (ROADMAP-UI-2027 V1 moved it
+  // out of the topbar) — the topbar-scoped selector this gate used matched
+  // nothing, so the gate timed out on a locator that no longer existed.
+  // Same selector contract as tests/e2e/02-panel-toggles.spec.ts.
+  const fx = page.locator('.dock-tabs button[aria-label="Toggle track device chain"]').first();
   if ((await fx.getAttribute("aria-pressed")) !== "true") await fx.click();
   console.log("[production-smoke] FX panel opened");
   await page.waitForSelector(".devices-panel", { timeout: 10_000 });
-  const addEffect = page.locator(".devices-panel select.devices-add-effect").first();
-  const addEffectCount = await page.locator(".devices-panel select.devices-add-effect").count();
-  console.log(`[production-smoke] FX add controls found: ${addEffectCount}`);
-  if (addEffectCount === 0) {
+  // The add-effect control is a POPOVER, not a select: "✚ ADD FX" opens
+  // FxAddPopover, whose device tiles are button.fx-add-device. The select this
+  // gate used (select.devices-add-effect) is gone from the UI, so the gate was
+  // asserting on a control that no longer exists — and it reported the whole
+  // device panel as "missing" while the panel was on screen.
+  const addTrigger = page.locator(".devices-panel button.fx-add-trigger").first();
+  console.log(`[production-smoke] FX add trigger found: ${await addTrigger.count()}`);
+  if ((await addTrigger.count()) === 0) {
     const devices = await page
       .locator(".devices-panel")
       .innerText()
       .catch(() => "<missing devices panel>");
-    throw new Error(`production FX add control missing; device panel text: ${devices}`);
+    throw new Error(`production FX add trigger missing; device panel text: ${devices}`);
   }
-  const addEffectState = await addEffect.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return {
-      disabled: element.disabled,
-      display: style.display,
-      visibility: style.visibility,
-      opacity: style.opacity,
-      width: rect.width,
-      height: rect.height,
-      value: element.value,
-      options: [...element.options].map((option) => ({ value: option.value, disabled: option.disabled })),
-    };
-  });
-  console.log("[production-smoke] FX add control inspected");
-  if (addEffectState.disabled || addEffectState.display === "none" || addEffectState.visibility === "hidden") {
-    throw new Error(`production FX add control is not usable: ${JSON.stringify(addEffectState)}`);
-  }
-  // React owns the select value. On the production preview the browser can
-  // retain a transient native-select interaction lock during the first
-  // AudioContext/worklet boot, making Playwright's selectOption wait forever
-  // even though the control is visibly enabled. Use the same DOM change event
-  // that a native selection emits, then assert the resulting React device.
-  await addEffect.evaluate((element) => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
-    setter?.call(element, "fxeq");
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  console.log("[production-smoke] FX add event dispatched");
+  await addTrigger.click();
+  const deviceTile = page.locator(".fx-add-popover button.fx-add-device").first();
+  await deviceTile.waitFor({ state: "visible", timeout: 10_000 });
+  await deviceTile.click();
+  console.log("[production-smoke] FX add control used");
   await page.waitForSelector('.fx-device[data-effect-type="fxeq"], .fx-device', { timeout: 10_000 });
   console.log("[production-smoke] FX device rendered");
 
