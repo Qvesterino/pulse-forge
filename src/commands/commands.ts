@@ -15,7 +15,14 @@ export * from "./freeze";
 export * from "./instrument";
 export * from "./automation";
 export * from "./automationClips";
-export * from "./tsarOrbit";
+// NOT `export *`: the TSAR ORBIT commands (./tsarOrbit) pull the ORBIT
+// catalogue (src/tsar/orbit.ts) and the 2-D surface's own state module into
+// the studio boot path, because the barrel is a static import of the App
+// shell. The ORBIT surface is a LAZY panel — it loads when a TSAR track is
+// selected — so its commands are imported directly by that panel
+// ("../commands/tsarOrbit"), exactly like ./aiPattern and ./intentRouting
+// above. Measured: re-exporting it cost +6 KB of boot path for a surface
+// nobody has open at boot.
 export * from "./master";
 export * from "./notes";
 export * from "./quantize";

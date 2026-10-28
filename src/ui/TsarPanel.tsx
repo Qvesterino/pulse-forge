@@ -7,6 +7,8 @@ import {
   applyInstrumentPreset,
   setInstrumentParam,
   applyForgeCandidateCommand,
+} from "../commands/commands";
+import {
   applyOrbitPreset,
   clearOrbitRecording,
   recordOrbitPath,
@@ -14,7 +16,7 @@ import {
   setOrbitMapping,
   setOrbitPosition,
   type OrbitSample,
-} from "../commands/commands";
+} from "../commands/tsarOrbit";
 import {
   ORBIT_PRESETS,
   ORBIT_TARGETS,
