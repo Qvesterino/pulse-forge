@@ -5,6 +5,11 @@ import { buildStemProject } from "../rendering/stems";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import { SONG_LOUDNESS_TARGET_LUFS } from "../intent/genre-reference.generated";
 import { defineAnalyzer, resolveAnalysisWindow, type AudioAnalysisResult } from "../analysis/contract";
+import {
+  analyzeArrangementCensus,
+  measureArrangementCensusEnergy,
+  type ArrangementCensus,
+} from "../analysis/arrangement-census";
 import { analyzeMixHealth, type MixHealthReport } from "../analysis/mixDoctor";
 import { storeRevision } from "./revision";
 
@@ -42,6 +47,7 @@ export interface RenderSummaryData {
   referenceLufs: number;
   trackWindow?: TrackWindowAnalysis;
   range?: RenderRangeAnalysis;
+  arrangementCensus?: ArrangementCensus;
 }
 
 /**
@@ -196,7 +202,9 @@ export function formatRenderSummary(data: RenderSummaryData): string {
   const lines: string[] = [];
   if (data.range) lines.push(...formatRangeHeader(data.range));
   if (data.strips.length > 0) {
-    lines.push(`strips (${data.scope === "all" || data.scope === "range" ? "master processing bypassed" : "scope master"}):`);
+    lines.push(
+      `strips (${data.scope === "all" || data.scope === "range" ? "master processing bypassed" : "scope master"}):`,
+    );
     for (const strip of data.strips) lines.push(`  ${formatStrip(strip)}`);
     lines.push(...buildRelativeLines(data).map((line) => `  ${line}`));
   }
@@ -216,7 +224,49 @@ export function formatRenderSummary(data: RenderSummaryData): string {
           : `${Math.abs(target).toFixed(1)} LU ${target > 0 ? "louder" : "quieter"} than the ${data.referenceLufs} streaming target`;
     lines.push(`  MASTER — ${formatStrip(masterStrip)} · ${verdict}`);
   }
+  if (data.arrangementCensus) lines.push(...formatArrangementCensus(data.arrangementCensus));
   return lines.join("\n");
+}
+
+function formatArrangementCensus(census: ArrangementCensus): string[] {
+  const lines = [
+    `arrangement census v${census.analyzer.version}: ${census.counts.clipsAnalyzed}/${census.counts.clipsInScope} clips, ${census.counts.uniquePatterns} unique pattern fingerprints, ${census.counts.repeatedGroups} repeated groups (${census.counts.repeatedOccurrences} repeated occurrences); revision ${census.projectRevision ?? "unknown"}`,
+    "  structural facts only — repetition does not imply a problem or identical rendered audio",
+  ];
+  for (const clip of census.clips.slice(0, 12)) {
+    const role = clip.authoredRole ? `role ${clip.authoredRole}` : "role not provided";
+    const pattern = clip.fingerprint ? `pattern ${clip.fingerprint}` : "pattern unavailable";
+    const activity = clip.metrics
+      ? `${clip.metrics.drumHitsPerBar.toFixed(1)} drum hits/bar; ${clip.metrics.notesPerBar.toFixed(1)} notes/bar; pitch ${clip.metrics.pitchMin ?? "n/a"}..${clip.metrics.pitchMax ?? "n/a"}; velocity ${clip.metrics.velocityRange?.map((value) => value.toFixed(2)).join("..") ?? "n/a"} (mean ${clip.metrics.velocityMean?.toFixed(2) ?? "n/a"}, SD ${clip.metrics.velocityStdDev?.toFixed(2) ?? "n/a"})`
+      : "pattern metrics unavailable";
+    const relation =
+      clip.relationToPrevious === "same-content"
+        ? "same core content as previous clip"
+        : clip.relationToPrevious === "different-content"
+          ? "different core content from previous clip"
+          : "no comparable previous clip";
+    const variation = clip.changeFromPrevious
+      ? `; Δ vs previous: ${clip.changeFromPrevious.drumHitsPerBar === null ? "n/a" : `${clip.changeFromPrevious.drumHitsPerBar >= 0 ? "+" : ""}${clip.changeFromPrevious.drumHitsPerBar.toFixed(1)} drum hits/bar`}, ${clip.changeFromPrevious.notesPerBar === null ? "n/a" : `${clip.changeFromPrevious.notesPerBar >= 0 ? "+" : ""}${clip.changeFromPrevious.notesPerBar.toFixed(1)} notes/bar`}, pitch-span ${clip.changeFromPrevious.pitchSpan === null ? "n/a" : `${clip.changeFromPrevious.pitchSpan >= 0 ? "+" : ""}${clip.changeFromPrevious.pitchSpan.toFixed(1)}`}`
+      : "";
+    const energy = clip.energy
+      ? `; master RMS ${clip.energy.rmsDbfs.toFixed(1)} dBFS${clip.energy.deltaRmsDbFromPrevious === null ? "" : ` (${clip.energy.deltaRmsDbFromPrevious >= 0 ? "+" : ""}${clip.energy.deltaRmsDbFromPrevious.toFixed(1)} dB vs previous measured clip)`}`
+      : "";
+    lines.push(
+      `  ${clip.sceneName} (${role}) ticks ${clip.range.startTick}..${clip.range.endTick}: ${activity}; ${pattern}; ${clip.occurrenceCount} occurrence(s); ${relation}${variation}${energy}`,
+    );
+  }
+  if (census.clips.length > 12)
+    lines.push(`  text lists first 12 clips; structured data contains ${census.clips.length}`);
+  for (const group of census.repeatedPatterns.slice(0, 5)) {
+    lines.push(`  repeated pattern ${group.fingerprint}: ${group.occurrences} clips (${group.clipIds.join(", ")})`);
+  }
+  if (census.energy.status === "not-measured") {
+    lines.push(`  master energy: not measured (${census.energy.reason ?? "unavailable"})`);
+  }
+  if (census.energy.truncated || census.truncated)
+    lines.push("  census is capped; see truncated flags in structured data");
+  for (const caveat of census.caveats) lines.push(`  caveat: ${caveat}`);
+  return lines;
 }
 
 const STRIP_CAP = 14;
@@ -234,11 +284,7 @@ function isFiniteTick(value: number): boolean {
 }
 
 /** Copy the window's samples out of every channel (bounded by the window cap). */
-function sliceChannels(
-  buffer: AnalyzableBuffer,
-  startSample: number,
-  endSample: number,
-): Float32Array[] {
+function sliceChannels(buffer: AnalyzableBuffer, startSample: number, endSample: number): Float32Array[] {
   const slices: Float32Array[] = [];
   for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
     slices.push(buffer.getChannelData(channel).slice(startSample, endSample));
@@ -258,8 +304,8 @@ function measureWindow(buffer: AnalyzableBuffer, startSample: number, endSample:
   });
 }
 
-const RANGE_STAGE = {
-  id: "song-range" as const,
+const RANGE_STAGE: RenderRangeAnalysis["signalStage"] = {
+  id: "song-range",
   includes: "the full mix through the master chain, timeline rendered from 0",
   excludes: "nothing — audio before the window is rendered, only the measurement is sliced",
 };
@@ -338,6 +384,7 @@ async function renderSongWindow(
   }
 
   let master: RenderSummaryData["master"] = null;
+  let masterBuffer: AnalyzableBuffer | null = null;
   if (request.scope !== "tracks") {
     throwIfAborted(signal);
     const buffer = await renderProject(doc, services.bank, renderOptions);
@@ -346,15 +393,37 @@ async function renderSongWindow(
         `offline render ended at sample ${buffer.length}; the window needs samples ${resolved.startSample}..${resolved.endSample}`,
       );
     }
+    masterBuffer = buffer;
     master = measureWindow(buffer, resolved.startSample, resolved.endSample);
   }
 
   const revisionAfterRender = storeRevision(services.store);
+  let arrangementCensus = analyzeArrangementCensus(
+    doc,
+    { startTick: request.startTick, endTick: request.endTick },
+    projectRevision,
+  );
+  const renderedMasterBuffer = masterBuffer;
+  if (renderedMasterBuffer) {
+    arrangementCensus = measureArrangementCensusEnergy(
+      arrangementCensus,
+      renderedMasterBuffer,
+      (startTick, endTick) => {
+        const clipWindow = resolveAnalysisWindow(
+          doc,
+          { ...analysisRequest, window: { startTick, endTick } },
+          renderedMasterBuffer.sampleRate,
+        );
+        return { startSample: clipWindow.startSample, endSample: clipWindow.endSample };
+      },
+    );
+  }
   return {
     scope: "range",
     strips,
     master,
     referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+    arrangementCensus,
     range: {
       window: { startTick: request.startTick, endTick: request.endTick },
       timing: {
