@@ -31,6 +31,7 @@ import {
   defaultMasterConfig,
   ticksPerBar,
 } from "./schema";
+import { assignPointIds } from "./automation";
 
 export type TemplateId =
   | "empty"
@@ -838,15 +839,20 @@ function buildSceneScore(): ProjectDocument {
     return s;
   });
   // Sample scene automation: texture filter-style gain ride into the DROP.
+  // The points are born WITH their identity (schema v39): a template must be
+  // a FIXED POINT of the normaliser — `templates.test.ts` pins that — and the
+  // normaliser mints a missing point id on sight, which would rewrite the
+  // template on every load and break the save/load deep-equality.
+  const sceneAutoId = uid("sceneAuto");
   doc.sceneAutomation = [
     {
-      id: uid("sceneAuto"),
+      id: sceneAutoId,
       sceneId: scBuild.id,
       target: { kind: "trackGain", trackId: texture.id },
-      points: [
+      points: assignPointIds(sceneAutoId, [
         { tick: 0, value: 0.7 },
         { tick: 1920, value: 1.0 },
-      ],
+      ]),
     },
   ];
   return finish(doc, 2);

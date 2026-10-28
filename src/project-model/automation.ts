@@ -38,18 +38,40 @@ export function assignPointIds(carrierId: string, points: AutomationPoint[]): Au
   const seen = new Set<string>();
   let changed = false;
   const out = points.map((point, index) => {
-    const id = point.id;
-    if (typeof id === "string" && id !== "" && !seen.has(id)) {
-      seen.add(id);
-      return point;
+    const rawId = point.id;
+    const keys = Object.keys(point);
+    // `id`, `tick`, `value` — in that order. AutomationPoint has exactly
+    // these three fields; if the type ever grows one, this check goes false
+    // and the gate test says so instead of the order drifting silently.
+    const canonicalOrder = keys.length === 3 && keys[0] === "id" && keys[1] === "tick" && keys[2] === "value";
+    let minted: string;
+    if (typeof rawId === "string" && rawId !== "" && !seen.has(rawId)) {
+      seen.add(rawId);
+      minted = rawId;
+    } else {
+      const base = `${AUTOMATION_POINT_ID_PREFIX}${carrierId}-${index}`;
+      minted = base;
+      let bump = 0;
+      while (seen.has(minted)) minted = `${base}-${++bump}`;
+      changed = true;
     }
-    const base = `${AUTOMATION_POINT_ID_PREFIX}${carrierId}-${index}`;
-    let minted = base;
-    let bump = 0;
-    while (seen.has(minted)) minted = `${base}-${++bump}`;
     seen.add(minted);
+    // A point that already carries its id AND the canonical key order is
+    // returned AS IS — the same object, not a copy. The command layer
+    // re-anchors an undo on object identity before it falls back to
+    // (tick, value); rebuilding an untouched point would throw that away.
+    if (canonicalOrder && minted === rawId) return point;
+    // ONE key order for every point: `id` first, then the rest.
+    //
+    // A point that was minted here and a point that was carried over must
+    // serialise IDENTICALLY. The normalisers compare with `JSON.stringify`,
+    // which is key-order sensitive: with two orders in play the normaliser
+    // reports "changed" forever, the document is rewritten on every load, and
+    // no template can ever be a fixed point of it. One order, one form.
+    const { id: _previousId, ...rest } = point;
+    void _previousId;
     changed = true;
-    return { ...point, id: minted };
+    return { id: minted, ...rest } as AutomationPoint;
   });
   return changed ? out : points;
 }

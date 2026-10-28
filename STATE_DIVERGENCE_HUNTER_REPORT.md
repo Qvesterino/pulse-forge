@@ -728,6 +728,22 @@ identity half was Confirmed by code reading only and is now **measured** (§5.7,
   normaliser) was swept into a parallel session's whole-tree commit `54b61f09` — the content is
   intact, the authorship is not mine. See the attribution note in the status block._
 
+- **FOLLOW-UP (2026-10-28) — the id revealed a second defect: a point serialised in TWO key
+  orders.** `assignPointIds` appended the id (`{tick, value, id}`) while the scene-automation
+  sanitiser rebuilt points as `{id, tick, value}` — and the normalisers compare with
+  `JSON.stringify`, which is **key-order sensitive**. Measured consequences: the `scene-score`
+  template stopped being a **fixed point** of the normaliser
+  (`tests/templates.test.ts` — "is unchanged by normalization"), and the save/load
+  **deep equality** broke for every template that carries scene automation
+  (`tests/persistence/round-trip-integrity.test.ts`). So the same logical point serialised
+  differently depending on whether it had been minted or carried over — the cross-layer
+  divergence this audit is about, one level below the id.
+  The fix is **one key order for every point** (`id`, `tick`, `value`), enforced in
+  `assignPointIds` — and a point that already carries its id **in that order** is returned **as
+  is**, the same object, because the command layer re-anchors an undo on object identity before
+  it falls back to `(tick, value)`. The template is now **born with** its points' identity, so
+  it is a fixed point of the normaliser again.
+
 ---
 
 ### F-08 — A stale ordinal target silently redirects a write to a different entity
