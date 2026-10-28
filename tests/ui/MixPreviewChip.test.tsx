@@ -9,7 +9,12 @@ import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ServicesContext } from "../../src/ui/context";
 import { MixPreviewChipLazy as MixPreviewChip } from "../../src/ui/MixPreviewChipLazy";
-import { armMixPreviewLane, clearMixPreviewLane, currentMixPreviewLane, type MixPreviewLane } from "../../src/mcp/mix-preview";
+import {
+  armMixPreviewLane,
+  clearMixPreviewLane,
+  currentMixPreviewLane,
+  type MixPreviewLane,
+} from "../../src/mcp/mix-preview";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
 import type { Services } from "../../src/services";

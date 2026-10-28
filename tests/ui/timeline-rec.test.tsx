@@ -1158,69 +1158,69 @@ describe("arrangement REC wiring", () => {
     // machine that is more than vitest's 5 s default.
     { timeout: 30_000 },
     async () => {
-    // VOCAL-FIRST LOOP, end to end: a singer enters 40 ms late; the take is
-    // placed with its leading silence skipped so the phrase lands on the entry,
-    // the correction rides in the SAME command (one undo), and the user is told
-    // what happened rather than left to notice by ear.
-    const doc = createDocWithTracks();
-    let metadata: any;
-    const sampleRate = 48_000;
-    const phrase = new Float32Array(sampleRate);
-    const onset = Math.round(0.04 * sampleRate);
-    for (let index = onset; index < phrase.length; index += 1) {
-      phrase[index] = Math.sin((2 * Math.PI * 220 * (index - onset)) / sampleRate) * 0.5;
-    }
-    recorderMock.implementation = class {
-      elapsedSeconds = 1;
-      onError = null;
-      setMonitoring() {}
-      async start(getMetadata: () => unknown) {
-        metadata = getMetadata();
+      // VOCAL-FIRST LOOP, end to end: a singer enters 40 ms late; the take is
+      // placed with its leading silence skipped so the phrase lands on the entry,
+      // the correction rides in the SAME command (one undo), and the user is told
+      // what happened rather than left to notice by ear.
+      const doc = createDocWithTracks();
+      let metadata: any;
+      const sampleRate = 48_000;
+      const phrase = new Float32Array(sampleRate);
+      const onset = Math.round(0.04 * sampleRate);
+      for (let index = onset; index < phrase.length; index += 1) {
+        phrase[index] = Math.sin((2 * Math.PI * 220 * (index - onset)) / sampleRate) * 0.5;
       }
-      async stop() {
-        return {
-          session: {
-            id: "recording.align",
-            ...metadata,
-            projectId: doc.id,
-            trackId: doc.tracks[0].id,
-          },
-          buffer: {
-            duration: 1,
-            sampleRate,
-            numberOfChannels: 1,
-            getChannelData: () => phrase,
-          } as unknown as AudioBuffer,
-          // The take carries its own silence measurement (audit R-1): the
-          // panel reads it unguarded, so the fake has to carry it too.
-          silence: { peak: 0.5, rms: 0.2, silent: false },
-        };
+      recorderMock.implementation = class {
+        elapsedSeconds = 1;
+        onError = null;
+        setMonitoring() {}
+        async start(getMetadata: () => unknown) {
+          metadata = getMetadata();
+        }
+        async stop() {
+          return {
+            session: {
+              id: "recording.align",
+              ...metadata,
+              projectId: doc.id,
+              trackId: doc.tracks[0].id,
+            },
+            buffer: {
+              duration: 1,
+              sampleRate,
+              numberOfChannels: 1,
+              getChannelData: () => phrase,
+            } as unknown as AudioBuffer,
+            // The take carries its own silence measurement (audit R-1): the
+            // panel reads it unguarded, so the fake has to carry it too.
+            silence: { peak: 0.5, rms: 0.2, silent: false },
+          };
+        }
+        cancel() {}
+      };
+
+      try {
+        const store = new ProjectStore(doc);
+        const services = { ...mockServices(doc), store } as unknown as Services;
+        (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
+
+        renderWithContext(<ArrangementPanel />, { services });
+        fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+          target: { value: doc.tracks[0].id },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+        fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
+
+        expect(await screen.findByText(/aligned onto its entry/i)).toBeInTheDocument();
+        const clips = store.doc.arrangement.audioClips ?? [];
+        expect(clips).toHaveLength(1);
+        const leadInSec = Number.isFinite(metadata?.leadInSec) ? metadata.leadInSec : 0;
+        const shift = clips[0]!.offsetSec - leadInSec;
+        expect(shift).toBeGreaterThan(0.035);
+        expect(shift).toBeLessThanOrEqual(0.04);
+      } finally {
+        recorderMock.implementation = null;
       }
-      cancel() {}
-    };
-
-    try {
-      const store = new ProjectStore(doc);
-      const services = { ...mockServices(doc), store } as unknown as Services;
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
-
-      renderWithContext(<ArrangementPanel />, { services });
-      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
-        target: { value: doc.tracks[0].id },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
-      fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
-
-      expect(await screen.findByText(/aligned onto its entry/i)).toBeInTheDocument();
-      const clips = store.doc.arrangement.audioClips ?? [];
-      expect(clips).toHaveLength(1);
-      const leadInSec = Number.isFinite(metadata?.leadInSec) ? metadata.leadInSec : 0;
-      const shift = clips[0]!.offsetSec - leadInSec;
-      expect(shift).toBeGreaterThan(0.035);
-      expect(shift).toBeLessThanOrEqual(0.04);
-    } finally {
-      recorderMock.implementation = null;
-    }
     },
   );
 });

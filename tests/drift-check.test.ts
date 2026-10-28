@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  collectCountChecks,
-  countSpecFiles,
-  GENERATORS,
-  parseCountRow,
-  restoreDecision,
-} from "../scripts/drift-check";
+import { collectCountChecks, countSpecFiles, GENERATORS, parseCountRow, restoreDecision } from "../scripts/drift-check";
 
 /**
  * DRIFT CHECK — the derivable-artifact gate (Chromium-style regeneration
@@ -94,9 +88,7 @@ describe("the volatile-path policy", () => {
   it("never OWNS a volatile path — a timestamp cannot be compared with HEAD", () => {
     for (const section of GENERATORS) {
       for (const path of section.volatilePaths ?? []) {
-        expect(section.ownedPaths, `${section.name} owns ${path} and declares it volatile`).not.toContain(
-          path,
-        );
+        expect(section.ownedPaths, `${section.name} owns ${path} and declares it volatile`).not.toContain(path);
       }
     }
     expect(status!.ownedPaths).not.toContain("docs/STATUS.md");

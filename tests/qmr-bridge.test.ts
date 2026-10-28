@@ -81,21 +81,21 @@ describe("qmr bridge — runtime contract", async () => {
     // machine the generation + undo path needs more than the 5 s default.
     { timeout: 30_000 },
     async () => {
-    const { services, store } = fakeServices();
-    const stop = startQmrBridge(services);
-    const runtime = (window as unknown as { qvesterQmr: QmrRuntimeContract }).qvesterQmr;
+      const { services, store } = fakeServices();
+      const stop = startQmrBridge(services);
+      const runtime = (window as unknown as { qvesterQmr: QmrRuntimeContract }).qvesterQmr;
 
-    const state = await runtime.executeCommand("kyx.state", { subject: "tempo" });
-    expect(state.mutated).toBe(false);
-    expect(state.text).toContain("BPM");
+      const state = await runtime.executeCommand("kyx.state", { subject: "tempo" });
+      expect(state.mutated).toBe(false);
+      expect(state.text).toContain("BPM");
 
-    const generated = await runtime.executeCommand("kyx.generate", { genre: "techno", seed: "qmr" });
-    expect(generated.mutated).toBe(true);
-    expect(store.doc.bpm).toBeGreaterThan(0);
+      const generated = await runtime.executeCommand("kyx.generate", { genre: "techno", seed: "qmr" });
+      expect(generated.mutated).toBe(true);
+      expect(store.doc.bpm).toBeGreaterThan(0);
 
-    const undone = await runtime.executeCommand("kyx.undo", { action: "undo" });
-    expect(undone.mutated).toBe(true);
-    stop();
+      const undone = await runtime.executeCommand("kyx.undo", { action: "undo" });
+      expect(undone.mutated).toBe(true);
+      stop();
     },
   );
 

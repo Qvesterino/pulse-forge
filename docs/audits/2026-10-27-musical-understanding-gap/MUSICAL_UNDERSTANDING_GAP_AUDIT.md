@@ -21,31 +21,31 @@ Best next step: a small, versioned evidence contract joining project truth and a
 
 **Evidence levels:** OBSERVED_RUNTIME = reproduced in running product (none); VERIFIED_CODE_PATH = source path traced; DOCUMENTED_ONLY = documentation claim; PROPOSED = recommendation; UNKNOWN = not established; NOT_APPLICABLE = outside scope.
 
-| Feature | Entry/producer → representation/consumer | Evidence | Status / uncertainty |
-|---|---|---|---|
-| Symbolic project state | **src/project-model/types.ts**, schema/store → BPM/key/meter, notes, patterns, clips, scenes, automation, effects → UI/commands/engine | VERIFIED_CODE_PATH | Rich authored state; not automatically relevant assistant context. |
-| Musical time | **src/transport/Transport.ts**, **src/rendering/tempoMap.ts** → ticks/bars/beats/seconds | VERIFIED_CODE_PATH | Project clock explicit; reference beat times use seconds, are not downbeats, and have no common assistant conversion contract. |
-| Commands/undo | **src/commands/**, **src/mcp/verified-mutation.ts** → typed mutation, history/readback | VERIFIED_CODE_PATH | Strong structural safeguards; cannot establish sound. |
-| Pattern assist | **src/ui/AssistPanel.tsx**, intent pipeline → selected pattern preview/apply/undo | VERIFIED_CODE_PATH | Seeded, scoped composition aid; not general audio reasoning. |
-| Intent | **src/intent/route.ts**, **pipeline.ts**, **model-resolver.ts** → constrained actions | VERIFIED_CODE_PATH | Routes/schema exist; broad semantics and musical quality unproven. |
-| Local intent model | **src/intent/model-loader.ts**, **model-worker.ts**, manifest → instruction bag-of-words/action heads | VERIFIED_CODE_PATH | Local constrained classifier, not audio model/general LLM. Manifest’s internal accuracy/counts are not independently reproduced or a music-understanding score. |
-| Ollama context | **src/intent/model-ollama.ts**, **model-context.ts** → instruction plus bounded tempo/key/meter, up to 8 tracks/effects, 12k chars | VERIFIED_CODE_PATH | Excludes events, clips, analysis, automation and detailed routing; not run. |
-| Audio labels | **src/ai/audio/audio-worker.ts**, **src/intent/audio-reference.ts** → mono 16 kHz, up to 8 AudioSet-style labels/features | VERIFIED_CODE_PATH | Narrow classification/conditioning, not audio QA, transcription or structure. Full local artifact license/provenance is not pinned. |
-| Reference analysis | **src/reference/analysis/analyzeReference.ts**, worker/client, **ReferenceMapPanel.tsx** → tempo/rhythm, key/chroma, energy sections, descriptors | VERIFIED_CODE_PATH | Offline MIR workflow; roles estimated; no audio time signature/downbeat fact. |
-| Reference-to-pattern groove | **src/intent/audio-reference.ts**, **src/intent/groove-extraction.ts**, **src/ui/IntentPanel.tsx** → mono 16 kHz reference, tempo and onset/band estimates → 16-step drum rows | VERIFIED_CODE_PATH | Narrow import workflow; the full reference folds onto one 16-step cycle, same-step hits collapse to the loudest, and band labels are frequency heuristics. Install replaces the active pattern in one undo step. |
-| Audio transcription | **src/reference/transcribe.ts**, **src/reference/analysis/melody.ts** → best-effort chords/drums/bass/melody as editable project material | VERIFIED_CODE_PATH | Gated/warned estimates; MCP supports off/HPSS, UI may use neural tier. |
-| Stem separation | **src/analysis/stem-model/client.ts**, worker/manifest → bounded offline WebGPU/WASM and HPSS fallback | VERIFIED_CODE_PATH | Quality, device performance and pretrained-weight rights not established. |
-| Mix analysis | **src/analysis/mixDoctor.ts**, **sectionMixDoctor.ts**, **src/mcp/mix-diagnosis.ts** → peak/loudness/RMS/crest/bands/correlation/section metrics | VERIFIED_CODE_PATH | Heuristics are not proof of masking/quality. Mix/render summaries cap at 14 strips without explicit overflow field. |
-| MCP/audio preview | **src/mcp/tools.ts** → project queries and opening 1–4 bars as audio | VERIFIED_CODE_PATH | No unified evidence bundle; preview is not selection-aware. Related test source read, not run. |
-| Vocal profile | **src/vocal/analyze.ts**, **src/vocal/types.ts** → up to 90s mono: key/tempo, bar energy, phrase heuristic, silence, rough SNR | VERIFIED_CODE_PATH | Not performance auditor: no timing/pitch errors, articulation or intelligibility. |
-| Vocal phrase alignment | **src/audio-engine/vocal-alignment.ts**, **src/ui/ArrangementPanel.tsx** → per-take/pass phrase-onset measurement and bounded content slip | VERIFIED_CODE_PATH | High-confidence 5–120 ms shifts may auto-apply; larger offsets are offered through a manual path. This finds leading silence, not guide-relative timing or pitch errors. |
-| Audio smart comp | **src/audio-engine/take-scoring.ts**, **src/commands/smart-comp.ts**, **src/ui/ArrangementPanel.tsx** → whole-pass groove/noise/clipping/pitch-drift scores + bar coverage → crossfaded, undoable comp | VERIFIED_CODE_PATH | The same whole-pass score is used for every covered bar; this is a comp heuristic, not a matched-range comparison or a claim of best performance. |
-| Vocal comp and arrangement suggestions | **src/vocal/comping.ts**, **src/ui/IntentPanel.tsx** → VocalProfile phrase energy/SNR → per-bar comp spans and energy-based suggestions | VERIFIED_CODE_PATH | Phrase energy and SNR choose spans; no guide-relative contour, articulation, or intelligibility analysis. |
-| Pitch/harmony | **src/audio-workers/pitch-tracker.ts**, **src/vocal/harmony.ts** → monophonic hum/melody pitch; scale harmony | VERIFIED_CODE_PATH | Not polyphonic transcription, tuning diagnosis or take comparison. |
-| AI Bandmate | **src/collab/bandmate.ts** → shared transport, phrase clock, seeded drum generation, note-event hook | VERIFIED_CODE_PATH | “Listening” is note events/control, not audio understanding. |
-| FX telemetry | **src/audio-engine/AudioEngine.ts**, panels → panel-gated FX meters | VERIFIED_CODE_PATH | May be unavailable when panel closed; MCP runtime not exercised. |
-| Docs | **docs/manual/07-ai-assistants.md**, architecture/ADRs | DOCUMENTED_ONLY | Product intent, not proof of runtime quality. |
-| Low-end WIP | Uncommitted **src/instruments/lowEndMeasure.ts**, **lowEndRender.ts**, Kopa changes | NOT_APPLICABLE to shipped state | Excluded as in-flight; not edited or counted as assistant capability. |
+| Feature                                | Entry/producer → representation/consumer                                                                                                                                                               | Evidence                        | Status / uncertainty                                                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Symbolic project state                 | **src/project-model/types.ts**, schema/store → BPM/key/meter, notes, patterns, clips, scenes, automation, effects → UI/commands/engine                                                                 | VERIFIED_CODE_PATH              | Rich authored state; not automatically relevant assistant context.                                                                                                                                               |
+| Musical time                           | **src/transport/Transport.ts**, **src/rendering/tempoMap.ts** → ticks/bars/beats/seconds                                                                                                               | VERIFIED_CODE_PATH              | Project clock explicit; reference beat times use seconds, are not downbeats, and have no common assistant conversion contract.                                                                                   |
+| Commands/undo                          | **src/commands/**, **src/mcp/verified-mutation.ts** → typed mutation, history/readback                                                                                                                 | VERIFIED_CODE_PATH              | Strong structural safeguards; cannot establish sound.                                                                                                                                                            |
+| Pattern assist                         | **src/ui/AssistPanel.tsx**, intent pipeline → selected pattern preview/apply/undo                                                                                                                      | VERIFIED_CODE_PATH              | Seeded, scoped composition aid; not general audio reasoning.                                                                                                                                                     |
+| Intent                                 | **src/intent/route.ts**, **pipeline.ts**, **model-resolver.ts** → constrained actions                                                                                                                  | VERIFIED_CODE_PATH              | Routes/schema exist; broad semantics and musical quality unproven.                                                                                                                                               |
+| Local intent model                     | **src/intent/model-loader.ts**, **model-worker.ts**, manifest → instruction bag-of-words/action heads                                                                                                  | VERIFIED_CODE_PATH              | Local constrained classifier, not audio model/general LLM. Manifest’s internal accuracy/counts are not independently reproduced or a music-understanding score.                                                  |
+| Ollama context                         | **src/intent/model-ollama.ts**, **model-context.ts** → instruction plus bounded tempo/key/meter, up to 8 tracks/effects, 12k chars                                                                     | VERIFIED_CODE_PATH              | Excludes events, clips, analysis, automation and detailed routing; not run.                                                                                                                                      |
+| Audio labels                           | **src/ai/audio/audio-worker.ts**, **src/intent/audio-reference.ts** → mono 16 kHz, up to 8 AudioSet-style labels/features                                                                              | VERIFIED_CODE_PATH              | Narrow classification/conditioning, not audio QA, transcription or structure. Full local artifact license/provenance is not pinned.                                                                              |
+| Reference analysis                     | **src/reference/analysis/analyzeReference.ts**, worker/client, **ReferenceMapPanel.tsx** → tempo/rhythm, key/chroma, energy sections, descriptors                                                      | VERIFIED_CODE_PATH              | Offline MIR workflow; roles estimated; no audio time signature/downbeat fact.                                                                                                                                    |
+| Reference-to-pattern groove            | **src/intent/audio-reference.ts**, **src/intent/groove-extraction.ts**, **src/ui/IntentPanel.tsx** → mono 16 kHz reference, tempo and onset/band estimates → 16-step drum rows                         | VERIFIED_CODE_PATH              | Narrow import workflow; the full reference folds onto one 16-step cycle, same-step hits collapse to the loudest, and band labels are frequency heuristics. Install replaces the active pattern in one undo step. |
+| Audio transcription                    | **src/reference/transcribe.ts**, **src/reference/analysis/melody.ts** → best-effort chords/drums/bass/melody as editable project material                                                              | VERIFIED_CODE_PATH              | Gated/warned estimates; MCP supports off/HPSS, UI may use neural tier.                                                                                                                                           |
+| Stem separation                        | **src/analysis/stem-model/client.ts**, worker/manifest → bounded offline WebGPU/WASM and HPSS fallback                                                                                                 | VERIFIED_CODE_PATH              | Quality, device performance and pretrained-weight rights not established.                                                                                                                                        |
+| Mix analysis                           | **src/analysis/mixDoctor.ts**, **sectionMixDoctor.ts**, **src/mcp/mix-diagnosis.ts** → peak/loudness/RMS/crest/bands/correlation/section metrics                                                       | VERIFIED_CODE_PATH              | Heuristics are not proof of masking/quality. Mix/render summaries cap at 14 strips without explicit overflow field.                                                                                              |
+| MCP/audio preview                      | **src/mcp/tools.ts** → project queries and opening 1–4 bars as audio                                                                                                                                   | VERIFIED_CODE_PATH              | No unified evidence bundle; preview is not selection-aware. Related test source read, not run.                                                                                                                   |
+| Vocal profile                          | **src/vocal/analyze.ts**, **src/vocal/types.ts** → up to 90s mono: key/tempo, bar energy, phrase heuristic, silence, rough SNR                                                                         | VERIFIED_CODE_PATH              | Not performance auditor: no timing/pitch errors, articulation or intelligibility.                                                                                                                                |
+| Vocal phrase alignment                 | **src/audio-engine/vocal-alignment.ts**, **src/ui/ArrangementPanel.tsx** → per-take/pass phrase-onset measurement and bounded content slip                                                             | VERIFIED_CODE_PATH              | High-confidence 5–120 ms shifts may auto-apply; larger offsets are offered through a manual path. This finds leading silence, not guide-relative timing or pitch errors.                                         |
+| Audio smart comp                       | **src/audio-engine/take-scoring.ts**, **src/commands/smart-comp.ts**, **src/ui/ArrangementPanel.tsx** → whole-pass groove/noise/clipping/pitch-drift scores + bar coverage → crossfaded, undoable comp | VERIFIED_CODE_PATH              | The same whole-pass score is used for every covered bar; this is a comp heuristic, not a matched-range comparison or a claim of best performance.                                                                |
+| Vocal comp and arrangement suggestions | **src/vocal/comping.ts**, **src/ui/IntentPanel.tsx** → VocalProfile phrase energy/SNR → per-bar comp spans and energy-based suggestions                                                                | VERIFIED_CODE_PATH              | Phrase energy and SNR choose spans; no guide-relative contour, articulation, or intelligibility analysis.                                                                                                        |
+| Pitch/harmony                          | **src/audio-workers/pitch-tracker.ts**, **src/vocal/harmony.ts** → monophonic hum/melody pitch; scale harmony                                                                                          | VERIFIED_CODE_PATH              | Not polyphonic transcription, tuning diagnosis or take comparison.                                                                                                                                               |
+| AI Bandmate                            | **src/collab/bandmate.ts** → shared transport, phrase clock, seeded drum generation, note-event hook                                                                                                   | VERIFIED_CODE_PATH              | “Listening” is note events/control, not audio understanding.                                                                                                                                                     |
+| FX telemetry                           | **src/audio-engine/AudioEngine.ts**, panels → panel-gated FX meters                                                                                                                                    | VERIFIED_CODE_PATH              | May be unavailable when panel closed; MCP runtime not exercised.                                                                                                                                                 |
+| Docs                                   | **docs/manual/07-ai-assistants.md**, architecture/ADRs                                                                                                                                                 | DOCUMENTED_ONLY                 | Product intent, not proof of runtime quality.                                                                                                                                                                    |
+| Low-end WIP                            | Uncommitted **src/instruments/lowEndMeasure.ts**, **lowEndRender.ts**, Kopa changes                                                                                                                    | NOT_APPLICABLE to shipped state | Excluded as in-flight; not edited or counted as assistant capability.                                                                                                                                            |
 
 Scope included project model, transport, commands, intent/model adapters, AI audio/symbolic utilities, Reference Map/UN-SUNO, vocals, mix diagnosis, MCP, UI entry points, architecture and relevant tests. Existing unrelated dirty/untracked MCP, Kopa/low-end, collaboration-server and audit work was left alone. This report is the only requested artifact.
 
@@ -53,45 +53,45 @@ Not performed: app startup, real project/audio playback/render, model inference,
 
 ## 3. Musical-understanding taxonomy
 
-| Domain | Observe / represent | Interpret / act / verify | Boundary |
-|---|---|---|---|
-| **A. Rhythm/time** | MIDI timing direct; audio beat/BPM/stability estimated; uploaded references also yield a 16-step onset/band grid | Reference grid can replace the active drum pattern; no general downbeat/meter reasoner; 16-step folding loses cycle position and same-step polyphony, and feel needs A/B | Strong authored MIDI; bounded recorded-audio workflows |
-| **B. Pitch/harmony** | MIDI notes explicit; key/chroma/chords/monophonic pitch estimated | Narrow scale harmony/transcription; no broad polyphonic, tuning, non-Western-scale or calibrated ambiguity reasoning | Project pitch is fact; audio pitch best-effort |
-| **C. Structure** | Explicit scenes/markers and energy sections | Estimated roles, no reliable chorus/motif reasoner; marker edits inspectable, perceived lift needs human | Metadata strong; section semantics heuristic |
-| **D. Mixing/timbre** | Defined metrics, strips and some audio descriptors | Low-band overlap is risk, not masking; supported effect actions, metric rerun/A-B | Fragmented; analysis scope (dry/post-FX/master) must be explicit |
-| **E. Vocals** | Coarse profile, phrase-onset alignment, whole-take smart-comp metrics, and monophonic pitch | Bounded onset slips and heuristic comp selection exist; no guide-relative pitch/contour, articulation, intelligibility or expressive analysis | Useful recording aids; they do not judge performance quality |
-| **F. Intent** | User text plus some selected project context | Deterministic/constrained route; preview/apply/undo for supported actions | Command-aware; open-ended intent-to-sound partial |
-| **G. Cross-track/time** | Project queries and bounded strip renders | No unified routing/automation consequence reasoning or joint plan | Data exists; assembly/reasoning is the gap |
+| Domain                  | Observe / represent                                                                                              | Interpret / act / verify                                                                                                                                                 | Boundary                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| **A. Rhythm/time**      | MIDI timing direct; audio beat/BPM/stability estimated; uploaded references also yield a 16-step onset/band grid | Reference grid can replace the active drum pattern; no general downbeat/meter reasoner; 16-step folding loses cycle position and same-step polyphony, and feel needs A/B | Strong authored MIDI; bounded recorded-audio workflows           |
+| **B. Pitch/harmony**    | MIDI notes explicit; key/chroma/chords/monophonic pitch estimated                                                | Narrow scale harmony/transcription; no broad polyphonic, tuning, non-Western-scale or calibrated ambiguity reasoning                                                     | Project pitch is fact; audio pitch best-effort                   |
+| **C. Structure**        | Explicit scenes/markers and energy sections                                                                      | Estimated roles, no reliable chorus/motif reasoner; marker edits inspectable, perceived lift needs human                                                                 | Metadata strong; section semantics heuristic                     |
+| **D. Mixing/timbre**    | Defined metrics, strips and some audio descriptors                                                               | Low-band overlap is risk, not masking; supported effect actions, metric rerun/A-B                                                                                        | Fragmented; analysis scope (dry/post-FX/master) must be explicit |
+| **E. Vocals**           | Coarse profile, phrase-onset alignment, whole-take smart-comp metrics, and monophonic pitch                      | Bounded onset slips and heuristic comp selection exist; no guide-relative pitch/contour, articulation, intelligibility or expressive analysis                            | Useful recording aids; they do not judge performance quality     |
+| **F. Intent**           | User text plus some selected project context                                                                     | Deterministic/constrained route; preview/apply/undo for supported actions                                                                                                | Command-aware; open-ended intent-to-sound partial                |
+| **G. Cross-track/time** | Project queries and bounded strip renders                                                                        | No unified routing/automation consequence reasoning or joint plan                                                                                                        | Data exists; assembly/reasoning is the gap                       |
 
 ## 4. Perception-to-action map
 
-| Stage | Existing path | Main gap |
-|---|---|---|
-| Acquisition | Project store, uploaded reference, user-library UN-SUNO, short MCP preview | No single binding of selected range, current audio, edits and analysis revision |
-| Analysis | Reference, vocal, AST, mix, stem workflows | Different rates/scopes/schemas; no common provenance envelope |
-| Representation | Project model, ReferenceMap v3, VocalProfile, mix reports, intent context | Ticks/seconds/samples/bars not joined; beat phase is not downbeat |
-| Context | Ollama bounded context, deterministic MCP queries, local instruction classifier | Local classifier sees instruction only; no unified timeline/audio/analysis/routing context |
-| Reasoning | Deterministic routes, constrained intents, narrow heuristics | No demonstrated joint reasoning over audio, notes, arrangement and effects |
-| Mutation | Typed commands, preview/apply, undo/history | Valid action can miss target or goal |
-| Verification | Structural readback, render summary, diagnosis, optional preview | No standard goal-linked fresh render; subjective outcomes need human A/B |
-| Freshness | Some hashes/versions/diagnostics | Repository-wide invalidation after edits/FX/routing/tempo/source changes UNKNOWN |
+| Stage          | Existing path                                                                   | Main gap                                                                                   |
+| -------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Acquisition    | Project store, uploaded reference, user-library UN-SUNO, short MCP preview      | No single binding of selected range, current audio, edits and analysis revision            |
+| Analysis       | Reference, vocal, AST, mix, stem workflows                                      | Different rates/scopes/schemas; no common provenance envelope                              |
+| Representation | Project model, ReferenceMap v3, VocalProfile, mix reports, intent context       | Ticks/seconds/samples/bars not joined; beat phase is not downbeat                          |
+| Context        | Ollama bounded context, deterministic MCP queries, local instruction classifier | Local classifier sees instruction only; no unified timeline/audio/analysis/routing context |
+| Reasoning      | Deterministic routes, constrained intents, narrow heuristics                    | No demonstrated joint reasoning over audio, notes, arrangement and effects                 |
+| Mutation       | Typed commands, preview/apply, undo/history                                     | Valid action can miss target or goal                                                       |
+| Verification   | Structural readback, render summary, diagnosis, optional preview                | No standard goal-linked fresh render; subjective outcomes need human A/B                   |
+| Freshness      | Some hashes/versions/diagnostics                                                | Repository-wide invalidation after edits/FX/routing/tempo/source changes UNKNOWN           |
 
 ## 5. Human–AI musical parity matrix
 
 Confidence describes this static audit, not calibrated task success.
 
-| Task | Human evidence | AI evidence/tools | Missing inference/verification | Confidence |
-|---|---|---|---|---|
-| Find chorus, compare verse energy | Audio, markers, timeline | Explicit scenes or separate energy analysis | Chorus grounding and same-range comparison | High |
-| Kick/bass competition | Waveforms, piano roll, listening | Notes/steps, low-band metrics, mix diagnosis | Time-aligned overlap and masking A/B | High |
-| Tighten drums, retain swing | MIDI timing and feel | Positions/microtiming; reference-to-16-step groove import; bounded pattern edits | Intentional-offset baseline and preservation check; groove import folds the reference across one cycle | Med-high |
-| Vocal timing/pitch issues | Takes, waveform, pitch display | Coarse profile, phrase-onset slip, whole-take comp metrics, monophonic tracker | Guide-targeted local pitch/contour and expressive timing analysis | High |
-| Complementary harmony | Notes/chords/key/audio | Separate key/chord/note paths, harmony generator | Full composition context and audible fit | Med-high |
-| Intimate but intelligible vocal | Take/effects/listening | Effect context, rough SNR/energy | Clarify goal and verify intelligibility | High |
-| Transition at musical boundary | Automation/tempo/arrangement | Automation and effect tools separately | Conflict check across target and time | Med-high |
-| Explain static arrangement | Clips/sections/density/listening | Project queries and separate energy | Joint evidence timeline and cited deltas | High |
-| Compare two takes neutrally | Take lanes/listening | Smart comp ranks whole passes using groove spread, pitch drift, noise floor and clipping, then uses coverage to form bar spans; vocal comp uses phrase energy/SNR | Matched-range, per-bar evidence report; current smart comp applies the same whole-pass score across each take's covered bars | High |
-| Check automation conflict | Automation lane/target | Project state and tools | Deterministic same-target overlap preflight | Med-high |
+| Task                              | Human evidence                   | AI evidence/tools                                                                                                                                                 | Missing inference/verification                                                                                               | Confidence |
+| --------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Find chorus, compare verse energy | Audio, markers, timeline         | Explicit scenes or separate energy analysis                                                                                                                       | Chorus grounding and same-range comparison                                                                                   | High       |
+| Kick/bass competition             | Waveforms, piano roll, listening | Notes/steps, low-band metrics, mix diagnosis                                                                                                                      | Time-aligned overlap and masking A/B                                                                                         | High       |
+| Tighten drums, retain swing       | MIDI timing and feel             | Positions/microtiming; reference-to-16-step groove import; bounded pattern edits                                                                                  | Intentional-offset baseline and preservation check; groove import folds the reference across one cycle                       | Med-high   |
+| Vocal timing/pitch issues         | Takes, waveform, pitch display   | Coarse profile, phrase-onset slip, whole-take comp metrics, monophonic tracker                                                                                    | Guide-targeted local pitch/contour and expressive timing analysis                                                            | High       |
+| Complementary harmony             | Notes/chords/key/audio           | Separate key/chord/note paths, harmony generator                                                                                                                  | Full composition context and audible fit                                                                                     | Med-high   |
+| Intimate but intelligible vocal   | Take/effects/listening           | Effect context, rough SNR/energy                                                                                                                                  | Clarify goal and verify intelligibility                                                                                      | High       |
+| Transition at musical boundary    | Automation/tempo/arrangement     | Automation and effect tools separately                                                                                                                            | Conflict check across target and time                                                                                        | Med-high   |
+| Explain static arrangement        | Clips/sections/density/listening | Project queries and separate energy                                                                                                                               | Joint evidence timeline and cited deltas                                                                                     | High       |
+| Compare two takes neutrally       | Take lanes/listening             | Smart comp ranks whole passes using groove spread, pitch drift, noise floor and clipping, then uses coverage to form bar spans; vocal comp uses phrase energy/SNR | Matched-range, per-bar evidence report; current smart comp applies the same whole-pass score across each take's covered bars | High       |
+| Check automation conflict         | Automation lane/target           | Project state and tools                                                                                                                                           | Deterministic same-target overlap preflight                                                                                  | Med-high   |
 
 ## 6. Top 15 gaps
 
@@ -115,16 +115,16 @@ Severity: P0 blocks trustworthy end-to-end assistance; P1 high value; P2 narrowe
 
 ## 7. DSP vs MIR vs audio model vs LLM
 
-| Task | First method | Escalate only if measured | Avoid |
-|---|---|---|---|
-| Tempo, loudness, peak, bands, correlation | Deterministic DSP, explicit units/scope | MIR for downbeat/meter | LLM guessing measurements |
-| Authored notes/clips/scenes/automation/effects | Project query | LLM explanation over selected versioned facts | Audio model rereading project truth |
-| Recorded beat/downbeat/meter | MIR candidates/confidence | Model after failure-set benchmark | Treat beat as downbeat |
-| Chords/melody | MIR with quality gates/separation as needed | Targeted model after benchmark | Key estimate as transcription |
-| Kick/bass | Time-aligned DSP/MIR plus A/B | Separation if it helps measured task | Spectrum overlap equals masking |
-| Intent planning | Deterministic schema + bounded LLM over evidence | Adaptation after labeled failure | Broad training before task definition |
-| Subjective goals | Clarification, alternatives, human A/B | Audio-text model as evaluated suggestion | “Warm/intimate” as objective truth |
-| Post-action | State checks + fresh render | Perceptual model only with human labels | Command success as sound success |
+| Task                                           | First method                                     | Escalate only if measured                     | Avoid                                 |
+| ---------------------------------------------- | ------------------------------------------------ | --------------------------------------------- | ------------------------------------- |
+| Tempo, loudness, peak, bands, correlation      | Deterministic DSP, explicit units/scope          | MIR for downbeat/meter                        | LLM guessing measurements             |
+| Authored notes/clips/scenes/automation/effects | Project query                                    | LLM explanation over selected versioned facts | Audio model rereading project truth   |
+| Recorded beat/downbeat/meter                   | MIR candidates/confidence                        | Model after failure-set benchmark             | Treat beat as downbeat                |
+| Chords/melody                                  | MIR with quality gates/separation as needed      | Targeted model after benchmark                | Key estimate as transcription         |
+| Kick/bass                                      | Time-aligned DSP/MIR plus A/B                    | Separation if it helps measured task          | Spectrum overlap equals masking       |
+| Intent planning                                | Deterministic schema + bounded LLM over evidence | Adaptation after labeled failure              | Broad training before task definition |
+| Subjective goals                               | Clarification, alternatives, human A/B           | Audio-text model as evaluated suggestion      | “Warm/intimate” as objective truth    |
+| Post-action                                    | State checks + fresh render                      | Perceptual model only with human labels       | Command success as sound success      |
 
 The local AST path is mono 16 kHz and returns top labels. [Xenova AST card](https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593) describes an AudioSet classifier conversion; [MIT AST card](https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593) describes its source classifier. Local manifest lacks full artifact provenance/license pin.
 
@@ -138,7 +138,7 @@ Distinguish **ground truth** (authored note/user label), **measurement** (define
 
 ### Example A — authored MIDI
 
-~~~json
+```json
 {
   "kind": "ground_truth",
   "project": { "id": "p1", "revision": 182 },
@@ -149,11 +149,11 @@ Distinguish **ground truth** (authored note/user label), **measurement** (define
   "uncertainty": { "kind": "none_for_authored_value" },
   "invalidatedBy": ["project_revision", "clip_edit"]
 }
-~~~
+```
 
 ### Example B — measured energy
 
-~~~json
+```json
 {
   "kind": "measurement",
   "claim": "relative_rms_energy",
@@ -168,11 +168,11 @@ Distinguish **ground truth** (authored note/user label), **measurement** (define
   "uncertainty": { "kind": "scope", "note": "Does not prove perceived lift." },
   "invalidatedBy": ["project_revision", "source_audio", "render_chain", "tempo_map"]
 }
-~~~
+```
 
 ### Example C — section estimate and preference
 
-~~~json
+```json
 {
   "kind": "inference",
   "claim": "section_role_candidate",
@@ -185,7 +185,7 @@ Distinguish **ground truth** (authored note/user label), **measurement** (define
   "relatedPreference": { "kind": "preference", "claim": "keep_hat_microtiming", "source": "user_annotation" },
   "invalidatedBy": ["source_audio", "analysis_settings"]
 }
-~~~
+```
 
 Examples are illustrative; existing types do not promise these fields or invalidation rules.
 
@@ -219,13 +219,13 @@ Estimates are planning estimates for prototypes, not measurements. Begin read-on
 
 Proposed horizons, not delivery promises.
 
-| Horizon | Status | Milestone and gate |
-|---|---|---|
-| **0–30 days** | **RESEARCH** | Freeze evidence/time inventory; read-only E02/E08/E09 baselines. Gate: claims cite source/range/truncation. No general model addition. |
-| **1–3 months / 30–90 days** | **PROTOTYPE** | Evidence envelope, revision/range binding, invalidation, selected-range metrics. Gate: improve held-out targeting; reject stale evidence. |
-| **3–6 months / 90–180 days** | **PRODUCTION_CANDIDATE** | One human-approved objective workflow plus fresh render. Gate: correct range/object, no silent truncation, undo and bounded claims; otherwise prototype. |
-| **6–12 months** | **RESEARCH / PROTOTYPE** | Cross-track/time summaries, take comparison, vocal contour, explicit preference; compare audio models against DSP/MIR. Gate: held-out value and rights/device review. |
-| **12–36 months** | **DEFER pending evidence** | Broad audio-language models/adaptation only after narrow workflows prove utility, privacy, latency and licensing. Gate: measured win vs model-agnostic baseline. |
+| Horizon                      | Status                     | Milestone and gate                                                                                                                                                    |
+| ---------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0–30 days**                | **RESEARCH**               | Freeze evidence/time inventory; read-only E02/E08/E09 baselines. Gate: claims cite source/range/truncation. No general model addition.                                |
+| **1–3 months / 30–90 days**  | **PROTOTYPE**              | Evidence envelope, revision/range binding, invalidation, selected-range metrics. Gate: improve held-out targeting; reject stale evidence.                             |
+| **3–6 months / 90–180 days** | **PRODUCTION_CANDIDATE**   | One human-approved objective workflow plus fresh render. Gate: correct range/object, no silent truncation, undo and bounded claims; otherwise prototype.              |
+| **6–12 months**              | **RESEARCH / PROTOTYPE**   | Cross-track/time summaries, take comparison, vocal contour, explicit preference; compare audio models against DSP/MIR. Gate: held-out value and rights/device review. |
+| **12–36 months**             | **DEFER pending evidence** | Broad audio-language models/adaptation only after narrow workflows prove utility, privacy, latency and licensing. Gate: measured win vs model-agnostic baseline.      |
 
 **Go:** current revision/range, provenance, visible uncertainty/omissions, reversible action and fresh verification.  
 **No-go:** hidden network, claims from absent context, uncalibrated certainty, increased wrong targets, or stale analysis.  
@@ -259,4 +259,3 @@ The [HTDemucs conversion card](https://huggingface.co/adowu/htdemucs-onnx) claim
 - Highest priorities are source-supported: narrow context, separate schemas, seconds/ticks boundary and structural-only verification.
 - Strengths and unknowns are explicit; no runtime/test/audio success is claimed.
 - Paths and experiment criteria make reproduction possible once app/tests and rights-cleared audio are available.
-

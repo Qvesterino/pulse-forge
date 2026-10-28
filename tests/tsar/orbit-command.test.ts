@@ -123,9 +123,7 @@ describe("the project model checks the mapping's SHAPE, not the ORBIT catalogue"
     const { doc, trackId } = tsarDoc();
     const broken = {
       ...doc,
-      tracks: doc.tracks.map((t) =>
-        t.id === trackId ? ({ ...t, orbit: { x: 7 } } as unknown as typeof t) : t,
-      ),
+      tracks: doc.tracks.map((t) => (t.id === trackId ? ({ ...t, orbit: { x: 7 } } as unknown as typeof t) : t)),
     };
     const normalized = normalizeProject(broken);
     expect(trackOf(normalized, trackId).orbit).toBeUndefined();
