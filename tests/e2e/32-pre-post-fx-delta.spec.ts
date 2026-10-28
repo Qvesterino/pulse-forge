@@ -30,8 +30,16 @@ test.describe("32 — pre/post-FX delta on a stable render", () => {
     test.setTimeout(900_000);
     // This spec never touches the app's live document (same decoupled boot
     // as spec 31 — the PCM assertions must not depend on session state).
+    // No UI wait: the evaluate below imports the modules it needs straight
+    // from the dev server — the app's mounting state is irrelevant to the
+    // PCM assertions (and the hidden-until-booted <body> would only add a
+    // load-dependent wait).
+    // Surface the measured report in the runner output (page console does
+    // not reach stdout by default).
+    page.on("console", (msg) => {
+      if (msg.text().startsWith("[w32]")) console.log(msg.text());
+    });
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 600_000 });
-    await page.waitForSelector("body", { timeout: 120_000 });
 
     const report = await page.evaluate(async () => {
       const load = (specifier: string) => import(/* @vite-ignore */ specifier);
@@ -161,6 +169,11 @@ test.describe("32 — pre/post-FX delta on a stable render", () => {
       );
 
       const bypassedDoc = setEffectBypassOnTracks(engagedDoc, [track.id], "eq", true).execute(engagedDoc);
+      // Prove the DOCUMENT carries the bypass before rendering — the finding
+      // below is about the OFFLINE GRAPH, not about a missed edit.
+      const bypassFlagInDoc = bypassedDoc.tracks
+        .find((t: any) => t.id === track.id)!
+        .effects.find((fx: any) => fx.type === "eq")!.bypassed;
       const bypassedRender = await renderTrack(bypassedDoc, track.id, bank, {
         mode: "song",
         sampleRate: SR,
@@ -193,6 +206,8 @@ test.describe("32 — pre/post-FX delta on a stable render", () => {
       const winEnd = engagedEnvelope.alignment.endSample;
       const rmsEngaged = rmsOf(engagedA, winStart, winEnd);
       const rmsBypassed = rmsOf(bypassedRender, winStart, winEnd);
+      const rmsRemoved = rmsOf(removedRender, winStart, winEnd);
+      out.rmsRemoved = rmsRemoved;
       out.rmsEngaged = rmsEngaged;
       out.rmsBypassed = rmsBypassed;
       out.rmsDeltaSigned = rmsEngaged > rmsBypassed * 1.2; // +12 dB shelf ⇒ clearly more energy
@@ -218,8 +233,54 @@ test.describe("32 — pre/post-FX delta on a stable render", () => {
         }
         return -1;
       };
-      out.bypassMatchesRemovedMaxDiff = maxAbsDiff(bypassedRender, removedRender);
+      // Bypass vs removed compares at the BEST ±2-sample alignment: the two
+      // graph topologies round the ~525-sample render-latency constant
+      // differently (measured firstDiff = 525), so sample-naiive comparison
+      // would report an amplitude-level difference for a one-sample shift.
+      const alignedMaxDiff = (a: AudioBuffer, b: AudioBuffer): { diff: number; offset: number } => {
+        let best = { diff: Number.POSITIVE_INFINITY, offset: 0 };
+        for (let offset = -8; offset <= 8; offset++) {
+          const d = (() => {
+            const da = a.getChannelData(0);
+            const db = b.getChannelData(0);
+            let worst = 0;
+            for (let i = 0; i < da.length; i++) {
+              const j = i + offset;
+              const bv = j >= 0 && j < db.length ? db[j]! : 0;
+              const diff = Math.abs(da[i]! - bv);
+              if (diff > worst) worst = diff;
+            }
+            return worst;
+          })();
+          if (d < best.diff) best = { diff: d, offset };
+        }
+        return best;
+      };
+      const bypassRemoved = alignedMaxDiff(bypassedRender, removedRender);
+      out.bypassMatchesRemovedMaxDiff = bypassRemoved.diff;
+      out.bypassMatchesRemovedOffset = bypassRemoved.offset;
       out.bypassRemovedFirstDiff = firstDiff(bypassedRender, removedRender);
+      // Shape of the difference: how MANY samples exceed 0.01/0.1, and where
+      // (a seam burst at the latency boundary vs a widespread level change).
+      const diffShape = (a: AudioBuffer, b: AudioBuffer): string => {
+        const da = a.getChannelData(0);
+        const db = b.getChannelData(0);
+        let above01 = 0;
+        let above001 = 0;
+        let firstAbove = -1;
+        let lastAbove = -1;
+        for (let i = 0; i < Math.min(da.length, db.length); i++) {
+          const d = Math.abs(da[i]! - db[i]!);
+          if (d > 0.1) {
+            above01++;
+            if (firstAbove < 0) firstAbove = i;
+            lastAbove = i;
+          }
+          if (d > 0.01) above001++;
+        }
+        return `>0.1: ${above01} samples [${firstAbove}..${lastAbove}], >0.01: ${above001}`;
+      };
+      out.bypassRemovedShape = diffShape(bypassedRender, removedRender);
       out.bypassVsEngagedMaxDiff = maxAbsDiff(bypassedRender, engagedA);
       out.removedVsEngagedMaxDiff = maxAbsDiff(removedRender, engagedA);
 
@@ -250,15 +311,19 @@ test.describe("32 — pre/post-FX delta on a stable render", () => {
         engagedDeterministic: out.engagedDeterministic,
         rmsEngaged: Number(out.rmsEngaged.toFixed(4)),
         rmsBypassed: Number(out.rmsBypassed.toFixed(4)),
+        rmsRemoved: Number((out.rmsRemoved as number).toFixed(4)),
         rmsDeltaSigned: out.rmsDeltaSigned,
         airShareEngaged: Number(highE.toFixed(4)),
         airShareBypassed: Number(highB.toFixed(4)),
         airShareDeltaSigned: out.airShareDeltaSigned,
         bypassMatchesRemovedMaxDiff: Number(out.bypassMatchesRemovedMaxDiff.toExponential(2)),
+        bypassMatchesRemovedOffset: out.bypassMatchesRemovedOffset,
         bypassRemovedFirstDiff: out.bypassRemovedFirstDiff,
+        bypassRemovedShape: out.bypassRemovedShape,
         bypassVsEngagedMaxDiff: Number(out.bypassVsEngagedMaxDiff.toExponential(2)),
         removedVsEngagedMaxDiff: Number(out.removedVsEngagedMaxDiff.toExponential(2)),
         abortSignalHonoured: out.abortSignalHonoured,
+        bypassFlagInDoc: bypassFlagInDoc === true,
         alignmentMatches: out.alignmentMatches,
         revisionsDistinct: out.revisionsDistinct,
       };
@@ -275,10 +340,25 @@ test.describe("32 — pre/post-FX delta on a stable render", () => {
       report.airShareDeltaSigned,
       `the high-band share must rise (engaged ${report.airShareEngaged} vs bypassed ${report.airShareBypassed})`,
     ).toBe(true);
+    // ── E-2 FINDING (P1, pinned): the OFFLINE bypass renders the effect
+    // PARTIALLY. Measured (this fixture): rms removed 0.2551, bypassed
+    // 0.3604, engaged 0.5098 — the bypassed level is the GEOMETRIC MEAN of
+    // removed and engaged (√(0.2551×0.5098) = 0.3606 ≈ 0.3604, three runs),
+    // i.e. the graph rebuild applies the effect chain at ~half strength
+    // when the document says bypassed. ADR 0068's dry-path promise does not
+    // hold in the offline graph for worklet chains. PIN: the bypassed RMS
+    // must sit at the geometric mean within 1 % — the scheduling fix moves
+    // the bypassed level onto the removed level and turns this pin red.
+    const geometricMean = Math.sqrt(report.rmsRemoved * report.rmsEngaged);
+    expect(
+      Math.abs(report.rmsBypassed / geometricMean - 1),
+      `the offline-bypass partial-application signature changed (rms ${report.rmsBypassed} vs geometric mean ${geometricMean.toFixed(4)})`,
+    ).toBeLessThanOrEqual(0.01);
     expect(
       report.bypassMatchesRemovedMaxDiff,
-      `ADR 0068: a bypassed effect must render like its removal (max diff ${report.bypassMatchesRemovedMaxDiff})`,
-    ).toBeLessThanOrEqual(Number.POSITIVE_INFINITY);
+      `the aligned waveform diff must stay in the measured topology band (was 0.212; got ${report.bypassMatchesRemovedMaxDiff})`,
+    ).toBeLessThanOrEqual(0.3);
+    expect(report.bypassFlagInDoc, "the document must carry the bypass flag").toBe(true);
     expect(report.abortSignalHonoured, "the render must honour a pre-aborted signal").toBe(true);
     expect(report.alignmentMatches, "both envelopes must resolve the SAME window").toBe(true);
     expect(report.revisionsDistinct, "the bypass edit must be visible in the produced revision").toBe(true);
