@@ -45,6 +45,12 @@ export interface RenderSummaryData {
   strips: RenderStripSummary[];
   master: { lufs: number | null; peakDb: number; crestDb: number; durationSec: number } | null;
   referenceLufs: number;
+  stripCoverage?: {
+    sourceTracksTotal: number;
+    sourceTracksMeasured: number;
+    sourceTracksOmitted: number;
+    limit: number;
+  };
   trackWindow?: TrackWindowAnalysis;
   range?: RenderRangeAnalysis;
   arrangementCensus?: ArrangementCensus;
@@ -201,6 +207,14 @@ export function formatRenderSummary(data: RenderSummaryData): string {
 
   const lines: string[] = [];
   if (data.range) lines.push(...formatRangeHeader(data.range));
+  if (data.stripCoverage) {
+    const { sourceTracksTotal, sourceTracksMeasured, sourceTracksOmitted, limit } = data.stripCoverage;
+    lines.push(
+      sourceTracksOmitted > 0
+        ? `strip coverage: ${sourceTracksMeasured}/${sourceTracksTotal} source tracks measured; ${sourceTracksOmitted} omitted by the ${limit}-track cap`
+        : `strip coverage: all ${sourceTracksTotal} source tracks measured`,
+    );
+  }
   if (data.strips.length > 0) {
     lines.push(
       `strips (${data.scope === "all" || data.scope === "range" ? "master processing bypassed" : "scope master"}):`,
@@ -362,10 +376,17 @@ async function renderSongWindow(
   };
 
   const strips: RenderStripSummary[] = [];
+  let stripCoverage: RenderSummaryData["stripCoverage"];
   if (request.scope !== "master") {
     const candidates = doc.tracks.filter((t) => t.kind !== "group");
-    const overflow = candidates.length - STRIP_CAP;
-    for (const track of overflow > 0 ? candidates.slice(0, STRIP_CAP) : candidates) {
+    const included = candidates.slice(0, STRIP_CAP);
+    stripCoverage = {
+      sourceTracksTotal: candidates.length,
+      sourceTracksMeasured: included.length,
+      sourceTracksOmitted: candidates.length - included.length,
+      limit: STRIP_CAP,
+    };
+    for (const track of included) {
       throwIfAborted(signal);
       const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
       const buffer = await renderProject(stemDoc, services.bank, { ...renderOptions, masterProcessing: false });
@@ -423,6 +444,7 @@ async function renderSongWindow(
     strips,
     master,
     referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+    ...(stripCoverage ? { stripCoverage } : {}),
     arrangementCensus,
     range: {
       window: { startTick: request.startTick, endTick: request.endTick },
@@ -597,10 +619,17 @@ export async function mcpRenderSummary(
   const sampleRate = 44100 as const;
 
   const strips: RenderStripSummary[] = [];
+  let stripCoverage: RenderSummaryData["stripCoverage"];
   if (scope !== "master") {
     const candidates = doc.tracks.filter((t) => t.kind !== "group");
-    const overflow = candidates.length - STRIP_CAP;
-    for (const track of overflow > 0 ? candidates.slice(0, STRIP_CAP) : candidates) {
+    const included = candidates.slice(0, STRIP_CAP);
+    stripCoverage = {
+      sourceTracksTotal: candidates.length,
+      sourceTracksMeasured: included.length,
+      sourceTracksOmitted: candidates.length - included.length,
+      limit: STRIP_CAP,
+    };
+    for (const track of included) {
       // The N+1 loop is the big cancellation win: a 14-strip summary that is
       // aborted at strip 3 stops there instead of rendering 11 more stems.
       throwIfAborted(signal);
@@ -633,5 +662,6 @@ export async function mcpRenderSummary(
     strips,
     master,
     referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+    ...(stripCoverage ? { stripCoverage } : {}),
   };
 }
