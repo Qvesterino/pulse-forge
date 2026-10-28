@@ -54,7 +54,10 @@ describe("ORBIT mapping commands", () => {
 
   it("refuses two axes on the same parameter — the surface would have nothing to say", () => {
     const { doc, trackId } = tsarDoc();
-    const collide = { x: { paramId: "srcACutoff", min: 30, max: 18000 }, y: { paramId: "srcACutoff", min: 30, max: 18000 } };
+    const collide = {
+      x: { paramId: "srcACutoff", min: 30, max: 18000 },
+      y: { paramId: "srcACutoff", min: 30, max: 18000 },
+    };
     expect(() => setOrbitMapping(doc, trackId, collide)).toThrow(/same parameter/u);
   });
 
@@ -105,6 +108,38 @@ describe("ORBIT mapping commands", () => {
   it("a track without a mapping reads as the documented default", () => {
     const { doc, trackId } = tsarDoc();
     expect(orbitMappingOf(doc, trackId)).toEqual(defaultOrbitMapping());
+  });
+});
+
+describe("the project model checks the mapping's SHAPE, not the ORBIT catalogue", () => {
+  it("a well-formed mapping survives the normaliser untouched", () => {
+    const { doc, trackId } = tsarDoc();
+    const changed = applyOrbitPreset(doc, trackId, ORBIT_PRESETS[1]!.id).execute(doc);
+    const reloaded = normalizeProject(JSON.parse(JSON.stringify(changed)) as ProjectDocument);
+    expect(trackOf(reloaded, trackId).orbit).toEqual(trackOf(changed, trackId).orbit);
+  });
+
+  it("a malformed mapping is DROPPED — absent = no ORBIT surface", () => {
+    const { doc, trackId } = tsarDoc();
+    const broken = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.id === trackId ? ({ ...t, orbit: { x: 7 } } as unknown as typeof t) : t,
+      ),
+    };
+    const normalized = normalizeProject(broken);
+    expect(trackOf(normalized, trackId).orbit).toBeUndefined();
+  });
+
+  it("a mapping that names an unknown target survives the normaliser (the catalogue decides at the use boundary)", () => {
+    const { doc, trackId } = tsarDoc();
+    const stored = { x: { paramId: "notAParam", min: 0, max: 1 }, y: { paramId: "morph", min: 0, max: 1 } };
+    const withMapping = { ...doc, tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, orbit: stored } : t)) };
+    const normalized = normalizeProject(withMapping);
+    expect(trackOf(normalized, trackId).orbit).toEqual(stored);
+    // ...and the USE boundary repairs it: the surface falls back to the
+    // default axis instead of driving a parameter that does not exist.
+    expect(orbitMappingOf(normalized, trackId).x).toEqual(defaultOrbitMapping().x);
   });
 });
 

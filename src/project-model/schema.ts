@@ -19,6 +19,8 @@ import type {
   MacroMapping,
   Marker,
   MasterConfig,
+  OrbitAxis,
+  OrbitMapping,
   ArrangementClip,
   ArrangementAutomationClip,
   AutomationPoint,
@@ -45,7 +47,6 @@ import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulato
 import { uid } from "../shared/ids";
 import { jsonEqual } from "../shared/jsonEqual";
 import { clampInstrumentParam, defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
-import { normalizeOrbitMapping } from "../tsar/orbit";
 import { supportsHeldVoiceSlideNote } from "../instruments/noteExpressionCapabilities";
 import { createProjectFromTemplate } from "./templates";
 import {
@@ -559,6 +560,36 @@ export function sanitizeColor(value: unknown): string | undefined {
   const trimmed = value.trim();
   if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) return undefined;
   return trimmed.toLowerCase();
+}
+
+/**
+ * The TSAR ORBIT surface's mapping, checked for SHAPE (schema v40).
+ *
+ * The check is deliberately shape-only. Whether a parameter may be assigned
+ * to an ORBIT axis is a PRODUCT catalogue (`src/tsar/orbit.ts`), not a
+ * property of the document: a normaliser that depended on it would rewrite
+ * a saved project whenever the catalogue changed — and it would pull the
+ * catalogue into the studio boot path, because the project model is on it.
+ *
+ * A mapping that is not well-formed is DROPPED: "absent = no ORBIT surface"
+ * is the honest state for a surface that cannot be described.
+ */
+export function sanitizeOrbitShape(value: unknown): OrbitMapping | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const axis = (raw: unknown): OrbitAxis | undefined => {
+    if (!raw || typeof raw !== "object") return undefined;
+    const candidate = raw as Record<string, unknown>;
+    if (typeof candidate.paramId !== "string" || candidate.paramId.length === 0) return undefined;
+    if (typeof candidate.min !== "number" || !Number.isFinite(candidate.min)) return undefined;
+    if (typeof candidate.max !== "number" || !Number.isFinite(candidate.max)) return undefined;
+    if (!(candidate.max > candidate.min)) return undefined;
+    return { paramId: candidate.paramId, min: candidate.min, max: candidate.max };
+  };
+  const x = axis(source.x);
+  const y = axis(source.y);
+  if (!x || !y) return undefined;
+  return { x, y };
 }
 
 function defaultSceneFor(doc: ProjectDocument): Scene {
@@ -1669,13 +1700,26 @@ function normalizeTracksDomain(s: NormalizeState): void {
           tracksChanged = true;
         }
       }
-      // The ORBIT surface's mapping (v40): a present mapping is repaired, an
-      // absent one stays absent. "Absent = no ORBIT surface" must keep holding
-      // for every track that never had one — a normaliser that invented a
-      // mapping would rewrite every document it ever opened.
+      // The ORBIT surface's mapping (v40): a present mapping is checked for
+      // SHAPE, an absent one stays absent. "Absent = no ORBIT surface" must
+      // keep holding for every track that never had one — a normaliser that
+      // invented a mapping would rewrite every document it ever opened.
+      //
+      // The check is SHAPE only, and that is deliberate: whether a given
+      // parameter may be assigned to an ORBIT axis is a PRODUCT catalogue
+      // (`src/tsar/orbit.ts`), not a property of the document. A normaliser
+      // that depended on it would rewrite a saved project whenever the
+      // catalogue changed — and it would drag the whole catalogue into the
+      // studio boot path, because the project model is on it. The catalogue
+      // check belongs at the boundary where the surface is used; the
+      // document only has to be well-formed.
       if (t.orbit !== undefined) {
-        const canonicalOrbit = normalizeOrbitMapping(t.orbit);
-        if (!jsonEqual(canonicalOrbit, t.orbit)) {
+        const canonicalOrbit = sanitizeOrbitShape(t.orbit);
+        if (canonicalOrbit === undefined) {
+          const { orbit: _droppedOrbit, ...withoutOrbit } = t as unknown as Record<string, unknown>;
+          t = withoutOrbit as unknown as typeof t;
+          tracksChanged = true;
+        } else if (!jsonEqual(canonicalOrbit, t.orbit)) {
           t = { ...t, orbit: canonicalOrbit };
           tracksChanged = true;
         }

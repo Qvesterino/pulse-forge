@@ -253,6 +253,26 @@ export function TsarPanel() {
       orbitMapping.y.max !== fallback.y.max
     );
   }, [orbitMapping]);
+  /**
+   * Was the STORED mapping repaired on the way in? The project model checks
+   * the mapping's shape; whether a parameter may be assigned to an axis is
+   * the ORBIT catalogue's business, so a mapping that names a target the
+   * catalogue no longer offers falls back to the default axis. The producer
+   * is told, because a silent fallback would look like the surface ignoring
+   * them.
+   */
+  const orbitRepaired = useMemo(() => {
+    const stored = track?.orbit;
+    if (!stored) return false;
+    return (
+      stored.x?.paramId !== orbitMapping.x.paramId ||
+      stored.y?.paramId !== orbitMapping.y.paramId ||
+      stored.x?.min !== orbitMapping.x.min ||
+      stored.x?.max !== orbitMapping.x.max ||
+      stored.y?.min !== orbitMapping.y.min ||
+      stored.y?.max !== orbitMapping.y.max
+    );
+  }, [track?.orbit, orbitMapping]);
   const orbitHasRecording = useMemo(() => {
     const trackId = track?.id;
     if (!trackId) return false;
@@ -327,14 +347,8 @@ export function TsarPanel() {
     const target = ORBIT_TARGET_BY_ID[paramId];
     if (!target) return;
     const next = {
-      x:
-        axis === "x"
-          ? { paramId, min: target.min, max: target.max }
-          : { ...orbitMapping.x },
-      y:
-        axis === "y"
-          ? { paramId, min: target.min, max: target.max }
-          : { ...orbitMapping.y },
+      x: axis === "x" ? { paramId, min: target.min, max: target.max } : { ...orbitMapping.x },
+      y: axis === "y" ? { paramId, min: target.min, max: target.max } : { ...orbitMapping.y },
     };
     if (orbitAxesCollide(next)) {
       setOrbitNote("Both axes drive the same parameter — the surface would have nothing to say.");
@@ -730,6 +744,11 @@ export function TsarPanel() {
           onRecordToggle={orbitToggleRecord}
           onClearRecording={orbitClearRecording}
         />
+        {orbitRepaired && (
+          <div className="tsar-orbit-status">
+            The stored mapping named a target the ORBIT catalogue no longer offers — the axis fell back to the default.
+          </div>
+        )}
         {orbitNote && <div className="tsar-orbit-status">{orbitNote}</div>}
       </section>
 
