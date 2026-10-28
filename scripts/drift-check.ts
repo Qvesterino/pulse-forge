@@ -167,9 +167,17 @@ interface GeneratorSection {
   name: string;
   command: string[];
   ownedPaths: string[];
+  /**
+   * Paths the generator ALSO writes, but that must never be compared with
+   * HEAD: a volatile file (a generation timestamp) cannot be compared with
+   * anything, so adding it to `ownedPaths` would make the gate flap red on
+   * every run. Such a path is restored instead of compared, so a gate run
+   * leaves no trace in the worktree.
+   */
+  volatilePaths?: string[];
 }
 
-const GENERATORS: GeneratorSection[] = [
+export const GENERATORS: GeneratorSection[] = [
   {
     name: "mcp-mirrors",
     command: ["npm", "run", "gen:mcp-mirrors"],
@@ -194,10 +202,17 @@ const GENERATORS: GeneratorSection[] = [
     // protocol end-to-end), so a stale row — a claim that stopped holding —
     // turns this gate red. docs/STATUS.md is deliberately NOT owned here: its
     // header carries a timestamp and a duration-free table, and a volatile
-    // file cannot be compared with HEAD.
+    // file cannot be compared with HEAD. It IS restored, though — see
+    // volatilePaths below.
     name: "status",
     command: ["npm", "run", "status:report"],
     ownedPaths: ["docs/status.json"],
+    // The same command writes this one, and it is volatile: its header
+    // carries a generation timestamp. It can never be compared with HEAD, so
+    // it is not owned — but it must be restored, or every gate run leaves a
+    // dirty file behind for the next session's `git add .` to sweep into an
+    // unrelated commit.
+    volatilePaths: ["docs/STATUS.md"],
   },
 ];
 
@@ -209,7 +224,7 @@ function runGenerator(command: string[]): { ok: boolean; output: string } {
 /** Regenerate, diff owned paths vs HEAD, classify, restore where safe.
  * Returns the findings and whether the section ran at all. */
 export function evaluateGeneratorSection(section: GeneratorSection, bless: boolean): DriftFinding[] {
-  const dirtyBefore = gitDirtyPaths(section.ownedPaths);
+  const dirtyBefore = gitDirtyPaths([...section.ownedPaths, ...(section.volatilePaths ?? [])]);
   const run = runGenerator(section.command);
   if (!run.ok) {
     return [
@@ -287,6 +302,15 @@ export function evaluateGeneratorSection(section: GeneratorSection, bless: boole
   // checkout has CRLF, so content-identical files still show as modified —
   // git checkout normalizes them back and leaves the tree untouched.
   if (!bless) for (const path of cleanPaths) restore(path);
+  // A VOLATILE path is written by the generator but can never be compared with
+  // HEAD — its header carries a generation timestamp — so it is never owned and
+  // never diffed. It must still be restored, or every gate run leaves a dirty
+  // file behind for the next session's `git add .` to sweep into an unrelated
+  // commit. Same shared-tree guardrail as everywhere else here: a path that
+  // was already modified before the check is never touched.
+  for (const path of section.volatilePaths ?? []) {
+    if (!dirtyBefore.has(path)) restore(path);
+  }
   return findings;
 }
 

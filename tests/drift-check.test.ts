@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { collectCountChecks, countSpecFiles, parseCountRow, restoreDecision } from "../scripts/drift-check";
+import {
+  collectCountChecks,
+  countSpecFiles,
+  GENERATORS,
+  parseCountRow,
+  restoreDecision,
+} from "../scripts/drift-check";
 
 /**
  * DRIFT CHECK — the derivable-artifact gate (Chromium-style regeneration
@@ -56,6 +62,52 @@ describe("countSpecFiles", () => {
     expect(count).toBeGreaterThan(800);
     // e2e specs live under tests/e2e and are Playwright-owned — not counted.
     expect(count).not.toBe(0);
+  });
+});
+
+/**
+ * THE VOLATILE-PATH POLICY.
+ *
+ * `npm run status:report` writes two files: `docs/status.json` (the stable
+ * payload the gate compares) and `docs/STATUS.md` (the same claims as a page,
+ * whose header carries a generation timestamp).
+ *
+ * The timestamp makes STATUS.md VOLATILE: it can never be compared with HEAD,
+ * because every regeneration differs. If it were OWNED, the gate would be red
+ * on every single run — the flapping that made the file unusable as a
+ * comparison target in the first place.
+ *
+ * But "not owned" is not "leave it dirty". The file was left dirty on every
+ * gate run, and in a shared worktree a dirty generated file is a hazard: the
+ * next session's `git add .` sweeps it into an unrelated commit. It is now
+ * declared VOLATILE — restored after the check, never compared — and these
+ * pins hold that distinction, because collapsing the two lists is the one
+ * change that would put the gate back in the red.
+ */
+describe("the volatile-path policy", () => {
+  const status = GENERATORS.find((section) => section.name === "status");
+
+  it("declares the status section", () => {
+    expect(status, "the status generator section is gone").toBeDefined();
+  });
+
+  it("never OWNS a volatile path — a timestamp cannot be compared with HEAD", () => {
+    for (const section of GENERATORS) {
+      for (const path of section.volatilePaths ?? []) {
+        expect(section.ownedPaths, `${section.name} owns ${path} and declares it volatile`).not.toContain(
+          path,
+        );
+      }
+    }
+    expect(status!.ownedPaths).not.toContain("docs/STATUS.md");
+  });
+
+  it("RESTORES the volatile path, so a gate run leaves no trace", () => {
+    expect(status!.volatilePaths).toContain("docs/STATUS.md");
+  });
+
+  it("keeps the stable payload owned — that one IS comparable", () => {
+    expect(status!.ownedPaths).toContain("docs/status.json");
   });
 });
 
