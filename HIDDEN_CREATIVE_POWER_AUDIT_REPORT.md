@@ -109,6 +109,18 @@ worker and an evidence file under `docs/audits/2026-10-27-hidden-creative-power/
   commit is the other session's. §10.8 records it.
 - **One worker finding was refuted by measurement** (§5.0, HCP-03-06). Findings that did not survive a
   measurement are reported as refuted, not quietly dropped.
+- **The intake handoff surface was never examined — a gap in this audit, not a finding about the product.**
+  The `IntakeTray` — the surface that lets a user send audio from **any web page** into KYX — is a real
+  creative affordance, and this audit does not mention it anywhere. The facts that are known, none of them
+  from this audit: the surface exists (`src/ui/IntakeTray.tsx`, mounted from `src/ui/SampleBrowser.tsx:827`),
+  it polls the optional collab relay every **8 s** while the drop zone is shown, and the drop zone is **off
+  by default** (`showDropZone = false`). A parallel session measured its side effect while fixing an
+  unrelated e2e gate: with no relay running, the browser logs `ERR_CONNECTION_REFUSED` for
+  `http://127.0.0.1:1234/api/intake` **itself** — JavaScript cannot silence a failed fetch — and on a slow
+  runner that refusal landed before the e2e console-error assertion, while a fast dev box had already
+  finished the test (`357e273c`). **Not verified here:** whether the affordance is discoverable at all, what
+  the tray shows a user who has never run the relay, and what it does on a deployed build, where
+  `galleryBaseUrl()` returns `""` and the request becomes same-origin.
 - No usage telemetry exists. **No adoption, satisfaction, time-saving or conversion claim is made anywhere in
   this document.**
 
