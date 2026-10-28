@@ -135,6 +135,7 @@ describe("ProjectBrowser — import does not overwrite by embedded id", () => {
       name: "Future Project",
       updatedAt: new Date().toISOString(),
       schemaVersion: 999,
+      direction: "newer",
     };
     vi.mocked(core.repo.listIncompatible).mockResolvedValueOnce([incompatible]);
 

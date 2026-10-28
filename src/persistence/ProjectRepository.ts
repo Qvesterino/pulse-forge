@@ -1,5 +1,5 @@
 import type { ProjectDocument, ProjectTransferOriginV1 } from "../project-model/types";
-import { MIN_SCHEMA_VERSION, SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
+import { SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { STORE_META, STORE_PROJECTS, openDb, tx } from "./db";
 
@@ -20,10 +20,11 @@ export interface SavedProjectMeta {
  * (it is the user's work), but it cannot be opened, renamed, or duplicated.
  * Deletion stays available.
  *
- * `direction` says WHICH side of the support range the document sits on:
- * `newer` = written by a newer app version (update KYX to open it),
- * `older` = declares a version older than the oldest shape this build can
- * migrate, so no KYX ever wrote it and its shape cannot be reconstructed.
+ * `direction` says WHY it cannot be opened:
+ * - `newer` — written by a newer app version (update KYX to open it);
+ * - `unsupported` — declares a version that is not a version number at all
+ *   (NaN, a fraction). No build ever wrote such a document, so its shape
+ *   cannot be reconstructed, and `migrateProject` refuses it.
  *
  * Both directions must be listed. A project that is skipped by `listAll`
  * because it cannot be migrated disappears from the library, and a project
@@ -34,8 +35,8 @@ export interface IncompatibleProjectMeta {
   name: string;
   updatedAt: string;
   schemaVersion: number;
-  /** Which side of the supported version range this document is on. */
-  direction: "newer" | "older";
+  /** Why this build cannot open the document. */
+  direction: "newer" | "unsupported";
 }
 
 function metaOf(doc: ProjectDocument): SavedProjectMeta {
@@ -111,10 +112,10 @@ export class ProjectRepository {
 
   /**
    * Projects this build cannot open — from a newer app version, or declaring a
-   * version older than the oldest shape the migrator understands. They are
-   * skipped by listAll/load (they cannot be migrated), but silently HIDING
-   * the user's own work makes it look lost — the browser lists these with a
-   * version badge that says which side of the range it is on.
+   * version that is not a version number at all. They are skipped by
+   * listAll/load (they cannot be migrated), but silently HIDING the user's own
+   * work makes it look lost — the browser lists these with a version badge
+   * that says which side of the range it is on.
    */
   async listIncompatible(): Promise<IncompatibleProjectMeta[]> {
     const db = await this.db();
@@ -123,14 +124,17 @@ export class ProjectRepository {
       .filter((doc) => {
         if (!validateProjectShape(doc)) return false;
         if (typeof doc.schemaVersion !== "number") return false;
-        return doc.schemaVersion > SCHEMA_VERSION || doc.schemaVersion < MIN_SCHEMA_VERSION;
+        // A future version cannot be downgraded; a non-integer version was
+        // never written by any build. Both are refused by `migrateProject`, so
+        // both must be listed here — otherwise the project vanishes.
+        return doc.schemaVersion > SCHEMA_VERSION || !Number.isInteger(doc.schemaVersion);
       })
       .map((doc) => ({
         id: doc.id,
         name: typeof doc.name === "string" && doc.name.length > 0 ? doc.name : "Untitled project",
         updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : new Date(0).toISOString(),
         schemaVersion: doc.schemaVersion as number,
-        direction: (doc.schemaVersion as number) > SCHEMA_VERSION ? ("newer" as const) : ("older" as const),
+        direction: (doc.schemaVersion as number) > SCHEMA_VERSION ? ("newer" as const) : ("unsupported" as const),
       }))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }

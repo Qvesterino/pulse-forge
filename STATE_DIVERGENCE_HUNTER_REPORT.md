@@ -36,17 +36,18 @@
 > | **F-20** duplicated unit conversions        | Low          | **FIXED** — one dB→linear owner (`src/effects/scale-bridges.ts`); the registry delegates to it instead of keeping a second implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `5f4d96c8`                                                       |
 > | **F-07** automation points have no identity | Medium       | **FIXED** — every authored automation point carries a stable `id` (`SCHEMA_VERSION` 38 → 39), so an undo re-anchors on the entity it created, the structural delta anchors on the id instead of a slot, and a duplicated write is refused **at the command boundary** (every entry point inherits it). Re-measured first: the finding's single defect was **four** — the command layer duplicated a point, the MCP's `movePoint` acknowledged a point it never touched (it read the committed point back by index), an undo of an **edited** point removed nothing while consuming a history entry, and a positional capture deleted the human's point | `54b61f09` (core, by a parallel session) · `1321bc9f` · ADR 0075 |
 > | **F-08** stale ordinal redirects a write    | Medium       | **FIXED** — the A/B restore's ordinal fallback stays (the "recreated the same device" case is real) but every substitution is now **named**: the acknowledgement reports the instance the write landed on — its id and its ordinal among the instances that exist NOW — and says so in prose and in `data.substitutions`. The report's claim that the same shape lived in the effect-instance and automation-target resolvers is **not true of today's code** — those refuse explicitly; the fallback existed in exactly ONE place                                                                                                                     | `5703f819` · ADR 0076                                            |
+> | **F-13** the version is not a mechanism     | Medium       | **FIXED** — the schema version is a **mechanism**, not a comment: the per-version history is DATA (`SCHEMA_HISTORY`, total and asserted), the migration chain (`MIGRATIONS`) exists and is walked, and the two are asserted to correspond **in both directions**. Re-measured first: the version discriminated nothing (40 source versions → 1 output), and the only candidate version-conditional rule (v19 → v20) is pinned by an existing test to apply at v38 too — a tolerant repair, not a transformation. The past stays **total**; only a version that is not a version NUMBER is refused — **visibly**                                        | **(this commit)** · ADR 0077                                     |
 > | F-03, F-04, F-14                            | —            | already resolved when this report was written (§5.8)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | —                                                                |
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 22 resolved, 7 open, 0 Critical.**
+> **29 findings, 23 resolved, 6 open, 0 Critical.**
 >
 > **Still open, and the next wave:** §6's TOP 10 is now **fully closed** (all ten
 > entries); what remains is the systemic improvements in §7 — **S-1 is closed**,
 > its four gaps were F-05, F-06, F-24 and F-26, so **S-2 … S-5 remain** — the
-> remaining phases in §8, and the seven findings still listed as open above:
-> **F-13, F-15, F-19, F-21, F-22, F-23 and F-27**.
+> remaining phases in §8, and the six findings still listed as open above:
+> **F-15, F-19, F-21, F-22, F-23 and F-27**.
 > _(An earlier revision of this block said "the rest of §11" — §11 is the
 > method appendix, not a work list; the pointer is corrected here.)_
 >
@@ -1036,6 +1037,53 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Regression plan:** a spec asserting that migrating from every version ≤ `SCHEMA_VERSION` yields a
   document equal to `normalizeProject` of the same input (the current behaviour, locked in).
 
+- **REPAIR (2026-10-28, ADR 0077).** The finding was **re-measured** against today's tree before
+  anything was written, and the measurement both **sharpened** and **narrowed** it:
+
+  1. **the version discriminated nothing.** 40 source versions (0…39) produced **one** distinct
+     output — `migrateProject(doc@v)` was byte-identical to `normalizeProject(doc)` for every `v`.
+  2. **and there was, measurably, no version-conditional rule to write down.** The only candidate —
+     v19 → v20 splits the master stereo link — is pinned by `tests/schema-migration.test.ts:113` to
+     apply at version **38** as well, so it is a **tolerant repair**, not a version-conditional
+     transformation. A chain filled with invented steps would encode a claim no measurement supports;
+     the chain is legitimately almost empty.
+  3. **the declared version was not checked at all.** `NaN`, `1.5`, `0` and `−1` were accepted and
+     stamped **39** — the document was re-labelled with a version it never had.
+
+  The repair is the mechanism, not a filled map:
+  - `SCHEMA_HISTORY` — the per-version history is **data**, not a comment block: every version from
+    `MIN_SCHEMA_VERSION` (1 — what the initial commit `4096423e` shipped) to `SCHEMA_VERSION` has an
+    entry, and the entry says what kind of change it was (`additive` / `inferred` / `transform`). The
+    ledger is asserted to be **total**.
+  - `MIGRATIONS` — the chain exists, `migrateProject` walks it, and the gate asserts the ledger and
+    the chain correspond **in both directions**: a version cannot be declared a transformation without
+    the step that implements it, and a step cannot exist without a version that asks for it. **That is
+    the enforcement** — the first genuine breaking change cannot skip the chain.
+  - `applyMigrations(doc, fromVersion, chain = MIGRATIONS)` — the chain is **injectable**, so the walk
+    is provable: the steps run in ascending order, only for documents at or below the step's own
+    version, and not at all for a document that is already current. Without this the chain would be a
+    decorative empty map — a husk, not a mechanism.
+  - `MIGRATIONS[19]` — the v19 → v20 master-link split. The normaliser still repairs the deprecated
+    field, because a document can arrive **late** (a peer on an older build, a hand-edited file) and
+    must not silently lose its link setting — so both paths call **one** function,
+    `resolveLimiterLinks`. One rule, two intents; they cannot drift apart and read the same field two
+    ways.
+  - **the past stays total.** Every integer version at or below the current one is **upgraded**, never
+    refused — `tests/project-model/migrate-failure-paths.test.ts` pins that explicitly, and
+    `AGENTS.md` invariant 6 says the loader rejects unknown **future** versions. A legacy document is
+    the user's work; refusing it would lose data the producer can still recover by hand. What **is**
+    refused is a version that is not a version number at all (`NaN`, `1.5`): no build ever wrote one,
+    its shape is unknowable, and stamping it "current" asserts a provenance the document does not have.
+  - **and what the build refuses, it refuses visibly.** `listIncompatible` also lists a document whose
+    version is not a number, and `IncompatibleProjectMeta` carries a `direction` (`newer` |
+    `unsupported`) so the browser badges it honestly instead of lying about the side. A project that
+    `listAll` skipped looks **lost** — that is the F-14 failure class, and this repair does not walk
+    into it.
+
+  The behaviour the audit locked in is **unchanged**: migrating from every version yields exactly the
+  normaliser's result, asserted by `tests/schema-version-chain.test.ts` (14 specs) on a document that
+  carries the v19 combined link — the one field whose reading is version-sensitive.
+
 ---
 
 ### F-14 — Recovery writes an unvalidated, un-migrated document into the project store
@@ -1643,7 +1691,7 @@ product but no probe or test in this audit exercised it.
 | Autosave captures a partial command transaction                      | a gesture is in flight                              | the saved doc is a whole state      | **Observed — contract-compliant.** Debounce with a `maxDeferMs` / `maxArms` force-flush                                                                                                                                                                                                                                              | `src/persistence/autosave-debouncer.ts:100-129`                                          | low                          | —                                                                                                      |
 | Recovery restores the arrangement but not routing/plugins/automation | the recovery buffer is restored                     | the same project comes back         | **RESOLVED in the working tree.** The buffer holds the whole document, but it is no longer written unvalidated and unmigrated: `prepareRecoveredDocument` validates the shape, refuses a foreign project, **migrates** an older schema and refuses a newer one; `recoverProject` writes only on `ok` and keeps the buffer on refusal | `src/persistence/recoveryBuffer.ts:267-289, 301-304`; `tests/recovery-overwrite.test.ts` | ~~high (F-14)~~ → **closed** | already covered by the repo's own spec                                                                 |
 | A second dirty project destroys the first's only copy                | project A closed dirty, then project B closed dirty | A's uncommitted work survives       | **Observed — diverges.** One global slot; the write path is unscoped while the clear path is project-scoped                                                                                                                                                                                                                          | `src/persistence/recoveryBuffer.ts:25, 62, 116-126`                                      | high (F-04)                  | write a buffer for A, then for B; assert A's buffer is still readable                                  |
-| Version migrations silently drop or reinterpret parameters           | an old project is opened                            | the migration is explicit and total | **Observed — diverges in kind.** `migrateProject` never branches on the source version; the history is a comment                                                                                                                                                                                                                     | `src/project-model/schema.ts:3528-3592`                                                  | medium (F-13)                | migrate from every version ≤ 38; assert the result equals today's `normalizeProject` of the same input |
+| Version migrations silently drop or reinterpret parameters           | an old project is opened                            | the migration is explicit and total | **Observed — diverges in kind.** `migrateProject` never branches on the source version; the history is a comment — **REPAIRED 2026-10-28, ADR 0077**: the history is DATA (`SCHEMA_HISTORY`, total), the chain (`MIGRATIONS`) exists and is walked, and the two are asserted to correspond in both directions                        | `src/project-model/schema.ts:3528-3592`                                                  | medium (F-13) — FIXED        | migrate from every version ≤ 38; assert the result equals today's `normalizeProject` of the same input |
 | Export uses cached state that diverges from the session              | the project changes, then an export runs            | the export renders the session      | **Observed — diverges.** Stems/tracks capture the document at _render_ time and never re-check it; the master path does                                                                                                                                                                                                              | `src/ui/ExportPanel.tsx:259, 509-518, 835-872, 874+`; `src/mastering/report.ts:102-107`  | **high (F-01)**              | edit the arrangement, then export stems; assert the export refuses with the master's message           |
 
 #### F. Async and lifecycle hazards
@@ -2337,6 +2385,15 @@ points; the normalisation continues to tolerate points without ids until the mig
 >   would have forced meaningless identities on them. The guarantee lives where the truth lives —
 >   the normaliser — and the gate asserts it.
 >
+> **UPDATE (2026-10-28, ADR 0077) — the `MIGRATIONS` chain from F-13 HAS landed, and it says the
+> same thing.** The chain exists, `migrateProject` walks it, and the per-version history is data
+> (`SCHEMA_HISTORY`, total and asserted) rather than prose. The chain holds exactly **one** step —
+> the v19 → v20 master-link split — because the measurement shows that is the **only** version in
+> this project's history whose reading is version-conditional. Everything else was additive (absent =
+> default) or tolerant (the normaliser derives the value), and the ledger now says which is which.
+> So the two halves of S-3 landed together after all: the identity in the document, and the place
+> where a future meaning-change goes.
+>
 > S-3's remaining half — effect instances and lane points — is not started.
 
 ### S-4 — A single unit/scale ownership layer, a **bidirectional** id map, and a documented composed signal path
@@ -2458,9 +2515,13 @@ landing in one `SCHEMA_VERSION` bump). Then **F-08** (disclose the ordinal subst
 
 > **F-07 and F-08 are DONE (2026-10-27, ADR 0075 and ADR 0076).** The **correct** variant shipped,
 > not the cheap one: `SCHEMA_VERSION` is 39 and every authored automation point carries a stable id.
-> The `MIGRATIONS` chain from **F-13** did **not** land with it — for an additive optional field the
-> normaliser IS the migration, and F-13 stays open. F-08's disclosure ships too. **F-22** (undo seals
-> the open frame) is the remaining entry in this phase.
+> F-08's disclosure ships too.
+>
+> **UPDATE (2026-10-28, ADR 0077): the `MIGRATIONS` chain from F-13 HAS landed**, so this phase now
+> carries the identity **and** the mechanism that will hold the next meaning-change. The chain holds
+> one step (the v19 → v20 master-link split) — the measurement says that is the only version in this
+> project's history whose reading is version-conditional; everything else was additive or tolerant.
+> **F-22** (undo seals the open frame) is the remaining entry in this phase.
 
 _Gate:_ the identity-based reproduction (object identity, not JSON) passes; projects written by
 v38 still open; a round-trip of every project fixture is byte-identical.

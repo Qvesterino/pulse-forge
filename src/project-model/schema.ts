@@ -45,6 +45,7 @@ import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulato
 import { uid } from "../shared/ids";
 import { jsonEqual } from "../shared/jsonEqual";
 import { clampInstrumentParam, defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
+import { normalizeOrbitMapping } from "../tsar/orbit";
 import { supportsHeldVoiceSlideNote } from "../instruments/noteExpressionCapabilities";
 import { createProjectFromTemplate } from "./templates";
 import {
@@ -66,17 +67,18 @@ import {
 } from "./targets";
 import { assignPointIds } from "./automation";
 
-export const SCHEMA_VERSION = 39;
+export const SCHEMA_VERSION = 40;
 
 /**
- * The oldest project shape this build can still migrate.
+ * The oldest project shape this build knows about.
  *
  * v1 is the first version this project ever wrote: the initial commit
  * (`4096423e`) shipped `SCHEMA_VERSION = 1`, and every later version extends
- * that shape. A document that declares a version BELOW this one was never
- * written by KYX — its shape is unknown, so it cannot be migrated faithfully.
- * It is refused rather than stamped with today's version, because stamping it
- * would assert a provenance the document does not have.
+ * that shape. The ledger `SCHEMA_HISTORY` starts here, and the gate test
+ * asserts that every version from here to `SCHEMA_VERSION` has an entry.
+ *
+ * This is NOT a refusal threshold — every document at or below the current
+ * version is upgraded, however old it claims to be (see `migrateProject`).
  */
 export const MIN_SCHEMA_VERSION = 1;
 
@@ -1664,6 +1666,17 @@ function normalizeTracksDomain(s: NormalizeState): void {
             const { velocityLayers: _vl, ...rest } = t as unknown as Record<string, unknown>;
             t = rest as unknown as InstrumentTrack;
           }
+          tracksChanged = true;
+        }
+      }
+      // The ORBIT surface's mapping (v40): a present mapping is repaired, an
+      // absent one stays absent. "Absent = no ORBIT surface" must keep holding
+      // for every track that never had one — a normaliser that invented a
+      // mapping would rewrite every document it ever opened.
+      if (t.orbit !== undefined) {
+        const canonicalOrbit = normalizeOrbitMapping(t.orbit);
+        if (!jsonEqual(canonicalOrbit, t.orbit)) {
+          t = { ...t, orbit: canonicalOrbit };
           tracksChanged = true;
         }
       }
@@ -3606,9 +3619,12 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
  *   No version-conditional step.
  * - `transform` — the MEANING of an existing field changed, so only a
  *   version-aware path can translate it. This REQUIRES a step in
- *   `MIGRATIONS` for `version - 1`. The ledger and the chain are asserted to
- *   match in BOTH directions by the gate test, so a version cannot be
- *   declared a transformation without the step that implements it.
+ *   `MIGRATIONS` for `version - 1`. The normaliser must share that same rule
+ *   so a document which arrives late (a peer on an older build, a hand-edited
+ *   file) is repaired identically instead of losing its value. The ledger and
+ *   the chain are asserted to match in BOTH directions by the gate test, so a
+ *   version cannot be declared a transformation without the step that
+ *   implements it, and a step cannot exist without a version that asks for it.
  */
 export type SchemaChangeKind = "additive" | "inferred" | "transform";
 
@@ -3619,8 +3635,14 @@ export interface SchemaChange {
 }
 
 export const SCHEMA_HISTORY: Record<number, SchemaChange> = {
-  1: { kind: "additive", note: "v1 is the first project shape this codebase wrote (initial commit 4096423e); every later version extends it" },
-  2: { kind: "additive", note: "v2 adds generative tracks (the MRT2 provider config) and the generative macro automation map (ADR 0012)" },
+  1: {
+    kind: "additive",
+    note: "v1 is the first project shape this codebase wrote (initial commit 4096423e); every later version extends it",
+  },
+  2: {
+    kind: "additive",
+    note: "v2 adds generative tracks (the MRT2 provider config) and the generative macro automation map (ADR 0012)",
+  },
   3: { kind: "additive", note: "v3 adds the optional `lineage` family link" },
   4: { kind: "additive", note: "v4 adds optional AudioClip source-channel routing" },
   5: { kind: "additive", note: "v5 adds non-destructive AudioClip take groups" },
@@ -3634,7 +3656,10 @@ export const SCHEMA_HISTORY: Record<number, SchemaChange> = {
     kind: "inferred",
     note: "v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain; a document without a profile gets one derived from its loudness target (the default -14 becomes Streaming, any other legacy target Custom) and its true-peak target defaults to the old ceiling",
   },
-  13: { kind: "additive", note: "v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023)" },
+  13: {
+    kind: "additive",
+    note: "v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023)",
+  },
   14: { kind: "additive", note: "v14 adds the optional `AudioClip.muted` clip-level mute (absent = audible)" },
   15: {
     kind: "additive",
@@ -3644,14 +3669,20 @@ export const SCHEMA_HISTORY: Record<number, SchemaChange> = {
     kind: "additive",
     note: 'v16 adds the optional `AudioClip.fadeCurve` ("equal" = equal-power sine/cosine fades; absent = linear)',
   },
-  17: { kind: "additive", note: "v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic skeleton events)" },
+  17: {
+    kind: "additive",
+    note: "v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic skeleton events)",
+  },
   18: { kind: "additive", note: "v18 adds adjustable built-in master limiter look-ahead and release times" },
   19: { kind: "additive", note: "v19 adds one master stereo link" },
   20: {
-    kind: "inferred",
-    note: "v20 splits the master stereo link into transient/release links while mapping the v19 value to both; the normaliser still repairs the deprecated field, so a document that arrives late keeps its value (see `resolveLimiterLinks`)",
+    kind: "transform",
+    note: "v20 splits the master stereo link into transient/release links while mapping the v19 value to both; the migration for it is `MIGRATIONS[19]`, and the normaliser shares the same rule so a document that arrives late keeps its value (see `resolveLimiterLinks`)",
   },
-  21: { kind: "additive", note: "v21 adds opt-in limiter character modes while preserving the old envelope as the default" },
+  21: {
+    kind: "additive",
+    note: "v21 adds opt-in limiter character modes while preserving the old envelope as the default",
+  },
   22: {
     kind: "additive",
     note: "v22 adds the optional per-track `inputInsert` (armed-input chain + raw vs baked recording mode). Absent = dry monitoring, so older files are unchanged and carry no insert",
@@ -3708,6 +3739,10 @@ export const SCHEMA_HISTORY: Record<number, SchemaChange> = {
   39: {
     kind: "inferred",
     note: "v39 gives every AUTHORED automation point a stable identity (`id`). A point used to be addressed by its VALUE, which made an undo lose the point it created once the point had been edited, made an identical insert duplicate the point, and made a positional capture point at whatever occupied the slot later. The migration is the NORMALISER: it backfills an id on every point that lacks one, deterministically (carrier + slot), so two clients loading the same legacy file derive the same identity and their collab merge does not treat every point as new. Existing ids are preserved — a re-normalisation never renumbers a live document",
+  },
+  40: {
+    kind: "additive",
+    note: "v40 adds the optional per-track `orbit` mapping — the TSAR ORBIT 2-D performance surface's X/Y axis assignment (ADR 0074). Absent = the track has no ORBIT surface, which is the unchanged default for every other track; a present mapping is repaired by the normaliser (an unknown parameter id or an impossible range falls back to the documented default axis) so a damaged file still loads as a WORKING surface",
   },
 };
 
@@ -3792,13 +3827,12 @@ export function applyMigrations(
 /**
  * Bring a project document from its own schema version to the current one.
  *
- * The declared version is a CLAIM, and it is checked: a document from the
- * future is refused (`newer than supported`), and so is one from before
- * `MIN_SCHEMA_VERSION` — no KYX ever wrote that shape, so its provenance is
- * unknown and stamping it with today's version would assert something the
- * document cannot support. Both refusals are visible: the project shows up in
- * the library as incompatible instead of vanishing (see
- * `ProjectRepository.listIncompatible`).
+ * The declared version is a CLAIM, and it is checked in the one way that
+ * cannot cost the user anything: a document from the future is refused
+ * (`newer than supported`), because downgrading it would discard what it
+ * holds, and a version that is not a version NUMBER (NaN, 1.5) is refused,
+ * because no build ever wrote one and the shape it claims is unknowable.
+ * Every other version — however old — is UPGRADED.
  *
  * The version-conditional work lives in `MIGRATIONS`; the shape repair lives
  * in `normalizeProject`. A document that is already current takes the
@@ -3807,14 +3841,17 @@ export function applyMigrations(
 export function migrateProject(doc: ProjectDocument): ProjectDocument {
   const version = doc.schemaVersion;
   if (typeof version !== "number" || !Number.isInteger(version)) {
-    throw new Error(`Project schema ${String(version)} is not a valid schema version`);
+    throw new Error(
+      `Project schema ${String(version)} is not a valid schema version (expected an integer between ${MIN_SCHEMA_VERSION} and ${SCHEMA_VERSION})`,
+    );
   }
   if (version > SCHEMA_VERSION) {
     throw new Error(`Project schema ${version} is newer than supported ${SCHEMA_VERSION}`);
   }
-  if (version < MIN_SCHEMA_VERSION) {
-    throw new Error(`Project schema ${version} is older than the oldest supported version ${MIN_SCHEMA_VERSION}`);
-  }
+  // Every version at or below the current one is UPGRADED, never refused:
+  // a legacy document is the user's work, and a path that drops it loses
+  // data the producer can still recover by hand. Only a document from the
+  // FUTURE is refused, because downgrading it would discard what it holds.
   if (version === SCHEMA_VERSION) return normalizeProject(doc);
   const migrated = applyMigrations(doc, version);
   return normalizeProject({ ...migrated, schemaVersion: SCHEMA_VERSION });

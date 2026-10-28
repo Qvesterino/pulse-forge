@@ -77,10 +77,10 @@ const LOOP_DEMOS = {
   },
 } as const;
 
-const mergeRows = (openable: SavedProjectMeta[], newer: IncompatibleProjectMeta[]): ProjectRow[] =>
+const mergeRows = (openable: SavedProjectMeta[], incompatible: IncompatibleProjectMeta[]): ProjectRow[] =>
   [
     ...openable.map((meta): ProjectRow => ({ kind: "ok", meta })),
-    ...newer.map((meta): ProjectRow => ({ kind: "newer", meta })),
+    ...incompatible.map((meta): ProjectRow => ({ kind: "incompatible", meta })),
   ].sort((a, b) => (a.meta.updatedAt < b.meta.updatedAt ? 1 : -1));
 
 function formatRelative(iso: string): string {
@@ -113,7 +113,7 @@ function formatTransferSource(source: NonNullable<SavedProjectMeta["transferOrig
 
 export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (doc: ProjectDocument) => void }) {
   const [projects, setProjects] = useState<SavedProjectMeta[] | null>(null);
-  const [newerProjects → incompatibleProjects, setIncompatibleProjects] = useState<IncompatibleProjectMeta[]>([]);
+  const [incompatibleProjects, setIncompatibleProjects] = useState<IncompatibleProjectMeta[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -137,20 +137,20 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [demoProgress, setDemoProgress] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
+  const applyLists = useCallback((list: SavedProjectMeta[], incompatible: IncompatibleProjectMeta[]) => {
     setListError(null);
     setProjects(list);
-    setIncompatibleProjects(newer);
+    setIncompatibleProjects(incompatible);
   }, []);
 
   const fetchLists = useCallback(async (): Promise<void> => {
-    // Newer-version rows are additive — if that probe fails, still show the
-    // openable library rather than blocking on it.
-    const newer = await core.repo.listIncompatible().catch((err) => {
+    // Incompatible-version rows are additive — if that probe fails, still show
+    // the openable library rather than blocking on it.
+    const incompatible = await core.repo.listIncompatible().catch((err) => {
       console.warn("[ProjectBrowser] incompatible project list failed:", err);
       return [] as IncompatibleProjectMeta[];
     });
-    applyLists(await core.repo.listAll(), newer);
+    applyLists(await core.repo.listAll(), incompatible);
   }, [core, applyLists]);
 
   const refresh = useCallback(() => {
@@ -485,7 +485,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     }
   };
 
-  const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects → incompatibleProjects.length === 0;
+  const firstRun = !listError && projects !== null && projects.length === 0 && incompatibleProjects.length === 0;
 
   // The disclosure sections are UNCONTROLLED: the `open` prop must never be
   // in JSX, because React re-applies it on every render and would snap a
@@ -496,7 +496,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const initialDetailsOpen = useCallback((el: HTMLDetailsElement | null) => {
     if (el) el.open = initialOpenRef.current;
   }, []);
-  const rows = projects === null ? null : mergeRows(projects, newerProjects → incompatibleProjects);
+  const rows = projects === null ? null : mergeRows(projects, incompatibleProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
   const songStarterMoods = SONG_STARTER_MOODS[songStarterGenre] ?? [];
 
@@ -839,19 +839,24 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           {projects !== null && rows !== null && rows.length > 0 && (
             <div className="pb-list">
               {rows.map((row) => {
-                if (row.kind === "newer") {
+                if (row.kind === "incompatible") {
                   const project = row.meta;
+                  const isNewer = project.direction === "newer";
                   return (
                     <div key={project.id} className="pb-row pb-row-newer">
                       <span
                         className="pb-row-name pb-row-name-static"
-                        title="This project was made in a newer app version. Update KYX to open it."
+                        title={
+                          isNewer
+                            ? "This project was made in a newer app version. Update KYX to open it."
+                            : "This project declares a version number no build ever wrote, so its shape cannot be reconstructed."
+                        }
                       >
                         {project.name}
                       </span>
                       <span className="pb-row-meta">
-                        <span className="pb-badge-newer">NEWER VERSION</span> · saved{" "}
-                        {formatRelative(project.updatedAt)}
+                        <span className="pb-badge-newer">{isNewer ? "NEWER VERSION" : "UNSUPPORTED VERSION"}</span> ·
+                        saved {formatRelative(project.updatedAt)}
                       </span>
                       <div className="pb-row-actions">
                         {confirmDeleteId === project.id ? (
