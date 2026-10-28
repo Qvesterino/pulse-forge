@@ -113,24 +113,36 @@ describe("ORBIT mapping repair", () => {
   });
 
   it("an unknown parameter id falls back to the default axis", () => {
-    const repaired = normalizeOrbitMapping({ x: { paramId: "notAParam", min: 0, max: 1 }, y: { paramId: "morph", min: 0, max: 1 } });
+    const repaired = normalizeOrbitMapping({
+      x: { paramId: "notAParam", min: 0, max: 1 },
+      y: { paramId: "morph", min: 0, max: 1 },
+    });
     expect(repaired.x).toEqual(defaultOrbitMapping().x);
     expect(repaired.y.paramId).toBe("morph");
   });
 
   it("a discrete parameter falls back to the default axis — the surface never drives an enum", () => {
-    const repaired = normalizeOrbitMapping({ x: { paramId: "srcAEngine", min: 0, max: 2 }, y: { paramId: "morph", min: 0, max: 1 } });
+    const repaired = normalizeOrbitMapping({
+      x: { paramId: "srcAEngine", min: 0, max: 2 },
+      y: { paramId: "morph", min: 0, max: 1 },
+    });
     expect(repaired.x.paramId).toBe(defaultOrbitMapping().x.paramId);
   });
 
   it("an impossible range falls back to the parameter's own range", () => {
-    const repaired = normalizeOrbitMapping({ x: { paramId: "srcACutoff", min: 9000, max: 100 }, y: { paramId: "morph", min: 0, max: 1 } });
+    const repaired = normalizeOrbitMapping({
+      x: { paramId: "srcACutoff", min: 9000, max: 100 },
+      y: { paramId: "morph", min: 0, max: 1 },
+    });
     expect(repaired.x.min).toBe(ORBIT_TARGET_BY_ID["srcACutoff"]!.min);
     expect(repaired.x.max).toBe(ORBIT_TARGET_BY_ID["srcACutoff"]!.max);
   });
 
   it("a range that leaves the parameter's own limits is clamped back inside them", () => {
-    const repaired = normalizeOrbitMapping({ x: { paramId: "srcAQ", min: -50, max: 500 }, y: { paramId: "morph", min: 0, max: 1 } });
+    const repaired = normalizeOrbitMapping({
+      x: { paramId: "srcAQ", min: -50, max: 500 },
+      y: { paramId: "morph", min: 0, max: 1 },
+    });
     expect(repaired.x.min).toBe(ORBIT_TARGET_BY_ID["srcAQ"]!.min);
     expect(repaired.x.max).toBe(ORBIT_TARGET_BY_ID["srcAQ"]!.max);
   });
@@ -143,7 +155,10 @@ describe("ORBIT mapping repair", () => {
   });
 
   it("two axes on one parameter are refused by the mapping helper", () => {
-    const collide = { x: { paramId: "srcACutoff", min: 30, max: 18000 }, y: { paramId: "srcACutoff", min: 30, max: 18000 } };
+    const collide = {
+      x: { paramId: "srcACutoff", min: 30, max: 18000 },
+      y: { paramId: "srcACutoff", min: 30, max: 18000 },
+    };
     expect(orbitAxesCollide(collide)).toBe(true);
     expect(orbitAxesCollide(defaultOrbitMapping())).toBe(false);
   });

@@ -143,9 +143,7 @@ function writeAxisAt(
 ): ProjectDocument {
   const safeTick = Number.isFinite(tick) ? Math.max(0, Math.round(tick)) : 0;
   const existing = laneFor(doc, trackId, axis.paramId);
-  const points: AutomationPoint[] = existing
-    ? existing.points
-    : [];
+  const points: AutomationPoint[] = existing ? existing.points : [];
   const at = points.findIndex((point) => point.tick === safeTick);
   const nextPoints =
     at === -1
@@ -160,7 +158,9 @@ function writeAxisAt(
       };
   return {
     ...doc,
-    automation: existing ? doc.automation.map((entry) => (entry.id === existing.id ? lane : entry)) : [...doc.automation, lane],
+    automation: existing
+      ? doc.automation.map((entry) => (entry.id === existing.id ? lane : entry))
+      : [...doc.automation, lane],
   };
 }
 
