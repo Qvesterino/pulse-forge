@@ -6,6 +6,7 @@ import { resolveAnalysisWindow } from "../analysis/contract";
 import type { MixIdeaPlan, MixIdeaStep } from "./mix-idea";
 import type { Services } from "../services";
 import { storeRevision } from "./revision";
+import type { MusicalProposalV1 } from "../intent/musical-proposal";
 
 /**
  * kyx_mix_idea PREVIEW — the auto-rendered before/after A/B.
@@ -89,6 +90,64 @@ export interface MixPreviewVerification {
   appliedRevision: number | null;
   revisionAfterRender: number | null;
   reason?: string;
+}
+
+/** Translate the existing preview into the shared, read-only proposal contract. */
+export function mixPreviewProposal(lane: MixPreviewLane): MusicalProposalV1 {
+  const uncertainty = "Integrated loudness alone does not determine whether a mix sounds better.";
+  return {
+    schema: "kyx.musical-proposal",
+    version: 1,
+    id: lane.id,
+    base: {
+      projectId: lane.beforeDoc.id,
+      revision: lane.revisionAfterRender ?? lane.projectRevision ?? null,
+      freshness: lane.freshness ?? "unknown",
+    },
+    scope: {
+      audition: lane.window ? { startTick: lane.window.startTick, endTick: lane.window.endTick } : null,
+      writeScope: "unrestricted",
+      targetTrackIds: [...new Set(lane.steps.map((step) => step.trackId))],
+    },
+    intent: { label: lane.label, goals: [...lane.goals], interpreter: lane.interpreter },
+    constraints: { status: "not_declared", items: [] },
+    candidates: [
+      {
+        id: lane.id,
+        changes: lane.steps.map((step) => ({
+          trackId: step.trackId,
+          device: step.device,
+          parameterChanges: structuredClone(step.changes),
+          description: step.params,
+          reason: step.reason,
+        })),
+      },
+    ],
+    evidence: [
+      {
+        id: "preview.before.lufs",
+        kind: "measurement",
+        source: "mix_preview_render",
+        metric: "integrated_lufs",
+        value: lane.stats.beforeLufs,
+        uncertainty,
+      },
+      {
+        id: "preview.after.lufs",
+        kind: "measurement",
+        source: "mix_preview_render",
+        metric: "integrated_lufs",
+        value: lane.stats.afterLufs,
+        uncertainty,
+      },
+    ],
+    checks: {
+      structural: "not_checked",
+      acoustic: lane.stats.beforeLufs !== null && lane.stats.afterLufs !== null ? "preview_measured" : "unavailable",
+      subjective: "not_judged",
+    },
+    warnings: [...lane.warnings],
+  };
 }
 
 export type MixPreviewOutcome =

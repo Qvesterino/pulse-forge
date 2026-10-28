@@ -8364,7 +8364,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           );
         }
         try {
-          const { formatMixPreview } = await import("./mix-preview");
+          const { formatMixPreview, mixPreviewProposal } = await import("./mix-preview");
           const outcome = await ctx.mixPreview(
             {
               idea,
@@ -8378,6 +8378,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
                 status: "previewed",
                 ok: true,
                 applied: false,
+                proposal: mixPreviewProposal(outcome.lane),
                 preview: {
                   laneId: outcome.lane.id,
                   label: outcome.lane.label,
