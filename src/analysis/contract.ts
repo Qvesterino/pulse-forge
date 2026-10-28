@@ -48,7 +48,12 @@ export interface AudioAnalysisRequest {
 }
 
 export interface AnalysisCaveat {
-  code: "frozen-playback-uses-project-tempo" | "freshness-unknown" | "source-window-approximate";
+  code:
+    | "frozen-playback-uses-project-tempo"
+    | "freshness-unknown"
+    | "source-window-approximate"
+    /** Model-backed analyzers: unavailable ≠ "no event detected". */
+    | "model-unavailable";
   detail: string;
 }
 
@@ -213,6 +218,77 @@ export function resolveClipSourceWindow(
     startSec: clip.trimStart + intoStart,
     endSec: clip.trimStart + intoEnd,
     caveats,
+  };
+}
+
+export interface AsyncAnalyzerDefinition<P> {
+  name: string;
+  version: string;
+  featureSet: string;
+  /** The analyzer core — MAY be async (model inference, worker round-trip). */
+  analyze: (
+    channels: readonly Float32Array[],
+    sampleRate: number,
+    windowSec: { startSec: number; endSec: number },
+  ) => Promise<P>;
+  confidence?: (payload: P) => number | null;
+}
+
+/**
+ * The ASYNC sibling of defineAnalyzer: same envelope, same window mapping,
+ * for model-backed analyzers (worker round-trips, ONNX inference). A
+ * REJECTED analyze lands as a partial envelope — the adapter layer's
+ * never-throw contract ends here, not at the caller.
+ */
+export function defineAsyncAnalyzer<P>(definition: AsyncAnalyzerDefinition<P>) {
+  return {
+    definition,
+    async run(
+      doc: ProjectDocument,
+      request: AudioAnalysisRequest,
+      channels: readonly Float32Array[],
+      sampleRate: number,
+    ): Promise<AudioAnalysisResult<P>> {
+      const resolved = resolveAnalysisWindow(doc, request, sampleRate);
+      const frameCount = resolved.endSample - resolved.startSample;
+      const alignment = { ...resolved, sampleRate, durationSec: resolved.endSec - resolved.startSec };
+      const head = {
+        request,
+        algorithm: { name: definition.name, version: definition.version },
+        producedAtRevision: request.revision,
+        alignment,
+      };
+      if (frameCount <= 0) {
+        return {
+          ...head,
+          caveats: resolved.caveats,
+          confidence: null,
+          payload: undefined as P,
+          partial: { reason: `resolved window is empty at ${sampleRate} Hz` },
+        };
+      }
+      const sliced = channels.map((channel) => channel.slice(resolved.startSample, resolved.endSample));
+      try {
+        const payload = await definition.analyze(sliced, sampleRate, {
+          startSec: resolved.startSec,
+          endSec: resolved.endSec,
+        });
+        return {
+          ...head,
+          caveats: resolved.caveats,
+          confidence: definition.confidence?.(payload) ?? null,
+          payload,
+        };
+      } catch (error) {
+        return {
+          ...head,
+          caveats: resolved.caveats,
+          confidence: null,
+          payload: undefined as P,
+          partial: { reason: error instanceof Error ? error.message : String(error) },
+        };
+      }
+    },
   };
 }
 
