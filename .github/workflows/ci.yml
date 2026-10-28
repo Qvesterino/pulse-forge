@@ -230,7 +230,25 @@ jobs:
       # above cannot catch production-only asset paths or chunk loading errors.
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser:production
+      # The failure text goes to the job summary AND to an error annotation —
+      # a failed job's log sits behind a login, and this gate is the one that
+      # reports WHICH console error or missing asset broke the boot.
+      - name: Run npm run test:browser:production
+        run: |
+          set +e
+          npm run test:browser:production 2>&1 | tee /tmp/prodsmoke.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run test:browser:production FAILED (exit $status)"
+              echo '```'
+              tail -60 /tmp/prodsmoke.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=production browser smoke failed (exit %s)::%s\n' "$status" \
+              "$(tail -60 /tmp/prodsmoke.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+          fi
+          exit $status
 
   e2e-smoke:
     name: E2E smoke (Playwright)

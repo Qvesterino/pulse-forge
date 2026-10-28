@@ -2,6 +2,7 @@ import { createServer } from "vite";
 import { chromium, firefox, webkit } from "playwright";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { isOptionalLocalServiceUrl } from "./optional-local-services.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // PORT=5219 npm run test:browser — override when 5199 is contended (a second
@@ -62,8 +63,12 @@ const LAZY_PANEL_TIMEOUT_MS = 30_000;
  * `requestfailed` event does NOT report (a WebSocket handshake is not a
  * request), so its URL cannot be collected the way the HTTP ones are — it
  * shows up as a console error only.
+ *
+ * The list itself lives in scripts/optional-local-services.mjs — the dev gate
+ * and the production gate share ONE owner, so the two cannot drift apart (the
+ * production gate additionally tolerates a refused local Ollama probe on
+ * 11434, which a browser session on localhost makes as well).
  */
-const OPTIONAL_LOCAL_SERVICE_URL = /^(?:https?|wss?):\/\/(?:127\.0\.0\.1|localhost):1234(?:\/|$)/;
 
 const server = await createServer({
   root,
@@ -502,7 +507,7 @@ try {
     // A refused request to the OPTIONAL local gallery/collab service is not a
     // boot failure — but only when EVERY failed request went there.
     const optionalServiceOnly =
-      appFailedRequests.length > 0 && appFailedRequests.every((r) => OPTIONAL_LOCAL_SERVICE_URL.test(r.url));
+      appFailedRequests.length > 0 && appFailedRequests.every((r) => isOptionalLocalServiceUrl(r.url));
     // A same-origin MEDIA asset failing to stream (the landing demo video)
     // is equally non-essential: the app boots and every control works
     // without it, and under suite load the browser can abort a large media

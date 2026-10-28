@@ -6,10 +6,15 @@
  * Usage (after `npm run build`):
  *   NODE_ENV=production CORS_ORIGIN=https://app.example.com npm run release:preflight
  *   KYX_GALLERY_PUBLIC=1 GALLERY_ADMIN_TOKEN=...  (when the public gallery is enabled)
+ *
+ * The runner is `vite-node` (see package.json): the semantic pack contract is
+ * read from src/ai/packs/registry.ts, so the gate compares against the ONE
+ * owner of those hashes instead of a second, drifting copy.
  */
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { SEMANTIC_PACK } from "../src/ai/packs/registry.ts";
 
 const root = process.cwd();
 const dist = join(root, "dist");
@@ -97,53 +102,121 @@ if (existsSync(rankerManifestPath) && existsSync(rankerModelPath)) {
   }
 }
 
-// Semantic embeddings are optional at runtime, but required in a contest
-// release: otherwise the deterministic parser silently hides a missing model.
+// The semantic embedding model is NOT shipped in dist. A deployment serves
+// 404 for /models/semantic/, and the pack manager downloads the model from
+// the pinned upstream release, verifying every file against the SHA-256 set
+// in src/ai/packs/registry.ts. The dev-time fetch artifact
+// (public/models/semantic/, gitignored) only exists in a local build that ran
+// `npm run semantic:fetch`.
+//
+// So the release invariant is the PACK CONTRACT — the registry that ships with
+// the app — and not the presence of a dev-time artifact. Requiring the
+// artifact made this gate unsatisfiable on every clean checkout, including
+// every CI runner: it asked for a file the deployed architecture deliberately
+// does not ship. When a build DOES carry the model, its bytes must match the
+// pinned hashes exactly.
 const semanticModelId = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
-const semanticManifestPath = join(dist, "models", "semantic", "manifest.json");
-let semanticManifest;
-try {
-  semanticManifest = JSON.parse(readFileSync(semanticManifestPath, "utf8"));
-} catch {
-  fail("missing or invalid dist semantic model manifest; run npm run semantic:fetch before build");
-}
+const semanticFiles = ["onnx/model_quantized.onnx", "tokenizer.json", "tokenizer_config.json", "config.json"];
 
-if (semanticManifest && typeof semanticManifest === "object" && !Array.isArray(semanticManifest)) {
-  if (semanticManifest.semanticVersion !== "semantic-embed.v1") {
-    fail("dist semantic manifest has an unsupported semanticVersion");
+// 1. THE PACK CONTRACT — the part that ships, so it is checked on every run.
+let packManifest;
+if (!SEMANTIC_PACK || SEMANTIC_PACK.id !== "semantic-embed") {
+  fail("the semantic model pack is not registered — the runtime could not obtain the model");
+} else {
+  try {
+    packManifest = JSON.parse(SEMANTIC_PACK.manifestContent);
+  } catch {
+    fail("the semantic pack manifest content is not valid JSON");
   }
-  if (semanticManifest.modelId !== semanticModelId || semanticManifest.dtype !== "q8") {
-    fail("dist semantic manifest must use the multilingual MiniLM model in q8 format");
-  }
-
-  const semanticFiles = ["onnx/model_quantized.onnx", "tokenizer.json", "tokenizer_config.json", "config.json"];
-  for (const relative of semanticFiles) {
-    const path = join(dist, "models", "semantic", semanticModelId, relative);
-    try {
-      const info = statSync(path);
-      if (!info.isFile() || info.size === 0) {
-        fail(`missing or empty production semantic asset: dist/models/semantic/${semanticModelId}/${relative}`);
+  if (packManifest && typeof packManifest === "object" && !Array.isArray(packManifest)) {
+    if (packManifest.semanticVersion !== "semantic-embed.v1") {
+      fail("the semantic pack manifest has an unsupported semanticVersion");
+    }
+    if (packManifest.modelId !== semanticModelId) {
+      fail("the semantic pack manifest must pin the multilingual MiniLM model");
+    }
+    if (packManifest.dtype !== "q8") {
+      fail("the semantic pack manifest must use the q8 format");
+    }
+    for (const relative of semanticFiles) {
+      const pinnedHash = String(packManifest.files?.[relative] ?? "").toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(pinnedHash)) {
+        fail(`the semantic pack manifest has no valid SHA-256 for ${relative}`);
         continue;
       }
-    } catch {
-      fail(`missing or unreadable production semantic asset: dist/models/semantic/${semanticModelId}/${relative}`);
-      continue;
+      const entry = SEMANTIC_PACK.files.find((file) => file.path === `${semanticModelId}/${relative}`);
+      if (!entry) {
+        fail(`the semantic pack has no download entry for ${relative}`);
+        continue;
+      }
+      if (String(entry.sha256).toLowerCase() !== pinnedHash) {
+        fail(`the semantic pack's download hash differs from its manifest for ${relative}`);
+      }
+      if (!/^https:\/\/huggingface\.co\/Xenova\//.test(entry.sourceUrl)) {
+        fail(`the semantic pack's source URL is not a pinned upstream URL for ${relative}`);
+      }
+    }
+  } else {
+    fail("the semantic pack manifest content must be a JSON object");
+  }
+}
+
+// 2. THE SHIPPED MODEL — only when this build carries one.
+const semanticManifestPath = join(dist, "models", "semantic", "manifest.json");
+let semanticManifest;
+if (existsSync(semanticManifestPath)) {
+  try {
+    semanticManifest = JSON.parse(readFileSync(semanticManifestPath, "utf8"));
+  } catch {
+    fail("the shipped dist semantic model manifest is not valid JSON");
+  }
+  if (semanticManifest && typeof semanticManifest === "object" && !Array.isArray(semanticManifest)) {
+    if (semanticManifest.semanticVersion !== "semantic-embed.v1") {
+      fail("dist semantic manifest has an unsupported semanticVersion");
+    }
+    if (semanticManifest.modelId !== semanticModelId || semanticManifest.dtype !== "q8") {
+      fail("dist semantic manifest must use the multilingual MiniLM model in q8 format");
     }
 
-    const expectedHash = String(semanticManifest.files?.[relative] ?? "").toLowerCase();
-    if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
-      fail(`semantic manifest has no valid SHA-256 for ${relative}`);
-      continue;
+    for (const relative of semanticFiles) {
+      const path = join(dist, "models", "semantic", semanticModelId, relative);
+      try {
+        const info = statSync(path);
+        if (!info.isFile() || info.size === 0) {
+          fail(`missing or empty production semantic asset: dist/models/semantic/${semanticModelId}/${relative}`);
+          continue;
+        }
+      } catch {
+        fail(`missing or unreadable production semantic asset: dist/models/semantic/${semanticModelId}/${relative}`);
+        continue;
+      }
+
+      const expectedHash = String(semanticManifest.files?.[relative] ?? "").toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
+        fail(`semantic manifest has no valid SHA-256 for ${relative}`);
+        continue;
+      }
+      try {
+        const actualHash = await sha256File(path);
+        if (actualHash !== expectedHash) fail(`dist semantic asset hash does not match manifest: ${relative}`);
+        // The bytes must match the PINNED hash too: a local model that drifted
+        // from the pinned upstream release is a release defect even when its
+        // own manifest agrees with it.
+        const pinned = SEMANTIC_PACK.files.find((file) => file.path === `${semanticModelId}/${relative}`)?.sha256;
+        if (pinned && actualHash !== String(pinned).toLowerCase()) {
+          fail(`dist semantic asset does not match the pinned pack hash: ${relative}`);
+        }
+      } catch {
+        fail(`could not hash production semantic asset: ${relative}`);
+      }
     }
-    try {
-      const actualHash = await sha256File(path);
-      if (actualHash !== expectedHash) fail(`dist semantic asset hash does not match manifest: ${relative}`);
-    } catch {
-      fail(`could not hash production semantic asset: ${relative}`);
-    }
+  } else if (semanticManifest !== undefined) {
+    fail("dist semantic manifest must be a JSON object");
   }
-} else if (semanticManifest !== undefined) {
-  fail("dist semantic manifest must be a JSON object");
+} else {
+  console.log(
+    "[release-preflight] semantic model is not shipped in dist — the pack manager fetches it from the pinned upstream at runtime",
+  );
 }
 
 const manifestPath = join(dist, "manifest.webmanifest");

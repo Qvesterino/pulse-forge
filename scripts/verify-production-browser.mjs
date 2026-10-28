@@ -6,6 +6,17 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.KYX_PRODUCTION_BROWSER_PORT) || 5239;
+/**
+ * The OPTIONAL local services a browser session on localhost probes: the
+ * collab/gallery/QMR bridge (1234) and a local Ollama runtime for the local
+ * LLM intent model (11434). Both are optional by design — a refusal is not a
+ * boot failure. The list lives in scripts/optional-local-services.mjs, shared
+ * with the dev-server gate, so the two cannot drift apart.
+ *
+ * Same contract as scripts/verify-browser.mjs: the refusal is tolerated only
+ * when EVERY failed request went to an optional service.
+ */
+import { isOptionalLocalServiceUrl, isOptionalLocalServiceError } from "./optional-local-services.mjs";
 const baseUrl = `http://127.0.0.1:${port}`;
 const worklets = [
   "/bitcrusher-worklet.js",
@@ -36,10 +47,21 @@ try {
   console.log("[production-smoke] chromium launched");
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
+  const failedRequests = [];
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
+    if (message.type() === "error") {
+      // The console TEXT of a network failure carries no URL, but the message
+      // LOCATION does — it is the URL of the resource that failed. That is the
+      // attribution this gate needs: the refusal of the OPTIONAL local
+      // service must not be read as a broken shipped asset.
+      errors.push({ text: message.text(), url: message.location()?.url ?? "" });
+    }
   });
-  page.on("pageerror", (error) => errors.push(String(error)));
+  page.on("pageerror", (error) => errors.push({ text: String(error), url: "" }));
+  // The failed requests themselves, for the same reason.
+  page.on("requestfailed", (request) => {
+    failedRequests.push({ url: request.url(), error: request.failure()?.errorText ?? "unknown" });
+  });
   await page.addInitScript(() => {
     localStorage.setItem("pf-onboarded", "1");
     localStorage.setItem("pf-tour-v1", "1");
@@ -187,8 +209,30 @@ try {
     throw new Error(`production asset failure: ${JSON.stringify(failedAssets)}`);
   }
 
-  const fatalErrors = errors.filter((message) => !/AudioContext|autoplay|user gesture/i.test(message));
-  if (fatalErrors.length > 0) throw new Error(`production console/page error: ${fatalErrors[0]}`);
+  // A refused request to the OPTIONAL local service is not a boot failure —
+  // but only when EVERY failed request went there. A WebSocket handshake is
+  // NOT reported by `requestfailed` (it is not an HTTP request), so its
+  // refusal carries its own URL in the console text and is demoted on that
+  // URL. Everything else — a missing chunk, a thrown exception, a failed
+  // same-origin asset — stays fatal.
+  const optionalServiceOnly =
+    failedRequests.length > 0 && failedRequests.every((r) => isOptionalLocalServiceUrl(r.url));
+  const refusedSummary = [...new Set(failedRequests.map((r) => r.url))].join(", ");
+  const fatalErrors = errors.filter(
+    (e) =>
+      !/AudioContext|autoplay|user gesture/i.test(e.text) &&
+      !isOptionalLocalServiceError(e.text, e.url) &&
+      !(optionalServiceOnly && /Failed to load resource: net::ERR_CONNECTION_REFUSED/.test(e.text)),
+  );
+  if (failedRequests.length > 0) {
+    console.log(`[production-smoke] failed requests (${failedRequests.length}): ${refusedSummary}`);
+  }
+  if (fatalErrors.length > 0) {
+    // The console errors WITH their location URLs — a red gate that cannot
+    // say which resource failed is a gate people learn to ignore.
+    console.error(`[production-smoke] console errors: ${JSON.stringify(errors.slice(0, 8))}`);
+    throw new Error(`production console/page error: ${fatalErrors[0].text}`);
+  }
   console.log("[PASS] production browser smoke — dist boot, template, sequencer, FX rack and shipped assets");
 } catch (error) {
   exitCode = 1;

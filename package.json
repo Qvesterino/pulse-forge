@@ -149,7 +149,7 @@
     "ranker:train": "vite-node scripts/generate-intent-ranker-dataset.mts && node scripts/validate-intent-ranker-golden.mjs && python scripts/train-intent-ranker.py && node scripts/validate-intent-ranker.mjs",
     "references:genres": "node scripts/measure-genre-references.mjs",
     "release:deployed-smoke": "node scripts/release-deployed-smoke.mjs",
-    "release:preflight": "node scripts/release-preflight.mjs",
+    "release:preflight": "vite-node scripts/release-preflight.mjs",
     "release:server-smoke": "node scripts/release-server-smoke.mjs",
     "rerank:fit": "node scripts/fit-rerank-weights.mjs",
     "semantic:fetch": "node scripts/fetch-semantic-model.mjs",
