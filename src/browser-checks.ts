@@ -6231,7 +6231,20 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   // ---------------- Stutter (P1.7) ----------------
   // Stutter reads from one loop behind — when the gate pattern is fully open,
   // the output is a delayed copy of the input (one loop late). When gate has
-  // gaps, alternating 1/8-note windows show on/off contrast.
+  // gaps, alternating windows show on/off contrast.
+  //
+  // THE MEASUREMENT WINDOW IS THE SECOND LOOP, and that is the whole point.
+  // The effect's delay line is EMPTY during its first cycle, so the first bar
+  // carries no delayed signal at all — a fully wet stutter is silent there by
+  // design. Measured 2026-10-28 on a clean checkout (OfflineAudioContext, so
+  // the numbers are the render, not a browser quirk):
+  //
+  //   bar 1 (the pre-roll)   0.000 RMS with the effect
+  //   bar 2 (the delayed bar) 0.781 RMS on the gate-OPEN windows,
+  //                          0.026 RMS on the gate-CLOSED windows
+  //
+  // The old window measured bar 1 — an empty buffer, not the gate — and it
+  // failed in CI for exactly that reason, on a gate that works.
   try {
     const renderStutter = async (steps: number[] | undefined, mix: number): Promise<Float32Array> => {
       const doc = createProjectFromTemplate("house");
@@ -6251,16 +6264,28 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
           ...(steps ? { steps } : {}),
         },
       ];
-      const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
+      // Two bars: the first is the effect's pre-roll, the second carries the
+      // delayed first bar — the audio the gate is supposed to chop up.
+      const buf = await renderProject(doc, bank, {
+        mode: "pattern",
+        sampleRate: SR,
+        tailSeconds: 0,
+        minimumDurationTicks: 3840,
+      });
       return buf.getChannelData(0);
     };
-    // Gated: [1,0,1,0...] → alternating 1/8-note windows
+    // Gated: [1,0,1,0...] → alternating windows
     const gated = await renderStutter([1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0], 1);
     const beatSec = 60 / 124;
-    const stepSec = beatSec * 0.5; // 1/8 note
-    const wins = [...Array(8)].map((_, w) => rmsWindow(gated, w * stepSec * SR, (w + 0.9) * stepSec * SR));
-    const high = (wins[0] + wins[2] + wins[4] + wins[6]) / 4;
-    const low = (wins[1] + wins[3] + wins[5] + wins[7]) / 4;
+    const stepSec = beatSec * 0.25; // a 16th note — one gate step
+    const LOOP_STEPS = 16; // one loop = 16 gate steps = one bar
+    const wins = [...Array(LOOP_STEPS)].map((_, w) =>
+      rmsWindow(gated, (LOOP_STEPS + w) * stepSec * SR, (LOOP_STEPS + w + 0.95) * stepSec * SR),
+    );
+    const open = wins.filter((_, w) => w % 2 === 0);
+    const closed = wins.filter((_, w) => w % 2 === 1);
+    const high = open.reduce((sum, value) => sum + value, 0) / open.length;
+    const low = closed.reduce((sum, value) => sum + value, 0) / closed.length;
     check(
       "stutter: gate pattern alternates delayed loop audibility",
       high > low * 1.5 && high > 0.001,
