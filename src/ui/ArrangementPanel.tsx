@@ -6941,7 +6941,7 @@ export function ArrangementPanel() {
                 }
                 setAudioMenu(null);
               }}
-              title="Cuts the silent gaps out of this clip and rewrites it as one clip per audible part — the audio keeps its pitch and its speed, and undo restores the original clip."
+              title="Cuts the silent gaps out of this clip and rewrites it as one clip per audible part — the audio keeps its pitch and its tempo (the clip is not re-tuned), and undo restores the original clip."
             >
               Strip Silence
             </button>

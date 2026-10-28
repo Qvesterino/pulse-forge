@@ -887,13 +887,24 @@ Five files, +20/−8, four suites green. The four decisions and what each one re
 
 | decision                | the problem                                                                        | the resolution                                                                   |
 | ----------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| "Strip Silence (PT)"    | the acronym has no legend anywhere in `src/`                                       | **"Strip Silence"** plus a tooltip that states pitch and speed are preserved     |
+| "Strip Silence (PT)"    | the acronym has no legend anywhere in `src/`                                       | **"Strip Silence"** plus a tooltip that states pitch and tempo are preserved     |
 | Consolidate vs Bounce   | two different operations, two similar names, one word apart                        | **"Consolidate to one clip"**; the Bounce row now says "A/B review, then commit" |
 | MOD MATRIX vs MOD panel | the panel and the matrix had similar names and no separator                        | a visible **MOD MATRIX** caption in the component, on both surfaces              |
 | four panel labels       | `panelArr` said "Toggle arrangement" while its nine siblings said "Toggle X panel" | all four say **"Toggle X panel"**                                                |
 
 The scope is now distinguished, not the vocabulary: "Consolidate" stays a word in the app because the app's
 own vocabulary uses it (`src/ui/ContextMenu.tsx:138`), and the **scope** is what the label now carries.
+
+**The "(PT)" decision was the author's word, so it is now a gate.** The tooltip says the clip keeps its
+**pitch and its tempo** — the author's own phrasing, confirmed against the implementation before the
+wording was fixed: a stripped fragment inherits the parent clip (`...clip`), keeps the parent's playback
+rate (`audioClipSourceSecondsPerWallSecond`) and reads the same source span (`offsetSec: seg.start`,
+`trimStart`/`trimEnd` reset to 0), so the pitch is preserved and the clip's tempo is preserved — nothing is
+re-tuned. `tests/ui/strip-silence-naming.test.ts` holds the decision: the label carries no acronym suffix,
+**no source file** still contains "(PT)", and the tooltip must name pitch **and** tempo — and must not
+quietly swap the author's "tempo" for the near synonym "speed". The gate was **falsified twice** before it
+was trusted: mutating the tooltip back to "speed" and putting "(PT)" back into the label each failed the
+gate **on its own claim** (not on a missing symbol), and the acronym check names the offending file.
 
 ### 9.2.2 P-1 · The curated palette command registry
 
@@ -984,8 +995,9 @@ stands, not against the tree the work was written on.
 | `tests/ui/App.test.tsx`                                                          | ✅                                                                                                |
 | `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                |
 | `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                |
-| **total**                                                                        | **10 suites · 101 tests green**                                                                   |
-| `npx tsc --noEmit --incremental false`                                           | **my 9 files: 0 errors.** 7 files with errors remain, **all in parallel sessions' files** (§10.3) |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                   |
+| **total**                                                                        | **11 suites · 105 tests green**                                                                   |
+| `npx tsc --noEmit --incremental false`                                           | **my 9 files: 0 errors.** 4 files with errors remain, **all in parallel sessions' files** (§10.3) |
 | `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                              |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
@@ -1030,6 +1042,19 @@ tests/mcp-stem-separate.test.ts                 (parallel session)
 tests/param-range-coherence.test.ts             (parallel session)
 tests/ui/ProjectBrowser.test.tsx                (parallel session)
 ```
+
+**Run 3 — the P-4a naming gate (2026-10-28, later the same day):**
+
+```
+src/analysis/musical-context.ts                 (parallel session)
+tests/mcp-param-automation-disclosure.test.ts    (parallel session)
+tests/mcp-tools.test.ts                         (parallel session)
+tests/ui/MixPreviewChip.test.tsx                (parallel session)
+```
+
+The list is a **moving target** — it shrank from seven files to four between run 2 and run 3 as other
+sessions landed their own fixes. That is the honest shape of a shared worktree: the number belongs to a
+moment, not to this document.
 
 **Every one of them is in a file owned by another active session.** None is in a file this audit touched.
 The audit's own files — `src/intent/command-for-route.ts`, `src/mcp/onboarding.ts`, `src/mcp/tools.ts`,
@@ -1175,7 +1200,7 @@ simultaneously on a fresh profile. **Needs:** agreement on which of the two surv
 
 **P-4 · Naming decisions that need the author, not the audit.** — **SHIPPED (`6a7d265c`, §9.2.1).**
 The author answered; all four decisions landed. "Strip Silence (PT)" → "Strip Silence" plus a tooltip that
-pitch and speed are preserved; "Consolidate" → "Consolidate to one clip"; "MOD MATRIX" now carries a visible
+pitch and tempo are preserved; "Consolidate" → "Consolidate to one clip"; "MOD MATRIX" now carries a visible
 caption that separates it from the MOD panel; the four panel labels all say "Toggle X panel".
 
 **P-5 · Post-fader sends become a choice.**
@@ -1250,9 +1275,9 @@ Backlog numbers refer to §8; the shipped `QW-n` ids refer to §9.
 
 ## 13. Open questions
 
-1. **What does "PT" mean in "Strip Silence (PT)"?** — **answered by the author on 2026-10-28.** The suffix had
-   no legend anywhere in `src/`, so it is gone; the tooltip now states what the operation preserves (pitch and
-   speed). The acronym's origin stays unrecorded — nothing depends on it any more.
+1. **What does "PT" mean in "Strip Silence (PT)"?** — **answered by the author on 2026-10-28: pitch and tempo
+   are preserved.** The suffix had no legend anywhere in `src/`, so it is gone; the tooltip now says so in words.
+   The acronym's origin stays unrecorded — nothing depends on it any more.
 2. **Which window listener wins a shared chord?** The piano roll and the app both register `window`
    `keydown` listeners; neither calls `stopImmediatePropagation`. `Alt+S` is both "Solo selected track"
    (global) and "Slide (portamento)" (piano roll). **Not verified.**
@@ -1289,7 +1314,8 @@ git show aa5b6e83 -- src/commands/palette-registry.ts src/ui/commandPalette.ts \
 npx vitest run tests/ui/palette-command-registry.test.tsx tests/ui/palette-search-coverage.test.ts \
   tests/ui/command-palette.test.tsx tests/ui/shortcuts.test.ts tests/ui/ModMatrixRow.test.tsx \
   tests/ui/HelpOverlay.test.tsx tests/ui/DockChrome.test.tsx tests/ui/App.test.tsx \
-  tests/a11y/icon-only-buttons.test.tsx tests/collab-contract-parity.test.ts
+  tests/a11y/icon-only-buttons.test.tsx tests/collab-contract-parity.test.ts \
+  tests/ui/strip-silence-naming.test.ts
 
 # the domain evidence
 docs/audits/2026-10-27-hidden-creative-power/
