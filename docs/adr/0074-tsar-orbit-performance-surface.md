@@ -65,6 +65,19 @@ so it cannot ride in `params`. `SCHEMA_VERSION` goes 39 → 40 with an
 `additive` ledger entry (no `MIGRATIONS` step: the field is simply absent in
 older documents, and absent means "no ORBIT surface").
 
+**The project model checks the mapping's SHAPE, not its catalogue
+membership.** A well-formed mapping (an object with two axes, each a
+non-empty `paramId` and two finite numbers with `max > min`) is kept; a
+malformed one is dropped, because "absent = no ORBIT surface" is the honest
+state for a surface that cannot be described. Whether a given parameter may
+be assigned to an axis is a PRODUCT catalogue (`src/tsar/orbit.ts`), not a
+property of the document: a normaliser that depended on it would rewrite a
+saved project whenever the catalogue changed, silently, with no schema
+version to explain it. The catalogue check belongs where the surface is used
+— the commands and the panel — and the panel says so when a fallback
+happened, because a silent fallback would look like the surface ignoring the
+producer.
+
 The panel is the shell; `src/ui/TsarOrbit.tsx` is an inert renderer. The UI
 holds no authoritative state — it derives what it draws from the project and
 dispatches what the producer did (R6).
@@ -175,8 +188,34 @@ survives a save/load round trip.
 - The slider taper math moved to `src/shared/taper.ts` so a DOM-free domain
   module can use it. `src/ui/controls.tsx` re-exports it, so every existing
   import site is unchanged.
+- The liveness rules moved to `src/tsar/liveness.ts` and the ORBIT commands
+  are **not** re-exported from the command barrel. Both moves exist for one
+  reason: the studio boot path is the App shell's static closure, and a
+  lazy surface must not ride into it. The surface and its commands cost
+  **0 KB** of boot path; what remains is the engine fix and the model field.
 - MIDI learn / MPE is still deferred — deliberately, and with the reason
   written down: the input → project → playback → export path is proved first.
+
+## Bundle cost (measured, isolated)
+
+The SAME tree (`4d9e96f5`) built twice — once with this wave's changes and
+once with them reverted — in one isolated worktree, so the co-tenant
+sessions' concurrent commits cannot contaminate the delta.
+
+| Metric           | Before | After | Delta  | Ceiling |
+| ---------------- | ------ | ----- | ------ | ------- |
+| DAW JS chunks    | 5917   | 5932  | +15 KB | 5630 KB |
+| studio boot path | 2199   | 2201  | +2 KB  | 2200 KB |
+| shipped JS total | 8419   | 8434  | +15 KB | —       |
+
+Two facts belong to the budget owner, and neither is comfortable: the DAW-JS
+gate was **already red by 287 KB** before this wave (the wave adds 15 of the
+302), and the **boot path was green before this wave with 1 KB of headroom**
+and crosses the ceiling by 1 KB. The split is measurable: the surface and
+its commands are lazy and cost 0 KB of boot path; the 2 KB that remain are
+the `orbit` shape check in the schema, the UPSERT command and the timed
+writer in the TSAR runtime — boot-critical by nature. The ceiling was **not**
+raised.
 
 ## What this ADR does NOT change
 
