@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kyx:schemas:selected-section-review-study-v1",
+  "title": "KYX selected-section review study v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "studyId",
+    "status",
+    "createdAt",
+    "preregisteredAt",
+    "conditions",
+    "budget",
+    "design",
+    "tasks",
+    "runs",
+    "blindRatings",
+    "audioPreferenceTrials",
+    "result"
+  ],
+  "properties": {
+    "protocolVersion": { "const": "1.0.0" },
+    "studyId": { "const": "selected-section-review-v1" },
+    "status": { "enum": ["prepared", "preregistered", "complete"] },
+    "createdAt": { "type": "string" },
+    "preregisteredAt": { "type": ["string", "null"], "format": "date-time" },
+    "conditions": {
+      "type": "array",
+      "items": { "enum": ["manual", "single_agent"] },
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "allOf": [{ "contains": { "const": "manual" } }, { "contains": { "const": "single_agent" } }]
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wallClockCapSecondsPerTask",
+        "agentInputTokenCapPerTask",
+        "agentOutputTokenCapPerTask",
+        "agentSpendCapUsdPerTask"
+      ],
+      "properties": {
+        "wallClockCapSecondsPerTask": { "type": ["integer", "null"], "minimum": 1 },
+        "agentInputTokenCapPerTask": { "type": ["integer", "null"], "minimum": 1 },
+        "agentOutputTokenCapPerTask": { "type": ["integer", "null"], "minimum": 1 },
+        "agentSpendCapUsdPerTask": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plannedTaskCount",
+        "raterCount",
+        "minimumUsefulRatingDifference",
+        "baselineRatingVariance",
+        "analysisMethod",
+        "primaryRatings"
+      ],
+      "properties": {
+        "plannedTaskCount": { "type": ["integer", "null"], "minimum": 1 },
+        "raterCount": { "type": ["integer", "null"], "minimum": 1 },
+        "minimumUsefulRatingDifference": { "type": ["number", "null"], "minimum": 0, "maximum": 4 },
+        "baselineRatingVariance": { "type": ["number", "null"], "minimum": 0 },
+        "analysisMethod": { "type": "string", "minLength": 1 },
+        "primaryRatings": {
+          "type": "array",
+          "items": {
+            "enum": ["evidenceGrounding", "musicalRelevance", "protectedElementAdherence", "actionability"]
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true
+        }
+      }
+    },
+    "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
+    "blindRatings": { "type": "array", "items": { "$ref": "#/$defs/blindRating" } },
+    "audioPreferenceTrials": { "type": "array", "items": { "$ref": "#/$defs/audioPreferenceTrial" } },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "summary", "limitations"],
+      "properties": {
+        "status": { "enum": ["not_run", "incomplete", "reported"] },
+        "summary": { "type": ["string", "null"] },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["preregistered", "complete"] } } },
+      "then": {
+        "properties": {
+          "preregisteredAt": { "type": "string", "format": "date-time" },
+          "budget": {
+            "properties": {
+              "wallClockCapSecondsPerTask": { "type": "integer", "minimum": 1 },
+              "agentInputTokenCapPerTask": { "type": "integer", "minimum": 1 },
+              "agentOutputTokenCapPerTask": { "type": "integer", "minimum": 1 },
+              "agentSpendCapUsdPerTask": { "type": "number", "minimum": 0 }
+            }
+          },
+          "design": {
+            "properties": {
+              "plannedTaskCount": { "type": "integer", "minimum": 1 },
+              "raterCount": { "type": "integer", "minimum": 1 },
+              "minimumUsefulRatingDifference": { "type": "number", "exclusiveMinimum": 0 },
+              "baselineRatingVariance": { "type": "number", "minimum": 0 }
+            }
+          },
+          "tasks": {
+            "minItems": 1,
+            "items": { "properties": { "status": { "const": "frozen" } } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "complete" } } },
+      "then": {
+        "properties": {
+          "runs": { "minItems": 2 },
+          "blindRatings": { "minItems": 1 },
+          "result": { "properties": { "status": { "const": "reported" } } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "domain",
+        "requiresRenderEvidence",
+        "fixtureSha256",
+        "renderReceiptSha256",
+        "projectRevision",
+        "contextSnapshotSha256",
+        "startTick",
+        "endTick",
+        "goal",
+        "protectedElements",
+        "status"
+      ],
+      "properties": {
+        "taskId": { "type": "string", "minLength": 1 },
+        "domain": { "enum": ["arrangement", "kick_bass", "vocal"] },
+        "requiresRenderEvidence": { "type": "boolean" },
+        "fixtureSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "renderReceiptSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "projectRevision": { "type": ["integer", "string", "null"] },
+        "contextSnapshotSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "startTick": { "type": ["integer", "null"], "minimum": 0 },
+        "endTick": { "type": ["integer", "null"], "minimum": 1 },
+        "goal": { "type": "string" },
+        "protectedElements": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["planned", "frozen"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "frozen" } } },
+          "then": {
+            "properties": {
+              "fixtureSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "contextSnapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "startTick": { "type": "integer", "minimum": 0 },
+              "endTick": { "type": "integer", "minimum": 1 },
+              "goal": { "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "frozen" },
+              "requiresRenderEvidence": { "const": true }
+            }
+          },
+          "then": {
+            "properties": {
+              "renderReceiptSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        }
+      ]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "taskId",
+        "condition",
+        "blindId",
+        "agentProvenance",
+        "contextSnapshotSha256",
+        "elapsedMs",
+        "inputTokens",
+        "outputTokens",
+        "spendUsd",
+        "toolCalls",
+        "renderCount",
+        "mutationCount",
+        "checks",
+        "status"
+      ],
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "taskId": { "type": "string", "minLength": 1 },
+        "condition": { "enum": ["manual", "single_agent"] },
+        "blindId": { "type": "string", "minLength": 1 },
+        "agentProvenance": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["provider", "model", "agentRevision", "promptSha256", "toolCatalogSha256"],
+          "properties": {
+            "provider": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 },
+            "agentRevision": { "type": "string", "minLength": 1 },
+            "promptSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "toolCatalogSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        "contextSnapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "spendUsd": { "type": ["number", "null"], "minimum": 0 },
+        "toolCalls": { "type": "integer", "minimum": 0 },
+        "renderCount": { "type": "integer", "minimum": 0 },
+        "mutationCount": { "type": "integer", "minimum": 0 },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidenceReferencesResolve",
+            "requiredEvidenceAvailable",
+            "targetAndRangeGrounded",
+            "protectedElementsRespected",
+            "freshnessCurrent",
+            "documentUnchanged",
+            "renderSucceeded"
+          ],
+          "properties": {
+            "evidenceReferencesResolve": { "type": "boolean" },
+            "requiredEvidenceAvailable": { "type": "boolean" },
+            "targetAndRangeGrounded": { "type": "boolean" },
+            "protectedElementsRespected": { "type": "boolean" },
+            "freshnessCurrent": { "type": "boolean" },
+            "documentUnchanged": { "type": "boolean" },
+            "renderSucceeded": { "type": ["boolean", "null"] }
+          }
+        },
+        "status": { "enum": ["complete", "stopped", "failed"] },
+        "failureCategory": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "condition": { "const": "single_agent" } },
+            "required": ["condition"]
+          },
+          "then": { "properties": { "agentProvenance": { "type": "object" } } }
+        },
+        {
+          "if": {
+            "properties": { "condition": { "const": "manual" } },
+            "required": ["condition"]
+          },
+          "then": { "properties": { "agentProvenance": { "type": "null" } } }
+        }
+      ]
+    },
+    "blindRating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blindId",
+        "raterId",
+        "evidenceGrounding",
+        "musicalRelevance",
+        "protectedElementAdherence",
+        "actionability",
+        "unsupportedClaimCount"
+      ],
+      "properties": {
+        "blindId": { "type": "string", "minLength": 1 },
+        "raterId": { "type": "string", "minLength": 1 },
+        "evidenceGrounding": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "musicalRelevance": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "protectedElementAdherence": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "actionability": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "unsupportedClaimCount": { "type": "integer", "minimum": 0 },
+        "comment": { "type": "string" }
+      }
+    },
+    "audioPreferenceTrial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pairId", "blindAId", "blindBId", "preferredSide", "listenerId", "randomizationSeed", "completedAt"],
+      "properties": {
+        "pairId": { "type": "string", "minLength": 1 },
+        "blindAId": { "type": "string", "minLength": 1 },
+        "blindBId": { "type": "string", "minLength": 1 },
+        "preferredSide": { "enum": ["A", "B", "tie", "neither"] },
+        "listenerId": { "type": "string", "minLength": 1 },
+        "randomizationSeed": { "type": "string", "minLength": 1 },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

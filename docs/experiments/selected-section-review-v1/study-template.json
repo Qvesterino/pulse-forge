@@ -1,0 +1,74 @@
+{
+  "protocolVersion": "1.0.0",
+  "studyId": "selected-section-review-v1",
+  "status": "prepared",
+  "createdAt": "",
+  "preregisteredAt": null,
+  "conditions": ["manual", "single_agent"],
+  "budget": {
+    "wallClockCapSecondsPerTask": null,
+    "agentInputTokenCapPerTask": null,
+    "agentOutputTokenCapPerTask": null,
+    "agentSpendCapUsdPerTask": null
+  },
+  "design": {
+    "plannedTaskCount": null,
+    "raterCount": null,
+    "minimumUsefulRatingDifference": null,
+    "baselineRatingVariance": null,
+    "analysisMethod": "paired differences with uncertainty intervals",
+    "primaryRatings": ["evidenceGrounding", "musicalRelevance", "protectedElementAdherence", "actionability"]
+  },
+  "tasks": [
+    {
+      "taskId": "arrangement-transition-01",
+      "domain": "arrangement",
+      "requiresRenderEvidence": true,
+      "fixtureSha256": null,
+      "renderReceiptSha256": null,
+      "projectRevision": null,
+      "contextSnapshotSha256": null,
+      "startTick": null,
+      "endTick": null,
+      "goal": "",
+      "protectedElements": [],
+      "status": "planned"
+    },
+    {
+      "taskId": "kick-bass-interaction-01",
+      "domain": "kick_bass",
+      "requiresRenderEvidence": true,
+      "fixtureSha256": null,
+      "renderReceiptSha256": null,
+      "projectRevision": null,
+      "contextSnapshotSha256": null,
+      "startTick": null,
+      "endTick": null,
+      "goal": "",
+      "protectedElements": [],
+      "status": "planned"
+    },
+    {
+      "taskId": "vocal-placement-01",
+      "domain": "vocal",
+      "requiresRenderEvidence": true,
+      "fixtureSha256": null,
+      "renderReceiptSha256": null,
+      "projectRevision": null,
+      "contextSnapshotSha256": null,
+      "startTick": null,
+      "endTick": null,
+      "goal": "",
+      "protectedElements": [],
+      "status": "planned"
+    }
+  ],
+  "runs": [],
+  "blindRatings": [],
+  "audioPreferenceTrials": [],
+  "result": {
+    "status": "not_run",
+    "summary": null,
+    "limitations": []
+  }
+}
