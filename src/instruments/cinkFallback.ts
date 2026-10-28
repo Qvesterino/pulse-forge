@@ -5,6 +5,7 @@
 
 import type { InstrumentTrack } from "../project-model/types";
 import type { InstrumentRuntime } from "./types";
+import { holdParamAt } from "./envelope";
 
 interface FallbackVoice {
   body: OscillatorNode;
@@ -27,7 +28,7 @@ export function createCinkFallbackRuntime(ctx: BaseAudioContext, track: Instrume
     voices.delete(pitch);
     const release = Math.max(0.02, param("decay", 0.4));
     try {
-      voice.vca.gain.cancelScheduledValues(when);
+      holdParamAt(voice.vca.gain, when);
       voice.vca.gain.setTargetAtTime(0, when, release * 0.3);
       voice.body.stop(when + release * 2 + 0.05);
       voice.noiseOsc.stop(when + release * 2 + 0.05);

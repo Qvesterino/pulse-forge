@@ -10,6 +10,7 @@
 
 import type { InstrumentTrack } from "../project-model/types";
 import type { InstrumentRuntime } from "./types";
+import { holdParamAt } from "./envelope";
 
 interface FallbackVoice {
   modulator: OscillatorNode;
@@ -32,7 +33,7 @@ export function createLadicFallbackRuntime(ctx: BaseAudioContext, track: Instrum
     voices.delete(pitch);
     const release = Math.max(0.02, param("op1Rel", 0.3));
     try {
-      voice.vca.gain.cancelScheduledValues(when);
+      holdParamAt(voice.vca.gain, when);
       voice.vca.gain.setTargetAtTime(0, when, release * 0.35);
       voice.modulator.stop(when + release * 2 + 0.05);
       voice.carrier.stop(when + release * 2 + 0.05);

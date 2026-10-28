@@ -53,6 +53,7 @@ export const hlasParams: ParamDef[] = [
     default: 5.5,
     unit: "Hz",
     format: (v) => `${v.toFixed(1)} Hz`,
+    taper: "log",
   },
   {
     id: "vibratoDepth",
@@ -63,7 +64,9 @@ export const hlasParams: ParamDef[] = [
     unit: "ct",
     format: (v) => `${v.toFixed(0)} ct`,
   },
-  { id: "glide", label: "GLIDE", min: 0, max: 1.5, default: 0.06, unit: "s", format: sec, taper: "log" },
+  // The glide starts at 0 s, and a log taper divides by log(min) - so it would
+  // be undefined exactly at the default's lower end. Linear it is.
+  { id: "glide", label: "GLIDE", min: 0, max: 1.5, default: 0.06, unit: "s", format: sec },
   { id: "attack", label: "ATTACK", min: 0.002, max: 1.5, default: 0.02, unit: "s", format: sec, taper: "log" },
   { id: "release", label: "RELEASE", min: 0.02, max: 3, default: 0.25, unit: "s", format: sec, taper: "log" },
   { id: "level", label: "LEVEL", min: 0, max: 1.5, default: 0.8, format: pct },

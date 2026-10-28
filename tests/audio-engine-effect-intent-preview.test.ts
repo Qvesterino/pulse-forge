@@ -10,11 +10,16 @@ function createPreviewEngine(doc: ProjectDocument, trackId: string, fxId: string
     trackNodes: Map<string, { fx: { runtimes: Map<string, { setParameter: typeof setParameter }> } }>;
     groupNodes: Map<string, { fx: { runtimes: Map<string, { setParameter: typeof setParameter }> } }>;
     returnNodes: Map<string, { fx: { runtimes: Map<string, { setParameter: typeof setParameter }> } }>;
+    // The master chain grew a sweep (transportStarted reads the master
+    // runtimes), and a class-field initializer never runs for a prototype
+    // object - so the fake has to carry it.
+    masterFx: { runtimes: Map<string, unknown>; params: Map<string, unknown>; bypass: Map<string, unknown> };
   };
   internals.doc = doc;
   internals.trackNodes = new Map([[trackId, { fx: { runtimes: new Map([[fxId, { setParameter }]]) } }]]);
   internals.groupNodes = new Map();
   internals.returnNodes = new Map();
+  internals.masterFx = { runtimes: new Map(), params: new Map(), bypass: new Map() };
   return { engine, setParameter };
 }
 

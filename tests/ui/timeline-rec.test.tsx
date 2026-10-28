@@ -615,7 +615,7 @@ describe("arrangement REC wiring", () => {
     const { container } = renderWithContext(<ArrangementPanel />, { services });
 
     fireEvent.contextMenu(container.querySelector(".arr-audio-clip")!, { clientX: 100, clientY: 100 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Consolidate" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Consolidate to one clip" }));
 
     await waitFor(() => expect(services.userSamples.save).toHaveBeenCalledOnce());
     const renderCall = vi.mocked(renderProject).mock.calls.at(-1)!;
@@ -1152,7 +1152,12 @@ describe("arrangement REC wiring", () => {
       recorderMock.implementation = null;
     }
   });
-  it("aligns a late phrase onto its entry at record stop — inside the placed take, and says so", async () => {
+  it(
+    "aligns a late phrase onto its entry at record stop — inside the placed take, and says so",
+    // The alignment renders the whole phrase through the engine; on a loaded
+    // machine that is more than vitest's 5 s default.
+    { timeout: 30_000 },
+    async () => {
     // VOCAL-FIRST LOOP, end to end: a singer enters 40 ms late; the take is
     // placed with its leading silence skipped so the phrase lands on the entry,
     // the correction rides in the SAME command (one undo), and the user is told
@@ -1186,6 +1191,9 @@ describe("arrangement REC wiring", () => {
             numberOfChannels: 1,
             getChannelData: () => phrase,
           } as unknown as AudioBuffer,
+          // The take carries its own silence measurement (audit R-1): the
+          // panel reads it unguarded, so the fake has to carry it too.
+          silence: { peak: 0.5, rms: 0.2, silent: false },
         };
       }
       cancel() {}
@@ -1213,7 +1221,8 @@ describe("arrangement REC wiring", () => {
     } finally {
       recorderMock.implementation = null;
     }
-  });
+    },
+  );
 });
 
 function createDocWithTracks() {

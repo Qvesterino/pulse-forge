@@ -6,6 +6,7 @@
 
 import type { InstrumentTrack } from "../project-model/types";
 import type { InstrumentRuntime } from "./types";
+import { holdParamAt } from "./envelope";
 
 interface FallbackVoice {
   osc: OscillatorNode;
@@ -28,7 +29,7 @@ export function createHlasFallbackRuntime(ctx: BaseAudioContext, track: Instrume
     voices.delete(pitch);
     const release = Math.max(0.02, param("release", 0.25));
     try {
-      voice.vca.gain.cancelScheduledValues(when);
+      holdParamAt(voice.vca.gain, when);
       voice.vca.gain.setTargetAtTime(0, when, release * 0.35);
       voice.osc.stop(when + release * 2 + 0.05);
       voice.noise.stop(when + release * 2 + 0.05);

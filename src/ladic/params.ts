@@ -93,7 +93,9 @@ export const ladicParams: ParamDef[] = [
   ...opParams("op4", "O4", 3, 0),
   ...opParams("op5", "O5", 1, 0),
   ...opParams("op6", "O6", 1, 0),
-  { id: "glide", label: "GLIDE", min: 0, max: 2, default: 0, unit: "s", format: sec, taper: "log" },
+  // The glide starts at 0 s, and a log taper divides by log(min) - so it would
+  // be undefined exactly at the default's lower end. Linear it is.
+  { id: "glide", label: "GLIDE", min: 0, max: 2, default: 0, unit: "s", format: sec },
   {
     id: "cutoff",
     label: "TONE",

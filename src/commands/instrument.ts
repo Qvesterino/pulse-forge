@@ -1,4 +1,5 @@
 import type { Command } from "./types";
+import { snapshot } from "./core";
 import type { EffectInstance, InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { INSTRUMENT_META, clampInstrumentParam, defaultInstrumentParams } from "../instruments/definitions";
 import { createInstrumentTrackModel } from "../project-model/schema";
@@ -275,8 +276,6 @@ export function forgeKickCommand(
  * with a warning carried in the label context by the caller.
  */
 export function forgeLowEndStackCommand(doc: ProjectDocument, options: { keyRootPc: number; label?: string }): Command {
-  const prevDoc: ProjectDocument = doc;
-
   // Find-or-create the kick and the bass (KOPA ADR 0035 §5 model factories,
   // normalized on materialization like createInstrumentTrack).
   const findKick = (d: ProjectDocument): InstrumentTrack | undefined =>
@@ -327,12 +326,7 @@ export function forgeLowEndStackCommand(doc: ProjectDocument, options: { keyRoot
     return next;
   };
 
-  return {
-    type: "forgeLowEndStack",
-    label: options.label ?? "Low-end stack — kick + bass + ducking",
-    execute: (d) => apply(d),
-    undo: () => prevDoc,
-  };
+  return snapshot("forgeLowEndStack", options.label ?? "Low-end stack — kick + bass + ducking", doc, apply(doc));
 }
 
 /**
@@ -349,7 +343,6 @@ export function seedBasslineCommand(
   doc: ProjectDocument,
   options: { style?: "root" | "fifth" | "octave"; gate?: number; label?: string } = {},
 ): Command {
-  const prevDoc: ProjectDocument = doc;
   const plan = lowEndPlan(doc);
   const bassId = plan.bassTrackId;
   if (!bassId) throw new Error("No 808 bass track — build the low-end stack first");
@@ -363,10 +356,10 @@ export function seedBasslineCommand(
     ),
   });
 
-  return {
-    type: "seedBassline",
-    label: options.label ?? `Seed bassline — ${generated.events.length} notes (active pattern)`,
-    execute: (d) => apply(d),
-    undo: () => prevDoc,
-  };
+  return snapshot(
+    "seedBassline",
+    options.label ?? `Seed bassline — ${generated.events.length} notes (active pattern)`,
+    doc,
+    apply(doc),
+  );
 }

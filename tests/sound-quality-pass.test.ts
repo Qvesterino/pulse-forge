@@ -586,6 +586,11 @@ describe("genre song references — per-genre loudness trim (sound-quality wave 
     expect(apply).toMatch(/typeof trimRaw === "number" && Number\.isFinite\(trimRaw\)/);
     expect(apply).toMatch(/Math\.min\(12, Math\.max\(-12,/);
     // Multiplicative on the clamped input trim, pre-limiter (before tape/M/S).
-    expect(apply).toMatch(/gain \* Math\.pow\(10, trim \/ 20\)/);
+    // The conversion has ONE owner (effects/scale-bridges.ts, R-09), so the
+    // pin follows the formula there - otherwise the engine could drift and
+    // the owner could drift, with nothing watching either.
+    expect(apply).toMatch(/gain \* dbToLinearGain\(trim\)/);
+    const bridges = readFileSync(resolve(process.cwd(), "src/effects/scale-bridges.ts"), "utf8");
+    expect(bridges).toMatch(/dbToLinearGain = \(db: number\): number => Math\.pow\(10, db \/ 20\)/);
   });
 });

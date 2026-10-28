@@ -13,7 +13,7 @@ import { SelectionContext, ServicesContext, ToolContext } from "./context";
 import { useClipSelectionInvariant } from "./useClipSelectionInvariant";
 import { clearSongStarter, peekRegenFlag, peekSongStarter } from "../landing/handoff";
 import { ContextMenu, deriveContext, type ContextMenuState } from "./ContextMenu";
-import { RangeBounceReview, type RangeBounceReviewRequest } from "./RangeBounceReview";
+import type { RangeBounceReviewRequest } from "./RangeBounceReview";
 import { TopBar } from "./TopBar";
 import { TrackTabs } from "./TrackTabs";
 import { RackStrip } from "./RackStrip";
@@ -45,6 +45,10 @@ const TsarPanel = lazy(() => import("./TsarPanel").then((m) => ({ default: m.Tsa
 const ChoralPanel = lazy(() => import("./ChoralPanel").then((m) => ({ default: m.ChoralPanel })));
 const KopaPanel = lazy(() => import("./KopaPanel").then((m) => ({ default: m.KopaPanel })));
 const IoPanel = lazy(() => import("./IoPanel").then((m) => ({ default: m.IoPanel })));
+// The range-bounce review is a modal that opens only after a human asks for
+// it. Statically importing it dragged the intent-routing graph (via
+// intent/audition.ts) back onto the studio boot path, so it loads on demand.
+const RangeBounceReview = lazy(() => import("./RangeBounceReview").then((m) => ({ default: m.RangeBounceReview })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -2124,7 +2128,9 @@ export function App({
                 }}
               />
               {rangeBounceRequest && (
-                <RangeBounceReview request={rangeBounceRequest} onClose={() => setRangeBounceRequest(null)} />
+                <Suspense fallback={null}>
+                  <RangeBounceReview request={rangeBounceRequest} onClose={() => setRangeBounceRequest(null)} />
+                </Suspense>
               )}
               {/* QMR HUD chip (Qvester ecosystem) — lazy + error-bounded, the
                   app stays fully usable when the shared HUD chunk is slow. */}

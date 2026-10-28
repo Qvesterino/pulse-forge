@@ -76,8 +76,10 @@ describe("GenerativeTrack project contract", () => {
         id: "energy-lane",
         macro: "energy",
         points: [
-          { tick: 0, value: 0 },
-          { tick: 20, value: 1 },
+          // The normaliser mints the point ids (pt-<carrier>-<slot>); the
+          // lane is therefore born with its identity, not without it.
+          { id: "pt-energy-lane-0", tick: 0, value: 0 },
+          { id: "pt-energy-lane-1", tick: 20, value: 1 },
         ],
       },
     ]);

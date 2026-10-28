@@ -45,6 +45,7 @@ import { parseExactIntent } from "../src/intent/exact";
 import { parseIntentText } from "../src/intent/text-parser";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject, ticksPerBarFor, ticksPerBeatFor } from "../src/project-model/schema";
 import { stepsPerBarFor, stepsPerBeatFor } from "../src/project-model/grid";
@@ -76,7 +77,7 @@ function project(): ProjectDocument {
 /** The minimal MCP surface — the real command layer, a held document. */
 function mcpCtx(doc: ProjectDocument): McpToolContext {
   let current = doc;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -93,9 +94,8 @@ function mcpCtx(doc: ProjectDocument): McpToolContext {
       setLoop: () => {},
       setMetronome: () => {},
     },
-  };
+  });
 }
-
 describe("ADR 0056 — the COMMAND discloses the meter change", () => {
   it("the command's detail says what the new metre MEASURES and what happens to the pattern", () => {
     const detail = setTimeSignature(project(), 6, 8).detail;
@@ -365,6 +365,8 @@ const METER_NON_SURFACES: Record<string, string> = {
   "src/intent/exact.ts":
     "builds the intent's timeSignature OP — the project is changed by the intent path, which discloses",
   "src/intent/normalize.ts": "normalises the REQUEST's metre",
+  "src/intent/model-context.ts":
+    "the model's READ-ONLY context projects the project's metre into bounded JSON - no project is changed here",
   "src/ai/meter.ts": "the AI layer's metre truth — a helper over a TimeSignature, not over a project",
   "src/ai/grooves/irregular.ts":
     "the grooves' OWN metre — a groove declares the metre it was WRITTEN in; no project is changed here",
