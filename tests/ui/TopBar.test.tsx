@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { mockServices, mockTopBarWidth } from "../helpers";
 import { screen, waitFor } from "@testing-library/react";
@@ -8,6 +8,8 @@ import { renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { BAR_TICKS, type ProjectDocument } from "../../src/project-model/types";
 import { addMidiClip } from "../../src/commands/commands";
+import { setMcpAllowDestructive, setMcpAllowMutations } from "../../src/mcp/flags";
+import { IDLE_SESSION_STATE, publishSessionRecordingState } from "../../src/ui/sessionStateSurface";
 
 function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
   return {
@@ -511,5 +513,56 @@ describe("TopBar — save a copy", () => {
     expect(screen.queryByRole("dialog", { name: "Save a copy of this project" })).not.toBeInTheDocument();
     expect(services.repo.duplicate).not.toHaveBeenCalled();
     expect(services.repo.rename).not.toHaveBeenCalled();
+  });
+});
+
+describe("TopBar — explicit record target + agent authority badge", () => {
+  afterEach(() => {
+    setMcpAllowDestructive(false);
+    setMcpAllowMutations(false);
+    publishSessionRecordingState(IDLE_SESSION_STATE);
+  });
+
+  it("labels the transport record button as MIDI", () => {
+    renderWithContext(<TopBar {...topBarProps()} />);
+    const record = screen.getByRole("button", { name: "Record MIDI to pattern" });
+    expect(record).toHaveTextContent("MIDI");
+    expect(screen.queryByText("AUDIO ARMED")).not.toBeInTheDocument();
+  });
+
+  it("shows AUDIO ARMED globally while an audio track is armed", () => {
+    renderWithContext(<TopBar {...topBarProps()} />);
+    act(() => {
+      publishSessionRecordingState({
+        armedTrackNames: ["Vocal"],
+        recState: "idle",
+        punchRange: null,
+        loopTakes: false,
+        takeModeLabel: null,
+      });
+    });
+    expect(screen.getByText("AUDIO ARMED")).toHaveAttribute("role", "status");
+
+    act(() => {
+      publishSessionRecordingState({ ...IDLE_SESSION_STATE, armedTrackNames: ["Vocal"], recState: "recording" });
+    });
+    expect(screen.getByText("AUDIO REC")).toBeInTheDocument();
+  });
+
+  it("keeps MCP authority visible from the studio shell", () => {
+    renderWithContext(<TopBar {...topBarProps()} />);
+    expect(screen.queryByText(/AGENT .* ON/)).not.toBeInTheDocument();
+
+    act(() => setMcpAllowMutations(true));
+    expect(screen.getByText("AGENT EDIT ON")).toBeInTheDocument();
+
+    act(() => setMcpAllowDestructive(true));
+    expect(screen.getByText("AGENT DELETE ON")).toBeInTheDocument();
+
+    act(() => {
+      setMcpAllowDestructive(false);
+      setMcpAllowMutations(false);
+    });
+    expect(screen.queryByText(/AGENT .* ON/)).not.toBeInTheDocument();
   });
 });

@@ -228,6 +228,33 @@ button {
   color: #f87171;
   font-size: var(--fs-md);
 }
+/* F-04: the transport REC records MIDI; the target label makes that visible
+   before the click. Audio REC lives in the arrangement and says AUDIO. */
+.rec-target-label {
+  margin-left: 4px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  vertical-align: 1px;
+}
+.rec-audio-armed {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid #fbbf24;
+  border-radius: 5px;
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.1);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.rec-audio-armed.live {
+  border-color: #f87171;
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.16);
+}
 
 .btn-record.armed {
   background: rgba(251, 191, 36, 0.12);

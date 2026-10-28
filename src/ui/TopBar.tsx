@@ -2,7 +2,17 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { AudioStatusChips } from "./AudioStatusChips";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
-import { useCanRedo, useCanUndo, useLastSavedAt, useRecoveryStatus, useSaveStatus, useServices } from "./context";
+import {
+  useCanRedo,
+  useCanUndo,
+  useLastSavedAt,
+  useMcpAllowDestructive,
+  useMcpAllowMutations,
+  useRecoveryStatus,
+  useSaveStatus,
+  useServices,
+  useSessionRecordingState,
+} from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
@@ -104,6 +114,12 @@ export function TopBar({
   const recoveryStatus = useRecoveryStatus();
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
+  const mcpDeleteAuthority = useMcpAllowDestructive();
+  const mcpEditConsent = useMcpAllowMutations();
+  const sessionRecording = useSessionRecordingState();
+  const audioArmedNames = sessionRecording.armedTrackNames;
+  const audioRecordingLive = sessionRecording.recState === "recording" || sessionRecording.recState === "starting";
+  const agentAuthority = mcpDeleteAuthority ? "delete" : mcpEditConsent ? "edit" : "off";
   const position = useTransportPosition(services.transport, doc);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [loopEnabled, setLoopEnabled] = useState(services.transport.loopEnabled);
@@ -700,8 +716,22 @@ export function TopBar({
                   : "Record MIDI to pattern"
             }
           >
-            ⏺
+            <span aria-hidden="true">⏺</span>
+            <span className="rec-target-label" aria-hidden="true">
+              MIDI
+            </span>
           </button>
+          {audioArmedNames.length > 0 && (
+            <span
+              className={`rec-audio-armed${audioRecordingLive ? " live" : ""}`}
+              role="status"
+              title={`AUDIO recording ${audioRecordingLive ? "is live" : "is armed"} on ${audioArmedNames.join(
+                ", ",
+              )}. Press ● AUDIO REC in the ARRANGEMENT panel — this MIDI button records the active pattern.`}
+            >
+              {audioRecordingLive ? "AUDIO REC" : "AUDIO ARMED"}
+            </span>
+          )}
           <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
             {recording
               ? "MIDI recording is active."
@@ -953,6 +983,23 @@ export function TopBar({
               title="The crash buffer cannot hold this project: if the tab closes now, the uncommitted work cannot be recovered. Save often."
             >
               NOT CRASH-PROTECTED
+            </span>
+          )}
+          {/* F-05: agent authority must be visible from EVERY panel, not only
+              while the INTENT panel happens to be open. The badge reads the
+              same store as the toggles, so it cannot drift or stay stale. */}
+          {agentAuthority !== "off" && (
+            <span
+              className={`agent-authority-badge ${agentAuthority}`}
+              role="status"
+              aria-live="polite"
+              title={
+                agentAuthority === "delete"
+                  ? "External MCP clients may DELETE tracks, sections and FX. Turn it off in INTENT → MCP (MAZANIE)."
+                  : "External MCP clients may EDIT this project. Turn it off in INTENT → MCP (ZMENY)."
+              }
+            >
+              {agentAuthority === "delete" ? "AGENT DELETE ON" : "AGENT EDIT ON"}
             </span>
           )}
           {visibleToolActions.map((action) => (

@@ -115,7 +115,7 @@ export const DAW_ACTION_MAPPINGS: readonly DawActionMapping[] = [
       "pro-tools": "Track record-enable",
       other: "Audio track recording",
     },
-    kyxTerm: "Song → Arrangement → ● REC",
+    kyxTerm: "Song → Arrangement → ● AUDIO REC",
     kyxDetail: "Choose the input, arm a track, then record at the playhead or set a punch range.",
   },
   {

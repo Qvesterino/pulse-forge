@@ -28,6 +28,18 @@
  */
 const FLAG = "pf:mcp-allow-destructive";
 const MUTATIONS_FLAG = "pf:mcp-allow-mutations";
+const flagListeners = new Set<() => void>();
+
+/** Subscribe to either MCP authority flag changing. Used by the global badge
+ * and by both consent toggles so the state cannot diverge across surfaces. */
+export function subscribeMcpFlags(listener: () => void): () => void {
+  flagListeners.add(listener);
+  return () => flagListeners.delete(listener);
+}
+
+function notifyMcpFlags(): void {
+  for (const listener of flagListeners) listener();
+}
 
 export function mcpAllowDestructive(): boolean {
   try {
@@ -38,12 +50,14 @@ export function mcpAllowDestructive(): boolean {
 }
 
 export function setMcpAllowDestructive(on: boolean): void {
+  const previous = mcpAllowDestructive();
   try {
     if (on) localStorage.setItem(FLAG, "1");
     else localStorage.removeItem(FLAG);
   } catch {
     /* private mode — flag stays session-off */
   }
+  if (previous !== on) notifyMcpFlags();
 }
 
 /**
@@ -61,10 +75,12 @@ export function mcpAllowMutations(): boolean {
 }
 
 export function setMcpAllowMutations(on: boolean): void {
+  const previous = mcpAllowMutations();
   try {
     if (on) localStorage.setItem(MUTATIONS_FLAG, "1");
     else localStorage.removeItem(MUTATIONS_FLAG);
   } catch {
     /* private mode — flag stays session-off */
   }
+  if (previous !== on) notifyMcpFlags();
 }

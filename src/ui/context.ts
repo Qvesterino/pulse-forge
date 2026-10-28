@@ -14,6 +14,12 @@ import {
   type UserSampleRestoreStatus,
 } from "../persistence/userSampleRestoreStatus";
 import { SelectionStore } from "../store/SelectionStore";
+import { mcpAllowDestructive, mcpAllowMutations, subscribeMcpFlags } from "../mcp/flags";
+import {
+  getSessionRecordingState,
+  subscribeSessionRecordingState,
+  type SessionRecordingState,
+} from "./sessionStateSurface";
 import type { Tool } from "../store/ToolStore";
 import { ToolStore } from "../store/ToolStore";
 
@@ -256,4 +262,19 @@ export function useLibrary(): LibraryState {
     () => core.library.get(),
     () => core.library.get(),
   );
+}
+
+/** Reactive MCP delete authority — shared by the TopBar badge and the toggles. */
+export function useMcpAllowDestructive(): boolean {
+  return useSyncExternalStore(subscribeMcpFlags, mcpAllowDestructive, mcpAllowDestructive);
+}
+
+/** Reactive MCP edit consent (ADR 0065). */
+export function useMcpAllowMutations(): boolean {
+  return useSyncExternalStore(subscribeMcpFlags, mcpAllowMutations, mcpAllowMutations);
+}
+
+/** Reactive audio-recording surface published by the arrangement REC strip. */
+export function useSessionRecordingState(): SessionRecordingState {
+  return useSyncExternalStore(subscribeSessionRecordingState, getSessionRecordingState, getSessionRecordingState);
 }

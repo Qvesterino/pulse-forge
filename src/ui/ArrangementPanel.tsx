@@ -4674,7 +4674,8 @@ export function ArrangementPanel() {
                 <button
                   type="button"
                   className="btn btn-small btn-rec"
-                  title="Record the selected audio input onto the armed track at the playhead (rolls the transport)"
+                  title="Record the selected AUDIO input onto the armed track at the playhead (rolls the transport)"
+                  aria-label="Record audio input onto the armed track"
                   disabled={
                     !armedTrackId ||
                     recState !== "idle" ||
@@ -4683,7 +4684,7 @@ export function ArrangementPanel() {
                   }
                   onClick={() => void startRec()}
                 >
-                  ● REC
+                  ● AUDIO REC
                 </button>
               )}
               {recState === "starting" && <span className="arr-rec-saving">opening audio input…</span>}

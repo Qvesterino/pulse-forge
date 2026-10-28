@@ -120,6 +120,15 @@
       "negativeSpec": "NEGATIVE: an interrupted knob drag cancels the preview"
     },
     {
+      "id": "tab-traversal",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx global keydown — Tab/Shift+Tab guard before the transient-jump branch",
+      "note": "CF-05: when an interactive control holds focus, Tab is that panel's DOM traversal — the handler neither acts on it nor preventDefaults it (previously the event fell through to next/prev track, making every panel untraversable by keyboard). Canvas focus keeps the FL behaviors: the transient jump when an audio clip is selected, next/prev track otherwise.",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "Tab traversal vs next-track scope",
+      "negativeSpec": "NEGATIVE: Tab on a focused control (a track tab button) is not intercepted"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
@@ -835,6 +844,15 @@
       "seamEvent": "\"kyx_performance\", { op: \"createSet\"",
       "negativeSpec": "bad options refuse without mutating",
       "note": "AS-015 / ADR 0077: the R1 half of the performance surface (set CRUD/options/pad assignment, macro value/rename) is agent-executable document commands; the R4 half (pad launch, loop toggling, jam) is DECLARED human-only — the tool has deliberately no launch/trigger op. deleteSet rides the D4 gate with the auto-before checkpoint; macro writes keep their applyToYDoc collab sync via the AS-008 exemption list."
+    },
+    {
+      "id": "mcp-destructive-consent",
+      "status": "COVERED",
+      "entryPoint": "src/ui/McpAuthorityToggles.tsx → setMcpAllowDestructive",
+      "spec": "tests/ui/McpAuthorityToggles.test.tsx",
+      "seamEvent": "fireEvent.click(screen.getByRole(\"button\", { name: \"🔒 MAZANIE\" }))",
+      "negativeSpec": "does not enable delete authority before confirmation",
+      "note": "Experience-friction F-05 (2026-10-28): turning delete authority ON is two-step (scope-named inline confirm, focus defaults to CANCEL), turning it OFF is immediate; the TopBar badge reads the same store so the persisted flag is visible from every panel."
     }
   ]
 }

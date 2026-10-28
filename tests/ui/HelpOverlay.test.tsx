@@ -81,7 +81,7 @@ describe("HelpOverlay", () => {
       expect(screen.getByText("Track list → Tracks → Track tabs")).toBeInTheDocument();
       expect(screen.getByText("MediaBay preview → Sounds → Preview")).toBeInTheDocument();
       expect(screen.getByText("MIDI recording → Top bar → Record MIDI")).toBeInTheDocument();
-      expect(screen.getByText("Audio track recording → Song → Arrangement → ● REC")).toBeInTheDocument();
+      expect(screen.getByText("Audio track recording → Song → Arrangement → ● AUDIO REC")).toBeInTheDocument();
       expect(screen.getByText("Audio comping → Arrangement → Take Lanes → Comp")).toBeInTheDocument();
       expect(
         screen.getByText("Tab / Shift+Tab moves between tracks; 1–9 selects a track by position."),
@@ -118,7 +118,7 @@ describe("HelpOverlay", () => {
         await user.selectOptions(screen.getByLabelText("Show familiar terms for"), profile);
         expect(screen.getByText(`${tracks} → Tracks → Track tabs`)).toBeInTheDocument();
         expect(screen.getByText(`${audition} → Sounds → Preview`)).toBeInTheDocument();
-        expect(screen.getByText(`${recording} → Song → Arrangement → ● REC`)).toBeInTheDocument();
+        expect(screen.getByText(`${recording} → Song → Arrangement → ● AUDIO REC`)).toBeInTheDocument();
         expect(screen.getByText(`${comp} → Arrangement → Take Lanes → Comp`)).toBeInTheDocument();
       } finally {
         view.unmount();

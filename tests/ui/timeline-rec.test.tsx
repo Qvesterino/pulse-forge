@@ -327,7 +327,7 @@ describe("arrangement REC wiring", () => {
     expect(select.value).toBe("");
     expect(select.textContent).toContain("Drums");
 
-    const rec = screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement;
+    const rec = screen.getByRole("button", { name: "Record audio input onto the armed track" }) as HTMLButtonElement;
     expect(rec.disabled).toBe(true);
     const monitor = screen.getByRole("button", { name: "DRY SOFT MON OFF" });
     expect(monitor).toHaveAttribute("aria-pressed", "false");
@@ -335,7 +335,9 @@ describe("arrangement REC wiring", () => {
     expect(screen.getByRole("button", { name: "DRY SOFT MON ON" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.change(select, { target: { value: doc.tracks[0].id } });
-    expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Record audio input onto the armed track" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it("arms loop-pass recording only when explicit transport locators are set", () => {
@@ -387,7 +389,7 @@ describe("arrangement REC wiring", () => {
         "aria-pressed",
         "true",
       );
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       await screen.findByRole("button", { name: /STOP/ });
 
       expect(metadata).toMatchObject({ startBar: 1, punchCapture: { startTick: BAR_TICKS, endTick: BAR_TICKS * 2 } });
@@ -424,7 +426,7 @@ describe("arrangement REC wiring", () => {
     (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
     renderWithContext(<ArrangementPanel />, { services });
     fireEvent.change(screen.getByLabelText("Arm track for recording"), { target: { value: doc.tracks[0].id } });
-    fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
 
     await screen.findByRole("button", { name: /STOP/ });
     const status = await screen.findByText(warning);
@@ -795,7 +797,7 @@ describe("arrangement REC wiring", () => {
         target: { value: "existing-take-group" },
       });
       expect(screen.getByLabelText("Captured channel 2 destination")).toBeDisabled();
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       await screen.findByRole("button", { name: /STOP/ });
 
       expect(services.transport.seek).toHaveBeenCalledWith(2 * BAR_TICKS);
@@ -873,7 +875,7 @@ describe("arrangement REC wiring", () => {
       fireEvent.change(channelDestination, {
         target: { value: doc.tracks.find((track) => track.id !== doc.tracks[0].id)!.id },
       });
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       await screen.findByRole("button", { name: /STOP/ });
 
       expect(recorderInputId).toBe("interface-input-2");
@@ -962,7 +964,7 @@ describe("arrangement REC wiring", () => {
       fireEvent.change(screen.getByLabelText("Captured channel 4 destination"), {
         target: { value: doc.tracks[3].id },
       });
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       await screen.findByRole("button", { name: /STOP/ });
 
       expect(requestedChannelCount).toBe(4);
@@ -994,11 +996,11 @@ describe("arrangement REC wiring", () => {
     fireEvent.change(screen.getByLabelText("Arm track for recording"), {
       target: { value: doc.tracks[0].id },
     });
-    fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
 
     await screen.findByRole("alert");
     // No state stuck on "recording" — REC button is back.
-    expect(screen.getByRole("button", { name: "● REC" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Record audio input onto the armed track" })).toBeTruthy();
   });
 
   it("REC with a browser lacking capture support keeps the store untouched", async () => {
@@ -1014,7 +1016,7 @@ describe("arrangement REC wiring", () => {
     fireEvent.change(screen.getByLabelText("Arm track for recording"), {
       target: { value: doc.tracks[0].id },
     });
-    fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
     await screen.findByRole("alert");
 
     expect(executeSpy).not.toHaveBeenCalled();
@@ -1049,7 +1051,7 @@ describe("arrangement REC wiring", () => {
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
         target: { value: doc.tracks[0].id },
       });
-      const recButton = screen.getByRole("button", { name: "● REC" });
+      const recButton = screen.getByRole("button", { name: "Record audio input onto the armed track" });
       act(() => {
         fireEvent.click(recButton);
         fireEvent.click(recButton);
@@ -1060,7 +1062,7 @@ describe("arrangement REC wiring", () => {
       // second REC click has nothing to hit — exactly one start runs.
       const cancelButton = await screen.findByRole("button", { name: "Cancel audio input startup" });
       expect(cancelButton).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "● REC" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Record audio input onto the armed track" })).not.toBeInTheDocument();
       await vi.waitFor(() => expect(startCount).toBe(1));
 
       unblockStart();
@@ -1096,7 +1098,7 @@ describe("arrangement REC wiring", () => {
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
         target: { value: doc.tracks[0].id },
       });
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       unmount();
       await vi.dynamicImportSettled();
 
@@ -1142,7 +1144,7 @@ describe("arrangement REC wiring", () => {
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
         target: { value: doc.tracks[0].id },
       });
-      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
       expect(await screen.findByRole("alert")).toHaveTextContent(/committed PCM blocks remain in recovery storage/i);
       expect(services.recordingRecovery.finalize).toHaveBeenCalledOnce();
@@ -1208,7 +1210,7 @@ describe("arrangement REC wiring", () => {
         fireEvent.change(screen.getByLabelText("Arm track for recording"), {
           target: { value: doc.tracks[0].id },
         });
-        fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+        fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
         fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
 
         expect(await screen.findByText(/aligned onto its entry/i)).toBeInTheDocument();

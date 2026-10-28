@@ -11,6 +11,13 @@
 
 ---
 
+## Implementation follow-up (2026-10-28)
+
+- **F-04 (record target):** the transport REC now renders a visible **MIDI** target label, the arrangement capture button reads **● AUDIO REC**, and the TopBar shows a global **AUDIO ARMED / AUDIO REC** chip (fed by the existing session recording surface) whenever an audio track is armed or live. The two recorders remain separate controls — this pass makes the target explicit rather than pretending the transport can start audio capture from every panel.
+- **F-05 (agent authority):** the MCP delete toggle is now a shared component with a two-step enable (scope-named confirmation, focus defaults to CANCEL; disabling is immediate). Both MCP config surfaces use it, and the TopBar shows a persistent **AGENT DELETE ON** / **AGENT EDIT ON** badge from the same reactive flag store, so a persisted consent is visible from every panel. Covered by `tests/ui/McpAuthorityToggles.test.tsx` and the TopBar record/badge specs; seam `mcp-destructive-consent`.
+
+---
+
 ## 1. Executive assessment
 
 **Strongest UX areas**

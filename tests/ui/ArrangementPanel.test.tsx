@@ -157,7 +157,7 @@ describe("ArrangementPanel", () => {
       await user.click(screen.getByText("INDEPENDENT INPUT STREAMS · 1"));
       await user.click(screen.getByRole("button", { name: "Add independent input stream" }));
 
-      const recordButton = screen.getByRole("button", { name: "● REC" });
+      const recordButton = screen.getByRole("button", { name: "Record audio input onto the armed track" });
       expect(recordButton).toBeDisabled();
 
       await screen.findAllByRole("option", { name: "Volt Input 1" });
@@ -567,5 +567,13 @@ describe("ArrangementPanel — SCENE SECS (wall-clock authoring)", () => {
     const marks = [...container.querySelectorAll(".arr-ruler-mark")].map((m) => m.textContent);
     expect(marks).toContain("4.0s");
     expect(marks).toContain("11.7s");
+  });
+});
+
+describe("ArrangementPanel — explicit audio record target", () => {
+  it("labels its capture button as AUDIO REC", () => {
+    renderWithContext(<ArrangementPanel />);
+    const button = screen.getByRole("button", { name: "Record audio input onto the armed track" });
+    expect(button).toHaveTextContent("AUDIO REC");
   });
 });
