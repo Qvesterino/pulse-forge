@@ -981,6 +981,12 @@ export async function openProject(
     getContentStartTick: () => (transport.playing ? transport.anchorTickBeforePreRoll() : null),
     beginUndoFrame: (label) => store.beginUndoFrame(label),
     endUndoFrame: () => store.endUndoFrame(),
+    // CF-07: the TopBar listens for this and discloses the recovery ("one
+    // Ctrl+Z brings it back") at the moment REPLACE wipes the pattern.
+    onReplaceClear: () => {
+      if (typeof window === "undefined") return;
+      window.dispatchEvent(new CustomEvent("pf-pattern-replace-cleared"));
+    },
   });
 
   // Selected-track bridge: App re-points getSelectedTrackId to the workspace

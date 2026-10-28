@@ -16,6 +16,7 @@ function setup(overrides?: { doc?: ProjectDocument }) {
   let tick = 0;
   const beginUndoFrame = vi.fn();
   const endUndoFrame = vi.fn();
+  const onReplaceClear = vi.fn();
   const recorder = new PatternRecorder({
     getDoc: () => doc,
     execute: (cmd) => executed.push(cmd),
@@ -26,12 +27,14 @@ function setup(overrides?: { doc?: ProjectDocument }) {
     isPlaying: () => true,
     beginUndoFrame,
     endUndoFrame,
+    onReplaceClear,
   });
   const api = {
     recorder,
     executed,
     beginUndoFrame,
     endUndoFrame,
+    onReplaceClear,
     setTick: (t: number) => {
       tick = t;
     },
@@ -108,6 +111,37 @@ describe("PatternRecorder", () => {
     setTick(0);
     recorder.drumHit(drumPadId, 0.5);
     expect(executed.filter((c) => c.type === "prepareRecordPattern")).toHaveLength(1);
+  });
+
+  it("CF-07: fires the disclosure hook at the moment REPLACE wipes the pattern, once per pass", () => {
+    // Scenario A — mode pre-selected, the clear lands at ARM time.
+    const armedSetup = setup();
+    armedSetup.recorder.setMode("replace");
+    // Not armed yet: selecting REPLACE alone touches nothing.
+    expect(armedSetup.onReplaceClear).not.toHaveBeenCalled();
+    armedSetup.recorder.setArmed(true);
+    expect(armedSetup.onReplaceClear).toHaveBeenCalledTimes(1);
+    armedSetup.recorder.drumHit(drumPadId, 0.8);
+    expect(armedSetup.onReplaceClear).toHaveBeenCalledTimes(1);
+
+    // Scenario B — armed in overdub, then the mode flips mid-pass.
+    const flipSetup = setup();
+    flipSetup.recorder.setArmed(true);
+    expect(flipSetup.onReplaceClear).not.toHaveBeenCalled();
+    flipSetup.recorder.setMode("replace");
+    expect(flipSetup.onReplaceClear).toHaveBeenCalledTimes(1);
+    // Flipping back and forth within the SAME pass must not re-fire: the
+    // wipe already happened, a second disclosure would describe nothing.
+    flipSetup.recorder.setMode("overdub");
+    flipSetup.recorder.setMode("replace");
+    expect(flipSetup.onReplaceClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("CF-07: overdub never fires the disclosure hook (NEGATIVE)", () => {
+    const { recorder, onReplaceClear } = setup();
+    recorder.setArmed(true);
+    recorder.drumHit(drumPadId, 0.8);
+    expect(onReplaceClear).not.toHaveBeenCalled();
   });
 
   it("flushes held notes as step-length notes when disarmed mid-note", () => {

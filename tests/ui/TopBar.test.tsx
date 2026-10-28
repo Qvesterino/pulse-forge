@@ -566,3 +566,29 @@ describe("TopBar — explicit record target + agent authority badge", () => {
     expect(screen.queryByText(/AGENT .* ON/)).not.toBeInTheDocument();
   });
 });
+describe("TopBar — REPLACE clear disclosure (CF-07)", () => {
+  it("discloses the recovery at the moment the pattern recorder reports a replace clear", () => {
+    const services = mockServices();
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    // Silent before the event…
+    expect(screen.queryByText(/REPLACE cleared the pattern/)).toBeNull();
+    // …then the recorder's hook fires (via services → window event) and the
+    // recovery is named where the record controls live.
+    act(() => {
+      window.dispatchEvent(new CustomEvent("pf-pattern-replace-cleared"));
+    });
+    const hint = screen.getByText(/REPLACE cleared the pattern/);
+    expect(hint.closest(".mode-hint")).not.toBeNull();
+    expect(hint.closest('[role="status"]')).not.toBeNull();
+    expect(hint.textContent).toContain("Ctrl+Z");
+  });
+
+  it("NEGATIVE: arming in overdub (the real record button) produces no disclosure", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    await user.click(screen.getByRole("button", { name: "Record MIDI to pattern" }));
+    expect(services.patternRecorder.setArmed).toHaveBeenCalledWith(true);
+    expect(screen.queryByText(/REPLACE cleared the pattern/)).toBeNull();
+  });
+});

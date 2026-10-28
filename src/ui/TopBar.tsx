@@ -318,6 +318,24 @@ export function TopBar({
     setModeHint(hint);
   };
 
+  // CF-07: the pattern recorder fires this the moment REPLACE wipes the
+  // active pattern (at arm, on a mode switch while armed, or on the first
+  // captured hit — including from the Intent route). Silent destruction
+  // during a performance reads as lost work; the disclosure names the
+  // recovery — one undo takes the whole pass frame back, clear included,
+  // even mid-take (ProjectStore.undo seals the open frame first).
+  useEffect(() => {
+    const onReplaceCleared = () => {
+      showModeHint({
+        text: "REPLACE cleared the pattern — one Ctrl+Z brings it back",
+        offerRewind: false,
+      });
+    };
+    window.addEventListener("pf-pattern-replace-cleared", onReplaceCleared);
+    return () => window.removeEventListener("pf-pattern-replace-cleared", onReplaceCleared);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- showModeHint closes over stable refs/setState only
+  }, []);
+
   const togglePlayMode = () => {
     if (playMode === "pattern") {
       const currentDoc = services.store.getDoc();

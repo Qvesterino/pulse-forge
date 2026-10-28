@@ -129,6 +129,15 @@
       "negativeSpec": "NEGATIVE: Tab on a focused control (a track tab button) is not intercepted"
     },
     {
+      "id": "pattern-replace-disclosure",
+      "status": "COVERED",
+      "entryPoint": "src/midi/patternRecorder.ts runReplaceClear → services onReplaceClear → window event → TopBar mode-hint",
+      "note": "CF-07: the REPLACE wipe stays friction-free (deliberate FL behavior) but is no longer silent — at the moment the pattern is wiped (at arm, on a mode flip while armed, or on the first captured hit, from any surface including the Intent route) the TopBar discloses the recovery: one Ctrl+Z brings the pattern back, even mid-take (ProjectStore.undo seals the open pass frame first). Trigger side covered by tests/midi-pattern-recorder.test.ts (once per pass, overdub silent); the visible seam is this spec.",
+      "spec": "tests/ui/TopBar.test.tsx",
+      "seamEvent": "pf-pattern-replace-cleared",
+      "negativeSpec": "NEGATIVE: arming in overdub (the real record button) produces no disclosure"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

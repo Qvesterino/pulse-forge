@@ -27,6 +27,13 @@ export interface PatternRecorderDeps {
   /** Undo frame — the whole record pass collapses into ONE history entry. */
   beginUndoFrame: (label?: string) => void;
   endUndoFrame: () => void;
+  /**
+   * CF-07: fired at the moment REPLACE wipes the active pattern (at arm, on a
+   * mode switch while armed, or lazily on the first captured hit). The app
+   * discloses the recovery there — the wipe itself is deliberate FL-style
+   * behavior and stays friction-free.
+   */
+  onReplaceClear?: () => void;
 }
 
 const QUANTIZE_TICKS: Record<RecordQuantize, number> = {
@@ -200,5 +207,10 @@ export class PatternRecorder {
   private runReplaceClear(): void {
     this.replaceCleared = true;
     this.deps.execute(prepareRecordPattern(this.deps.getDoc()));
+    // CF-07: the wipe is deliberate, but silent destruction during a
+    // performance reads as lost work — the app discloses the recovery at the
+    // moment it happened (one undo takes the whole pass frame back, clear
+    // included, even mid-take).
+    this.deps.onReplaceClear?.();
   }
 }
