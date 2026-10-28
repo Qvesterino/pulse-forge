@@ -40,7 +40,7 @@ function docWithAutomatedFx(): { doc: ProjectDocument; trackId: string; fxId: st
 
 describe("direct param tools disclose automation masking (E5)", () => {
   it("kyx_plugin_param set under a live lane names the lane and the sources", async () => {
-    const { doc, trackId, fxId } = docWithAutomatedFx();
+    const { doc, trackId } = docWithAutomatedFx();
     const host = createHeadlessMcpHost({ document: doc });
     const result = await host.call("kyx_plugin_param", {
       op: "set",

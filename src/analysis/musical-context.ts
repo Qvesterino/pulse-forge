@@ -275,7 +275,9 @@ function sumOmitted(value: unknown, key: string): number {
   if (value === null || typeof value !== "object") return 0;
   const record = value as Record<string, unknown>;
   const own = typeof record[key] === "number" ? (record[key] as number) : 0;
-  return own + Object.values(record).reduce((sum, item) => sum + sumOmitted(item, key), 0);
+  // `Object.values` of an unknown-valued record is `unknown[]`, so the reduce
+  // has to be told that the accumulator is a number - it starts at 0.
+  return own + Object.values(record).reduce<number>((sum, item) => sum + sumOmitted(item, key), 0);
 }
 
 function selectAutomationPoints(
@@ -304,8 +306,10 @@ function takeAutomationPoints<T extends { tick: number }>(
   return { points: shown, omitted: Math.max(0, sorted.length - shown.length) };
 }
 
-function effectSummary(effects: readonly EffectInstance[]) {
-  const shown = effects.slice(0, MAX_EFFECTS_PER_CHAIN);
+function effectSummary(effects: readonly EffectInstance[] | undefined) {
+  // A master may carry no effects at all - an absent chain is an empty chain.
+  const all = effects ?? [];
+  const shown = all.slice(0, MAX_EFFECTS_PER_CHAIN);
   return {
     effects: shown.map((effect) => {
       const params = Object.entries(effect.params);
@@ -319,7 +323,7 @@ function effectSummary(effects: readonly EffectInstance[]) {
         ...(effect.outputTrimDb === undefined ? {} : { outputTrimDb: effect.outputTrimDb }),
       };
     }),
-    omittedEffects: Math.max(0, effects.length - MAX_EFFECTS_PER_CHAIN),
+    omittedEffects: Math.max(0, all.length - MAX_EFFECTS_PER_CHAIN),
     omittedEffectParams: shown.reduce(
       (total, effect) => total + Math.max(0, Object.keys(effect.params).length - MAX_PARAMS_PER_EFFECT),
       0,
