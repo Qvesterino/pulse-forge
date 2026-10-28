@@ -6844,6 +6844,165 @@ export const MCP_TOOL_DEFS = [
       idempotentHint: false,
     },
   },
+  {
+    name: "kyx_performance",
+    description:
+      "Performance DOCUMENT surface (ADR 0077): Live Sets and macros an agent can PREPARE while a human PERFORMS. list shows sets (pads, loop length, active) + macros (id, name, value, mappings); createSet/duplicateSet/renameSet/selectSet build and organize layouts; setOptions wires the destination track (audio-capable) and loopBars (1|2|4|8|16); assignPad/clearPad fill 1-based slots with user-library audio (bufferId + name); setMacro moves a macro's 0..1 value and renameMacro renames it. deleteSet is D4-gated. There is deliberately NO launch/trigger op: pad launches, loop toggling and jam input change what the audience hears NOW and stay human-only — preparation is the agent's job, performance is the human's.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: [
+            "list",
+            "createSet",
+            "duplicateSet",
+            "deleteSet",
+            "renameSet",
+            "selectSet",
+            "setOptions",
+            "assignPad",
+            "clearPad",
+            "listMacros",
+            "setMacro",
+            "renameMacro",
+          ],
+        },
+        setId: {
+          type: "string",
+          maxLength: 128,
+          description: "Live Set id (from op:list)",
+        },
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: 64,
+          description: "For createSet/renameSet",
+        },
+        slot: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description: "1-based pad slot (1..16)",
+        },
+        bufferId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "For assignPad — user-library audio buffer id",
+        },
+        padName: {
+          type: "string",
+          minLength: 1,
+          maxLength: 64,
+          description: "For assignPad — the pad's display name",
+        },
+        padLoop: {
+          type: "boolean",
+          description: "For assignPad — repeat the source for the set's launch length",
+        },
+        padBpm: {
+          type: "number",
+          minimum: 20,
+          maximum: 300,
+          description: "For assignPad — source loop tempo",
+        },
+        trackId: {
+          type: "string",
+          maxLength: 128,
+          description: "For setOptions — audio-capable destination track",
+        },
+        loopBars: {
+          type: "integer",
+          enum: [1, 2, 4, 8, 16],
+          description: "For setOptions — launch loop length",
+        },
+        macroId: {
+          type: "string",
+          maxLength: 128,
+          description: "Macro id (from op:list)",
+        },
+        value: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "For setMacro — the macro value (clamped)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        agentId: {
+          type: "string",
+          maxLength: 32,
+          description:
+            "Optional per-call agent identity (lowercase letters, digits, dashes). The relay token is the real gate — this makes the audit log, history-label attribution and foreign-work undo consent LEGIBLE when several agents share one transport. Declared by the caller, so treat it as a label, not an auth boundary.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+      required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        op: {
+          type: "string",
+        },
+        setId: {
+          type: "string",
+        },
+        macroId: {
+          type: "string",
+        },
+        sets: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 32,
+        },
+        macros: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+          maxItems: 64,
+        },
+      },
+      required: ["status", "stage"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+  },
 ];
 
 /**
