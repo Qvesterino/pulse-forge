@@ -116,26 +116,31 @@ jobs:
           set +e
           npm run test:expectations 2>&1 | tee /tmp/vitest.log
           status=${PIPESTATUS[0]}
+          # Vitest colours its output, and the ANSI escapes sit BETWEEN the
+          # reporter's layout and the words — a grep for "FAIL" never matched
+          # and the annotation arrived with an empty failure section. Strip
+          # them first, then grep the plain text.
+          sed -e 's/\x1b\[[0-9;]*m//g' /tmp/vitest.log > /tmp/vitest.plain.log
           if [ "$status" -ne 0 ]; then
             {
               echo "### npm run test:expectations FAILED (exit $status)"
               echo '```'
-              grep -E 'suite run:|NEW REDS|CURED \(|LEDGER PROBLEMS|ledger matches reality' /tmp/vitest.log | head -20 || true
-              echo '--- vitest failures ---'
-              grep -E '^[[:space:]]*FAIL[[:space:]]' /tmp/vitest.log | head -40 || true
-              echo '--- ledger entries ---'
-              grep -E '^ +- ' /tmp/vitest.log | head -60 || true
+              grep -E 'suite run:|NEW REDS|CURED \(|LEDGER PROBLEMS|ledger matches reality' /tmp/vitest.plain.log | head -20 || true
+              echo '--- failure text ---'
+              grep -aE 'AssertionError|^ *(Error|TypeError|ReferenceError):|FAIL ' /tmp/vitest.plain.log | head -24 || true
+              echo '--- ledger entries (the failure set) ---'
+              grep -E '^ +- ' /tmp/vitest.plain.log | head -60 || true
               echo '--- tail ---'
               tail -30 /tmp/vitest.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             printf '::error title=unit tests failed (exit %s)::%s\n' "$status" \
-              "$( { grep -E 'suite run:|NEW REDS|CURED \(|LEDGER PROBLEMS|ledger matches reality' /tmp/vitest.log | head -20; \
-                   echo '--- vitest failures ---'; \
-                   grep -E '^[[:space:]]*FAIL[[:space:]]' /tmp/vitest.log | head -40; \
-                   echo '--- ledger entries ---'; \
-                   grep -E '^ +- ' /tmp/vitest.log | head -60; } \
-                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 60000)"
+              "$( { grep -E 'suite run:|NEW REDS|CURED \(|LEDGER PROBLEMS|ledger matches reality' /tmp/vitest.plain.log | head -20; \
+                   echo '--- failure text ---'; \
+                   grep -aE 'AssertionError|^ *(Error|TypeError|ReferenceError):|FAIL ' /tmp/vitest.plain.log | head -24; \
+                   echo '--- ledger entries (the failure set) ---'; \
+                   grep -E '^ +- ' /tmp/vitest.plain.log | head -60; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
           fi
           exit $status
         env:
@@ -282,9 +287,15 @@ jobs:
               tail -30 /tmp/browser.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            # GitHub caps an error annotation at 4096 BYTES (measured: a
+            # 4032-character message with 3-byte characters arrived as
+            # exactly 4096 bytes, and raising the budget changed nothing).
+            # So the message has to carry the identifying information FIRST:
+            # the failing-case labels, then the diagnostics. A tail-first
+            # message loses the cases at its end.
             printf '::error title=browser audio checks failed (exit %s)::%s\n' "$status" \
               "$( { grep -E 'FAIL' /tmp/browser.log | head -12; echo '--- tail ---'; tail -20 /tmp/browser.log; } \
-                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 60000)"
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
           fi
           exit $status
       # Real-browser AI-control gate: the persisted-save receipt through
