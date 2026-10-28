@@ -195,7 +195,26 @@ jobs:
       # Before this job these gates only ran when a person remembered to run
       # them, which made them a tool for one human, not a gate for the product
       # (STUDIO-OPTIMIZATION-PLAN.md §3.5).
-      - run: npm run gate
+      #
+      # The failure text goes to the job summary AND to an error annotation:
+      # a failed job's log sits behind a login, and a gate whose verdict
+      # cannot be read is a gate nobody can act on.
+      - name: Run npm run gate
+        run: |
+          set +e
+          npm run gate 2>&1 | tee /tmp/gate.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run gate FAILED (exit $status)"
+              echo '```'
+              tail -60 /tmp/gate.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=UI gates failed (exit %s)::%s\n' "$status" \
+              "$(tail -60 /tmp/gate.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+          fi
+          exit $status
 
   test-browser:
     name: Browser audio checks (Chromium)
@@ -210,7 +229,25 @@ jobs:
       # verify-browser.mjs spins up Vite + Playwright Chromium. Playwright
       # auto-installs the browser on first run.
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      # The failure text goes to the job summary AND to an error annotation —
+      # this gate is the one that says WHICH console error or missing asset
+      # broke the boot, and a failed job's log sits behind a login.
+      - name: Run npm run test:browser
+        run: |
+          set +e
+          npm run test:browser 2>&1 | tee /tmp/browser.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run test:browser FAILED (exit $status)"
+              echo '```'
+              tail -60 /tmp/browser.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=browser audio checks failed (exit %s)::%s\n' "$status" \
+              "$(tail -60 /tmp/browser.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+          fi
+          exit $status
       # Real-browser AI-control gate: the persisted-save receipt through
       # IndexedDB (kyx_save). The measured DSP read-back gate is run locally
       # (`npm run verify:param-readback`, Node 24 type-stripped .mts).

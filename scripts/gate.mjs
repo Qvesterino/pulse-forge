@@ -167,7 +167,12 @@ const wantedPort = portIndex >= 0 ? Number(argv[portIndex + 1]) : 5291;
  * log instead of being discovered by a failing number.
  */
 const envUrl = process.env.KYX_GATE_URL ?? null;
-const url = externalUrl ?? envUrl;
+// `let`, not `const`: when the gate starts its OWN preview (the CI path — no
+// --url, no KYX_GATE_URL) it assigns the served address below. With `const`
+// that assignment threw "Assignment to constant variable", and the gate
+// crashed BEFORE it measured anything: the job was red with a harness
+// TypeError instead of a verdict about the product.
+let url = externalUrl ?? envUrl;
 
 let preview = null;
 
