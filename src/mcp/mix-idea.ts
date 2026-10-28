@@ -38,6 +38,8 @@ export interface MixIdeaStep {
   device: string;
   /** Compact parameter read-out, e.g. "drive 45% · tone 5250 Hz". */
   params: string;
+  /** Exact parameter values before and after this planned document change. */
+  changes: Array<{ param: string; before: number | null; after: number }>;
   /** The concept or goal that caused this step — the WHY. */
   reason: string;
 }
@@ -68,15 +70,17 @@ function trackNameOf(doc: ProjectDocument, trackId: string): string {
   return doc.tracks.find((t) => t.id === trackId)?.name ?? trackId;
 }
 
+function formatParamValue(key: string, value: number): string {
+  if (/hz$|cutoff|frequency|tone/i.test(key)) return `${Math.round(value)} Hz`;
+  if (/mix|drive|attack|sustain|amount|width/i.test(key)) return `${Math.round(value * 100)}%`;
+  return `${Math.round(value * 100) / 100}`;
+}
+
 /** "drive 45% · tone 5250 Hz" — percent/Hz units where the key makes them obvious. */
 function formatParams(params: Record<string, number>): string {
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(params)) {
-    if (!Number.isFinite(value)) continue;
-    if (/hz$|cutoff|frequency|tone/i.test(key)) parts.push(`${key} ${Math.round(value)} Hz`);
-    else if (/mix|drive|attack|sustain|amount|width/i.test(key)) parts.push(`${key} ${Math.round(value * 100)}%`);
-    else parts.push(`${key} ${Math.round(value * 100) / 100}`);
-  }
+  const parts = Object.entries(params)
+    .filter(([, value]) => Number.isFinite(value))
+    .map(([key, value]) => `${key} ${formatParamValue(key, value)}`);
   return parts.length > 0 ? parts.join(" · ") : "defaults";
 }
 
@@ -101,13 +105,90 @@ interface PlannedAction {
 }
 
 function toSteps(doc: ProjectDocument, actions: PlannedAction[]): MixIdeaStep[] {
-  return actions.map((action) => ({
-    trackId: action.trackId,
-    track: trackNameOf(doc, action.trackId),
-    device: deviceName(action.type),
-    params: formatParams(action.params),
-    reason: "concept mapping",
-  }));
+  const stagedParams = new Map<string, Map<string, number>>();
+  const stagedEffects = new Set<string>();
+  return actions.map((action) => {
+    const key = JSON.stringify([action.trackId, action.type]);
+    let current = stagedParams.get(key);
+    let hasEffect = stagedEffects.has(key);
+    if (!current) {
+      const existing = doc.tracks
+        .find((track) => track.id === action.trackId)
+        ?.effects.find((effect) => effect.type === action.type);
+      current = new Map(Object.entries(existing?.params ?? {}));
+      stagedParams.set(key, current);
+      hasEffect = existing !== undefined;
+    }
+    const changes = Object.entries(action.params).flatMap(([param, after]) => {
+      const before = current!.has(param) ? current!.get(param)! : null;
+      current!.set(param, after);
+      return before === after ? [] : [{ param, before, after }];
+    });
+    const step: MixIdeaStep = {
+      trackId: action.trackId,
+      track: trackNameOf(doc, action.trackId),
+      device: `${deviceName(action.type)}${hasEffect ? "" : " (new)"}`,
+      params: formatParams(action.params),
+      changes,
+      reason: "concept mapping",
+    };
+    stagedEffects.add(key);
+    return step;
+  });
+}
+
+function padGainSteps(before: ProjectDocument, after: ProjectDocument): MixIdeaStep[] {
+  const afterTrack = after.tracks.find((track) => track.kind === "drum");
+  if (!afterTrack || afterTrack.kind !== "drum") return [];
+  const beforeTrack = before.tracks.find((track) => track.id === afterTrack.id);
+  if (!beforeTrack || beforeTrack.kind !== "drum") return [];
+  return afterTrack.pads.flatMap((pad) => {
+    const previous = beforeTrack.pads.find((candidate) => candidate.id === pad.id);
+    if (!previous || previous.gain === pad.gain) return [];
+    return [
+      {
+        trackId: afterTrack.id,
+        track: trackNameOf(after, afterTrack.id),
+        device: `Pad gain · ${pad.name}`,
+        params: `gain ${previous.gain} → ${pad.gain}`,
+        changes: [{ param: "gain", before: previous.gain, after: pad.gain }],
+        reason: "element-level production intent",
+      },
+    ];
+  });
+}
+
+function effectChangesForTrack(
+  before: ProjectDocument,
+  after: ProjectDocument,
+  trackId: string,
+): Array<{ param: string; before: number | null; after: number }> {
+  const beforeTrack = before.tracks.find((track) => track.id === trackId);
+  const afterTrack = after.tracks.find((track) => track.id === trackId);
+  if (!afterTrack) return [];
+  const used = new Set<string>();
+  const changes: Array<{ param: string; before: number | null; after: number }> = [];
+  for (const effect of afterTrack.effects) {
+    const previous =
+      beforeTrack?.effects.find((candidate) => candidate.id === effect.id) ??
+      beforeTrack?.effects.find((candidate) => candidate.type === effect.type && !used.has(candidate.id));
+    if (previous) used.add(previous.id);
+    for (const [param, afterValue] of Object.entries(effect.params)) {
+      const beforeValue = previous?.params[param] ?? null;
+      if (beforeValue !== afterValue) changes.push({ param, before: beforeValue, after: afterValue });
+    }
+  }
+  return changes;
+}
+
+function formatChanges(changes: readonly { param: string; before: number | null; after: number }[]): string {
+  return changes
+    .map((change) => {
+      const before = change.before === null ? "unset" : formatParamValue(change.param, change.before);
+      const after = formatParamValue(change.param, change.after);
+      return `${change.param} ${before} → ${after}`;
+    })
+    .join(" · ");
 }
 
 /**
@@ -160,15 +241,17 @@ export function planMixIdea(doc: ProjectDocument, idea: string, explicitTarget?:
       const warnings = (padAdjustments ?? []).map(
         (pad) => `pad ${pad.family.replace(/s$/, "")} gain ×${Math.round(pad.factor * 100) / 100} (element-level)`,
       );
+      const command = applyProductionIntentCommand(doc, intent);
+      const plannedDoc = command.execute(doc);
       return {
         ok: true,
         interpreter: "production",
         targets: [...intent.targets],
         goals: intent.goals.map((goal) => goal.concept),
-        steps: toSteps(doc, plan.actions),
+        steps: [...toSteps(doc, plan.actions), ...padGainSteps(doc, plannedDoc)],
         label: plan.label,
         warnings,
-        command: applyProductionIntentCommand(doc, intent),
+        command,
       };
     } catch (error) {
       // The planner throws honestly when a named target has no track —
@@ -199,13 +282,21 @@ export function planMixIdea(doc: ProjectDocument, idea: string, explicitTarget?:
     for (const trackId of trackIds) {
       try {
         const command = applyEffectIntentOnTrack(working, trackId, assistant.intent);
+        const beforeStep = working;
         working = command.execute(working);
         label = command.label;
+        const beforeTrack = beforeStep.tracks.find((track) => track.id === trackId);
+        const afterTrack = working.tracks.find((track) => track.id === trackId);
+        const createdDevice =
+          afterTrack?.effects.some((effect) =>
+            beforeTrack?.effects.every((previous) => previous.id !== effect.id || previous.type !== effect.type),
+          ) ?? false;
         steps.push({
           trackId,
           track: trackNameOf(doc, trackId),
-          device: "assistant (find-or-add)",
+          device: `assistant (find-or-add${createdDevice ? "; adds device" : "; updates device"})`,
           params: assistant.intent.goals.map((goal) => goal.goal).join(" + "),
+          changes: effectChangesForTrack(beforeStep, working, trackId),
           reason: "assistant curated mapping",
         });
       } catch (error) {
@@ -240,7 +331,8 @@ export function formatMixIdea(plan: MixIdeaPlan, applied: boolean): string {
     ? `Applied "${plan.label}" — ${plan.steps.length} device step${plan.steps.length === 1 ? "" : "s"} as ONE undo (kyx_undo reverts the whole idea).`
     : "PLAN — nothing applied yet. Re-run with apply:true to land it as ONE undo step.";
   const lines = plan.steps.map(
-    (step, index) => `  ${index + 1}. ${step.track}: ${step.device} — ${step.params} (${step.reason})`,
+    (step, index) =>
+      `  ${index + 1}. ${step.track}: ${step.device} — ${formatChanges(step.changes) || step.params} (${step.reason})`,
   );
   for (const warning of plan.warnings) lines.push(`  + ${warning}`);
   return (

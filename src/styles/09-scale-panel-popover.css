@@ -1124,6 +1124,26 @@
   color: var(--text-dim, #8a8f98);
 }
 
+.mix-preview-changes,
+.mix-preview-warnings {
+  max-height: 140px;
+  margin: 0;
+  padding-left: 20px;
+  overflow: auto;
+  font-size: 11px;
+  color: var(--text-dim, #8a8f98);
+}
+
+.mix-preview-changes ul {
+  margin: 3px 0 6px;
+  padding-left: 18px;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+
+.mix-preview-warnings {
+  color: var(--accent);
+}
+
 .mix-preview-actions {
   display: flex;
   gap: 8px;

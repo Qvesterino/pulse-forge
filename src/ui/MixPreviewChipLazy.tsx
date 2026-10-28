@@ -186,6 +186,33 @@ export function MixPreviewChipLazy() {
           {visibleLane.revisionAfterRender ?? "unknown"} ({visibleLane.freshness ?? "unknown"})
         </span>
       )}
+      {visibleLane && visibleLane.steps.length > 0 && (
+        <ol className="mix-preview-changes" aria-label="Planned parameter changes">
+          {visibleLane.steps.map((step, index) => (
+            <li key={`${step.trackId}:${step.device}:${index}`}>
+              <strong>{step.track}</strong> · {step.device}
+              {step.changes.length > 0 ? (
+                <ul>
+                  {step.changes.map((change) => (
+                    <li key={`${change.param}:${change.before ?? "unset"}:${change.after}`}>
+                      {change.param}: {change.before === null ? "unset" : change.before} → {change.after}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span> · {step.params}</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {visibleLane && visibleLane.warnings.length > 0 && (
+        <ul className="mix-preview-warnings" aria-label="Preview caveats">
+          {visibleLane.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
       {verification ? (
         <div className="mix-preview-stats" role="status">
           fresh render: {verification.status} · preview {formatLufs(verification.previewAfterLufs)} · measured after{" "}

@@ -24,6 +24,18 @@ MENTAL MODEL
 THE CORE LOOP
   read (kyx://project/* resources or kyx_state) -> act -> verify
 
+WORKFLOW: SELECTED SECTION REVIEW (READ-ONLY)
+  kyx_context {fromBar,toBar,goals,protectedElements} (or ticks).
+  renderScope:"all" only for audio evidence. Give ≤3 findings: observation vs
+  interpretation, evidenceIds, tracks/ticks, options/tradeoffs, confidence,
+  A/B check. Label facts/measurements/estimates/preferences; mark stale,
+  unknown or truncated evidence. Read-only; no edits.
+
+WORKFLOW: SECTION EXPERIMENT
+  After the user chooses an idea, call kyx_mix_idea {idea,target,preview:true,
+  startTick,endTick}. Listen to level-matched A/B; apply only after approval.
+  Any edit stales the preview; rerun before applying.
+
 WORKFLOW: WHOLE TRACK IN ONE CALL
   kyx_song {genre, length?, mix?, loudness?} — generates the genre form
   (patterns per section), lays out scenes/clips/markers and applies the
@@ -60,21 +72,10 @@ WORKFLOW: SOUND SELECTION
   {op:'loadPreset', presetName, family} folds over EVERY track (1 undo).
 
 WORKFLOW: MIX PASS ON EXISTING MATERIAL
-  kyx_state {subject: mixer} — the WHOLE board in one call (faders, pan,
-  mute/solo, presets, FX, sends, master) with a machine-readable data
-  twin. kyx_mix for the whole-gesture profile, kyx_fx per family,
-  kyx_tracks {op: setGain/setPan} for surgical fader moves, or kyx_intent
-  with production concepts ("make the bass deeper") — free-text asks that
-  the deterministic layer misses fall to the LOCAL INTENT MODEL (answers
-  arrive prefixed 🤖; trust them like read-backs). THEN EVIDENCE, NOT
-  VIBES: kyx_render_summary — per-strip LUFS/peak/crest + master vs the
-  −14 streaming reference + relative deltas. Make ONE move, re-run the
-  summary, compare the numbers. FOR THE WHY, not just the numbers:
-  kyx_diagnose_mix returns attributed findings (who owns the low end,
-  which strip is buried or over-compressed, sub collision, clipping)
-  WITH a suggestedActions list of ready tool calls — apply them, re-run
-  the diagnosis, compare. kyx_meter / kyx_loudness for live or
-  target-landing checks.
+  kyx_state {subject:mixer} reads the board. Use kyx_mix/kyx_fx/kyx_tracks
+  gain/pan/kyx_intent to change. Verify with kyx_render_summary or
+  kyx_diagnose_mix, then re-run. Metrics do not replace a level-matched listen;
+  kyx_meter / kyx_loudness check live levels.
 
 LISTENING LOOP: kyx_audio_preview {bars: 2} attaches up to 4 opening bars as
 a WAV (no edit/download). Pair it with render_summary/diagnose_mix.

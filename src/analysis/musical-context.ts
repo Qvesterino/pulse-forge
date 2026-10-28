@@ -110,6 +110,10 @@ export interface MusicalContextSnapshotV1 {
   assistantContract: {
     mode: "read_only_production_notes";
     citeEvidenceIds: true;
+    answerShape: {
+      maxFindings: 3;
+      fields: string[];
+    };
     rules: string[];
   };
   coverage: {
@@ -329,13 +333,11 @@ function trackEvidence(track: Track, doc: ProjectDocument) {
   const allSends = Object.entries(track.sends)
     .filter(([, amount]) => amount !== 0)
     .sort(([left], [right]) => left.localeCompare(right));
-  const sends = allSends
-    .slice(0, MAX_SENDS_PER_TRACK)
-    .map(([returnId, amount]) => ({
-      returnId,
-      returnName: doc.returns.find((item) => item.id === returnId)?.name ?? null,
-      amount,
-    }));
+  const sends = allSends.slice(0, MAX_SENDS_PER_TRACK).map(([returnId, amount]) => ({
+    returnId,
+    returnName: doc.returns.find((item) => item.id === returnId)?.name ?? null,
+    amount,
+  }));
   const base = {
     id: track.id,
     name: track.name,
@@ -860,11 +862,25 @@ export function buildMusicalContextSnapshot(
     assistantContract: {
       mode: "read_only_production_notes",
       citeEvidenceIds: true,
+      answerShape: {
+        maxFindings: 3,
+        fields: [
+          "observation",
+          "interpretation",
+          "evidenceIds",
+          "affectedTracksAndRange",
+          "optionsAndTradeoffs",
+          "confidence",
+          "listenForInAB",
+        ],
+      },
       rules: [
         "Separate project facts, measurements, estimates and user preferences; cite the evidence id for each claim.",
+        "Return at most three prioritized findings. For each, separate observation from interpretation, name affected tracks and ticks, cite evidence ids, give up to two options with tradeoffs, state confidence, and say what to listen for in A/B.",
         "Offer listening or arrangement options with their tradeoffs; do not claim that a subjective goal was achieved from metrics alone.",
         "Treat kick/bass collision risk as an estimate, not confirmed audible masking.",
         "If freshness is stale or unknown, say so and request a fresh context before proposing changes.",
+        "If coverage is truncated or an analysis is unavailable, state the gap and do not infer through it.",
         "This workflow is read-only: do not call mutation tools as part of the review.",
       ],
     },

@@ -5070,11 +5070,30 @@ const MCP_TOOL_DEFS = [
               params: {
                 type: "string",
               },
+              changes: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    param: {
+                      type: "string",
+                    },
+                    before: {
+                      type: ["number", "null"],
+                    },
+                    after: {
+                      type: "number",
+                    },
+                  },
+                  required: ["param", "before", "after"],
+                },
+              },
               reason: {
                 type: "string",
               },
             },
-            required: ["trackId", "track", "device", "params", "reason"],
+            required: ["trackId", "track", "device", "params", "changes", "reason"],
           },
         },
         warnings: {
@@ -5108,6 +5127,56 @@ const MCP_TOOL_DEFS = [
             interpreter: {
               type: "string",
               enum: ["production", "assistant"],
+            },
+            steps: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  trackId: {
+                    type: "string",
+                  },
+                  track: {
+                    type: "string",
+                  },
+                  device: {
+                    type: "string",
+                  },
+                  params: {
+                    type: "string",
+                  },
+                  changes: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        param: {
+                          type: "string",
+                        },
+                        before: {
+                          type: ["number", "null"],
+                        },
+                        after: {
+                          type: "number",
+                        },
+                      },
+                      required: ["param", "before", "after"],
+                    },
+                  },
+                  reason: {
+                    type: "string",
+                  },
+                },
+                required: ["trackId", "track", "device", "params", "changes", "reason"],
+              },
+            },
+            warnings: {
+              type: "array",
+              items: {
+                type: "string",
+              },
             },
             beforeLufs: {
               type: ["number", "null"],
@@ -5192,6 +5261,8 @@ const MCP_TOOL_DEFS = [
             "targets",
             "goals",
             "interpreter",
+            "steps",
+            "warnings",
             "beforeLufs",
             "afterLufs",
             "matchGainDb",

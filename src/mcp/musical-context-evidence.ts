@@ -1,9 +1,7 @@
 import type { RenderSummaryData } from "./render-summary";
 import type { MusicalContextSnapshotV1, MusicalEvidence } from "../analysis/musical-context";
 
-function renderEvidenceValue(summary: RenderSummaryData): unknown {
-  const census = summary.arrangementCensus;
-  const risk = summary.kickBassRisk;
+function renderMeasurementsValue(summary: RenderSummaryData): unknown {
   return {
     scope: summary.scope,
     signalStage: summary.range?.signalStage ?? null,
@@ -11,32 +9,6 @@ function renderEvidenceValue(summary: RenderSummaryData): unknown {
     stripCoverage: summary.stripCoverage ?? null,
     master: summary.master,
     strips: summary.strips.slice(0, 32),
-    arrangementCensus: census
-      ? {
-          analyzer: census.analyzer,
-          projectRevision: census.projectRevision,
-          window: census.window,
-          counts: census.counts,
-          energy: census.energy,
-          clips: census.clips.slice(0, 64),
-          truncated: census.truncated || census.clips.length > 64,
-          caveats: census.caveats,
-        }
-      : null,
-    kickBassRisk: risk
-      ? {
-          status: risk.status,
-          reason: risk.reason ?? null,
-          algorithm: risk.algorithm,
-          window: risk.window,
-          pair: risk.pair ?? null,
-          measurement: risk.measurement,
-          summary: risk.summary,
-          events: risk.events.slice(0, 32),
-          omittedEvents: Math.max(0, risk.events.length - 32),
-          caveats: risk.caveats,
-        }
-      : null,
   };
 }
 
@@ -44,18 +16,72 @@ function renderMeasurement(summary: RenderSummaryData, freshness: "current" | "u
   return {
     id: "analysis.render-summary",
     kind: "measurement",
-    claim: "Fresh render measurements for the requested timeline range",
-    value: renderEvidenceValue(summary),
+    claim: "Fresh master and per-strip audio measurements for the requested timeline range",
+    value: renderMeasurementsValue(summary),
     provenance: {
       source: "kyx_render_summary",
       tool: "kyx_render_summary",
-      path: "range/master/strips/arrangementCensus",
+      path: "range/master/strips",
     },
     confidence: null,
     uncertainty:
       freshness === "unknown"
         ? "The transport has no comparable revision token; measurements are current to their render call but cannot be proven to match the captured project revision."
-        : "Numeric render measures do not establish subjective musical quality.",
+        : "Numeric render measures do not establish subjective musical quality or arrangement intent.",
+    invalidatedBy: ["project_revision", "source_audio", "render_chain", "tempo_map"],
+  };
+}
+
+function arrangementCensusEvidence(summary: RenderSummaryData): MusicalEvidence | null {
+  const census = summary.arrangementCensus;
+  if (!census) return null;
+  return {
+    id: "analysis.arrangement-census",
+    kind: "measurement",
+    claim: "Bounded arrangement counts and per-clip energy for the requested range",
+    value: {
+      analyzer: census.analyzer,
+      projectRevision: census.projectRevision,
+      window: census.window,
+      counts: census.counts,
+      energy: census.energy,
+      clips: census.clips.slice(0, 64),
+      truncated: census.truncated || census.clips.length > 64,
+      caveats: census.caveats,
+    },
+    provenance: { source: "kyx_render_summary", tool: "kyx_render_summary", path: "arrangementCensus" },
+    confidence: null,
+    uncertainty:
+      census.caveats.length > 0
+        ? census.caveats.join(" ")
+        : "Structural counts and energy are not music-role recognition; do not name a drop or chorus unless the project labels it.",
+    invalidatedBy: ["project_revision", "source_audio", "tempo_map"],
+  };
+}
+
+function kickBassRiskEvidence(summary: RenderSummaryData): MusicalEvidence | null {
+  const risk = summary.kickBassRisk;
+  if (!risk) return null;
+  return {
+    id: "analysis.kick-bass-risk",
+    kind: "estimate",
+    claim: "Onset-aligned low-band kick/bass collision risk estimate",
+    value: {
+      status: risk.status,
+      reason: risk.reason ?? null,
+      algorithm: risk.algorithm,
+      window: risk.window,
+      pair: risk.pair ?? null,
+      measurement: risk.measurement,
+      summary: risk.summary,
+      events: risk.events.slice(0, 32),
+      omittedEvents: Math.max(0, risk.events.length - 32),
+      caveats: risk.caveats,
+    },
+    provenance: { source: "kyx_render_summary", tool: risk.algorithm.name, path: "kickBassRisk" },
+    confidence: null,
+    uncertainty:
+      "A risk candidate is a signal heuristic, not confirmation of audible masking; listen to a level-matched A/B.",
     invalidatedBy: ["project_revision", "source_audio", "render_chain", "tempo_map"],
   };
 }
@@ -100,36 +126,13 @@ export function attachMusicalContextRenderEvidence(
 
   const freshness =
     snapshot.project.revision !== null && currentRevision === snapshot.project.revision ? "current" : "unknown";
-  const measure = renderMeasurement(summary, freshness);
-  const risk = summary.kickBassRisk;
-  const estimate: MusicalEvidence | null = risk
-    ? {
-        id: "analysis.kick-bass-risk",
-        kind: "estimate",
-        claim: "Onset-aligned low-band kick/bass collision risk estimate",
-        value: {
-          status: risk.status,
-          reason: risk.reason ?? null,
-          algorithm: risk.algorithm,
-          window: risk.window,
-          pair: risk.pair ?? null,
-          measurement: risk.measurement,
-          summary: risk.summary,
-          events: risk.events.slice(0, 32),
-          omittedEvents: Math.max(0, risk.events.length - 32),
-          caveats: risk.caveats,
-        },
-        provenance: { source: "kyx_render_summary", tool: risk.algorithm.name, path: "kickBassRisk" },
-        confidence: null,
-        uncertainty:
-          "A risk candidate is a signal heuristic, not confirmation of audible masking; listen to a level-matched A/B.",
-        invalidatedBy: ["project_revision", "source_audio", "render_chain", "tempo_map"],
-      }
-    : null;
+  const measurements = renderMeasurement(summary, freshness);
+  const census = arrangementCensusEvidence(summary);
+  const risk = kickBassRiskEvidence(summary);
   return {
     ...snapshot,
     freshness,
-    evidence: [...snapshot.evidence, measure, ...(estimate ? [estimate] : [])],
+    evidence: [...snapshot.evidence, measurements, ...(census ? [census] : []), ...(risk ? [risk] : [])],
     analysis: { status: "measured", requestedScope: snapshot.analysis.requestedScope, measuredScope: summary.scope },
     limitations:
       freshness === "unknown"

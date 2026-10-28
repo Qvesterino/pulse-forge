@@ -3,7 +3,7 @@ import type { ProjectDocument } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { analyzeMixHealth } from "../analysis/mixDoctor";
 import { resolveAnalysisWindow } from "../analysis/contract";
-import type { MixIdeaPlan } from "./mix-idea";
+import type { MixIdeaPlan, MixIdeaStep } from "./mix-idea";
 import type { Services } from "../services";
 import { storeRevision } from "./revision";
 
@@ -51,6 +51,10 @@ export interface MixPreviewLane {
   targets: string[];
   goals: string[];
   interpreter: "production" | "assistant";
+  /** Exact planned effect parameter changes shown before the human applies. */
+  steps: MixIdeaStep[];
+  /** Planner caveats, including element-level changes without parameter diffs. */
+  warnings: string[];
   /** Frozen copy of the pre-idea project — re-renderable for ▶ BEFORE. */
   beforeDoc: ProjectDocument;
   /** The plan folded over the project — ▶ AFTER. Applying never happened yet. */
@@ -333,6 +337,8 @@ export async function buildMixPreview(
     targets: [...plan.targets],
     goals: [...plan.goals],
     interpreter: plan.interpreter,
+    steps: structuredClone(plan.steps),
+    warnings: [...plan.warnings],
     beforeDoc: structuredClone(doc),
     afterDoc,
     command: plan.command,
@@ -479,6 +485,13 @@ export function formatMixPreview(outcome: MixPreviewOutcome): string {
       ? `measured/auditioned ticks ${outcome.lane.window.startTick}..${outcome.lane.window.endTick} (${outcome.lane.window.startSec.toFixed(3)}..${outcome.lane.window.endSec.toFixed(3)} s)`
       : "measured/auditioned full project",
     `project revision: ${outcome.lane.projectRevision ?? "unknown"} → ${outcome.lane.revisionAfterRender ?? "unknown"} (${outcome.lane.freshness ?? "unknown"})`,
+    ...outcome.lane.steps.map((step, index) => {
+      const changes = step.changes
+        .map(({ param, before, after }) => `${param} ${before === null ? "unset" : before} → ${after}`)
+        .join(" · ");
+      return `${index + 1}. ${step.track}: ${step.device} — ${changes || step.params}`;
+    }),
+    ...outcome.lane.warnings.map((warning) => `warning: ${warning}`),
     "Apply checks that the project still matches the preview; rerun after any edit.",
     outcome.studioBound
       ? "the studio now shows the MIX PREVIEW card — the human listens (▶ Before / ▶ After) and decides: Apply lands the plan as ONE undo step, Dismiss throws it away"
