@@ -34,19 +34,14 @@ const PresetBrowser = lazy(() => import("./PresetBrowser").then((m) => ({ defaul
 export type SampleAsset = FactoryAsset | UserSampleAsset;
 
 /** MIME type carrying a sample asset id in drag&drop (ROADMAP-UI-2027 V4).
- *  Drop targets: sequencer drum rows (pad asset) and instrument track tabs. */
-export const KYX_SAMPLE_MIME = "application/kyx-sample";
-
-/** Read a dragged sample id from a drop event — null when the drag carries
- *  no KYX sample (files, text, external drags all pass through untouched). */
-export function sampleIdFromDrag(dt: DataTransfer): string | null {
-  const id = dt.getData(KYX_SAMPLE_MIME);
-  if (id) return id;
-  // Some hosts (Safari private mode, synthetic test events) drop the custom
-  // MIME but keep text/plain — the id also rides there.
-  const plain = dt.getData("text/plain");
-  return plain && /^[a-z0-9-]{8,}$/i.test(plain) ? plain : null;
-}
+ *  Drop targets: sequencer drum rows (pad asset) and instrument track tabs.
+ *
+ *  The constant and its reader live in ./sample-browser-contract — a leaf
+ *  module — so that the boot path (TrackTabs, Sequencer) can name them
+ *  without pulling this whole browser into the static closure. They are
+ *  re-exported here so the browser's public API is unchanged. */
+import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./sample-browser-contract";
+export { KYX_SAMPLE_MIME, sampleIdFromDrag };
 
 type CategoryFilter = "all" | string;
 type LoopMetadata = NonNullable<UserSampleAsset["loopMetadata"]>;

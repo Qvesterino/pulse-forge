@@ -13,7 +13,7 @@ import {
 } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 import { INSTRUMENT_META, INSTRUMENT_ORDER } from "../instruments/definitions";
-import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./SampleBrowser";
+import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./sample-browser-contract";
 
 const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   drum: "DR",

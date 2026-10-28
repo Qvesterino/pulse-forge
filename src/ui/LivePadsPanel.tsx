@@ -15,7 +15,7 @@ import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { LiveSet, LiveSetPad } from "../project-model/types";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
-import { KYX_SAMPLE_MIME } from "./SampleBrowser";
+import { KYX_SAMPLE_MIME } from "./sample-browser-contract";
 import { useArrangementCapture, useDoc, useServices } from "./context";
 import { usePlayheadBar } from "./playhead";
 

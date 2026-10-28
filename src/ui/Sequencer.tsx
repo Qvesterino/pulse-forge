@@ -27,7 +27,7 @@ import {
   toggleStep,
 } from "../commands/commands";
 import { assetCategoryOf, categoryColor } from "./kitColors";
-import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./SampleBrowser";
+import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./sample-browser-contract";
 import { PianoRollTrack } from "./PianoRoll";
 import type { SelectedNote } from "./PianoRoll";
 import { trackBadge } from "./TrackTabs";
