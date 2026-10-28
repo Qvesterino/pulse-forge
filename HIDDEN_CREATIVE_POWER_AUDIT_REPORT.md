@@ -93,10 +93,13 @@ worker and an evidence file under `docs/audits/2026-10-27-hidden-creative-power/
 
 - **No microphone, no audio device.** Recording, monitoring, take audio quality and loudness were **not**
   exercised. Every recording claim is code-level or runtime-UI-level, never an audio-level one.
-- **The dev server was hostile to observation.** Parallel sessions rewrote 15+ source files during the audit;
-  Vite HMR full-reloads invalidated browser references mid-session, and one session produced a
-  `Failed to fetch dynamically imported module` crash screen. That is a **dev-server artefact of a shared
-  worktree**, not a product defect, and it is excluded from the findings.
+- **The dev server was hostile to observation — so the observation was moved.** Parallel sessions rewrote 15+
+  source files during the audit; Vite HMR full-reloads invalidated browser references mid-session, and one
+  session produced a `Failed to fetch dynamically imported module` crash screen. That is a **dev-server artefact
+  of a shared worktree**, not a product defect, and it is excluded from the findings. The one browser
+  observation this audit needed was then re-made on a **detached worktree at a named commit with its own dev
+  server on its own port** (§10.7), which is what finally made it possible; the same method later produced the
+  audit's sharpest drift finding (§10.11).
 - **Line numbers drift.** `src/ui/App.tsx`, `src/commands/*.ts`, `src/project-model/*` and `src/ui/Mixer.tsx`
   were edited by other sessions during the audit. Every citation was re-anchored against the working tree at
   authoring time, but a further commit moves them again. Citations are given as `file:line` **plus the symbol**
@@ -995,25 +998,33 @@ The wave landed on a tree that two other sessions kept changing, so the suites w
 peer's undo-frame commit (`83ed86d5`) was in HEAD** — the number below is measured against the tree as it
 stands, not against the tree the work was written on.
 
-| check                                                                            | result                                                                           |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                     |
-| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                   |
-| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                  |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                               |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                               |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                               |
-| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                               |
-| `tests/ui/App.test.tsx`                                                          | ✅                                                                               |
-| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                               |
-| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                               |
-| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                  |
-| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                    |
-| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                               |
-| **total**                                                                        | **13 suites · 121 tests green**                                                  |
-| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)  |
-| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift — derivable artifacts match their generators` (§10.9) |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                             |
+**The table was then re-measured a third time**, on a **clean detached worktree at `cc81ffe3`**, for the same
+reason §10.11 gives: a shared worktree cannot tell you what a commit contains, only what a directory contains.
+Every row below is from that clean tree. The test count moved from **121** to **124** because the owner
+session's CF-05 Tab-traversal fix added three assertions — the count is a measurement, and it is reported as
+measured.
+
+| check                                                                            | result                                                                                  |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                            |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                          |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                         |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                      |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                      |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                      |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                      |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                                      |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                      |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                      |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                         |
+| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                           |
+| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                      |
+| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                   |
+| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)         |
+| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11)          |
+| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7) |
+| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, 95 seams (§10.11)                                               |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                    |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -1138,27 +1149,67 @@ regex over `src/presets/factory.ts` said "nine instruments ship with an empty pr
 **warmed loader bank** showed all 31 kinds have presets (TSAR 48, KOPA 16, CHORÁL 4 …) and the finding was
 withdrawn, the patch reverted and the test removed.
 
-### 10.7 The P-1 browser check that did NOT happen — stated, not papered over
+### 10.7 The P-1 browser check — done, on a clean tree
 
-**The P-1 wave was verified in the DOM, not in a running browser.** The attempt was made and it failed for
-environmental reasons:
+**The P-1 palette's disabled row has now been looked at in a running browser.** The first attempt failed for
+environmental reasons: the shared worktree's dev server was in **HMR staleness** (the browser failed with
+`Failed to fetch dynamically imported module /src/services.ts`) and a **stale tab held the IndexedDB lock**, so
+the project browser could not open its database and the boot never completed. The console showed **no
+application errors** — the failure was the harness, not the product.
 
-- the shared worktree's dev server was in **HMR staleness** — the browser failed with
-  `Failed to fetch dynamically imported module /src/services.ts`;
-- a **stale tab held the IndexedDB lock**, so the project browser could not open its database and the boot
-  never completed;
-- the console showed **no application errors** — the failure was the harness, not the product.
+The check was then redone the way §10.10 says to measure anything here: a **detached worktree at a named
+commit**, **its own dev server on its own port**, and **its own browser tab** — so no shared state, no HMR, no
+second session's tab.
 
-**Why that is stated rather than retried until it went green:** the evidence collected is **stronger** than
-a screenshot would have been. `tests/ui/palette-command-registry.test.tsx` renders the **real** `PaletteOverlay`
-and asserts on the DOM the user would see — `aria-disabled="true"` on a row that cannot run, the reason text
-present in the rendered output, a click and an Enter that both do nothing, and the same row becoming
-runnable once its precondition is met. A screenshot proves a pixel; this proves the behaviour.
+The method, in full, because the method is the point:
 
-**What remains genuinely unverified by a browser:** the **visual** reading of the disabled row — that the
-greyed-out treatment and the reason line are legible at real font sizes and in the real theme, and that the
-`.palette-unavailable` rule does not overflow the row. That is a **design check, not a correctness check**,
-and it is named here so the next person with a free browser knows to look at it.
+1. `git worktree add --detach D:/pf-drift-a448 HEAD` — a clean tree at `a448853b`, with `node_modules`
+   junctioned from the main tree (the worklet bundles are tracked, so the tree serves the app as it stands);
+2. `npx.cmd vite --port 5274 --host 127.0.0.1` — a dev server owned by this check, not inherited;
+3. landing page → "Open the studio" → the project browser → the **HOUSE 124 BPM** factory template → the DAW;
+4. `Ctrl+K` → the palette → the query `clip`.
+
+What the browser showed, for the row that cannot run:
+
+```
+Split the selected audio clip at the playhead
+Select an audio clip first
+```
+
+and, in the DOM of that same row:
+
+```html
+<button
+  type="button"
+  role="option"
+  aria-selected="false"
+  aria-disabled="true"
+  class="palette-item unavailable"
+  title="Select an audio clip first"
+>
+  <span class="palette-copy">
+    <span class="palette-title">Split the selected audio clip at the playhead</span>
+    <span class="palette-unavailable">Select an audio clip first</span>
+  </span>
+  <span class="palette-group">CLIPS</span>
+</button>
+```
+
+Three properties — the ones §9.2.2 promised:
+
+- **`aria-disabled`, not `disabled`** — the row is announced as unavailable but stays focusable, so a keyboard
+  user can reach it and read _why_;
+- **the reason is visible, not hover-only** — `<span class="palette-unavailable">` renders "Select an audio clip
+  first" under the title, and the same sentence is the `title` tooltip;
+- **the row is visibly greyed** — the `unavailable` class, in the shipped theme, at the real font size, with the
+  reason line fitting inside the row.
+
+**What this closes, and what it does not.** It closes the _design_ question this section previously named: the
+greyed treatment and the reason line are legible in the real theme and do not overflow the row. It does not
+claim more than the DOM spec claims — the behavioural proof (a click and an Enter that both do nothing, and the
+row becoming runnable once its precondition is met) still comes from `tests/ui/palette-command-registry.test.tsx`,
+which is the stronger evidence for that property. The browser adds the one thing a DOM spec cannot: **what it
+looks like**.
 
 ### 10.8 The P-1 commit attribution — recorded honestly
 
@@ -1193,8 +1244,13 @@ rather than hidden:
 
 ### 10.9 The drift gate — run to the end, and the trace it used to leave
 
-**The gate is green on the current `main`:** `npm run drift:check` → `✓ no drift — derivable artifacts
-match their generators`, across all four sections (mcp-mirrors, domain-goldens, status, counts).
+**The gate was green on `main` when this section was measured:** `npm run drift:check` → `✓ no drift — derivable
+artifacts match their generators`, across all four sections (mcp-mirrors, domain-goldens, status, counts).
+
+**That measurement stopped holding a few commits later, and the correction belongs here rather than being left
+for a reader to discover.** A parallel session landed a coverage claim without its source, the `[status]` section
+went red on `main`, and the published status page was claiming a PASS that was false. The full measurement is in
+**§10.11** — and so is its ending: the owner landed the source with the claim, and the gate is green again.
 
 **A correction to my own earlier claim.** I first reported that the drift gate "exceeds 600 s on this
 machine". That was **my harness budget, not a property of the gate** — a parallel session ran the same
@@ -1275,6 +1331,101 @@ The count is a **whole-tree measurement**: it belongs to nobody's wave. This aud
 **zero** — one spec removed, one added — and every wave that adds or removes a spec has to re-pin it. That
 is the ritual the artifact rule in `AGENTS.md` now names, and the fast check enforces it in the unit suite
 rather than in someone else's CI.
+
+### 10.11 The fourth instance — a coverage claim landed without its source
+
+The three drift instances above are the same shape: a **number** moved and the artifact that carries it did
+not. The fourth is the same shape one level deeper, and it is the sharpest of the four, because **the
+published status page claimed a PASS that was false**.
+
+Measured on a clean detached worktree at `a448853b`:
+
+```
+$ npm run drift:check
+✗ DRIFT [status] docs/status.json: committed artifact is stale
+✗ DRIFT [status] docs/STATUS.md: committed artifact is stale
+
+$ node scripts/check-seam-coverage.mjs
+FAIL false coverage claim: tab-traversal: declared COVERED but tests/ui/App.test.tsx never contains
+"Tab traversal vs next-track scope" — the spec does not enter this seam, so its passing proves nothing about it.
+SEAM COVERAGE GATE FAILED — 1 false coverage claim(s).
+```
+
+The chain, in order:
+
+1. `5dda14f6` added a seam to `tests/seam-manifest.json`: `tab-traversal`, status `COVERED`, `spec:
+tests/ui/App.test.tsx`, `seamEvent: "Tab traversal vs next-track scope"`. **The claim landed; its source did
+   not** — the `describe("App — Tab traversal vs next-track scope (CF-05)")` block that the claim names was
+   still uncommitted in a parallel session's working tree.
+2. `a448853b` regenerated the status payload **in that shared working tree**, so the payload described a tree the
+   commit did not carry: `docs/status.json` published `seam-coverage: pass — 1 check(s), 95 seams`.
+3. On `main`, the seam gate reads the **committed** manifest against the **committed** spec, and finds a claim
+   with no proof behind it. `95 seams` was true; `1 check(s), 95 seams, pass` was not.
+
+**A coverage claim is a derivable artifact.** It says "this seam is entered by this spec", and that is a
+statement about files — so it is true only of the tree that carries both of them. This is the same rule as the
+count row and the payload, one level up: **land the claim with its source, or land neither.**
+
+**The fix was measured, not guessed.** Applying the parallel session's uncommitted files (`src/ui/App.tsx`,
+`src/ui/shortcuts.ts`, `tests/ui/App.test.tsx`) to the clean worktree and re-measuring:
+
+| Measurement                            | `main` alone           | with the uncommitted files              |
+| -------------------------------------- | ---------------------- | --------------------------------------- |
+| `node scripts/check-seam-coverage.mjs` | FAILED — 1 false claim | **PASSED — 1 checks, 95 seams**         |
+| `vitest run tests/ui/App.test.tsx`     | 2 failed, 14 passed    | **16 passed**                           |
+| `npm run status:report`                | 4 pass, 1 fail         | **5 pass, 0 fail**                      |
+| regenerated payload vs `HEAD`          | `status.json` differs  | **identical except the timestamp line** |
+
+Three things that table says, and one that it does not:
+
+- the **spec alone is not enough** — with only `tests/ui/App.test.tsx` applied, the two NEGATIVE assertions
+  fail (the CF-05 Tab guard lives in `src/ui/App.tsx`), so a spec and its source must land **together**;
+- the **payload needs no regeneration** once they land — the committed `docs/status.json` already carries the
+  right numbers, because it was generated from the tree that will carry them. The fix is therefore a commit of
+  **source** files, not of artifacts;
+- what the table does **not** say is that this session should make that commit. Those files are another
+  session's in-flight work; landing them would put their half-finished wave on `main` under this session's
+  name, which is precisely the attribution failure §10.8 records. The finding was handed over with the exact
+  measurement instead — see §10.11.1.
+
+### 10.11.1 The handover, and how it ended
+
+The rule in `AGENTS.md` that predicted this failure was written by this session, one commit earlier
+(`60539d6d`): **"Regenerate from a CLEAN tree at the commit that will carry the artifact."** The payload in
+`a448853b` was regenerated from a tree that included uncommitted work — so it described a commit that did not
+exist yet. The rule was not violated by ignorance; it was violated by the ordinary pressure of a shared
+worktree, where the artifact and the source live in different states of the same directory.
+
+What this session did **not** do, deliberately:
+
+- it did **not** regenerate the payload in the shared tree either — that would have produced a payload
+  describing the shared tree's uncommitted state, the same error one commit later;
+- it did **not** commit the parallel session's half-finished wave to make `main` green — the green would have
+  been a lie about who wrote it, and the spec would have landed without the source that makes it pass;
+- it did **not** wait for the slow gate to tell it what the fast gate already said in milliseconds.
+
+What it did do: reproduce the failure on a clean tree, identify the exact missing file, verify the fix on that
+clean tree **before** proposing it, and hand the measurement to the session that owns the files.
+
+**How it ended.** The owner session landed the source with the claim — `892dcc61` (the CF-05 Tab-traversal fix
+in `src/ui/App.tsx` and `src/ui/shortcuts.ts`) and the spec that backs it — and `main` is green again,
+re-measured on a clean detached worktree at `cc81ffe3`:
+
+```
+$ npm run drift:check
+[drift] section mcp-mirrors (npm run gen:mcp-mirrors)
+[drift] section domain-goldens (npm run goldens:capture)
+[drift] section status (npm run status:report)
+[drift] section counts (live code vs docs/CURRENT-STATE.md)
+✓ no drift — derivable artifacts match their generators
+```
+
+**And the payload was not regenerated.** `docs/status.json` was already correct — because it had been generated
+from the tree that eventually carried the source. The whole repair cost **zero artifact churn**: one commit of
+source files, and the published page that had been lying turned true without being rewritten.
+
+That is the whole lesson of the four instances in one sentence: **a derivable artifact is not a document, it is a
+measurement — and a measurement is only right on the tree that produced it.**
 
 ---
 
@@ -1429,6 +1580,7 @@ docs/audits/2026-10-27-hidden-creative-power/
   04-ai-intent-mcp.md     05-productivity-discoverability.md
 ```
 
-_Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave. Every claim is labelled
-Observed / Verified / Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from
-the repository at the cited commit._
+_Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave and after the browser check
+(§10.7) and the four-instance drift story (§10.10–§10.11). Every claim is labelled Observed / Verified / Inferred
+/ Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the cited
+commit._
