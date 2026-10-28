@@ -219,6 +219,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",
+      "kyx_performance",
     ]);
   });
 

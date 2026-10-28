@@ -93,6 +93,7 @@ export const TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   kyx_routing: "mutate",
   kyx_unsuno: "mutate",
   kyx_separate: "mutate",
+  kyx_performance: "mutate",
 };
 
 /** Risk of a tool; unknown tools are conservatively "mutate". */
@@ -142,6 +143,10 @@ export function effectiveRisk(name: string, args: unknown): ToolRisk {
       if (op === "list" || op === "audioList" || op === "copy" || op === "midiList") return "read";
       if (op === "delete" || op === "cut" || op === "deleteRipple" || op === "audioDelete" || op === "midiDelete")
         return "destructive";
+      return "mutate";
+    case "kyx_performance":
+      if (op === "list" || op === "listMacros") return "read";
+      if (op === "deleteSet") return "destructive";
       return "mutate";
     case "kyx_routing":
       return op === "list" ? "read" : op === "removeReturn" ? "destructive" : "mutate";

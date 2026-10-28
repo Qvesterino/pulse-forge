@@ -212,6 +212,18 @@ import {
   addEffectToTracks,
   setTimeSignature,
 } from "../commands/commands";
+// AS-015 / ADR 0077: the performance DOCUMENT surface (Live Sets + macros).
+// Launch/trigger stays human-only — see the tool description and the ADR.
+import {
+  assignLivePad,
+  createLiveSet,
+  deleteLiveSet,
+  duplicateLiveSet,
+  renameLiveSet,
+  selectLiveSet,
+  setLiveSetOptions,
+} from "../commands/liveSets";
+import { renameMacro, setMacroValue } from "../commands/automation";
 // F2 eager diet: intent graph loads with the MCP surface, not at boot.
 import { applyExactIntentCommand } from "../commands/intentRouting";
 import { applyGenerationResultCommand } from "../commands/aiPattern";
@@ -1748,6 +1760,13 @@ const OUTPUT_SONG = receiptSchema({
 const OUTPUT_UNSUNO = receiptSchema({
   action: { type: "string", enum: ["transcribe", "restyle", "regen", "similarity"] },
 });
+const OUTPUT_PERFORMANCE: McpOutputSchema = receiptSchema({
+  op: { type: "string" },
+  setId: { type: "string" },
+  macroId: { type: "string" },
+  sets: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 32 },
+  macros: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 64 },
+});
 const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
   kyx_state: OUTPUT_STATE,
   kyx_context: OUTPUT_MUSICAL_CONTEXT,
@@ -1865,10 +1884,26 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        fromBar: { type: "integer", minimum: 1, description: "Inclusive first bar (1-based); use with toBar, not ticks" },
-        toBar: { type: "integer", minimum: 1, description: "Inclusive last bar (1-based); use with fromBar, not ticks" },
-        startTick: { type: "integer", minimum: 0, description: "Inclusive arrangement tick; use with endTick, not bars" },
-        endTick: { type: "integer", minimum: 1, description: "Exclusive arrangement tick; use with startTick, not bars" },
+        fromBar: {
+          type: "integer",
+          minimum: 1,
+          description: "Inclusive first bar (1-based); use with toBar, not ticks",
+        },
+        toBar: {
+          type: "integer",
+          minimum: 1,
+          description: "Inclusive last bar (1-based); use with fromBar, not ticks",
+        },
+        startTick: {
+          type: "integer",
+          minimum: 0,
+          description: "Inclusive arrangement tick; use with endTick, not bars",
+        },
+        endTick: {
+          type: "integer",
+          minimum: 1,
+          description: "Exclusive arrangement tick; use with startTick, not bars",
+        },
         trackIds: {
           type: "array",
           items: { type: "string", maxLength: 128 },
@@ -3672,6 +3707,60 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
     outputSchema: OUTPUT_BLIND_AB,
   },
+  {
+    name: "kyx_performance",
+    description:
+      "Performance DOCUMENT surface (ADR 0077): Live Sets and macros an agent can " +
+      "PREPARE while a human PERFORMS. list shows sets (pads, loop length, active) " +
+      "+ macros (id, name, value, mappings); createSet/duplicateSet/renameSet/" +
+      "selectSet build and organize layouts; setOptions wires the destination " +
+      "track (audio-capable) and loopBars (1|2|4|8|16); assignPad/clearPad fill " +
+      "1-based slots with user-library audio (bufferId + name); setMacro moves a " +
+      "macro's 0..1 value and renameMacro renames it. deleteSet is D4-gated. " +
+      "There is deliberately NO launch/trigger op: pad launches, loop toggling " +
+      "and jam input change what the audience hears NOW and stay human-only — " +
+      "preparation is the agent's job, performance is the human's.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: [
+            "list",
+            "createSet",
+            "duplicateSet",
+            "deleteSet",
+            "renameSet",
+            "selectSet",
+            "setOptions",
+            "assignPad",
+            "clearPad",
+            "listMacros",
+            "setMacro",
+            "renameMacro",
+          ],
+        },
+        setId: { type: "string", maxLength: 128, description: "Live Set id (from op:list)" },
+        name: { type: "string", minLength: 1, maxLength: 64, description: "For createSet/renameSet" },
+        slot: { type: "integer", minimum: 1, maximum: 16, description: "1-based pad slot (1..16)" },
+        bufferId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "For assignPad — user-library audio buffer id",
+        },
+        padName: { type: "string", minLength: 1, maxLength: 64, description: "For assignPad — the pad's display name" },
+        padLoop: { type: "boolean", description: "For assignPad — repeat the source for the set's launch length" },
+        padBpm: { type: "number", minimum: 20, maximum: 300, description: "For assignPad — source loop tempo" },
+        trackId: { type: "string", maxLength: 128, description: "For setOptions — audio-capable destination track" },
+        loopBars: { type: "integer", enum: [1, 2, 4, 8, 16], description: "For setOptions — launch loop length" },
+        macroId: { type: "string", maxLength: 128, description: "Macro id (from op:list)" },
+        value: { type: "number", minimum: 0, maximum: 1, description: "For setMacro — the macro value (clamped)" },
+      },
+      required: ["op"],
+    },
+    outputSchema: OUTPUT_PERFORMANCE,
+  },
 ];
 
 // First output-schema batch for the primary tools that were text-only. The
@@ -4904,6 +4993,11 @@ const OPS_COVERAGE_EXEMPT: ReadonlySet<string> = new Set([
   // kyx_pattern select rides the raw setActivePattern — a pointer flip, no
   // payload worth a stale-write field.
   "kyx_pattern:select",
+  // kyx_performance macro writes ride the hand-written setMacroValue/
+  // renameMacro commands — they carry applyToYDoc (live macro moves stream
+  // to collaborators), which a snapshot wrap would drop (ADR 0077).
+  "kyx_performance:setMacro",
+  "kyx_performance:renameMacro",
 ]);
 
 export interface OpsCoverageViolation {
@@ -6938,6 +7032,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return executeUnsunoTool(ctx, record);
     case "kyx_separate":
       return await executeSeparateTool(ctx, record);
+    case "kyx_performance":
+      return executePerformanceTool(ctx, record);
     case "kyx_takes":
       return executeTakesTool(ctx, record);
     case "kyx_batch":
@@ -12947,7 +13043,10 @@ async function executeSeparateTool(ctx: McpToolContext, record: Record<string, u
   }
   const sourceId = typeof record.sourceId === "string" ? record.sourceId.trim() : "";
   if (!sourceId)
-    return mcpError("INVALID_ARGUMENTS", 'kyx_separate needs sourceId — a user-library audio id (tier defaults to "hpss").');
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      'kyx_separate needs sourceId — a user-library audio id (tier defaults to "hpss").',
+    );
   const tier = record.tier === "model" ? "model" : "hpss";
   const maxSeconds =
     typeof record.maxSeconds === "number" && Number.isFinite(record.maxSeconds) && record.maxSeconds > 0
@@ -14215,6 +14314,231 @@ function stateSnapshot(
 /** kyx_steps — structured 16th-grid edit on the active pattern's drum pads.
  * Family → pads via the same role inference the fader/step intents use;
  * the whole call folds into ONE snapshot (one undo step). */
+/** kyx_performance — ADR 0077: the performance DOCUMENT surface. Live Sets
+ * and macros are plain document commands (undo, read-back); there is NO
+ * launch/trigger op by design — preparation is the agent's job, performance
+ * is the human's. deleteSet rides the D4 gate with the auto-before
+ * checkpoint like every other removal. */
+function executePerformanceTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const doc = ctx.getDoc();
+  const op = String(record.op ?? "");
+  const sets = doc.liveSets ?? [];
+  const macros = doc.macros ?? [];
+  const setLine = (set: (typeof sets)[number]): string => {
+    const active = doc.activeLiveSetId === set.id ? " · ACTIVE" : "";
+    const pads =
+      set.pads.length > 0
+        ? ` · pads ${set.pads.map((pad) => `${pad.slot + 1}:"${pad.name}"`).join(", ")}`
+        : " · no pads";
+    return `"${set.name}" (id=${set.id}) · loop ${set.loopBars}b${set.trackId ? ` · → ${ownerNameOf(doc, set.trackId)}` : ""}${pads}${active}`;
+  };
+  const macroLine = (macro: (typeof macros)[number]): string =>
+    `"${macro.name}" (id=${macro.id}) = ${(macro.value ?? 0).toFixed(2)} · ${macro.mappings?.length ?? 0} mapping(s)`;
+
+  if (op === "list" || op === "listMacros") {
+    const lines: string[] = [];
+    if (op === "list") {
+      if (sets.length === 0) lines.push("no Live Sets — op:createSet builds one (the pads stay human-launched)");
+      else for (const set of sets) lines.push(setLine(set));
+      lines.push(`macros: ${macros.length === 0 ? "none" : ""}`);
+      for (const macro of macros) lines.push(`  ${macroLine(macro)}`);
+    } else {
+      if (macros.length === 0) lines.push("no macros");
+      else for (const macro of macros) lines.push(macroLine(macro));
+    }
+    return {
+      text: lines.join("\n"),
+      mutated: false,
+      data: {
+        status: "read",
+        sets:
+          op === "list"
+            ? sets.map((set) => ({
+                id: set.id,
+                name: set.name,
+                loopBars: set.loopBars,
+                trackId: set.trackId ?? null,
+                active: doc.activeLiveSetId === set.id,
+                pads: set.pads.map((pad) => ({ slot: pad.slot + 1, name: pad.name, bufferId: pad.bufferId })),
+              }))
+            : [],
+        macros: macros.map((macro) => ({
+          id: macro.id,
+          name: macro.name,
+          value: macro.value,
+          mappings: macro.mappings?.length ?? 0,
+        })),
+      },
+    };
+  }
+
+  const setOf = (): { id: string; name: string } | null => {
+    const wanted = typeof record.setId === "string" ? record.setId.trim() : "";
+    if (wanted === "") return null;
+    const found = sets.find((set) => set.id === wanted);
+    return found ? { id: found.id, name: found.name } : null;
+  };
+  const unknownSet = () =>
+    mcpError("UNKNOWN_TARGET", `no Live Set with id "${String(record.setId ?? "")}" — op:list shows what exists`);
+
+  if (op === "createSet" || op === "duplicateSet") {
+    if (op === "createSet") {
+      const name = typeof record.name === "string" ? record.name : "Live Set";
+      ctx.execute(createLiveSet(doc, name));
+    } else {
+      const source = setOf();
+      if (source == null)
+        return record.setId == null ? mcpError("INVALID_ARGUMENTS", "duplicateSet needs setId") : unknownSet();
+      ctx.execute(duplicateLiveSet(doc, source.id));
+    }
+    const after = ctx.getDoc();
+    const created = (after.liveSets ?? []).find((set) => !sets.some((before) => before.id === set.id));
+    return {
+      text: `${op === "createSet" ? "created" : "duplicated"} "${created?.name ?? "?"}" — active now, one undo step`,
+      mutated: true,
+      data: { status: "applied", op, setId: created?.id ?? "" },
+    };
+  }
+  if (op === "renameSet" || op === "selectSet" || op === "deleteSet" || op === "setOptions") {
+    const target = setOf();
+    if (target == null) return record.setId == null ? mcpError("INVALID_ARGUMENTS", `${op} needs setId`) : unknownSet();
+    if (op === "deleteSet") {
+      if (!destructiveAllowedWithCheckpoint(ctx, "kyx_performance")) return destructiveRefusal();
+      ctx.execute(deleteLiveSet(doc, target.id));
+      return {
+        text: `deleted Live Set "${target.name}" — one undo step`,
+        mutated: true,
+        data: { status: "applied", op, setId: target.id },
+      };
+    }
+    if (op === "renameSet") {
+      const name = typeof record.name === "string" ? record.name.trim() : "";
+      if (name === "") return mcpError("INVALID_ARGUMENTS", "renameSet needs name");
+      ctx.execute(renameLiveSet(doc, target.id, name));
+      return {
+        text: `renamed "${target.name}" → "${name}" — one undo step`,
+        mutated: true,
+        data: { status: "applied", op, setId: target.id },
+      };
+    }
+    if (op === "selectSet") {
+      ctx.execute(selectLiveSet(doc, target.id));
+      return {
+        text: `"${target.name}" is the active Live Set (nothing sounds until a human launches a pad) — one undo step`,
+        mutated: true,
+        data: { status: "applied", op, setId: target.id },
+      };
+    }
+    const patch: { trackId?: string | null; loopBars?: 1 | 2 | 4 | 8 | 16 } = {};
+    if (record.trackId !== undefined) {
+      if (record.trackId === null) patch.trackId = null;
+      else if (typeof record.trackId === "string" && record.trackId.trim() !== "")
+        patch.trackId = record.trackId.trim();
+      else return mcpError("INVALID_ARGUMENTS", "trackId must be a track id or null");
+    }
+    if (record.loopBars !== undefined) {
+      if (![1, 2, 4, 8, 16].includes(record.loopBars as number))
+        return mcpError("INVALID_ARGUMENTS", "loopBars must be one of 1, 2, 4, 8, 16");
+      patch.loopBars = record.loopBars as 1 | 2 | 4 | 8 | 16;
+    }
+    if (Object.keys(patch).length === 0)
+      return mcpError("INVALID_ARGUMENTS", "setOptions needs trackId and/or loopBars");
+    try {
+      ctx.execute(setLiveSetOptions(doc, target.id, patch));
+    } catch (error) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `setOptions failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return {
+      text: `updated "${target.name}" launch settings — one undo step`,
+      mutated: true,
+      data: { status: "applied", op, setId: target.id },
+    };
+  }
+
+  if (op === "assignPad" || op === "clearPad") {
+    const target = setOf();
+    if (target == null) return record.setId == null ? mcpError("INVALID_ARGUMENTS", `${op} needs setId`) : unknownSet();
+    const rawSlot = record.slot;
+    if (typeof rawSlot !== "number" || !Number.isInteger(rawSlot) || rawSlot < 1 || rawSlot > 16)
+      return mcpError("INVALID_ARGUMENTS", "slot must be an integer 1..16");
+    const slotIndex = rawSlot - 1;
+    if (op === "clearPad") {
+      ctx.execute(assignLivePad(doc, target.id, null, slotIndex));
+      return {
+        text: `cleared pad ${rawSlot} of "${target.name}" — one undo step`,
+        mutated: true,
+        data: { status: "applied", op, setId: target.id },
+      };
+    }
+    const bufferId = typeof record.bufferId === "string" ? record.bufferId.trim() : "";
+    const padName = typeof record.padName === "string" ? record.padName.trim() : "";
+    if (bufferId === "" || padName === "")
+      return mcpError("INVALID_ARGUMENTS", "assignPad needs bufferId (user-library audio) and padName");
+    try {
+      ctx.execute(
+        assignLivePad(
+          doc,
+          target.id,
+          {
+            slot: slotIndex,
+            bufferId,
+            name: padName,
+            ...(typeof record.padBpm === "number" && Number.isFinite(record.padBpm) ? { bpm: record.padBpm } : {}),
+            ...(record.padLoop === true ? { loop: true } : {}),
+          },
+          slotIndex,
+        ),
+      );
+    } catch (error) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `assignPad failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return {
+      text: `assigned "${padName}" to pad ${rawSlot} of "${target.name}" — one undo step`,
+      mutated: true,
+      data: { status: "applied", op, setId: target.id },
+    };
+  }
+
+  if (op === "setMacro" || op === "renameMacro") {
+    const macroId = typeof record.macroId === "string" ? record.macroId.trim() : "";
+    const macro = macros.find((candidate) => candidate.id === macroId);
+    if (macro == null)
+      return mcpError("UNKNOWN_TARGET", `no macro with id "${macroId}" — op:listMacros shows what exists`);
+    if (op === "setMacro") {
+      const value = record.value;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
+        return mcpError("INVALID_ARGUMENTS", "setMacro needs value 0..1");
+      ctx.execute(setMacroValue(doc, macro.id, value));
+      const landed = ctx.getDoc().macros.find((candidate) => candidate.id === macro.id)?.value ?? value;
+      const clamped = landed !== value;
+      return {
+        text: `macro "${macro.name}" = ${landed.toFixed(2)}${clamped ? " (clamped)" : ""} — one undo step`,
+        mutated: true,
+        data: { status: "applied", op, macroId: macro.id, value: landed, clamped },
+      };
+    }
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (name === "") return mcpError("INVALID_ARGUMENTS", "renameMacro needs name");
+    ctx.execute(renameMacro(doc, macro.id, name));
+    return {
+      text: `macro "${macro.name}" → "${name}" — one undo step`,
+      mutated: true,
+      data: { status: "applied", op, macroId: macro.id },
+    };
+  }
+
+  return mcpError(
+    "UNKNOWN_REQUEST",
+    `unknown performance op "${op}" (list | createSet | duplicateSet | deleteSet | renameSet | selectSet | setOptions | assignPad | clearPad | listMacros | setMacro | renameMacro)`,
+  );
+}
+
 function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const doc = ctx.getDoc();
   const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);

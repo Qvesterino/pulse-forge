@@ -826,6 +826,15 @@
       "seamEvent": "\"kyx_intent\", { instruction: \"make the mix darker\" }",
       "negativeSpec": "window-bound kinds still refuse",
       "note": "AS-014: NL parity is published, not implicit — mix and complaintIntent are newly eligible (pure command fold / read-only diagnosis with verified next asks), loudness/select/section* refuse with pointers at the structured tools, and kyx_state capabilities publishes the same table so discovery and refusal cannot drift."
+    },
+    {
+      "id": "mcp-performance-surface",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/tools.ts executePerformanceTool — kyx_performance (Live Sets + macros; ADR 0077)",
+      "spec": "tests/mcp-performance.test.ts",
+      "seamEvent": "\"kyx_performance\", { op: \"createSet\"",
+      "negativeSpec": "bad options refuse without mutating",
+      "note": "AS-015 / ADR 0077: the R1 half of the performance surface (set CRUD/options/pad assignment, macro value/rename) is agent-executable document commands; the R4 half (pad launch, loop toggling, jam) is DECLARED human-only — the tool has deliberately no launch/trigger op. deleteSet rides the D4 gate with the auto-before checkpoint; macro writes keep their applyToYDoc collab sync via the AS-008 exemption list."
     }
   ]
 }
