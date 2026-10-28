@@ -4,6 +4,7 @@ import { normalizeProject } from "../project-model/schema";
 import { computeDocDelta } from "../commands/docDelta";
 import { describeClamps, type ClampEvent } from "../shared/clamp-report";
 import { normalizerRepairs } from "./clampRepairs";
+import { createUndoFrameToken, UndoFrameConflictError, type UndoFrameToken } from "./undoFrame";
 
 /**
  * Fold a command's clamp disclosure into its `detail` (audit F-12).
@@ -82,6 +83,8 @@ export class ProjectStore {
   private timestamps: number[] = [];
   /** Open undo frame (MIDI record pass) — commands collected live. */
   private frameCommands: Command[] | null = null;
+  /** Non-null only when an MCP-owned frame currently holds the writer lease. */
+  private frameOwner: UndoFrameToken | null = null;
   private frameLabel = "Recorded take";
   /** undoStack.length when the frame opened — pops exactly the frame's entries. */
   private frameOpenDepth = 0;
@@ -321,12 +324,37 @@ export class ProjectStore {
   getLastSavedAt = (): string | null => this.lastSavedAt_;
 
   execute(command: Command): void {
+    // A direct editor/system write takes precedence over an in-flight agent
+    // batch. Seal only its prefix; the agent's token becomes invalid, so it
+    // cannot append later commands to a frame that now precedes this edit.
+    this.sealOwnedUndoFrame();
     this.applyCommand(command, false);
   }
 
   /** Apply a command made directly in a human editor and expose it to local taste learning. */
   executeUserEdit(command: Command): void {
+    this.sealOwnedUndoFrame();
     this.applyCommand(command, true);
+  }
+
+  /**
+   * Apply an MCP command only when no user frame is open, or when it presents
+   * the token for the active MCP batch. MCP writes never inherit a UI frame.
+   */
+  executeAgentCommand(command: Command, frameToken?: UndoFrameToken): void {
+    if (frameToken !== undefined) {
+      if (this.frameCommands === null || this.frameOwner !== frameToken) {
+        throw new UndoFrameConflictError(
+          "The batch no longer owns its undo frame; the project changed while it was running. Re-read and retry.",
+        );
+      }
+    } else if (this.frameCommands !== null) {
+      throw new UndoFrameConflictError(
+        "A project undo frame is active. The MCP write was refused so it cannot join another edit.",
+      );
+    }
+    const isolatedCommand: Command = { ...command, coalesceKey: undefined };
+    this.applyCommand(isolatedCommand, false);
   }
 
   private applyCommand(command: Command, userAuthored: boolean): void {
@@ -434,6 +462,7 @@ export class ProjectStore {
   beginUndoFrame(label?: string): boolean {
     if (this.frameCommands) return false;
     this.frameCommands = [];
+    this.frameOwner = null;
     this.frameLabel = label ?? "Recorded take";
     this.frameOpenDepth = this.undoStack.length;
     if (this.redoStack.length > 0) {
@@ -446,9 +475,36 @@ export class ProjectStore {
     return true;
   }
 
+  /** Open an undo frame that only the returned token may execute or close. */
+  beginOwnedUndoFrame(label?: string): UndoFrameToken | null {
+    if (this.frameCommands !== null) return null;
+    const token = createUndoFrameToken();
+    this.frameCommands = [];
+    this.frameOwner = token;
+    this.frameLabel = label ?? "Recorded take";
+    this.frameOpenDepth = this.undoStack.length;
+    return token;
+  }
+
+  /** Close only the frame opened by this token; stale/foreign tokens do nothing. */
+  endOwnedUndoFrame(token: UndoFrameToken): boolean {
+    if (this.frameCommands === null || this.frameOwner !== token) return false;
+    this.frameOwner = null;
+    this.finishUndoFrame();
+    return true;
+  }
+
   endUndoFrame(): void {
+    // Legacy UI callers may have ignored a failed begin. They must never be
+    // able to close the MCP writer's frame.
+    if (this.frameOwner !== null) return;
+    this.finishUndoFrame();
+  }
+
+  private finishUndoFrame(): void {
     const commands = this.frameCommands;
     this.frameCommands = null;
+    this.frameOwner = null;
     if (!commands || commands.length === 0) return;
     // Count REAL stack growth (coalesced gestures replace the top entry
     // without pushing — the frame pops exactly what it added).
@@ -479,7 +535,13 @@ export class ProjectStore {
     this.afterMutation();
   }
 
+  private sealOwnedUndoFrame(): void {
+    const owner = this.frameOwner;
+    if (owner !== null) this.endOwnedUndoFrame(owner);
+  }
+
   undo(): void {
+    this.sealOwnedUndoFrame();
     const command = this.undoStack.pop();
     this.timestamps.pop();
     if (!command) {
@@ -534,6 +596,7 @@ export class ProjectStore {
   }
 
   redo(): void {
+    this.sealOwnedUndoFrame();
     const command = this.redoStack.pop();
     if (!command) {
       this.announceNotice(
@@ -560,6 +623,7 @@ export class ProjectStore {
     // (the compound wrapped commands already undone by the jump, and redo
     // executed them a second time). Sealing leaves D as its own entry and
     // lets the jump build a coherent redo branch.
+    this.sealOwnedUndoFrame();
     if (this.frameCommands) this.endUndoFrame();
     while (this.undoStack.length > index + 1) this.undo();
     while (this.undoStack.length <= index && this.redoStack.length > 0) this.redo();
@@ -590,6 +654,7 @@ export class ProjectStore {
     // a compound and re-execute them against THIS document. (No live caller
     // today — project switches build a fresh store — landmine defusal.)
     this.frameCommands = null;
+    this.frameOwner = null;
     this.historyDocs = [this.doc_];
     this.diffCache.clear();
     // Defect 4.2 (undo/redo integrity audit): afterMutation() sets the

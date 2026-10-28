@@ -19,6 +19,7 @@ import {
   completeAgentCall,
   effectiveRisk,
   markSessionCheckpointSaved,
+  mutatesDocument,
   prepareAgentCall,
   summarizeToolArgs,
   toolAnnotations,
@@ -53,6 +54,7 @@ import {
   summarizeBlindAb,
 } from "./blind-ab";
 import type { Command } from "../commands/types";
+import { UndoFrameConflictError, type UndoFrameToken } from "../store/undoFrame";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { clarifyMessage } from "../intent/clarify-messages";
 import { gateModelRoute } from "../intent/model-route-gate";
@@ -3607,6 +3609,16 @@ export interface McpToolContext {
    * host's `execute` stops being inline.
    */
   execute(command: Command): void;
+  /**
+   * MCP-only write path. Hosts use the token to keep a batch inside its own
+   * undo transaction and refuse writes that would cross another transaction.
+   */
+  executeAgentCommand?: (command: Command, frameToken?: UndoFrameToken) => void;
+  /** Owned MCP transaction support. Legacy UI undo-frame hooks are not safe for MCP batches. */
+  beginOwnedUndoFrame?: (label?: string) => UndoFrameToken | null;
+  endOwnedUndoFrame?: (token: UndoFrameToken) => boolean;
+  /** Set only for child calls dispatched inside an owned MCP batch. */
+  undoFrameToken?: UndoFrameToken;
   undo(): void;
   redo(): void;
   undoStackLength(): number;
@@ -3749,12 +3761,9 @@ export interface McpToolContext {
     error?: string;
   }>;
 
-  /**
-   * P2 transaction support (kyx_batch): fold every mutation executed between
-   * begin and end into ONE undo entry. Absent → batch still runs, but each
-   * call is its own undo step (the result reports which contract applied).
-   */
+  /** @deprecated Human gesture frame hooks; MCP writes use owned methods above. */
   beginUndoFrame?: (label?: string) => void;
+  /** @deprecated Human gesture frame hooks; MCP batches use owned methods above. */
   endUndoFrame?: () => void;
   /**
    * P2 loudness loop hooks (kyx_loudness). measure reads the CURRENT mix's
@@ -4335,9 +4344,8 @@ function mixerSnapshotData(doc: ProjectDocument): Record<string, unknown> {
 
 /**
  * What THIS transport can actually do, without making the agent discover it
- * by failure. Long-running calls are observable in the Job Center but the
- * current MCP surface has no cooperative cancellation; saying so is part of
- * the contract, not an omission to hide.
+ * by failure. Long-running MCP calls advertise the hooks they actually have,
+ * including cooperative cancellation and owned batch undo frames.
  */
 export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown> {
   const has = (value: unknown): boolean => typeof value === "function";
@@ -4363,7 +4371,7 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       projectLibrary: has(ctx.listProjects),
       saveAs: has(ctx.saveAsProject),
       offlineMixRender: has(ctx.renderMix),
-      undoFrames: has(ctx.beginUndoFrame),
+      undoFrames: has(ctx.beginOwnedUndoFrame) && has(ctx.endOwnedUndoFrame) && has(ctx.executeAgentCommand),
     },
     longRunningTools: [...LONG_RUNNING_AGENT_TOOLS],
     // AS-014: per-kind NL eligibility — the SAME table executeRoutedIntent's
@@ -4396,7 +4404,7 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       scope:
         "cooperative — render-class tools (render summary, mix diagnosis, loudness, audio preview, mix preview, master iterate) check the per-call signal at render-stage boundaries and pass it into renderProject",
       reason:
-        "every MCP call owns an AbortController: the dispatcher auto-aborts at the call deadline (75 s long-running / 30 s otherwise — PAST the transports' own budgets, so a timed-out caller never loses an in-flight response) and cancelMcpCall(requestId) aborts early. Once OfflineAudioContext.startRendering begins, a pass runs to completion — the abort lands at the NEXT boundary. Client-initiated protocol cancellation (notifications/cancelled) is not wired through the transports yet.",
+        "every MCP call owns an AbortController: the dispatcher auto-aborts at the call deadline (75 s long-running / 30 s otherwise — PAST the transports' own budgets, so a timed-out caller never loses an in-flight response), cancelMcpCall(requestId) aborts early, and the Job Center JobHandle.signal is linked to the same call. Nested calls follow their parent signal. Once OfflineAudioContext.startRendering begins, a pass runs to completion — the abort lands at the NEXT boundary. Client-initiated protocol cancellation (notifications/cancelled) is not wired through the transports yet.",
       revisit:
         "wire notifications/cancelled through the desktop stdio forwarder and the web relay to let ANY client abort; today cancelMcpCall is the seam (Job Center/tests).",
     },
@@ -5050,6 +5058,20 @@ ${preview.text}`,
   // refusal path ever leaks a deadline timer. Render-class handlers observe
   // ctx.signal at their render-stage boundaries.
   const callController = new AbortController();
+  const parentSignal = ctx.signal;
+  const abortCall = (reason: unknown, fallback: string): void => {
+    if (!callController.signal.aborted) {
+      callController.abort(reason ?? new DOMException(fallback, "AbortError"));
+    }
+  };
+  const abortCallFromJob = (): void => {
+    abortCall(job?.signal.reason, "MCP job cancelled");
+  };
+  const abortCallFromParent = (): void => abortCall(parentSignal?.reason, "Parent MCP call cancelled");
+  if (job?.signal.aborted) abortCallFromJob();
+  else job?.signal.addEventListener("abort", abortCallFromJob, { once: true });
+  if (parentSignal?.aborted) abortCallFromParent();
+  else parentSignal?.addEventListener("abort", abortCallFromParent, { once: true });
   ctx = { ...ctx, signal: callController.signal };
   const deadlineTimer = setTimeout(
     () => callController.abort(new DOMException("MCP call deadline exceeded", "AbortError")),
@@ -5062,6 +5084,9 @@ ${preview.text}`,
     const recordingCtx: McpToolContext = {
       ...ctx,
       execute: (command: Command) => {
+        if (ctx.signal?.aborted) {
+          throw ctx.signal.reason ?? new DOMException("MCP call was cancelled", "AbortError");
+        }
         const before = ctx.getDoc();
         for (const op of command.ops ?? []) {
           if (written.length >= MAX_RECORDED_WRITES) break;
@@ -5087,7 +5112,12 @@ ${preview.text}`,
             });
           }
         }
-        ctx.execute(command);
+        if (ctx.executeAgentCommand == null) {
+          throw new UndoFrameConflictError(
+            "This MCP host does not expose the isolated project writer; the write was refused.",
+          );
+        }
+        ctx.executeAgentCommand(command, ctx.undoFrameToken);
         // Audit F-12: the command carries its own clamp disclosure — the
         // values the domain had to change. The answer repeats it, so the agent
         // learns what LANDED, not only what it asked for.
@@ -5122,6 +5152,16 @@ ${preview.text}`,
     job?.fail(error);
     const conflict = error instanceof WriteConflictError ? error : null;
     const scopeError = error instanceof ScopeViolationError ? error : null;
+    const frameConflict = error instanceof UndoFrameConflictError ? error : null;
+    const errorCode = conflict
+      ? "WRITE_CONFLICT"
+      : scopeError
+        ? "SCOPE_VIOLATION"
+        : frameConflict
+          ? "WRITE_CONFLICT"
+          : callController.signal.aborted
+            ? "CANCELLED"
+            : "THREW";
     completeAgentCall({
       agent,
       tool: name,
@@ -5129,13 +5169,7 @@ ${preview.text}`,
       depth,
       mutated: false,
       isError: true,
-      errorCode: conflict
-        ? "WRITE_CONFLICT"
-        : scopeError
-          ? "SCOPE_VIOLATION"
-          : callController.signal.aborted
-            ? "CANCELLED"
-            : "THREW",
+      errorCode,
       durationMs: Date.now() - startedAt,
       docId: docBefore.id,
       docName: docBefore.name,
@@ -5160,6 +5194,12 @@ ${preview.text}`,
         `${scopeError.message}. Nothing was written — narrow the call to its declared scope, or declare the scope it really needs.`,
       );
     }
+    if (frameConflict) {
+      return mcpError(
+        "WRITE_CONFLICT",
+        frameConflict.message + " Nothing was written — retry after the active edit or batch has finished.",
+      );
+    }
     if (callController.signal.aborted) {
       // AS-009 phase 2: the call was aborted (deadline or cancelMcpCall).
       // COOPERATIVE means the abort lands at a render-stage boundary — a
@@ -5176,6 +5216,8 @@ ${preview.text}`,
     throw error;
   } finally {
     clearTimeout(deadlineTimer);
+    job?.signal.removeEventListener("abort", abortCallFromJob);
+    parentSignal?.removeEventListener("abort", abortCallFromParent);
     if (requestId !== "") mcpCancellableCalls.delete(requestId);
   }
   mcpCallDepth -= 1;
@@ -10914,9 +10956,12 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
 }
 
 /** kyx_batch — sequential multi-call with optional ONE-undo-frame folding.
- * Per-call failures never abort the batch; every result carries its own
- * read-back so the caller sees exactly what landed. */
+ * Recoverable per-call failures keep going; cancellation and write conflicts
+ * halt because continuing could apply a stale or unauthorized plan. */
 async function executeBatchTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
+  if (ctx.signal?.aborted) {
+    return mcpError("CANCELLED", "batch cancelled before any calls were run");
+  }
   const calls = Array.isArray(record.calls) ? record.calls : null;
   if (calls == null || calls.length === 0) {
     return mcpError("INVALID_ARGUMENTS", "batch needs calls: [{tool, args}…] (1..10)");
@@ -10925,15 +10970,55 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
     return mcpError("INVALID_ARGUMENTS", `batch is capped at 10 calls (got ${calls.length}) — split it`);
   }
   const atomic = record.atomic === true;
-  const framed = ctx.beginUndoFrame != null && ctx.endUndoFrame != null;
+  const batchMayMutate = calls.some((entry) => {
+    const item = (entry != null && typeof entry === "object" ? entry : {}) as { tool?: unknown; args?: unknown };
+    const tool = typeof item.tool === "string" ? item.tool : "";
+    if (
+      tool === "" ||
+      tool === "kyx_batch" ||
+      tool === "kyx_export" ||
+      tool === "kyx_audio_preview" ||
+      tool === "kyx_loudness" ||
+      tool === "kyx_import_sfz" ||
+      !MCP_TOOLS.some((def) => def.name === tool)
+    ) {
+      return false;
+    }
+    return mutatesDocument(effectiveRisk(tool, item.args ?? {}));
+  });
+  const canOwnFrame =
+    typeof ctx.beginOwnedUndoFrame === "function" &&
+    typeof ctx.endOwnedUndoFrame === "function" &&
+    typeof ctx.executeAgentCommand === "function";
+  if (batchMayMutate && !canOwnFrame) {
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      "This host cannot safely isolate and group MCP batch writes; no batch calls were run.",
+    );
+  }
+  const openedFrame = batchMayMutate && canOwnFrame ? ctx.beginOwnedUndoFrame!("mcp-batch") : undefined;
+  if (batchMayMutate && canOwnFrame && openedFrame == null) {
+    return mcpError("WRITE_CONFLICT", "A project edit, sync, or undo frame is active; no batch calls were run.");
+  }
+  const frameToken = openedFrame ?? undefined;
+  const framed = frameToken !== undefined;
+  const childContext = framed ? { ...ctx, undoFrameToken: frameToken } : ctx;
   const results: Array<{ tool: string; mutated: boolean; text: string }> = [];
   let mutations = 0;
   let failures = 0;
   let skipped = 0;
   let halted = false;
-  if (framed) ctx.beginUndoFrame!("mcp-batch");
+  let cancelled = false;
+  let interruptedByConflict = false;
+  let frameOwnershipLost = false;
   try {
     for (const entry of calls) {
+      if (!halted && ctx.signal?.aborted) {
+        halted = true;
+        cancelled = true;
+        failures += 1;
+        results.push({ tool: "mcp_batch", mutated: false, text: "cancelled before the next call" });
+      }
       if (halted) {
         skipped += 1;
         continue;
@@ -10952,19 +11037,36 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
         if (atomic) halted = true;
         continue;
       }
-      if (tool === "kyx_export" || tool === "kyx_audio_preview" || tool === "kyx_loudness") {
+      if (
+        tool === "kyx_export" ||
+        tool === "kyx_audio_preview" ||
+        tool === "kyx_loudness" ||
+        tool === "kyx_import_sfz"
+      ) {
         results.push({ tool, mutated: false, text: `refused: ${tool} runs standalone (async, not batchable)` });
         failures += 1;
         if (atomic) halted = true;
         continue;
       }
       try {
-        const result = await executeMcpTool(ctx, tool, item.args ?? {});
+        const result = await executeMcpTool(childContext, tool, item.args ?? {});
         results.push({ tool, mutated: result.mutated, text: result.text });
         if (result.mutated) mutations += 1;
+        if (ctx.signal?.aborted && result.errorCode !== "CANCELLED") {
+          halted = true;
+          cancelled = true;
+          if (result.isError !== true) failures += 1;
+          results.push({ tool: "mcp_batch", mutated: false, text: "cancelled after the current call" });
+        }
         if (result.isError === true) {
           failures += 1;
-          if (atomic) halted = true;
+          if (result.errorCode === "CANCELLED" || result.errorCode === "WRITE_CONFLICT" || ctx.signal?.aborted) {
+            halted = true;
+            cancelled ||= result.errorCode === "CANCELLED" || ctx.signal?.aborted === true;
+            interruptedByConflict ||= result.errorCode === "WRITE_CONFLICT";
+          } else if (atomic) {
+            halted = true;
+          }
         }
       } catch (error) {
         results.push({
@@ -10973,26 +11075,48 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
           text: `crashed: ${error instanceof Error ? error.message : String(error)}`,
         });
         failures += 1;
-        if (atomic) halted = true;
+        if (ctx.signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+          halted = true;
+          cancelled = true;
+        } else if (error instanceof UndoFrameConflictError) {
+          halted = true;
+          interruptedByConflict = true;
+        } else if (atomic) {
+          halted = true;
+        }
       }
     }
   } finally {
-    if (framed) ctx.endUndoFrame!();
+    if (framed) frameOwnershipLost = !ctx.endOwnedUndoFrame!(frameToken);
   }
+  if (frameOwnershipLost) {
+    failures += 1;
+    interruptedByConflict = true;
+    results.push({
+      tool: "mcp_batch",
+      mutated: false,
+      text: "batch lost its undo-frame ownership; inspect project history before retrying",
+    });
+  }
+  const stopReason = cancelled
+    ? "stopped after cancellation"
+    : interruptedByConflict
+      ? "stopped after an edit or undo-frame conflict"
+      : atomic
+        ? "atomic mode — stopped at the first failure"
+        : "partial-commit (pass atomic:true to stop at the first failure)";
   const summary = [
     `${calls.length} call(s): ${mutations} mutated, ${failures} failed${skipped > 0 ? `, ${skipped} skipped` : ""}`,
-    atomic
-      ? "atomic mode — stopped at the first failure"
-      : "partial-commit (pass atomic:true to stop at the first failure)",
+    stopReason,
     framed
       ? "ONE undo step for the whole batch"
       : "no undo-frame support on this host — each call is its own undo step",
   ].join(" · ");
   const text = `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`;
-  if (atomic && failures > 0) {
+  if ((atomic && failures > 0) || cancelled || interruptedByConflict) {
     return mcpError("PARTIAL_FAILURE", text, {
       mutated: mutations > 0,
-      data: { results, mutations, failures, skipped, singleUndo: framed, atomic: true },
+      data: { results, mutations, failures, skipped, singleUndo: framed, atomic, cancelled, interruptedByConflict },
     });
   }
   return {

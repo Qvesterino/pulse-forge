@@ -42,6 +42,7 @@ export type { RecoveryStatus, StoreNotice } from "../store/ProjectStore";
 import type { RecoveryStatus, StoreNotice } from "../store/ProjectStore";
 import { normalizerRepairs } from "../store/clampRepairs";
 import { describeClamps } from "../shared/clamp-report";
+import { createUndoFrameToken, UndoFrameConflictError, type UndoFrameToken } from "../store/undoFrame";
 
 /**
  * Pre-first-sync guard window. `YDocStore.empty()` starts with an UNKNOWN
@@ -84,6 +85,10 @@ export class YDocStore {
   private notice_: StoreNotice | null = null;
   private noticeId_ = 0;
   private undoManager: Y.UndoManager;
+  /** Owner of an MCP batch currently sharing one local Y.UndoManager item. */
+  private frameOwner: UndoFrameToken | null = null;
+  /** Legacy human record/gesture frame; MCP writes must not join it. */
+  private legacyUndoFrameOpen = false;
   private pendingLabel: string | null = null;
   /**
    * Consequence note of the command in flight (audit F-12): the values that
@@ -409,15 +414,41 @@ export class YDocStore {
    * origin and never enter the local undo stack.
    */
   execute(command: Command): void {
+    this.sealOwnedUndoFrame();
     this.applyCommand(command, false);
   }
 
   /** Apply a command made directly in a human editor and expose it to local taste learning. */
   executeUserEdit(command: Command): void {
+    this.sealOwnedUndoFrame();
     this.applyCommand(command, true);
   }
 
-  private applyCommand(command: Command, userAuthored: boolean): void {
+  /** Execute an MCP mutation without inheriting a user frame or another batch. */
+  executeAgentCommand(command: Command, frameToken?: UndoFrameToken): void {
+    if (this.syncPhase_ === "connecting") {
+      throw new UndoFrameConflictError("The collaborative project is still syncing; the MCP write was refused.");
+    }
+    if (frameToken !== undefined) {
+      if (this.frameOwner !== frameToken) {
+        throw new UndoFrameConflictError(
+          "The batch no longer owns its undo frame; the project changed while it was running. Re-read and retry.",
+        );
+      }
+    } else if (this.frameOwner !== null || this.legacyUndoFrameOpen) {
+      throw new UndoFrameConflictError(
+        "A project undo frame is active. The MCP write was refused so it cannot join another edit.",
+      );
+    }
+    const isolatedCommand: Command = { ...command, coalesceKey: undefined };
+    if (frameToken === undefined) {
+      this.undoManager.stopCapturing();
+      this.lastCoalesce = null;
+    }
+    this.applyCommand(isolatedCommand, false, frameToken);
+  }
+
+  private applyCommand(command: Command, userAuthored: boolean, frameToken?: UndoFrameToken): void {
     if (this.syncPhase_ === "connecting") {
       // Pre-first-sync guard — see the SyncPhase docs. Bounded: beyond the
       // cap the OLDEST buffered command is dropped so the flushed state still
@@ -430,11 +461,11 @@ export class YDocStore {
       }
       return;
     }
-    this.executeBuffered(command, userAuthored);
+    this.executeBuffered(command, userAuthored, frameToken);
   }
 
   /** Command application proper — runs once the sync phase is ready. */
-  private executeBuffered(command: Command, userAuthored = false): void {
+  private executeBuffered(command: Command, userAuthored = false, frameToken?: UndoFrameToken): void {
     // Jam-role gate: a restricted role may not run commands outside its
     // bucket. The refusal is surfaced, never thrown — the UI keeps working.
     const role = this.roleProvider?.() ?? null;
@@ -503,7 +534,12 @@ export class YDocStore {
       command.coalesceKey != null &&
       this.lastCoalesce?.key === command.coalesceKey &&
       now - this.lastCoalesce.at <= 1000;
-    if (!sameGesture) this.undoManager.stopCapturing();
+    if (this.frameOwner === frameToken && frameToken !== undefined) {
+      // The owned MCP batch defines the capture boundary. Keep its commands
+      // together even when individual commands have different coalesce keys.
+    } else if (!sameGesture) {
+      this.undoManager.stopCapturing();
+    }
     this.lastCoalesce = command.coalesceKey != null ? { key: command.coalesceKey, at: now } : null;
     this.afterMutation();
     if (userAuthored) {
@@ -535,15 +571,48 @@ export class YDocStore {
    * instead of leaving the item open until an unrelated capture seam.
    */
   beginUndoFrame(_label?: string): boolean {
+    if (this.legacyUndoFrameOpen || this.frameOwner !== null) return false;
     this.undoManager.stopCapturing();
+    this.lastCoalesce = null;
+    this.legacyUndoFrameOpen = true;
+    return true;
+  }
+
+  /** Open a capture window that only the returned token may append to or close. */
+  beginOwnedUndoFrame(_label?: string): UndoFrameToken | null {
+    if (this.syncPhase_ !== "ready" || this.legacyUndoFrameOpen || this.frameOwner !== null) return null;
+    this.undoManager.stopCapturing();
+    this.lastCoalesce = null;
+    const token = createUndoFrameToken();
+    this.frameOwner = token;
+    return token;
+  }
+
+  /** Close only the capture window opened by this token. */
+  endOwnedUndoFrame(token: UndoFrameToken): boolean {
+    if (this.frameOwner !== token) return false;
+    this.undoManager.stopCapturing();
+    this.lastCoalesce = null;
+    this.frameOwner = null;
     return true;
   }
 
   endUndoFrame(): void {
+    // A legacy gesture that failed to acquire the frame cannot seal an MCP
+    // batch's capture window.
+    if (!this.legacyUndoFrameOpen) return;
     this.undoManager.stopCapturing();
+    this.lastCoalesce = null;
+    this.legacyUndoFrameOpen = false;
+  }
+
+  private sealOwnedUndoFrame(): void {
+    const owner = this.frameOwner;
+    if (owner !== null) this.endOwnedUndoFrame(owner);
   }
 
   undo(): void {
+    this.sealOwnedUndoFrame();
     if (!this.undoManager.canUndo()) {
       // Nothing to undo — SAY SO (audit S-5): the history is per-session, and
       // a silent no-op reads as a broken app rather than an empty history.
@@ -566,6 +635,7 @@ export class YDocStore {
   }
 
   redo(): void {
+    this.sealOwnedUndoFrame();
     if (!this.undoManager.canRedo()) {
       this.announceNotice(
         "Nothing to redo",
@@ -587,6 +657,7 @@ export class YDocStore {
    * no-oped in collab sessions.
    */
   jumpTo(index: number): void {
+    this.sealOwnedUndoFrame();
     while (this.undoManager.undoStack.length > index + 1 && this.canUndo) this.undo();
     while (this.undoManager.undoStack.length <= index && this.canRedo) this.redo();
   }
@@ -597,6 +668,9 @@ export class YDocStore {
     // never observe the intermediate empty-project frame (and record the
     // wipe as two foreign edits).
     this.undoManager.stopCapturing();
+    this.frameOwner = null;
+    this.legacyUndoFrameOpen = false;
+    this.lastCoalesce = null;
     this.yDoc.transact(() => {
       this.yMap.clear();
       projectToYDoc(normalized, this.yMap);

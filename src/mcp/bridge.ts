@@ -43,6 +43,9 @@ interface RelayCloseEvent {
 export interface McpBridgeDeps {
   getDoc(): ProjectDocument;
   execute(command: Command): void;
+  executeAgentCommand?: NonNullable<McpToolContext["executeAgentCommand"]>;
+  beginOwnedUndoFrame?: NonNullable<McpToolContext["beginOwnedUndoFrame"]>;
+  endOwnedUndoFrame?: NonNullable<McpToolContext["endOwnedUndoFrame"]>;
   undo(): void;
   redo(): void;
   undoStackLength(): number;
@@ -160,6 +163,9 @@ export class McpBridge {
       {
         getDoc: () => this.deps.getDoc(),
         execute: (command) => this.deps.execute(command),
+        executeAgentCommand: this.deps.executeAgentCommand,
+        beginOwnedUndoFrame: this.deps.beginOwnedUndoFrame,
+        endOwnedUndoFrame: this.deps.endOwnedUndoFrame,
         undo: () => this.deps.undo(),
         redo: () => this.deps.redo(),
         undoStackLength: () => this.deps.undoStackLength(),

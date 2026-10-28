@@ -58,6 +58,9 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
   return {
     getDoc: () => services.store.getDoc(),
     execute: (command) => services.store.execute(command),
+    executeAgentCommand: (command, frameToken) => services.store.executeAgentCommand(command, frameToken),
+    beginOwnedUndoFrame: (label) => services.store.beginOwnedUndoFrame(label),
+    endOwnedUndoFrame: (token) => services.store.endOwnedUndoFrame(token),
     undo: () => services.store.undo(),
     redo: () => services.store.redo(),
     undoStackLength: () => services.store.undoStackLength,

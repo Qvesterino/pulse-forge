@@ -90,6 +90,9 @@ export function createHeadlessMcpHost(options: HeadlessHostOptions): HeadlessHos
   const base: McpToolContext = {
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
+    executeAgentCommand: (command, frameToken) => store.executeAgentCommand(command, frameToken),
+    beginOwnedUndoFrame: (label) => store.beginOwnedUndoFrame(label),
+    endOwnedUndoFrame: (token) => store.endOwnedUndoFrame(token),
     undo: () => store.undo(),
     redo: () => store.redo(),
     undoStackLength: () => store.undoStackLength,
@@ -98,8 +101,8 @@ export function createHeadlessMcpHost(options: HeadlessHostOptions): HeadlessHos
     getRevision: () => store.getRevision(),
     isMicRecordingActive: () => false,
     transport,
-    // Optional undo-frame contract: the REAL store frames — atomic batches
-    // fold into one undo step here exactly as in the live window.
+    // Preserve legacy human-frame hooks for callers that exercise them; MCP
+    // batches use the owned token hooks above.
     beginUndoFrame: (label) => {
       store.beginUndoFrame(label);
     },

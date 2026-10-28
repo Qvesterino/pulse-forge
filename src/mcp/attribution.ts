@@ -1,4 +1,5 @@
 import type { Command } from "../commands/types";
+import type { UndoFrameToken } from "../store/undoFrame";
 import type { McpToolContext } from "./tools";
 
 /**
@@ -51,6 +52,12 @@ export function withAgentAttribution(ctx: McpToolContext, agentId: McpAgentId | 
     ...ctx,
     agentId,
     execute: (command) => ctx.execute(attributeLabel(command, agentId)),
+    ...(ctx.executeAgentCommand
+      ? {
+          executeAgentCommand: (command: Command, frameToken?: UndoFrameToken) =>
+            ctx.executeAgentCommand!(attributeLabel(command, agentId), frameToken),
+        }
+      : {}),
   };
 }
 

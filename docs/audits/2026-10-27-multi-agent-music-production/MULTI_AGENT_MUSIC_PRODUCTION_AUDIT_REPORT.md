@@ -314,7 +314,7 @@ Proceed only if an adequately powered, preregistered comparison shows meaningful
 
 ## 15. Safe changes and verification
 
-**Implemented safe fixes:** none. No isolated code change was justified without expanding scope or changing cancellation/transaction semantics. This is proposal-first; no agent framework, provider integration, source behavior, permission boundary, persistence path, or audio code was modified.
+**At the audit baseline, implemented safe fixes:** none. The focused post-audit fixes requested on 2026-10-28 are recorded at the end of this report.
 
 **Evidence inspected:** **src/mcp/tools.ts**, **agentTrust.ts**, **permissionLattice.ts**, **flags.ts**, **scope-guard.ts**, **write-conflict.ts**, **revision.ts**, **attribution.ts**, **render-summary.ts**, **bridge.ts**, **web-host.ts**, **desktop-host.ts**, **headless-host.ts**; **src/analysis/contract.ts**; **src/intent/model-context.ts**, **model-ollama.ts**, **multi-voice.ts**, **producer-theatre.ts**; **src/collab/bandmate.ts**; **src/services/jobCenter.ts**; **src/ui/ActivityCenter.tsx**; **src/store/ProjectStore.ts**; **docs/adr/0065-permission-lattice-and-scope-guard.md**.
 
@@ -334,3 +334,15 @@ Command: **npm run verify:all -- --skip browser,factory,build,audit**. The harne
 - **Process hygiene:** the verifier exited with code 1 after all selected gates completed. **node-gc -Root D:\\pulse-forge** reported 0 abandoned test-runtime trees; no owned verification process remained.
 
 Overall harness verdict: **RED**. The audit decision is architectural and does not depend on a green test run; the failed gates are recorded as repository verification blockers, not evidence for or against musical benefit.
+
+## Post-audit implementation follow-up — 2026-10-28
+
+The user authorized focused fixes for **MAG-02** (undo-frame ownership) and **MAG-10** (Job Center cancellation). No multi-agent framework, provider integration, permission expansion, persistence change, or audio-thread change was made.
+
+- **MAG-02:** `ProjectStore` and `YDocStore` now expose token-owned MCP undo frames and an isolated MCP command path. A mutating batch must acquire its own frame before document writes; a host without owned-frame support, an active user frame, or unavailable collab sync state rejects the batch before execution. Human edits and history navigation seal the MCP frame and invalidate its token. A late batch write then stops with a conflict instead of joining or closing another owner's frame. MCP command coalescing is isolated from adjacent user gestures. The web, desktop, and headless MCP contexts carry the owned hooks; attribution is preserved on the isolated write path. This is a single-writer refusal/seal policy, not a queued writer or rollback transaction.
+- **MAG-10:** each MCP call controller now follows its Job Center `JobHandle.signal`; nested calls also follow their parent MCP signal. The shared write boundary checks cancellation immediately before applying a command. A batch stops after cancellation or a write conflict and reports its landed prefix. Render work remains cooperative at its existing signal checkpoints; a non-cooperative operation cannot be preempted in the middle of a browser API call.
+- **Additional bounded safeguard:** SFZ library import is refused inside `kyx_batch`, because its library persistence is an external side effect outside the batch's owned project undo frame.
+
+**Affected files:** `src/store/undoFrame.ts`, `src/store/ProjectStore.ts`, `src/collab/YDocStore.ts`, `src/mcp/tools.ts`, `src/mcp/attribution.ts`, `src/mcp/bridge.ts`, `src/mcp/web-host.ts`, `src/mcp/desktop-host.ts`, `src/mcp/headless-host.ts`, and `docs/AGENT-MAP.md`.
+
+**Verification for this follow-up:** `git diff --check` passed for the implementation paths. Typecheck and tests were not run in this turn, per the user's direction that another agent is handling them. No audio playback, recording, project persistence, or real-time processing was exercised. Rollback is a source-only revert of the listed implementation files and this follow-up note; no project data or migration is involved.
