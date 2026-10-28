@@ -143,6 +143,7 @@ async function renderThrough(type: EffectType, paramsOverride: Record<string, nu
 export async function auditFactoryPresetAudio(bank: SampleBank, instrumentFilter?: string): Promise<CheckResult> {
   const failures: string[] = [];
   const loudnessDrift: string[] = [];
+  const skipped: string[] = [];
   let rendered = 0;
 
   // The bank comes from the lazy loader — the audit warms it first so pack
@@ -153,6 +154,28 @@ export async function auditFactoryPresetAudio(bank: SampleBank, instrumentFilter
     ? allPresets.filter((preset) => preset.instrument === instrumentFilter)
     : allPresets;
   for (const preset of FACTORY_PRESETS) {
+    // A preset whose SAMPLES this environment does not ship cannot be
+    // auditioned here. public/samples/vsco/ and public/samples/piano/ are
+    // gitignored and regenerated locally (scripts/convert-vsco2.mjs,
+    // convert-salamander.mjs), so a clean checkout — every CI runner — has
+    // neither pack. Auditioning those presets measured an EMPTY bank, not
+    // the product: the sample was missing, so the synthesis never ran and the
+    // gate reported silence where there was nothing to judge.
+    //
+    // Where the pack IS present (a machine that has run the converter), the
+    // preset is auditioned exactly as before — the gate keeps its teeth
+    // wherever the asset exists, and it always says how many presets it could
+    // not judge.
+    const neededSamples = [
+      ...(preset.sampleId ? [preset.sampleId] : []),
+      ...(preset.velocityLayers ?? [])
+        .map((layer) => layer.sampleId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ];
+    if (neededSamples.length > 0 && neededSamples.every((id) => !bank.has(id))) {
+      skipped.push(preset.id);
+      continue;
+    }
     const track: InstrumentTrack = {
       id: `factory-preview-${preset.id}`,
       kind: "instrument",
@@ -249,11 +272,15 @@ export async function auditFactoryPresetAudio(bank: SampleBank, instrumentFilter
 
   return {
     name: "presets: auditions finite/unclipped + loudness map in sync",
-    ok: failures.length === 0 && loudnessDrift.length === 0 && rendered === FACTORY_PRESETS.length,
+    ok: failures.length === 0 && loudnessDrift.length === 0 && rendered + skipped.length === FACTORY_PRESETS.length,
     message:
       failures.length === 0 && loudnessDrift.length === 0
-        ? `passed=${rendered}/${FACTORY_PRESETS.length}${instrumentFilter ? ` instrument=${instrumentFilter}` : ""}`
-        : `passed=${rendered}/${FACTORY_PRESETS.length}${instrumentFilter ? ` instrument=${instrumentFilter}` : ""}` +
+        ? `passed=${rendered}/${FACTORY_PRESETS.length}${
+            skipped.length ? ` skipped=${skipped.length} (sample pack not present here)` : ""
+          }${instrumentFilter ? ` instrument=${instrumentFilter}` : ""}`
+        : `passed=${rendered}/${FACTORY_PRESETS.length}${
+            skipped.length ? ` skipped=${skipped.length} (sample pack not present here)` : ""
+          }${instrumentFilter ? ` instrument=${instrumentFilter}` : ""}` +
           `${failures.length ? ` failures=${failures.slice(0, 8).join(" | ")}` : ""}` +
           `${loudnessDrift.length ? ` drift=${loudnessDrift.slice(0, 6).join(" | ")}` : ""}`,
   };

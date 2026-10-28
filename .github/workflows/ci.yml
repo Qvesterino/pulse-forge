@@ -208,11 +208,15 @@ jobs:
             {
               echo "### npm run gate FAILED (exit $status)"
               echo '```'
-              tail -60 /tmp/gate.log
+              echo '--- failing gates ---'
+              grep -E 'FAIL' /tmp/gate.log | head -20 || true
+              echo '--- tail ---'
+              tail -30 /tmp/gate.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             printf '::error title=UI gates failed (exit %s)::%s\n' "$status" \
-              "$(tail -60 /tmp/gate.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+              "$( { grep -E 'FAIL' /tmp/gate.log | head -12; echo '--- tail ---'; tail -20 /tmp/gate.log; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
           fi
           exit $status
 
@@ -241,11 +245,15 @@ jobs:
             {
               echo "### npm run test:browser FAILED (exit $status)"
               echo '```'
-              tail -60 /tmp/browser.log
+              echo '--- failing checks ---'
+              grep -E '^\[check\] FAIL' /tmp/browser.log | head -20 || true
+              echo '--- tail ---'
+              tail -30 /tmp/browser.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             printf '::error title=browser audio checks failed (exit %s)::%s\n' "$status" \
-              "$(tail -60 /tmp/browser.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+              "$( { grep -E '^\[check\] FAIL' /tmp/browser.log | head -12; echo '--- tail ---'; tail -20 /tmp/browser.log; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
           fi
           exit $status
       # Real-browser AI-control gate: the persisted-save receipt through
