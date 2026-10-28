@@ -76,14 +76,16 @@ Against that, the repo's discipline is real and worth stating plainly:
 
 ### 2.3 Tests actually run
 
-| Run                                                              | Command                                                                                                                                                             | Result                         |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| Shared worktree (has a parallel session's WIP)                   | `npx vitest run tests/{agent-trust,permission-lattice,mcp-verified-mutation,mcp-error-codes,mcp-receipt-census,mcp-state-mixer,mcp-ops-coverage,mcp-tools}.test.ts` | **280 passed / 282**; 2 failed |
-| Isolated worktree at `c8729057` (`C:/Users/danie/pf-wave6-base`) | `npx vitest run tests/{agent-trust,mcp-receipt-census,mcp-ops-coverage}.test.ts`                                                                                    | **65/65 passed**               |
-| The audit's own guard, shared tree                               | `npx vitest run tests/audit-observation-contract.test.ts`                                                                                                           | **8/8 passed**                 |
-| The audit's own guard, isolated baseline                         | same, with `KYX_OBSERVATION_ROOT` pointed at `c8729057`                                                                                                             | **8/8 passed**                 |
+| Run                                                                         | Command                                                                                                                                                             | Result                         |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Shared worktree (has a parallel session's WIP)                              | `npx vitest run tests/{agent-trust,permission-lattice,mcp-verified-mutation,mcp-error-codes,mcp-receipt-census,mcp-state-mixer,mcp-ops-coverage,mcp-tools}.test.ts` | **280 passed / 282**; 2 failed |
+| Isolated worktree at `c8729057` (a detached checkout of the audited commit) | `npx vitest run tests/{agent-trust,mcp-receipt-census,mcp-ops-coverage}.test.ts`                                                                                    | **65/65 passed**               |
+| The audit's own guard, shared tree                                          | `npx vitest run tests/audit-observation-contract.test.ts`                                                                                                           | **8/8 passed**                 |
+| The audit's own guard, isolated baseline                                    | same, with `KYX_OBSERVATION_ROOT` pointed at `c8729057`                                                                                                             | **8/8 passed**                 |
 
 The two shared-tree failures are **not defects in the committed baseline**. Both are the in-flight `kyx_separate` tool missing its `TOOL_RISK` entry and its receipt-census entry — exactly what those two guards exist to catch. The isolated run at the audited commit proves the baseline is green. **Verified.**
+
+_Reproducing the isolated run:_ `git worktree add --detach <path> c8729057`, then a `node_modules` junction into the main checkout, then the same vitest invocation. The temporary worktree was removed after the audit; the claim is about the **commit**, not about a directory that still exists.
 
 ### 2.4 The guard was proven capable of failing
 
