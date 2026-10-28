@@ -27,6 +27,18 @@ import type { Services } from "../../src/services";
  * rendered grid must not follow the project's length. These specs pin that,
  * plus a per-clip budget, so a future change that drops windowing — or makes a
  * strip render per bar again — fails here instead of at 4000 bars.
+ *
+ * THE PER-CLIP BUDGET MOVED WITH THE SCENE PICTURE (2026-10-28). A scene
+ * region draws what it PLAYS inside the region (ScenePatternMarks), and the
+ * house template's scene carries 40 notes + 44 drum hits per region: 87
+ * elements of picture on top of the ~15 of clip chrome. Measured with this
+ * harness: 520 packed clips → 53 259 elements (~102.4 per clip), of which
+ * 43 680 are the picture's own marks.
+ *
+ * The budget is re-pinned to the MEASURED number, not to a round guess, and it
+ * stays a tripwire: one element more per clip fails here, so the picture
+ * cannot grow without someone re-pinning it on purpose and reviewing the
+ * diff. The window specs above are the invariant that must never move.
  */
 
 function docWithClips(bars: number[]) {
@@ -93,12 +105,12 @@ describe("arrangement DOM census gate (D: scale)", () => {
     expect(total, "the unmeasured fallback exploded for a 1000-bar project").toBeLessThanOrEqual(1200);
   });
 
-  it("per-clip DOM cost stays within budget (520 clips ≤ 9000 elements)", () => {
+  it("per-clip DOM cost stays within budget (520 clips ≤ 53 259 elements)", () => {
     const bars = Array.from({ length: 520 }, (_, index) => index * 4);
     const utils = renderPanel(docWithClips(bars));
     const clipEls = utils.container.querySelectorAll(".arr-clip").length;
     const total = utils.container.querySelectorAll("*").length;
     expect(clipEls, "not every clip rendered — the cost measurement would be vacuous").toBe(520);
-    expect(total, "per-clip DOM cost grew past its measured ~14.7 elements").toBeLessThanOrEqual(9000);
+    expect(total, "per-clip DOM cost grew past its measured ~102.4 elements").toBeLessThanOrEqual(53_259);
   });
 });
