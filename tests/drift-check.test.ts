@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { collectCountChecks, countSpecFiles, GENERATORS, parseCountRow, restoreDecision } from "../scripts/drift-check";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  collectCountChecks,
+  comparable,
+  countSpecFiles,
+  GENERATORS,
+  parseCountRow,
+  restoreDecision,
+} from "../scripts/drift-check";
 
 /**
  * DRIFT CHECK — the derivable-artifact gate (Chromium-style regeneration
@@ -60,46 +69,79 @@ describe("countSpecFiles", () => {
 });
 
 /**
- * THE VOLATILE-PATH POLICY.
+ * THE SECOND HALF OF THE SPEC COUNT.
+ *
+ * The spec-file count lives in TWO places: the hand-maintained number in
+ * docs/CURRENT-STATE.md (which the gate READS) and the generated snapshot in
+ * docs/status.json (which records what the check MEASURED). Moving the number
+ * by hand and forgetting the snapshot made the [status] section red — and that
+ * red arrived as a CI job, hours after the commit that caused it, on a machine
+ * that had no way to explain itself.
+ *
+ * The drift gate does catch it. But that gate takes minutes and runs in CI.
+ * This check asks the same question in milliseconds, in the unit suite: does
+ * the committed payload still describe the tree we are standing in?
+ *
+ * It is the fast half of the slow gate, and it is the half that fires while
+ * the session that made the mistake is still running.
+ */
+describe("the committed status payload's spec-count claim", () => {
+  it("matches the live count RIGHT NOW", () => {
+    const payload = JSON.parse(readFileSync(join(process.cwd(), "docs/status.json"), "utf8")) as {
+      claims?: { id: string; summary: string }[];
+    };
+    const claim = payload.claims?.find((c) => c.id === "spec-counts");
+    expect(claim, "docs/status.json has no spec-counts claim").toBeDefined();
+    const live = countSpecFiles(process.cwd());
+    expect(claim!.summary, "the committed status snapshot does not describe the current tree").toBe(
+      `${live} claimed, ${live} measured`,
+    );
+  });
+});
+
+/**
+ * THE TIMESTAMP IS IGNORED; THE LIVE ROWS ARE NOT.
  *
  * `npm run status:report` writes two files: `docs/status.json` (the stable
- * payload the gate compares) and `docs/STATUS.md` (the same claims as a page,
- * whose header carries a generation timestamp).
+ * payload the gate compares) and `docs/STATUS.md` (the same claims as a page).
  *
- * The timestamp makes STATUS.md VOLATILE: it can never be compared with HEAD,
- * because every regeneration differs. If it were OWNED, the gate would be red
- * on every single run — the flapping that made the file unusable as a
- * comparison target in the first place.
+ * The page carries a generation timestamp in its header, so it can never be
+ * compared byte-for-byte with HEAD — every run would differ. The first answer
+ * to that was to leave the page out of the comparison entirely. It was the
+ * WRONG answer: the page also carries the LIVE claim rows, and a row that sat
+ * at 1319 while the tree said 1323 is a stale number on a published page that
+ * NO GATE COULD SEE.
  *
- * But "not owned" is not "leave it dirty". The file was left dirty on every
- * gate run, and in a shared worktree a dirty generated file is a hazard: the
- * next session's `git add .` sweeps it into an unrelated commit. It is now
- * declared VOLATILE — restored after the check, never compared — and these
- * pins hold that distinction, because collapsing the two lists is the one
- * change that would put the gate back in the red.
+ * The right answer is to ignore exactly one thing — the volatile line — and
+ * compare the rest. The timestamp never decides the verdict; the live rows
+ * always do.
  */
-describe("the volatile-path policy", () => {
+describe("the status page's comparison policy", () => {
   const status = GENERATORS.find((section) => section.name === "status");
 
   it("declares the status section", () => {
     expect(status, "the status generator section is gone").toBeDefined();
   });
 
-  it("never OWNS a volatile path — a timestamp cannot be compared with HEAD", () => {
-    for (const section of GENERATORS) {
-      for (const path of section.volatilePaths ?? []) {
-        expect(section.ownedPaths, `${section.name} owns ${path} and declares it volatile`).not.toContain(path);
-      }
-    }
-    expect(status!.ownedPaths).not.toContain("docs/STATUS.md");
-  });
-
-  it("RESTORES the volatile path, so a gate run leaves no trace", () => {
-    expect(status!.volatilePaths).toContain("docs/STATUS.md");
-  });
-
-  it("keeps the stable payload owned — that one IS comparable", () => {
+  it("OWNS the page — a published file with live rows must be compared", () => {
+    expect(status!.ownedPaths).toContain("docs/STATUS.md");
     expect(status!.ownedPaths).toContain("docs/status.json");
+  });
+
+  it("ignores the generation timestamp and nothing else", () => {
+    const section = status!;
+    const a = "Generated 2026-10-28T13:30:46.976Z\n| count | 1323 |\n";
+    const b = "Generated 2026-10-28T16:45:21.290Z\n| count | 1323 |\n";
+    // A different timestamp is the SAME file.
+    expect(comparable(a, section)).toBe(comparable(b, section));
+    // A different claim row is a DIFFERENT file — and that is the whole point.
+    const c = "Generated 2026-10-28T13:30:46.976Z\n| count | 1319 |\n";
+    expect(comparable(a, section)).not.toBe(comparable(c, section));
+  });
+
+  it("the stable payload has no ignored lines at all", () => {
+    expect(status!.ignoreCompareLines).toBeDefined();
+    expect(GENERATORS.find((s) => s.name === "mcp-mirrors")!.ignoreCompareLines).toBeUndefined();
   });
 });
 
