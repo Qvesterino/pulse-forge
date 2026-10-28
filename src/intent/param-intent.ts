@@ -733,7 +733,9 @@ function paramTargetEntries(doc: Parameters<typeof applyMixIntent>[0], intent: P
 
 export interface ParamAutomationControl {
   trackName: string;
-  effectType: EffectType;
+  /** The owning device family. `"instrument"` names an instParam source —
+   * instrument parameters are automatable through the same lane model. */
+  effectType: EffectType | "instrument";
   paramId: string;
   source: "project lane" | "scene lane" | "arrangement clip";
   id: string;
@@ -777,13 +779,16 @@ function effectiveSamples(
  * Automation sources that can still own a parameter after a base-value write.
  * Samples are taken from each source's authored curve; they are explicitly
  * labelled by timeline scope so a plan never presents them as one live cursor
- * read.
+ * read. Exported for the DIRECT param tools (kyx_plugin_param,
+ * kyx_instrument_param): their results must disclose the same masking the
+ * intent layer discloses — a write that lands while a lane runs is the same
+ * "verified success, inaudible result" class on every surface.
  */
-function paramAutomationControls(
+export function paramAutomationControls(
   doc: ProjectDocument,
   target: AutomationTarget,
   trackName: string,
-  effectType: EffectType,
+  effectType: EffectType | "instrument",
   paramId: string,
 ): ParamAutomationControl[] {
   const controls: ParamAutomationControl[] = [];
@@ -866,7 +871,9 @@ function paramAutomationControls(
   return controls;
 }
 
-function automationControlText(control: ParamAutomationControl, fmt: (value: number) => string): string {
+/** One human-readable line per automation control (shared by the intent
+ * plans and the direct param tools' read-backs). */
+export function automationControlText(control: ParamAutomationControl, fmt: (value: number) => string): string {
   const range = control.endExclusive
     ? `${control.startTick}–${control.endTick} ticks (end exclusive)`
     : `${control.startTick}–${control.endTick} ticks`;
@@ -877,7 +884,10 @@ function automationControlText(control: ParamAutomationControl, fmt: (value: num
   );
 }
 
-function formatAutomationWarning(
+/** The disclosure note appended when automation still owns the effective
+ * value after a base-value write. Exported so the DIRECT param tools use the
+ * SAME sentence the intent layer uses — one masking story, every surface. */
+export function formatAutomationWarning(
   controls: ParamAutomationControl[],
   fmt: (value: number) => string,
 ): string | undefined {

@@ -4770,7 +4770,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_render_summary",
     description:
-      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. For a focused read, provide trackId, startTick, and endTick together: KYX renders that isolated track pre-master and returns exact window timing, mix-health metrics, and the project revision before/after rendering. Use before/after mix moves so decisions cite numbers, not vibes. Slow (N+1 offline renders); render-bound transports only.",
+      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. RANGE MODE: startTick+endTick WITHOUT trackId (or fromBar+toBar, 1-based inclusive bars) measures the FULL MIX inside that window — the timeline is rendered from 0 and only the measurement is sliced, so tails and earlier notes stay in the numbers. Use it for range-conditional questions (is the drop louder than the chorus? did the fix land in the bridge?). For a focused single-track read, provide trackId, startTick, and endTick together: KYX renders that isolated track pre-master and returns exact window timing, mix-health metrics, and the project revision before/after rendering. Use before/after mix moves so decisions cite numbers, not vibes. Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4781,17 +4781,28 @@ export const MCP_TOOL_DEFS = [
         },
         trackId: {
           type: "string",
-          description: "Optional focused analysis target; provide with startTick and endTick",
+          description:
+            "Optional focused analysis target; provide with startTick and endTick. Absent + a window = full-mix RANGE analysis",
         },
         startTick: {
           type: "integer",
           minimum: 0,
-          description: "Inclusive arrangement tick for focused track analysis",
+          description: "Inclusive arrangement tick for the analysis window",
         },
         endTick: {
           type: "integer",
           minimum: 1,
-          description: "Exclusive arrangement tick for focused track analysis",
+          description: "Exclusive arrangement tick for the analysis window",
+        },
+        fromBar: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based inclusive first bar of a range window (sugar for startTick; not combinable with ticks)",
+        },
+        toBar: {
+          type: "integer",
+          minimum: 2,
+          description: "1-based inclusive last bar of a range window (sugar for endTick; not combinable with ticks)",
         },
         requestId: {
           type: "string",
@@ -4818,7 +4829,7 @@ export const MCP_TOOL_DEFS = [
       properties: {
         scope: {
           type: "string",
-          enum: ["master", "tracks", "all", "track-window"],
+          enum: ["master", "tracks", "all", "track-window", "range"],
         },
         strips: {
           type: "array",
@@ -4833,6 +4844,9 @@ export const MCP_TOOL_DEFS = [
           type: "number",
         },
         trackWindow: {
+          type: "object",
+        },
+        range: {
           type: "object",
         },
       },

@@ -90,9 +90,13 @@ import {
   type MixOverrides,
   type MixTarget,
 } from "../intent/mix";
+import { diagnoseComplaint } from "../intent/complaints";
+import { parseIntentText } from "../intent/text-parser";
+import { MCP_INTENT_ELIGIBILITY, mcpIntentEligibilitySnapshot } from "../intent/mcp-eligibility";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
 import { buildIntentCommand as intentCommand, INTENT_COMMAND_ROUTE_KINDS } from "../intent/command-for-route";
-import { paramReadbackReport, paramReadbackReportText } from "../intent/param-intent";
+import { paramAutomationControls, paramReadbackReport, paramReadbackReportText } from "../intent/param-intent";
+import type { ParamAutomationControl } from "../intent/param-intent";
 import { formatPlan, planIntent } from "../intent/semantics/intent-plan";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
@@ -312,11 +316,12 @@ const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
   type: "object",
   additionalProperties: true,
   properties: {
-    scope: { type: "string", enum: ["master", "tracks", "all", "track-window"] },
+    scope: { type: "string", enum: ["master", "tracks", "all", "track-window", "range"] },
     strips: { type: "array", items: { type: "object" } },
     master: { type: ["object", "null"] },
     referenceLufs: { type: "number" },
     trackWindow: { type: "object" },
+    range: { type: "object" },
   },
   required: ["scope", "strips", "referenceLufs"],
 };
@@ -2930,10 +2935,15 @@ export const MCP_TOOLS: McpToolDef[] = [
       "evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor " +
       "(peak−RMS = punchiness) and duration, plus the master vs the −14 " +
       "streaming reference and relative deltas against the loudest strip. " +
-      "For a focused read, provide trackId, startTick, and endTick together: " +
-      "KYX renders that isolated track pre-master and returns exact window timing, " +
-      "mix-health metrics, and the project revision before/after rendering. " +
-      "Use before/after mix moves so decisions cite numbers, not vibes. " +
+      "RANGE MODE: startTick+endTick WITHOUT trackId (or fromBar+toBar, 1-based " +
+      "inclusive bars) measures the FULL MIX inside that window — the timeline is " +
+      "rendered from 0 and only the measurement is sliced, so tails and earlier " +
+      "notes stay in the numbers. Use it for range-conditional questions (is the " +
+      "drop louder than the chorus? did the fix land in the bridge?). " +
+      "For a focused single-track read, provide trackId, startTick, and endTick " +
+      "together: KYX renders that isolated track pre-master and returns exact " +
+      "window timing, mix-health metrics, and the project revision before/after " +
+      "rendering. Use before/after mix moves so decisions cite numbers, not vibes. " +
       "Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
       type: "object",
@@ -2945,17 +2955,28 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         trackId: {
           type: "string",
-          description: "Optional focused analysis target; provide with startTick and endTick",
+          description:
+            "Optional focused analysis target; provide with startTick and endTick. Absent + a window = full-mix RANGE analysis",
         },
         startTick: {
           type: "integer",
           minimum: 0,
-          description: "Inclusive arrangement tick for focused track analysis",
+          description: "Inclusive arrangement tick for the analysis window",
         },
         endTick: {
           type: "integer",
           minimum: 1,
-          description: "Exclusive arrangement tick for focused track analysis",
+          description: "Exclusive arrangement tick for the analysis window",
+        },
+        fromBar: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based inclusive first bar of a range window (sugar for startTick; not combinable with ticks)",
+        },
+        toBar: {
+          type: "integer",
+          minimum: 2,
+          description: "1-based inclusive last bar of a range window (sugar for endTick; not combinable with ticks)",
         },
       },
     },
@@ -4345,6 +4366,9 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       undoFrames: has(ctx.beginUndoFrame),
     },
     longRunningTools: [...LONG_RUNNING_AGENT_TOOLS],
+    // AS-014: per-kind NL eligibility — the SAME table executeRoutedIntent's
+    // refusals read, published so discovery and refusal cannot drift apart.
+    intentEligibility: mcpIntentEligibilitySnapshot(),
     // AS-005: every deliberate boundary is a POLICY RECORD, not a refusal to
     // discover by failure — { supported, reason, revisit } says what is
     // withheld, why, and what would change the answer.
@@ -5302,7 +5326,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             return mcpError("POLICY_REFUSED", clarifyMessage("model-route-rejected"));
           }
           logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: gated.kind });
-          const result = executeRoutedIntent(ctx, gated);
+          const result = executeRoutedIntent(ctx, gated, trimmed);
           return { ...result, text: `🤖 local model — ${result.text}` };
         }
         if (deterministic.kind === "clarify") {
@@ -7750,9 +7774,75 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         );
       }
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
-      const hasTrackWindow =
-        record.trackId !== undefined || record.startTick !== undefined || record.endTick !== undefined;
-      if (hasTrackWindow) {
+      const hasBars = record.fromBar !== undefined || record.toBar !== undefined;
+      const hasTicks = record.startTick !== undefined || record.endTick !== undefined;
+      if (hasBars && hasTicks) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "pass ONE window form: fromBar+toBar (1-based inclusive bars) or startTick+endTick (ticks) — not both",
+        );
+      }
+      let windowTicks: { startTick: number; endTick: number } | null = null;
+      if (hasBars) {
+        const fromBar = record.fromBar;
+        const toBar = record.toBar;
+        if (
+          !Number.isSafeInteger(fromBar) ||
+          !Number.isSafeInteger(toBar) ||
+          (fromBar as number) < 1 ||
+          (toBar as number) <= (fromBar as number)
+        ) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "bar window needs 1-based integers with toBar > fromBar (both ends inclusive)",
+          );
+        }
+        const barUnit = ticksPerBar(ctx.getDoc());
+        windowTicks = {
+          startTick: ((fromBar as number) - 1) * barUnit,
+          endTick: (toBar as number) * barUnit,
+        };
+      } else if (hasTicks) {
+        if (
+          !Number.isSafeInteger(record.startTick) ||
+          !Number.isSafeInteger(record.endTick) ||
+          (record.startTick as number) < 0 ||
+          (record.endTick as number) <= (record.startTick as number)
+        ) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "window needs non-negative integer startTick and endTick with endTick > startTick",
+          );
+        }
+        windowTicks = { startTick: record.startTick as number, endTick: record.endTick as number };
+      }
+      const hasTrackWindow = typeof record.trackId === "string" && record.trackId.length > 0;
+      if (hasTrackWindow && hasBars) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "trackId analysis takes ticks only — the fromBar/toBar sugar is full-mix range mode (drop the trackId or use startTick/endTick)",
+        );
+      }
+      if (hasTrackWindow && windowTicks == null) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "focused render summary requires trackId plus startTick and endTick (ticks only — the bar sugar is range-mode)",
+        );
+      }
+      if (!hasTrackWindow && windowTicks != null) {
+        // RANGE MODE: the full mix inside the window (no trackId).
+        try {
+          const data = await ctx.renderSummary({ scope, ...windowTicks }, ctx.signal);
+          return { text: formatRenderSummary(data), mutated: false, stage: "runtime", data };
+        } catch (error) {
+          rethrowIfMcpAborted(error, ctx);
+          return mcpError(
+            "EXECUTION_FAILED",
+            `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      if (windowTicks != null) {
         if (
           typeof record.trackId !== "string" ||
           record.trackId.length === 0 ||
@@ -11211,11 +11301,36 @@ function executeInstrumentParamTool(ctx: McpToolContext, record: Record<string, 
   }
   const before = beforeValue == null ? "invalid" : String(beforeValue);
   const clampText = change.clamped ? ` (requested ${requestedValue}; clamped to ${value})` : "";
+  // Same masking disclosure the intent layer gives (efbdd944): an instrument
+  // param under an automation lane plays the LANE's value, so a landed base
+  // value alone is not "the change the ask asked for". Say so on the result.
+  const automationControls: ParamAutomationControl[] = changed
+    ? paramAutomationControls(
+        after,
+        { kind: "instParam", trackId: track.id, paramId },
+        track.name,
+        "instrument",
+        paramId,
+      )
+    : [];
+  const automationNote =
+    automationControls.length > 0
+      ? ` — note: base value stored; automation still controls the effective value (${automationControls.length} source(s)) — edit a lane with kyx_automation`
+      : "";
+  const dataAutomation = {
+    ...(automationControls.length > 0 ? { automationControlled: true, automation: automationControls } : {}),
+  };
+  if (readbackValue !== value) {
+    return mcpError("PARTIAL_FAILURE", `${track.instrument}.${paramId} did not match the committed read-back`, {
+      mutated: changed,
+      data: { ...data, ...dataAutomation },
+    });
+  }
   return {
-    text: `${track.instrument}.${paramId}: ${before} → ${value}${param.unit ? ` ${param.unit}` : ""}${clampText}${changed ? " — one undo step" : " — already at that value"}`,
+    text: `${track.instrument}.${paramId}: ${before} → ${value}${param.unit ? ` ${param.unit}` : ""}${clampText}${automationNote}${changed ? " — one undo step" : " — already at that value"}`,
     mutated: changed,
     stage: changed ? "applied" : "noop",
-    data,
+    data: { ...data, ...dataAutomation },
   };
 }
 
@@ -11683,8 +11798,33 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     return `${change.trackName}: ${paramId} ${tidy(change.beforeValue)} → ${change.value == null ? "unavailable" : tidy(change.value)}${clampedNote}`;
   });
   for (const missed of unmatched) parts.push(`${missed.trackName}: ${missed.reason}`);
+  // Same masking disclosure the intent layer gives (efbdd944), extended to
+  // the DIRECT absolute-set tool: a landed base value under a live lane is
+  // not the change the ask asked for — name the sources, point at the lane.
+  const automationControls: ParamAutomationControl[] = selected
+    .filter((entry) => entry.changed)
+    .flatMap(({ track, fx }) =>
+      paramAutomationControls(
+        after,
+        { kind: "fxParam", trackId: track.id, fxId: fx.id, paramId: paramId! },
+        track.name,
+        fx.type,
+        paramId!,
+      ),
+    );
+  const automationNote =
+    automationControls.length > 0
+      ? ` — note: base value stored; automation still controls the effective value (${automationControls.length} source(s)) — edit a lane with kyx_automation`
+      : "";
   const suffix = undoSteps > 0 ? " — one undo step" : "";
-  const text = parts.length > 0 ? `${parts.join("; ")}${suffix}` : `nothing changed — no ${effect} instance matched`;
+  const text =
+    parts.length > 0
+      ? `${parts.join("; ")}${suffix}${automationNote}`
+      : `nothing changed — no ${effect} instance matched`;
+  const dataWithAutomation =
+    automationControls.length > 0
+      ? { ...data, automationControlled: true as const, automation: automationControls }
+      : data;
 
   if (executionError != null) {
     return mcpError(
@@ -11692,7 +11832,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       `${text}: ${executionError instanceof Error ? executionError.message : String(executionError)}`,
       {
         mutated,
-        data,
+        data: dataWithAutomation,
       },
     );
   }
@@ -11700,13 +11840,13 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     return mcpError("UNKNOWN_TARGET", text, { mutated: false, data });
   }
   if (unmatched.length > 0 || readBackMismatch) {
-    return mcpError("PARTIAL_FAILURE", text, { mutated, data });
+    return mcpError("PARTIAL_FAILURE", text, { mutated, data: dataWithAutomation });
   }
   return {
     text: needsCommit ? `${text} — read-back verified` : `${text} — already at requested value`,
     mutated,
     stage: mutated ? "applied" : "noop",
-    data,
+    data: dataWithAutomation,
   };
 }
 
@@ -14044,13 +14184,15 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
       },
     };
   }
-  return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()));
+  return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()), trimmed);
 }
 
 /** Execute a resolved route over MCP — the deterministic path AND the local
  * model fallback land here, so the destructive gate, the UI-local refusals
- * and the verification read-back apply to BOTH brains identically. */
-function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolResult {
+ * and the verification read-back apply to BOTH brains identically. The raw
+ * text rides along for the kinds whose UI executor re-parses it (mix uses
+ * the text-parser's input for the profile spec, AS-014). */
+function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent, text: string): McpToolResult {
   if (route.kind === "automationPlan") return automationPlanProposalResult(route);
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
@@ -14159,20 +14301,74 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
   }
   if (routeIsDestructive(route) && !destructiveAllowedWithCheckpoint(ctx, "kyx_intent")) return destructiveRefusal();
 
-  // Route kinds whose executors need window-local state (audition players,
-  // loudness render loop, mix brief/reference patches) or are UI state —
-  // refuse HONESTLY instead of pretending nothing changed.
-  if (
-    route.kind === "loudness" ||
-    route.kind === "mix" ||
-    route.kind === "sectionProduction" ||
-    route.kind === "sectionFlow" ||
-    route.kind === "complaintIntent" ||
-    route.kind === "select"
-  ) {
+  // AS-014: the complaint listening loop is READ-ONLY over MCP — the same
+  // measured diagnosis the panel shows, with the verified next asks an agent
+  // can re-send as kyx_intent instructions (the panel's chips are the same
+  // list). Nothing mutates until one of the asks is actually run.
+  if (route.kind === "complaintIntent") {
+    const diagnosis = diagnoseComplaint(route.intent, []);
+    if (diagnosis == null) {
+      return { text: "complaint could not be evaluated against this project", mutated: false, stage: "noop" };
+    }
+    const doc = ctx.getDoc();
+    const verified = diagnosis.proposals
+      .map((proposal) => proposal.instruction)
+      .filter((instruction) => {
+        const probe = routeIntentText(instruction, doc);
+        return probe.kind !== "pattern" && probe.kind !== "clarify";
+      });
+    return {
+      text:
+        `👂 ${diagnosis.diagnosis}${diagnosis.measurement ? ` — ${diagnosis.measurement}` : ""}` +
+        (verified.length > 0
+          ? `\nverified next asks (send via kyx_intent):\n${verified.map((ask) => `• ${ask}`).join("\n")}`
+          : ""),
+      mutated: false,
+      stage: "read",
+      data: {
+        status: "diagnosis",
+        changed: false,
+        diagnosis: diagnosis.diagnosis,
+        ...(diagnosis.measurement ? { measurement: diagnosis.measurement } : {}),
+        verifiedAsks: verified,
+      },
+    };
+  }
+  if (route.kind === "mix") {
+    // The UI's mix executor is a PURE command fold — planMixProfile over the
+    // text-parser's input plus the route's overrides, applied as ONE undo
+    // step through the store. Nothing window-local; the same fold runs here.
+    const doc = ctx.getDoc();
+    const profile = planMixProfile(normalizeIntent(parseIntentText(text).input, doc), route.overrides);
+    if (profile.decisions.length === 0) {
+      return {
+        text: "mix intent understood but produced no decisions for this project",
+        mutated: false,
+        stage: "noop",
+      };
+    }
+    const before = ctx.getDoc();
+    ctx.execute(applyMixIntent(before, profile));
+    const changed = ctx.getDoc() !== before;
+    return {
+      text: `⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}${changed ? " — one undo step in KYX" : " (nothing changed)"}`,
+      mutated: changed,
+      data: {
+        status: changed ? "applied" : "unchanged",
+        changed,
+        summary: profile.summary,
+        decisions: profile.decisions.length,
+      },
+    };
+  }
+  // AS-014: the per-kind eligibility TABLE (src/intent/mcp-eligibility.ts) is
+  // the single truth for what kyx_intent can run — the capability block
+  // publishes the same table, so discovery and refusals cannot drift apart.
+  const eligibility = MCP_INTENT_ELIGIBILITY[route.kind];
+  if (!eligibility.eligible) {
     return mcpError(
       "UNAVAILABLE_ON_TRANSPORT",
-      `"${route.kind}" requests run inside the KYX app (they need in-app auditioning/rendering) — not available over MCP v1`,
+      `"${route.kind}" requests: ${eligibility.reason}${eligibility.useInstead ? ` — ${eligibility.useInstead}` : ""}`,
     );
   }
 

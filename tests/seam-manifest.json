@@ -817,6 +817,15 @@
       "seamEvent": "cancelMcpCall(\"cancel-1\")",
       "negativeSpec": "an already-aborted render-summary call never starts its first render",
       "note": "AS-009 phase 2: cooperative (not preemptive) — render handlers rethrow aborts via rethrowIfMcpAborted, the dispatcher answers typed CANCELLED with an honest what-landed note, and the deadline auto-abort sits PAST the transport budgets (75 s long-running / 30 s otherwise). Capability block advertises supported:true with the honest notifications/cancelled-not-wired caveat."
+    },
+    {
+      "id": "mcp-intent-eligibility",
+      "status": "COVERED",
+      "entryPoint": "src/intent/mcp-eligibility.ts MCP_INTENT_ELIGIBILITY — the one table driving kyx_intent refusals + the published capability block",
+      "spec": "tests/mcp-intent-eligibility.test.ts",
+      "seamEvent": "\"kyx_intent\", { instruction: \"make the mix darker\" }",
+      "negativeSpec": "window-bound kinds still refuse",
+      "note": "AS-014: NL parity is published, not implicit — mix and complaintIntent are newly eligible (pure command fold / read-only diagnosis with verified next asks), loudness/select/section* refuse with pointers at the structured tools, and kyx_state capabilities publishes the same table so discovery and refusal cannot drift."
     }
   ]
 }

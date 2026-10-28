@@ -33,8 +33,8 @@ const TransferCapabilityCard = lazy(() =>
   import("./TransferCapabilityCard").then((module) => ({ default: module.TransferCapabilityCard })),
 );
 
-/** One row of the library: openable, or written by a newer app version. */
-type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
+/** One row of the library: openable, or not openable by this build. */
+type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "incompatible"; meta: IncompatibleProjectMeta };
 
 /**
  * A project whose crash buffer could not hold the work.
@@ -113,7 +113,7 @@ function formatTransferSource(source: NonNullable<SavedProjectMeta["transferOrig
 
 export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (doc: ProjectDocument) => void }) {
   const [projects, setProjects] = useState<SavedProjectMeta[] | null>(null);
-  const [newerProjects, setNewerProjects] = useState<IncompatibleProjectMeta[]>([]);
+  const [newerProjects → incompatibleProjects, setIncompatibleProjects] = useState<IncompatibleProjectMeta[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -140,7 +140,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
     setListError(null);
     setProjects(list);
-    setNewerProjects(newer);
+    setIncompatibleProjects(newer);
   }, []);
 
   const fetchLists = useCallback(async (): Promise<void> => {
@@ -161,7 +161,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       console.error("[ProjectBrowser] project list failed:", err);
       setListError(err instanceof Error ? err.message : "Storage is unavailable");
       setProjects([]);
-      setNewerProjects([]);
+      setIncompatibleProjects([]);
     });
   }, [fetchLists]);
 
@@ -180,7 +180,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
         console.error("[ProjectBrowser] project list failed:", err);
         setListError(err instanceof Error ? err.message : "Storage is unavailable");
         setProjects([]);
-        setNewerProjects([]);
+        setIncompatibleProjects([]);
       });
     return () => {
       cancelled = true;
@@ -485,7 +485,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     }
   };
 
-  const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
+  const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects → incompatibleProjects.length === 0;
 
   // The disclosure sections are UNCONTROLLED: the `open` prop must never be
   // in JSX, because React re-applies it on every render and would snap a
@@ -496,7 +496,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const initialDetailsOpen = useCallback((el: HTMLDetailsElement | null) => {
     if (el) el.open = initialOpenRef.current;
   }, []);
-  const rows = projects === null ? null : mergeRows(projects, newerProjects);
+  const rows = projects === null ? null : mergeRows(projects, newerProjects → incompatibleProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
   const songStarterMoods = SONG_STARTER_MOODS[songStarterGenre] ?? [];
 

@@ -1809,8 +1809,41 @@ export function App({
       toggleHistoryPanel: () => setHistoryOpen((v) => !v),
       toggleDiagnostics: () => setDiagnosticsOpen((v) => !v),
       dawProfile: doc.transferOrigin?.sourceDaw ?? null,
+      // The curated command registry reads the LIVE project state: the
+      // document, the selection (the document does not carry it) and the
+      // playhead (the transport owns it).
+      commandContext: () => ({
+        doc: services.store.getDoc(),
+        selection: selectionStore.getState(),
+        playheadTick: services.transport.position,
+      }),
+      runCommand: (spec) => {
+        const ctx = {
+          doc: services.store.getDoc(),
+          selection: selectionStore.getState(),
+          playheadTick: services.transport.position,
+        };
+        // The precondition is checked AGAIN here, not only when the palette
+        // was built: the user may have changed the selection between opening
+        // the palette and pressing Enter.
+        const reason = spec.precondition?.(ctx);
+        if (reason) {
+          services.store.notify(spec.label, reason);
+          return;
+        }
+        try {
+          const command = spec.build(ctx);
+          if (!command) {
+            services.store.notify(spec.label, "There was nothing to change.");
+            return;
+          }
+          services.store.execute(command);
+        } catch (err) {
+          services.store.notify(spec.label, err instanceof Error ? err.message : String(err));
+        }
+      },
     }),
-    [services, doc],
+    [services, doc, selectionStore],
   );
 
   return (

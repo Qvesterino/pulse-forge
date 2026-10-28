@@ -67,6 +67,19 @@ import {
 import { assignPointIds } from "./automation";
 
 export const SCHEMA_VERSION = 39;
+
+/**
+ * The oldest project shape this build can still migrate.
+ *
+ * v1 is the first version this project ever wrote: the initial commit
+ * (`4096423e`) shipped `SCHEMA_VERSION = 1`, and every later version extends
+ * that shape. A document that declares a version BELOW this one was never
+ * written by KYX — its shape is unknown, so it cannot be migrated faithfully.
+ * It is refused rather than stamped with today's version, because stamping it
+ * would assert a provenance the document does not have.
+ */
+export const MIN_SCHEMA_VERSION = 1;
+
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2709,18 +2722,15 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
         : 120;
     const limiterCharacter =
       m.limiterCharacter === "punch" || m.limiterCharacter === "smooth" ? m.limiterCharacter : "transparent";
-    const legacyLimiterStereoLink =
-      typeof m.limiterStereoLink === "number" && Number.isFinite(m.limiterStereoLink)
-        ? Math.min(1, Math.max(0, m.limiterStereoLink))
-        : 1;
-    const limiterTransientLink =
-      typeof m.limiterTransientLink === "number" && Number.isFinite(m.limiterTransientLink)
-        ? Math.min(1, Math.max(0, m.limiterTransientLink))
-        : legacyLimiterStereoLink;
-    const limiterReleaseLink =
-      typeof m.limiterReleaseLink === "number" && Number.isFinite(m.limiterReleaseLink)
-        ? Math.min(1, Math.max(0, m.limiterReleaseLink))
-        : legacyLimiterStereoLink;
+    // The v19 → v20 link split, resolved by the SAME helper the v19 migration
+    // step uses — one rule, two intents (see `resolveLimiterLinks`). A
+    // document that arrives late (a peer on an older build, a hand-edited
+    // file) must not silently lose its link setting.
+    const { transient: limiterTransientLink, release: limiterReleaseLink } = resolveLimiterLinks(
+      m.limiterStereoLink,
+      m.limiterTransientLink,
+      m.limiterReleaseLink,
+    );
     const tapeEnabled = typeof m.tapeEnabled === "boolean" ? m.tapeEnabled : false;
     const tapeDrive =
       typeof m.tapeDrive === "number" && Number.isFinite(m.tapeDrive) ? Math.min(1, Math.max(0, m.tapeDrive)) : 0.35;
@@ -3574,79 +3584,240 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   return state.changed ? state.doc : doc;
 }
 
-export function migrateProject(doc: ProjectDocument): ProjectDocument {
-  if (doc.schemaVersion > SCHEMA_VERSION) {
-    throw new Error(`Project schema ${doc.schemaVersion} is newer than supported ${SCHEMA_VERSION}`);
-  }
+/**
+ * What changed in each schema version.
+ *
+ * This ledger used to be a COMMENT BLOCK inside `migrateProject`, which made
+ * the history of the format invisible to every test: nothing could assert
+ * that it was complete, and "what v22 did" was prose rather than data. It is
+ * data now, and `SCHEMA_HISTORY` is TOTAL — every version from
+ * `MIN_SCHEMA_VERSION` to `SCHEMA_VERSION` has an entry, asserted in both
+ * directions by `tests/schema-version-chain.test.ts`.
+ *
+ * `kind` says what the version demands of the migration path:
+ *
+ * - `additive`  — the document simply lacks a new optional field. The
+ *   normaliser's defaults make it current. No version-conditional step.
+ * - `inferred`  — a new field whose value cannot be defaulted but must be
+ *   DERIVED from what the old document holds (v12's delivery profile, v20's
+ *   master-link split, v39's automation-point ids). The normaliser derives it
+ *   version-blind, on purpose: a document can also arrive late — a peer on an
+ *   older build, a hand-edited file — and must not silently lose its value.
+ *   No version-conditional step.
+ * - `transform` — the MEANING of an existing field changed, so only a
+ *   version-aware path can translate it. This REQUIRES a step in
+ *   `MIGRATIONS` for `version - 1`. The ledger and the chain are asserted to
+ *   match in BOTH directions by the gate test, so a version cannot be
+ *   declared a transformation without the step that implements it.
+ */
+export type SchemaChangeKind = "additive" | "inferred" | "transform";
+
+export interface SchemaChange {
+  kind: SchemaChangeKind;
+  /** What changed, in the version's own terms ("v20 splits ..."). */
+  note: string;
+}
+
+export const SCHEMA_HISTORY: Record<number, SchemaChange> = {
+  1: { kind: "additive", note: "v1 is the first project shape this codebase wrote (initial commit 4096423e); every later version extends it" },
+  2: { kind: "additive", note: "v2 adds generative tracks (the MRT2 provider config) and the generative macro automation map (ADR 0012)" },
+  3: { kind: "additive", note: "v3 adds the optional `lineage` family link" },
+  4: { kind: "additive", note: "v4 adds optional AudioClip source-channel routing" },
+  5: { kind: "additive", note: "v5 adds non-destructive AudioClip take groups" },
+  6: { kind: "additive", note: "v6 adds an optional production profile to generated-pattern provenance" },
+  7: { kind: "inferred", note: "v7 adds take-comp provenance and permits short, positive AudioClip ranges" },
+  8: { kind: "additive", note: "v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`)" },
+  9: { kind: "additive", note: "v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits" },
+  10: { kind: "additive", note: "v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio)" },
+  11: { kind: "additive", note: "v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0)" },
+  12: {
+    kind: "inferred",
+    note: "v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain; a document without a profile gets one derived from its loudness target (the default -14 becomes Streaming, any other legacy target Custom) and its true-peak target defaults to the old ceiling",
+  },
+  13: { kind: "additive", note: "v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023)" },
+  14: { kind: "additive", note: "v14 adds the optional `AudioClip.muted` clip-level mute (absent = audible)" },
+  15: {
+    kind: "additive",
+    note: "v15 adds clip groups (`Arrangement.clipGroups`, membership by clip id) and the optional clip-level `locked` flag on BOTH clip systems (absent = unlocked)",
+  },
+  16: {
+    kind: "additive",
+    note: 'v16 adds the optional `AudioClip.fadeCurve` ("equal" = equal-power sine/cosine fades; absent = linear)',
+  },
+  17: { kind: "additive", note: "v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic skeleton events)" },
+  18: { kind: "additive", note: "v18 adds adjustable built-in master limiter look-ahead and release times" },
+  19: { kind: "additive", note: "v19 adds one master stereo link" },
+  20: {
+    kind: "inferred",
+    note: "v20 splits the master stereo link into transient/release links while mapping the v19 value to both; the normaliser still repairs the deprecated field, so a document that arrives late keeps its value (see `resolveLimiterLinks`)",
+  },
+  21: { kind: "additive", note: "v21 adds opt-in limiter character modes while preserving the old envelope as the default" },
+  22: {
+    kind: "additive",
+    note: "v22 adds the optional per-track `inputInsert` (armed-input chain + raw vs baked recording mode). Absent = dry monitoring, so older files are unchanged and carry no insert",
+  },
+  23: {
+    kind: "additive",
+    note: "v23 adds the optional per-scene `packs` (fxId → scene-pack pair id; the performance override applied at clip boundaries). Absent = play the effect's own applied pair",
+  },
+  24: {
+    kind: "additive",
+    note: "v24 adds the optional per-scene `macros` (macroId → 0..1; pinned macro values that substitute the live macro in every macro-sourced mapping while the scene is active). Absent = play the doc macro values",
+  },
+  25: {
+    kind: "additive",
+    note: 'v25 adds the optional per-scene `ccRemaps` (the source:"midiCC" mapping ids armed while the scene is active; absent = all armed, [] = none)',
+  },
+  26: { kind: "additive", note: "v26 adds optional per-instrument MIDI arrangement clips; absent = none" },
+  27: { kind: "additive", note: "v27 adds independent song-timeline automation clips; absent = none" },
+  28: {
+    kind: "additive",
+    note: "v28 lets sparse MIDI notes extend to the arrangement safety limit without growing the bounded step arrays; older projects remain unchanged",
+  },
+  29: {
+    kind: "additive",
+    note: 'v29 adds the optional per-scene `ccOverrides` (mappingId → { ccNumber, channel }: the channel/CC re-point a source:"midiCC" mapping listens on while the scene is active; absent fields keep the mapping\'s own)',
+  },
+  30: { kind: "additive", note: "v30 adds optional automation clip linkedTargets; absent = single target" },
+  31: {
+    kind: "additive",
+    note: "v31 adds the optional per-scene `modulators` (lfoId → { steps?, seed? }: the step / random-S&H modulation pattern a scene plays; absent fields keep the modulator's own pattern)",
+  },
+  32: {
+    kind: "additive",
+    note: "v32 adds optional per-step sample fade-in / fade-out locks and preserves the existing ratio p-lock during normalization. Older projects remain unchanged and continue using the pad's fade settings when no fade is set",
+  },
+  33: {
+    kind: "additive",
+    note: "v33 adds optional per-note expression (pan, filter and release velocity); absent or default-valued fields preserve the original sound",
+  },
+  34: {
+    kind: "additive",
+    note: "v34 adds a distinct held-voice slide-note articulation, first supported on 808; legacy `slide` remains the note-on portamento transition",
+  },
+  35: {
+    kind: "additive",
+    note: "v35 adds normalized per-note Mod X/Y values; their neutral value (0.5) is omitted to preserve instrument defaults",
+  },
+  36: { kind: "additive", note: "v36 adds optional DAW-neutral audio + MIDI transfer provenance" },
+  37: { kind: "additive", note: "v37 adds an independent, duration-preserving AudioClip pitch offset" },
+  38: {
+    kind: "additive",
+    note: "v38 adds project-local Live Sets with named 4×4 loop-pad assignments. Older files remain playable; legacy recipe fields stay absent",
+  },
+  39: {
+    kind: "inferred",
+    note: "v39 gives every AUTHORED automation point a stable identity (`id`). A point used to be addressed by its VALUE, which made an undo lose the point it created once the point had been edited, made an identical insert duplicate the point, and made a positional capture point at whatever occupied the slot later. The migration is the NORMALISER: it backfills an id on every point that lacks one, deterministically (carrier + slot), so two clients loading the same legacy file derive the same identity and their collab merge does not treat every point as new. Existing ids are preserved — a re-normalisation never renumbers a live document",
+  },
+};
+
+/**
+ * The v19 → v20 master-link split, in ONE place.
+ *
+ * v19 stored ONE combined stereo link; v20 stores TWO (transient + release)
+ * and the v19 value maps to BOTH.
+ *
+ * `MIGRATIONS[19]` calls this for a document that says it is v19. The
+ * normaliser calls the SAME function for a document that arrives at the
+ * current version still carrying the deprecated field — a peer on an older
+ * build, a hand-edited file — because such a document must not silently lose
+ * its link setting. One rule, two intents; never two implementations that can
+ * drift apart.
+ */
+export function resolveLimiterLinks(
+  legacyStereoLink: unknown,
+  transientLink: unknown,
+  releaseLink: unknown,
+): { transient: number; release: number } {
+  const clamp = (value: unknown): number | undefined =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined;
+  const legacy = clamp(legacyStereoLink) ?? 1;
+  return {
+    transient: clamp(transientLink) ?? legacy,
+    release: clamp(releaseLink) ?? legacy,
+  };
+}
+
+/**
+ * MIGRATIONS[v] upgrades a document stored under schema version v to v+1.
+ *
+ * The chain is walked by `migrateProject`. It is SPARSE by design: a version
+ * that only ADDED an optional field needs no step (the normaliser's defaults
+ * cover it), and a version whose new field is merely INFERRED from the old
+ * document needs no step either (the normaliser derives it for every
+ * version, on purpose — see `SCHEMA_HISTORY`).
+ *
+ * A step belongs here the moment a version changes what an EXISTING field
+ * MEANS. That is the one case where "absent = default" is not enough and
+ * where only the document's own declared version tells you how to read it.
+ *
+ * Today the chain holds one step: the v19 → v20 master-link split. It is
+ * version-aware AND idempotent — running it twice changes nothing — and the
+ * normaliser applies the SAME rule for a document that arrives late, so the
+ * two paths can never disagree about what a v19 link value means.
+ */
+export const MIGRATIONS: Record<number, (doc: ProjectDocument) => ProjectDocument> = {
+  19: (doc) => {
+    const master = doc.master;
+    if (!master || typeof master !== "object") return doc;
+    const links = resolveLimiterLinks(master.limiterStereoLink, master.limiterTransientLink, master.limiterReleaseLink);
+    if (links.transient === master.limiterTransientLink && links.release === master.limiterReleaseLink) return doc;
+    return {
+      ...doc,
+      master: { ...master, limiterTransientLink: links.transient, limiterReleaseLink: links.release },
+    };
+  },
+};
+
+/**
+ * Walk the migration chain from `fromVersion` up to the current schema.
+ *
+ * The chain is injectable so the walk itself is testable: a spec can hand in
+ * a chain of its own and prove that the steps run in order, only for versions
+ * at or below the one being upgraded, and only up to `SCHEMA_VERSION`.
+ */
+export function applyMigrations(
+  doc: ProjectDocument,
+  fromVersion: number,
+  chain: Readonly<Record<number, (doc: ProjectDocument) => ProjectDocument>> = MIGRATIONS,
+): ProjectDocument {
   let migrated = doc;
-  if (migrated.schemaVersion === SCHEMA_VERSION) return normalizeProject(migrated);
-  // v3 adds the optional `lineage` family link; v4 adds optional AudioClip
-  // source-channel routing; v5 adds non-destructive AudioClip take groups;
-  // v6 adds an optional production profile to generated-pattern provenance;
-  // v7 adds take-comp provenance and permits short, positive AudioClip ranges;
-  // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`);
-  // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits;
-  // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio);
-  // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0);
-  // v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain.
-  // v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023).
-  // v14 adds the optional `AudioClip.muted` clip-level mute (absent = audible).
-  // v15 adds clip groups (`Arrangement.clipGroups`, membership by clip id) and
-  // the optional clip-level `locked` flag on BOTH clip systems (absent =
-  // unlocked).
-  // v16 adds the optional `AudioClip.fadeCurve` ("equal" = equal-power
-  // sine/cosine fades; absent = linear).
-  // v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic
-  // skeleton events).
-  // v18 adds adjustable built-in master limiter look-ahead and release times;
-  // v19 adds one master stereo link; v20 splits it into transient/release
-  // links while mapping the v19 value to both; v21 adds opt-in limiter
-  // character modes while preserving the old envelope as the default.
-  // v22 adds the optional per-track `inputInsert` (armed-input chain + raw vs
-  // baked recording mode). Absent = dry monitoring, so older files are
-  // unchanged and carry no insert.
-  // v23 adds the optional per-scene `packs` (fxId → scene-pack pair id; the
-  // performance override applied at clip boundaries). Absent = play the
-  // effect's own applied pair.
-  // v24 adds the optional per-scene `macros` (macroId → 0..1; pinned macro
-  // values that substitute the live macro in every macro-sourced mapping
-  // while the scene is active). Absent = play the doc macro values.
-  // v25 adds the optional per-scene `ccRemaps` (the source:"midiCC" mapping
-  // ids armed while the scene is active; absent = all armed, [] = none).
-  // v26 adds optional per-instrument MIDI arrangement clips; absent = none.
-  // v27 adds independent song-timeline automation clips; absent = none.
-  // v28 lets sparse MIDI notes extend to the arrangement safety limit without
-  // growing the bounded step arrays; older projects remain unchanged.
-  // v29 adds the optional per-scene `ccOverrides` (mappingId → { ccNumber,
-  // channel }: the channel/CC re-point a source:"midiCC" mapping listens on
-  // while the scene is active; absent fields keep the mapping's own).
-  // v30 adds optional automation clip linkedTargets; absent = single target.
-  // v31 adds the optional per-scene `modulators` (lfoId → { steps?, seed? }:
-  // the step / random-S&H modulation pattern a scene plays; absent fields
-  // keep the modulator's own pattern).
-  // v32 adds optional per-step sample fade-in / fade-out locks and preserves
-  // the existing ratio p-lock during normalization. Older projects remain
-  // unchanged and continue using the pad's fade settings when no fade is set.
-  // v33 adds optional per-note expression (pan, filter and release velocity);
-  // absent or default-valued fields preserve the original sound.
-  // v34 adds a distinct held-voice slide-note articulation, first supported on 808; legacy `slide` remains
-  // the note-on portamento transition. v35 adds normalized per-note Mod X/Y
-  // values; their neutral value (0.5) is omitted to preserve instrument defaults.
-  // v36 adds optional DAW-neutral audio + MIDI transfer provenance.
-  // v37 adds an independent, duration-preserving AudioClip pitch offset.
-  // v38 adds project-local Live Sets with named 4×4 loop-pad assignments.
-  // Older files remain playable; legacy recipe fields stay absent.
-  // v39 gives every AUTHORED automation point a stable identity (`id`). A
-  // point used to be addressed by its VALUE, which made an undo lose the
-  // point it created once the point had been edited, made an identical insert
-  // duplicate the point, and made a positional capture point at whatever
-  // occupied the slot later. The migration is the NORMALISER: it backfills an
-  // id on every point that lacks one, deterministically (carrier + slot), so
-  // two clients loading the same legacy file derive the same identity and
-  // their collab merge does not treat every point as new. Existing ids are
-  // preserved — a re-normalisation never renumbers a live document.
-  migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
-  return normalizeProject(migrated);
+  for (let version = fromVersion; version < SCHEMA_VERSION; version++) {
+    const step = chain[version];
+    if (step) migrated = step(migrated);
+  }
+  return migrated;
+}
+
+/**
+ * Bring a project document from its own schema version to the current one.
+ *
+ * The declared version is a CLAIM, and it is checked: a document from the
+ * future is refused (`newer than supported`), and so is one from before
+ * `MIN_SCHEMA_VERSION` — no KYX ever wrote that shape, so its provenance is
+ * unknown and stamping it with today's version would assert something the
+ * document cannot support. Both refusals are visible: the project shows up in
+ * the library as incompatible instead of vanishing (see
+ * `ProjectRepository.listIncompatible`).
+ *
+ * The version-conditional work lives in `MIGRATIONS`; the shape repair lives
+ * in `normalizeProject`. A document that is already current takes the
+ * normaliser alone.
+ */
+export function migrateProject(doc: ProjectDocument): ProjectDocument {
+  const version = doc.schemaVersion;
+  if (typeof version !== "number" || !Number.isInteger(version)) {
+    throw new Error(`Project schema ${String(version)} is not a valid schema version`);
+  }
+  if (version > SCHEMA_VERSION) {
+    throw new Error(`Project schema ${version} is newer than supported ${SCHEMA_VERSION}`);
+  }
+  if (version < MIN_SCHEMA_VERSION) {
+    throw new Error(`Project schema ${version} is older than the oldest supported version ${MIN_SCHEMA_VERSION}`);
+  }
+  if (version === SCHEMA_VERSION) return normalizeProject(doc);
+  const migrated = applyMigrations(doc, version);
+  return normalizeProject({ ...migrated, schemaVersion: SCHEMA_VERSION });
 }
 
 function isValidTimeSignature(value: unknown): boolean {

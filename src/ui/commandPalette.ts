@@ -4,15 +4,23 @@
  * Every keyboard action from the active shortcut table becomes a palette entry
  * automatically (zero duplication: titles, groups and binding hints come
  * from the same source the help overlay uses), plus a few palette-only
- * actions that have no keybinding (snapshot, gallery…).
+ * actions that have no keybinding (snapshot, gallery…), plus the CURATED
+ * COMMAND REGISTRY (`src/commands/palette-registry.ts`) — the commands the
+ * keyboard layer has no room for, each with a label, keywords and an
+ * honest precondition.
  *
  * The fuzzy filter is deliberately tiny: sequential subsequence match with
  * bonuses for word-start and contiguous hits — good enough to feel instant
- * on a ~40-item registry without pulling in a library.
+ * on a ~70-item registry without pulling in a library.
  */
 import { formatShortcut, getActiveShortcuts, type Shortcut, type ShortcutKey } from "./shortcuts";
 import { DAW_ACTION_MAPPINGS, DAW_PROFILE_OPTIONS, readDawProfile } from "./dawProfile";
 import type { ProjectTransferSourceDaw } from "../project-model/types";
+import {
+  PALETTE_COMMAND_SPECS,
+  type PaletteCommandContext,
+  type PaletteCommandSpec,
+} from "../commands/palette-registry";
 
 export interface PaletteAction {
   id: string;
@@ -24,6 +32,12 @@ export interface PaletteAction {
   binding?: string;
   /** Familiar source-DAW wording for the active profile, shown under the KYX action. */
   profileHint?: string;
+  /**
+   * When set, the action cannot run right now and this says why. The palette
+   * renders it disabled and shows the reason — a greyed-out row that explains
+   * itself, instead of a row that looks broken.
+   */
+  unavailableReason?: string;
   run: () => void;
 }
 
@@ -34,6 +48,14 @@ export interface PaletteDeps {
   toggleHistoryPanel: () => void;
   toggleDiagnostics: () => void;
   dawProfile?: ProjectTransferSourceDaw | null;
+  /**
+   * The live project state the curated command registry needs. A getter, not a
+   * value: the palette is built when it opens, so it must read the CURRENT
+   * document, selection and playhead.
+   */
+  commandContext?: () => PaletteCommandContext;
+  /** Run a curated command against the live project. */
+  runCommand?: (spec: PaletteCommandSpec) => void;
 }
 
 /** Build the full action list from the shortcut table + palette-only extras. */
@@ -74,6 +96,19 @@ export function buildPaletteActions(deps: PaletteDeps): PaletteAction[] {
     };
   });
 
+  const fromRegistry: PaletteAction[] = PALETTE_COMMAND_SPECS.map((spec) => {
+    const ctx = deps.commandContext?.();
+    const reason = ctx && spec.precondition ? spec.precondition(ctx) : null;
+    return {
+      id: `cmd:${spec.id}`,
+      title: spec.label,
+      group: spec.group,
+      keywords: spec.keywords,
+      unavailableReason: reason ?? undefined,
+      run: () => deps.runCommand?.(spec),
+    };
+  });
+
   const extras: PaletteAction[] = [
     {
       id: "extra:snapshot",
@@ -105,7 +140,7 @@ export function buildPaletteActions(deps: PaletteDeps): PaletteAction[] {
     },
   ];
 
-  return [...fromShortcuts, ...extras];
+  return [...fromShortcuts, ...fromRegistry, ...extras];
 }
 
 /**

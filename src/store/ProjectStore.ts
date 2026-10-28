@@ -173,6 +173,18 @@ export class ProjectStore {
     return this.notice_;
   }
 
+  /**
+   * Publish a one-shot notice to the UI.
+   *
+   * The palette needs it: a curated command that cannot run right now must
+   * SAY SO instead of failing silently. Before this, the only notices were
+   * "nothing to undo" and "nothing to redo" — a command that refused had no
+   * voice at all, which is how a limitation reads as a fault.
+   */
+  notify(text: string, detail: string | null = null): void {
+    this.announceNotice(text, detail);
+  }
+
   /** Last N history entries (most recent last). For the undo history panel. */
   get history(): HistoryEntry[] {
     const n = Math.min(this.undoStack.length, 20);

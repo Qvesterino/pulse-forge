@@ -334,6 +334,16 @@ export class YDocStore {
     return this.notice_;
   }
 
+  /**
+   * Publish a one-shot notice to the UI. Mirrors `ProjectStore.notify` — the
+   * `ProjectStore | YDocStore` union only works while both expose the same
+   * members, and a collab session must be able to refuse a command the same
+   * way a local one does.
+   */
+  notify = (text: string, detail: string | null = null): void => {
+    this.announceNotice(text, detail);
+  };
+
   private announceNotice(text: string, detail: string | null = null): void {
     this.noticeId_ += 1;
     this.notice_ = { text, detail, id: this.noticeId_ };

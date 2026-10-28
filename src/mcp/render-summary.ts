@@ -36,11 +36,44 @@ export interface RenderStripSummary {
 }
 
 export interface RenderSummaryData {
-  scope: "master" | "tracks" | "all" | "track-window";
+  scope: "master" | "tracks" | "all" | "track-window" | "range";
   strips: RenderStripSummary[];
   master: { lufs: number | null; peakDb: number; crestDb: number; durationSec: number } | null;
   referenceLufs: number;
   trackWindow?: TrackWindowAnalysis;
+  range?: RenderRangeAnalysis;
+}
+
+/**
+ * Full-mix range analysis (E1): the MASTER (and optionally the strips)
+ * measured INSIDE a tick window, so an agent can answer range-conditional
+ * production questions ("is the drop louder than the chorus?").
+ *
+ * The render covers the timeline from 0 through the window end and the
+ * metrics are SLICED to the window afterwards — the same contract the
+ * track-window path uses — so everything sounding into the window (tails,
+ * notes started earlier) is in the numbers. A window render that started at
+ * the window would measure a different song.
+ */
+export interface RenderRangeAnalysis {
+  window: { startTick: number; endTick: number };
+  timing: {
+    startSec: number;
+    endSec: number;
+    durationSec: number;
+    startSample: number;
+    endSample: number;
+    sampleRate: number;
+  };
+  projectRevision: number | null;
+  revisionAfterRender: number | null;
+  freshness: "current" | "stale" | "unknown";
+  signalStage: {
+    id: "song-range";
+    includes: "the full mix through the master chain, timeline rendered from 0";
+    excludes: "nothing — audio before the window is rendered, only the measurement is sliced";
+  };
+  caveats: Array<{ code: string; detail: string }>;
 }
 
 export interface TrackWindowAnalysis {
@@ -120,6 +153,23 @@ function formatStrip(strip: RenderStripSummary): string {
   return `${strip.name} — ${lufs} · peak ${strip.peakDb.toFixed(1)} dBFS · crest ${strip.crestDb.toFixed(1)} dB · ${strip.durationSec.toFixed(1)} s`;
 }
 
+/** Header lines for a range-scoped summary (window, timing, freshness). */
+function formatRangeHeader(range: RenderRangeAnalysis): string[] {
+  const freshness =
+    range.projectRevision === null || range.revisionAfterRender === null
+      ? "unknown"
+      : range.projectRevision === range.revisionAfterRender
+        ? "current"
+        : "stale";
+  const lines = [
+    `range: ticks ${range.window.startTick}..${range.window.endTick} (${range.timing.durationSec.toFixed(3)} s, ${range.timing.startSec.toFixed(6)}..${range.timing.endSec.toFixed(6)} s)`,
+    `signal stage: ${range.signalStage.id} — ${range.signalStage.includes}`,
+    `project revision: ${range.projectRevision === null ? "unknown" : String(range.projectRevision)} → ${range.revisionAfterRender === null ? "unknown" : String(range.revisionAfterRender)} (${freshness}); metrics measure ONLY this window`,
+  ];
+  for (const caveat of range.caveats) lines.push(`caveat: ${caveat.code} — ${caveat.detail}`);
+  return lines;
+}
+
 /** The agent-facing read-back: evidence table + relative deltas + the
  * streaming-reference verdict for the master. */
 export function formatRenderSummary(data: RenderSummaryData): string {
@@ -144,8 +194,9 @@ export function formatRenderSummary(data: RenderSummaryData): string {
   }
 
   const lines: string[] = [];
+  if (data.range) lines.push(...formatRangeHeader(data.range));
   if (data.strips.length > 0) {
-    lines.push(`strips (${data.scope === "all" ? "master processing bypassed" : "scope master"}):`);
+    lines.push(`strips (${data.scope === "all" || data.scope === "range" ? "master processing bypassed" : "scope master"}):`);
     for (const strip of data.strips) lines.push(`  ${formatStrip(strip)}`);
     lines.push(...buildRelativeLines(data).map((line) => `  ${line}`));
   }
@@ -180,6 +231,152 @@ const trackWindowAnalyzer = defineAnalyzer<MixHealthReport>({
 
 function isFiniteTick(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
+}
+
+/** Copy the window's samples out of every channel (bounded by the window cap). */
+function sliceChannels(
+  buffer: AnalyzableBuffer,
+  startSample: number,
+  endSample: number,
+): Float32Array[] {
+  const slices: Float32Array[] = [];
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    slices.push(buffer.getChannelData(channel).slice(startSample, endSample));
+  }
+  return slices;
+}
+
+/** analyzeBufferMetrics over an already-sliced window. */
+function measureWindow(buffer: AnalyzableBuffer, startSample: number, endSample: number) {
+  const slices = sliceChannels(buffer, startSample, endSample);
+  const length = Math.max(0, endSample - startSample);
+  return analyzeBufferMetrics({
+    length,
+    sampleRate: buffer.sampleRate,
+    numberOfChannels: slices.length,
+    getChannelData: (channel: number) => slices[channel] ?? new Float32Array(length),
+  });
+}
+
+const RANGE_STAGE = {
+  id: "song-range" as const,
+  includes: "the full mix through the master chain, timeline rendered from 0",
+  excludes: "nothing — audio before the window is rendered, only the measurement is sliced",
+};
+
+/**
+ * E1 — full-mix range measurement: render the timeline from 0 through the
+ * window end (tails and earlier notes included), then slice the metrics to
+ * the window. Master keeps the full chain; strips reuse the buildStemProject
+ * bypass exactly like the whole-timeline pass.
+ */
+async function renderSongWindow(
+  services: Services,
+  doc: ProjectDocument,
+  request: { startTick: number; endTick: number; scope: "master" | "tracks" | "all" },
+  signal?: AbortSignal,
+): Promise<RenderSummaryData> {
+  if (doc.arrangement.clips.length === 0) {
+    throw new Error(
+      "range analysis needs arrangement clips — a pattern-mode project has no arrangement timeline to slice",
+    );
+  }
+  if (!isFiniteTick(request.startTick) || !isFiniteTick(request.endTick) || request.endTick <= request.startTick) {
+    throw new Error("startTick and endTick must be non-negative integer ticks with endTick > startTick");
+  }
+  const barTicks = ticksPerBar(doc);
+  if (request.endTick - request.startTick > TRACK_WINDOW_MAX_BARS * barTicks) {
+    throw new Error(`analysis window is limited to ${TRACK_WINDOW_MAX_BARS} bars`);
+  }
+  const { throwIfAborted } = await import("../rendering/renderer");
+  throwIfAborted(signal);
+
+  const projectRevision = storeRevision(services.store);
+  const analysisRequest = {
+    projectId: doc.id,
+    ...(projectRevision === null ? {} : { revision: projectRevision }),
+    scope: { kind: "master" as const },
+    window: { startTick: request.startTick, endTick: request.endTick },
+    stage: "master" as const,
+    featureSet: "mix-health",
+  };
+  const resolved = resolveAnalysisWindow(doc, analysisRequest, 44100);
+  if (resolved.endSample <= resolved.startSample) {
+    throw new Error(`analysis window resolves to fewer than one sample at 44100 Hz`);
+  }
+
+  const { renderProject } = await import("../rendering/renderer");
+  const renderOptions = {
+    mode: "song" as const,
+    sampleRate: 44100 as const,
+    tailSeconds: 0,
+    minimumDurationTicks: request.endTick,
+    arrangementOnly: true,
+    signal,
+  };
+
+  const strips: RenderStripSummary[] = [];
+  if (request.scope !== "master") {
+    const candidates = doc.tracks.filter((t) => t.kind !== "group");
+    const overflow = candidates.length - STRIP_CAP;
+    for (const track of overflow > 0 ? candidates.slice(0, STRIP_CAP) : candidates) {
+      throwIfAborted(signal);
+      const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
+      const buffer = await renderProject(stemDoc, services.bank, { ...renderOptions, masterProcessing: false });
+      if (buffer.length < resolved.endSample) {
+        throw new Error(
+          `offline render ended at sample ${buffer.length}; the window needs samples ${resolved.startSample}..${resolved.endSample}`,
+        );
+      }
+      strips.push({
+        id: track.id,
+        name: track.name,
+        kind: track.kind,
+        ...measureWindow(buffer, resolved.startSample, resolved.endSample),
+      });
+    }
+  }
+
+  let master: RenderSummaryData["master"] = null;
+  if (request.scope !== "tracks") {
+    throwIfAborted(signal);
+    const buffer = await renderProject(doc, services.bank, renderOptions);
+    if (buffer.length < resolved.endSample) {
+      throw new Error(
+        `offline render ended at sample ${buffer.length}; the window needs samples ${resolved.startSample}..${resolved.endSample}`,
+      );
+    }
+    master = measureWindow(buffer, resolved.startSample, resolved.endSample);
+  }
+
+  const revisionAfterRender = storeRevision(services.store);
+  return {
+    scope: "range",
+    strips,
+    master,
+    referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+    range: {
+      window: { startTick: request.startTick, endTick: request.endTick },
+      timing: {
+        startSec: resolved.startSec,
+        endSec: resolved.endSec,
+        durationSec: resolved.endSec - resolved.startSec,
+        startSample: resolved.startSample,
+        endSample: resolved.endSample,
+        sampleRate: 44100,
+      },
+      projectRevision,
+      revisionAfterRender,
+      freshness:
+        projectRevision === null || revisionAfterRender === null
+          ? "unknown"
+          : projectRevision === revisionAfterRender
+            ? "current"
+            : "stale",
+      signalStage: RANGE_STAGE,
+      caveats: resolved.caveats.map((caveat) => ({ code: caveat.code, detail: caveat.detail })),
+    },
+  };
 }
 
 async function renderTrackWindow(
@@ -281,6 +478,22 @@ export async function mcpRenderSummary(
   throwIfAborted(signal);
   const scope = request.scope ?? "all";
   const doc: ProjectDocument = services.store.getDoc();
+  const hasTickWindow = request.startTick !== undefined || request.endTick !== undefined;
+  if (hasTickWindow && request.trackId === undefined) {
+    // E1: a tick window WITHOUT a trackId measures the FULL MIX inside the
+    // window — the chorus-vs-verse surface. The track-window branch below
+    // keeps its meaning: an isolated track, pre-master.
+    return renderSongWindow(
+      services,
+      doc,
+      {
+        startTick: request.startTick as number,
+        endTick: request.endTick as number,
+        scope,
+      },
+      signal,
+    );
+  }
   const hasWindowRequest =
     request.trackId !== undefined || request.startTick !== undefined || request.endTick !== undefined;
   if (hasWindowRequest) {

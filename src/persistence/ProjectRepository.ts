@@ -1,5 +1,5 @@
 import type { ProjectDocument, ProjectTransferOriginV1 } from "../project-model/types";
-import { SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
+import { MIN_SCHEMA_VERSION, SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { STORE_META, STORE_PROJECTS, openDb, tx } from "./db";
 
@@ -16,15 +16,26 @@ export interface SavedProjectMeta {
 }
 
 /**
- * A project written by a NEWER app version: it exists in storage and must be
- * visible (it is the user's work), but it cannot be opened, renamed, or
- * duplicated until the app is updated. Deletion stays available.
+ * A project this build cannot open: it exists in storage and must be visible
+ * (it is the user's work), but it cannot be opened, renamed, or duplicated.
+ * Deletion stays available.
+ *
+ * `direction` says WHICH side of the support range the document sits on:
+ * `newer` = written by a newer app version (update KYX to open it),
+ * `older` = declares a version older than the oldest shape this build can
+ * migrate, so no KYX ever wrote it and its shape cannot be reconstructed.
+ *
+ * Both directions must be listed. A project that is skipped by `listAll`
+ * because it cannot be migrated disappears from the library, and a project
+ * that is invisible looks LOST — which is exactly how F-14 lost a project.
  */
 export interface IncompatibleProjectMeta {
   id: string;
   name: string;
   updatedAt: string;
   schemaVersion: number;
+  /** Which side of the supported version range this document is on. */
+  direction: "newer" | "older";
 }
 
 function metaOf(doc: ProjectDocument): SavedProjectMeta {
@@ -99,23 +110,27 @@ export class ProjectRepository {
   }
 
   /**
-   * Projects saved by a newer app version. They are skipped by listAll/load
-   * (they cannot be migrated), but silently HIDING the user's own work makes
-   * it look lost — the browser lists these with a "newer version" badge.
+   * Projects this build cannot open — from a newer app version, or declaring a
+   * version older than the oldest shape the migrator understands. They are
+   * skipped by listAll/load (they cannot be migrated), but silently HIDING
+   * the user's own work makes it look lost — the browser lists these with a
+   * version badge that says which side of the range it is on.
    */
   async listIncompatible(): Promise<IncompatibleProjectMeta[]> {
     const db = await this.db();
     const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
     return all
-      .filter(
-        (doc) =>
-          validateProjectShape(doc) && typeof doc.schemaVersion === "number" && doc.schemaVersion > SCHEMA_VERSION,
-      )
+      .filter((doc) => {
+        if (!validateProjectShape(doc)) return false;
+        if (typeof doc.schemaVersion !== "number") return false;
+        return doc.schemaVersion > SCHEMA_VERSION || doc.schemaVersion < MIN_SCHEMA_VERSION;
+      })
       .map((doc) => ({
         id: doc.id,
         name: typeof doc.name === "string" && doc.name.length > 0 ? doc.name : "Untitled project",
         updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : new Date(0).toISOString(),
         schemaVersion: doc.schemaVersion as number,
+        direction: (doc.schemaVersion as number) > SCHEMA_VERSION ? ("newer" as const) : ("older" as const),
       }))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }

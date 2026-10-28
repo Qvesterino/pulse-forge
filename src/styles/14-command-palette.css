@@ -101,6 +101,27 @@
   text-overflow: ellipsis;
 }
 
+/* An action that cannot run right now says WHY. A greyed-out row that
+   explains itself beats one that looks broken (audit HCP-05-07: 40.3 % of the
+   product's disabled controls explained nothing). */
+.palette-item.unavailable {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.palette-item.unavailable .palette-title {
+  color: var(--text-dim);
+}
+
+.palette-unavailable {
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .palette-kbd {
   flex: none;
 }

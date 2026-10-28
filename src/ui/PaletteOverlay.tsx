@@ -70,7 +70,9 @@ export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
       e.preventDefault();
       e.stopPropagation();
       const action = results[selected];
-      if (action) runAction(action);
+      // An action that cannot run right now says why; pressing Enter on it
+      // does nothing rather than failing silently.
+      if (action && !action.unavailableReason) runAction(action);
     }
   };
 
@@ -106,13 +108,24 @@ export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
                 type="button"
                 role="option"
                 aria-selected={idx === selected}
-                className={`palette-item${idx === selected ? " selected" : ""}`}
+                // aria-disabled, NOT the disabled attribute: a disabled button
+                // fires no hover, so the reason would never be readable. This
+                // way the row stays visible AND says why it cannot run.
+                aria-disabled={action.unavailableReason ? true : undefined}
+                className={`palette-item${idx === selected ? " selected" : ""}${
+                  action.unavailableReason ? " unavailable" : ""
+                }`}
                 onMouseEnter={() => setSelected(idx)}
-                onClick={() => runAction(action)}
+                onClick={() => {
+                  if (action.unavailableReason) return;
+                  runAction(action);
+                }}
+                title={action.unavailableReason}
               >
                 <span className="palette-copy">
                   <span className="palette-title">{action.title}</span>
                   {action.profileHint && <span className="palette-profile-hint">{action.profileHint}</span>}
+                  {action.unavailableReason && <span className="palette-unavailable">{action.unavailableReason}</span>}
                 </span>
                 {action.binding && (
                   <kbd className="help-kbd palette-kbd" aria-label={action.binding}>
