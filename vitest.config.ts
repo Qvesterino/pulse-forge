@@ -1,8 +1,25 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url));
+
+// Mirror vite.config.ts EXACTLY. Two corrections this brings:
+//  1. the sibling root honours QVESTER_SIBLING_ROOT here too (it did not —
+//     the test graph always pointed at the hardcoded ../QVESTER_LANDING_PAGE,
+//     so a CI run and a local run could resolve DIFFERENT sources),
+//  2. the chip falls back to the same in-repo stub when the sibling is
+//     absent. A test run that resolves the chip differently from the
+//     production build is a test run that measures a different program.
+const qvesterSiblingRoot = process.env.QVESTER_SIBLING_ROOT
+  ? resolve(process.env.QVESTER_SIBLING_ROOT)
+  : fileURLToPath(new URL("../QVESTER_LANDING_PAGE", import.meta.url));
+const qvesterPkgSrc = (pkg: string) => resolve(qvesterSiblingRoot, "packages", pkg, "src");
+const qmrHudStubSrc = fileURLToPath(new URL("./src/integrations/qmr-hud-stub", import.meta.url));
+const qmrHudRealSrc = qvesterPkgSrc("qmr-hud");
+const qmrHudSrc = existsSync(resolve(qmrHudRealSrc, "qmr-mini-chip-mount.tsx")) ? qmrHudRealSrc : qmrHudStubSrc;
 
 export default defineConfig({
   plugins: [react()],
@@ -21,14 +38,14 @@ export default defineConfig({
       { find: /^virtual:pwa-register$/, replacement: virtualPwaRegisterStub },
       // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
       // file:-dep style) — alias them in-place so KYX mounts the REAL chip
-      // without publishing or copying. Keep in sync with vitest.config.ts.
+      // without publishing or copying. Keep in sync with vite.config.ts.
       {
         find: /^@qvester\/qmr-hud$/,
-        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/index.ts", import.meta.url)),
+        replacement: resolve(qmrHudSrc, "index.ts"),
       },
       {
         find: /^@qvester\/qmr-hud\/(.*)$/,
-        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/$1", import.meta.url)),
+        replacement: `${qmrHudSrc}/$1`,
       },
       {
         find: /^@qvester\/qmr-interop(.*)$/,

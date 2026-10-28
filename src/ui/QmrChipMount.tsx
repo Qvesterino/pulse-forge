@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
-import { listenForCommands } from "@qvester/qmr-hud/command-bus.ts";
+import { listenForCommands } from "../interop/qmrCommandBus";
 import type { McpToolContext } from "../mcp/tools";
 import { QMR_KYX_MANIFEST } from "../interop/qmrBridge";
 import type { Services } from "../services";
@@ -21,6 +21,14 @@ import type { Services } from "../services";
  * vite.config.ts) — never bundled into the entry chunk: the chip trigger
  * is a small lazy chunk and the full panel loads only after an explicit
  * user action (chip click / Ctrl+K).
+ *
+ * Only the CHIP is a sibling dependency, and it is OPTIONAL: the alias falls
+ * back to an in-repo stub when the sibling checkout is absent (CI, a clean
+ * clone), so the studio always builds and boots. The command bus is NOT a
+ * sibling dependency — the app is the host of that channel and owns it
+ * (src/interop/qmrCommandBus.ts); borrowing the HUD's own copy would make
+ * KYX's build depend on a second repository (measured 2026-10-28: five red
+ * CI jobs on GitHub Actions from one such import).
  */
 
 const QmrMiniChipMount = lazy(() =>

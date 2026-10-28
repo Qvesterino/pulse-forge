@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { pwaOptions } from "./src/pwa";
 
 const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url));
@@ -17,6 +18,21 @@ const qvesterSiblingRoot = process.env.QVESTER_SIBLING_ROOT
   ? resolve(process.env.QVESTER_SIBLING_ROOT)
   : fileURLToPath(new URL("../QVESTER_LANDING_PAGE", import.meta.url));
 const qvesterPkgSrc = (pkg: string) => resolve(qvesterSiblingRoot, "packages", pkg, "src");
+
+// The QMR HUD chip trigger is the ONLY sibling dependency left in the build,
+// and it is OPTIONAL. A clean checkout (GitHub Actions, a reviewer's clone)
+// has no sibling — and an unresolvable import is FATAL there: vite build dies
+// on ENOENT before producing anything, and the studio then crashes on boot
+// (measured 2026-10-28: five red CI jobs from one such import).
+//
+// So the alias falls back to an in-repo stub when the sibling is absent: the
+// chip is an affordance, and the app already renders "no chip" when its load
+// fails (QmrErrorBoundary). The fallback does NOT change what the gates
+// measure — the chip lives in its own optional bundle bucket, and the
+// command bus is KYX's own module (src/interop/qmrCommandBus.ts).
+const qmrHudStubSrc = fileURLToPath(new URL("./src/integrations/qmr-hud-stub", import.meta.url));
+const qmrHudRealSrc = qvesterPkgSrc("qmr-hud");
+const qmrHudSrc = existsSync(resolve(qmrHudRealSrc, "qmr-mini-chip-mount.tsx")) ? qmrHudRealSrc : qmrHudStubSrc;
 
 // Desktop packaging (ADR 0010): the Electron shell serves the static dist/
 // over its own app:// scheme — the service-worker precache would be dead
@@ -100,13 +116,16 @@ export default defineConfig({
       // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
       // file:-dep style) — alias them in-place so KYX mounts the REAL chip
       // without publishing or copying. Keep in sync with vitest.config.ts.
+      // The chip falls back to the in-repo stub when the sibling checkout is
+      // absent (see qmrHudSrc above) — a build without the chip, not a build
+      // that cannot start.
       {
         find: /^@qvester\/qmr-hud$/,
-        replacement: resolve(qvesterPkgSrc("qmr-hud"), "index.ts"),
+        replacement: resolve(qmrHudSrc, "index.ts"),
       },
       {
         find: /^@qvester\/qmr-hud\/(.*)$/,
-        replacement: `${qvesterPkgSrc("qmr-hud")}/$1`,
+        replacement: `${qmrHudSrc}/$1`,
       },
       {
         find: /^@qvester\/qmr-interop(.*)$/,

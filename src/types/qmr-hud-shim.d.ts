@@ -3,7 +3,11 @@
  * SOURCE from the sibling monorepo (vite resolves them via resolve.alias —
  * see vite.config.ts). These declarations keep OUR tsc program from pulling
  * 4+ MB of foreign sources: the runtime contract here mirrors only what KYX
- * consumes (the deferred mini chip + the command bus host API).
+ * consumes (the deferred mini chip).
+ *
+ * The command bus is NOT declared here anymore: the app is the HOST of that
+ * channel and owns it outright (src/interop/qmrCommandBus.ts), so KYX has no
+ * type-level or build-level dependency on the sibling for it.
  *
  * NOTE: this file must stay a GLOBAL declaration file (no top-level
  * imports/exports) — otherwise `declare module` becomes augmentation and
@@ -22,26 +26,4 @@ declare module "@qvester/qmr-hud/qmr-mini-chip-mount.tsx" {
     [key: string]: unknown;
   }
   export const QmrMiniChipMount: import("react").ComponentType<QmrMiniChipMountProps>;
-}
-
-declare module "@qvester/qmr-hud/command-bus.ts" {
-  export interface CommandResult {
-    ok: boolean;
-    unsupported?: boolean;
-    message?: string;
-    data?: unknown;
-    url?: string;
-  }
-  export function listenForCommands(
-    appId: string,
-    handler: (command: {
-      type: string;
-      [key: string]: unknown;
-    }) => CommandResult | Promise<CommandResult> | void | Promise<void>,
-  ): () => void;
-  export function dispatchViaHostBus(
-    appId: string,
-    command: { type: string; [key: string]: unknown },
-    timeoutMs?: number,
-  ): Promise<CommandResult | null>;
 }
