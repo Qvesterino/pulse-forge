@@ -514,6 +514,18 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
   `server/mcp-core.mjs` are mirrors (locked in place by
   `tests/mcp-mirror-sync.test.ts`). After changing the tool surface run
   `npm run gen:mcp-mirrors` and commit — never hand-edit a mirror.
+- **The status payload is GENERATED too**: `docs/status.json` and
+  `docs/STATUS.md` come from `npm run status:report` (it re-runs the cheap
+  claims and rewrites both). Never hand-edit them either.
+- **Land a derivable artifact WITH its source.** A commit that changes
+  what an artifact describes — the tool surface → the MCP mirrors, a test
+  file → the spec-file count, the seam manifest → the seam count — must
+  re-pin that artifact in the SAME commit. A commit where the artifact
+  runs AHEAD of its source describes a tree that does not exist, and the
+  drift gate then goes red in the direction nobody expects, with a diff
+  that looks like somebody else broke it. `npm run drift:bless`
+  regenerates in place: review the diff and commit it together with the
+  source that caused it.
 - **Schema versioning**: any change to the on-disk project shape must bump `SCHEMA_VERSION` in `src/project-model/schema.ts` and add a migration in `migrateProject`. Loading code rejects unknown future versions.
 - **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 5000 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB, optional FX-extras worklet 64 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. Any budget increase needs a measured justification and a script update.
 - **Live and offline render parity**: the renderer hands the same `AudioEngine` an `OfflineAudioContext`. If a feature only works in one path, that's a bug. Verify by exporting the project and listening to the result.
