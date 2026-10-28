@@ -66,6 +66,27 @@ export interface MixPreviewLane {
   createdAt: string;
 }
 
+export interface MixPreviewVerification {
+  projectId: string;
+  label: string;
+  targets: string[];
+  goals: string[];
+  window: MixPreviewWindow | null;
+  status: "measured" | "stale" | "unavailable" | "unknown";
+  freshness: "current" | "stale" | "unknown";
+  structureMatchesPlan: boolean;
+  beforeLufs: number | null;
+  previewAfterLufs: number | null;
+  actualAfterLufs: number | null;
+  previewDeltaLufs: number | null;
+  actualDeltaLufs: number | null;
+  differenceFromPreviewLufs: number | null;
+  previewRevision: number | null;
+  appliedRevision: number | null;
+  revisionAfterRender: number | null;
+  reason?: string;
+}
+
 export type MixPreviewOutcome =
   { ok: true; lane: MixPreviewLane; studioBound: boolean } | { ok: false; reason: string };
 
@@ -74,6 +95,8 @@ export type MixPreviewOutcome =
 export type MixPreviewListener = (lane: MixPreviewLane | null) => void;
 
 let currentLane: MixPreviewLane | null = null;
+let latestVerification: MixPreviewVerification | null = null;
+let verificationGeneration = 0;
 const listeners = new Set<MixPreviewListener>();
 
 export function armMixPreviewLane(lane: MixPreviewLane): void {
@@ -114,6 +137,125 @@ export function onMixPreviewLane(listener: MixPreviewListener): () => void {
 
 export function hasMixPreviewListener(): boolean {
   return listeners.size > 0;
+}
+
+/** Apply the armed preview and measure the actual rendered result on the same scope. */
+export async function applyAndVerifyMixPreview(
+  services: Services,
+  lane: MixPreviewLane,
+): Promise<{ applied: boolean; verification?: MixPreviewVerification }> {
+  const beforeApply = structuredClone(services.store.getDoc());
+  const revisionBeforeApply = storeRevision(services.store);
+  if (!mixPreviewMatchesProject(lane, beforeApply, revisionBeforeApply)) return { applied: false };
+
+  const generation = ++verificationGeneration;
+  latestVerification = null;
+  services.store.execute(lane.command);
+  clearMixPreviewLane();
+  const appliedDoc = structuredClone(services.store.getDoc());
+  const appliedRevision = storeRevision(services.store);
+  const structureMatchesPlan = JSON.stringify(appliedDoc) === JSON.stringify(lane.afterDoc);
+  let actualAfterLufs: number | null = null;
+  let reason: string | undefined;
+  try {
+    const { renderProject } = await import("../rendering/renderer");
+    const mode = appliedDoc.arrangement.clips.length > 0 ? ("song" as const) : ("pattern" as const);
+    const rendered = await renderProject(appliedDoc, services.bank, {
+      mode,
+      sampleRate: 44100,
+      tailSeconds: 0.6,
+      ...(lane.window ? { minimumDurationTicks: lane.window.endTick, arrangementOnly: true } : {}),
+    });
+    if (lane.window) assertPreviewWindow(rendered, lane.window, "post-apply");
+    actualAfterLufs = await measureLufs(rendered, lane.window);
+    if (actualAfterLufs === null) reason = "fresh render did not contain enough measurable audio for integrated LUFS";
+  } catch (error) {
+    reason = `fresh render unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  const revisionAfterRender = storeRevision(services.store);
+  const sameSnapshotWithoutRevision =
+    (appliedRevision === null || revisionAfterRender === null) &&
+    JSON.stringify(services.store.getDoc()) === JSON.stringify(appliedDoc);
+  const freshness =
+    appliedRevision !== null && revisionAfterRender !== null
+      ? appliedRevision === revisionAfterRender
+        ? "current"
+        : "stale"
+      : sameSnapshotWithoutRevision
+        ? "current"
+        : "unknown";
+  if (freshness === "stale") reason = "project changed while the post-apply render was running";
+  const previewDeltaLufs =
+    lane.stats.beforeLufs === null || lane.stats.afterLufs === null
+      ? null
+      : lane.stats.afterLufs - lane.stats.beforeLufs;
+  const actualDeltaLufs =
+    lane.stats.beforeLufs === null || actualAfterLufs === null ? null : actualAfterLufs - lane.stats.beforeLufs;
+  const differenceFromPreviewLufs =
+    lane.stats.afterLufs === null || actualAfterLufs === null ? null : actualAfterLufs - lane.stats.afterLufs;
+  const status =
+    freshness === "stale"
+      ? "stale"
+      : actualAfterLufs === null
+        ? "unavailable"
+        : freshness === "unknown"
+          ? "unknown"
+          : "measured";
+  const verification: MixPreviewVerification = {
+    projectId: appliedDoc.id,
+    label: lane.label,
+    targets: [...lane.targets],
+    goals: [...lane.goals],
+    window: lane.window ?? null,
+    status,
+    freshness,
+    structureMatchesPlan,
+    beforeLufs: lane.stats.beforeLufs,
+    previewAfterLufs: lane.stats.afterLufs,
+    actualAfterLufs,
+    previewDeltaLufs,
+    actualDeltaLufs,
+    differenceFromPreviewLufs,
+    previewRevision: lane.revisionAfterRender ?? lane.projectRevision ?? null,
+    appliedRevision,
+    revisionAfterRender,
+    ...(reason ? { reason } : {}),
+  };
+  if (generation === verificationGeneration) latestVerification = verification;
+  return { applied: true, verification };
+}
+
+/** Consume the receipt only for the same project and exact analyzed scope. */
+export function takeMixPreviewVerification(
+  projectId: string,
+  window: { startTick: number; endTick: number } | null,
+  currentRevision: number | null,
+): MixPreviewVerification | null {
+  const receipt = latestVerification;
+  if (!receipt || receipt.projectId !== projectId) return null;
+  const sameWindow =
+    receipt.window === null
+      ? window === null
+      : window !== null && receipt.window.startTick === window.startTick && receipt.window.endTick === window.endTick;
+  if (!sameWindow) return null;
+  latestVerification = null;
+  if (
+    receipt.revisionAfterRender !== null &&
+    currentRevision !== null &&
+    receipt.revisionAfterRender !== currentRevision
+  ) {
+    return {
+      ...receipt,
+      status: "stale",
+      freshness: "stale",
+      reason: "project changed after the post-apply verification render",
+    };
+  }
+  if (receipt.revisionAfterRender === null || currentRevision === null) {
+    return { ...receipt, status: "unknown", freshness: "unknown" };
+  }
+  return receipt;
 }
 
 // ── preview build ──────────────────────────────────────────────────────────

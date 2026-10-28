@@ -62,6 +62,7 @@ export interface RenderSummaryData {
   range?: RenderRangeAnalysis;
   arrangementCensus?: ArrangementCensus;
   kickBassRisk?: KickBassRiskReport;
+  mixVerification?: import("./mix-preview").MixPreviewVerification;
 }
 
 /**
@@ -248,7 +249,24 @@ export function formatRenderSummary(data: RenderSummaryData): string {
   }
   if (data.arrangementCensus) lines.push(...formatArrangementCensus(data.arrangementCensus));
   if (data.kickBassRisk) lines.push(...formatKickBassRisk(data.kickBassRisk));
+  if (data.mixVerification) lines.push(...formatMixVerification(data.mixVerification));
   return lines.join("\n");
+}
+
+function formatMixVerification(verification: NonNullable<RenderSummaryData["mixVerification"]>): string[] {
+  const lufs = (value: number | null) => (value === null ? "n/a" : `${value.toFixed(1)} LUFS-I`);
+  const delta = (value: number | null) => (value === null ? "n/a" : `${value >= 0 ? "+" : ""}${value.toFixed(1)} LU`);
+  const scope = verification.window
+    ? `ticks ${verification.window.startTick}..${verification.window.endTick}`
+    : "full project";
+  return [
+    `post-apply mix verification: ${verification.status} — "${verification.label}" on ${scope}`,
+    `  structure ${verification.structureMatchesPlan ? "matches" : "does not match"} the preview plan; revision preview ${verification.previewRevision ?? "unknown"} → applied ${verification.appliedRevision ?? "unknown"} → rendered ${verification.revisionAfterRender ?? "unknown"} (${verification.freshness})`,
+    `  LUFS-I: before ${lufs(verification.beforeLufs)} · preview after ${lufs(verification.previewAfterLufs)} · fresh after ${lufs(verification.actualAfterLufs)} · measured Δ ${delta(verification.actualDeltaLufs)} · actual−preview ${delta(verification.differenceFromPreviewLufs)}`,
+    `  targets: ${verification.targets.join(", ") || "n/a"} · goals: ${verification.goals.join(" + ") || "n/a"}`,
+    ...(verification.reason ? [`  verification detail: ${verification.reason}`] : []),
+    "  LUFS confirms only this measured loudness change; a human still decides whether the mix sounds better",
+  ];
 }
 
 function formatKickBassRisk(report: KickBassRiskReport): string[] {
@@ -595,6 +613,12 @@ async function renderSongWindow(
     }
   }
   const revisionAfterRender = storeRevision(services.store);
+  const { takeMixPreviewVerification } = await import("./mix-preview");
+  const mixVerification = takeMixPreviewVerification(
+    doc.id,
+    { startTick: request.startTick, endTick: request.endTick },
+    revisionAfterRender,
+  );
   return {
     scope: "range",
     strips,
@@ -603,6 +627,7 @@ async function renderSongWindow(
     ...(stripCoverage ? { stripCoverage } : {}),
     arrangementCensus,
     kickBassRisk,
+    ...(mixVerification ? { mixVerification } : {}),
     range: {
       window: { startTick: request.startTick, endTick: request.endTick },
       timing: {
@@ -814,11 +839,16 @@ export async function mcpRenderSummary(
     master = analyzeBufferMetrics(buffer);
   }
 
+  const revisionAfterRender = storeRevision(services.store);
+  const { takeMixPreviewVerification } = await import("./mix-preview");
+  const mixVerification = takeMixPreviewVerification(doc.id, null, revisionAfterRender);
+
   return {
     scope,
     strips,
     master,
     referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
     ...(stripCoverage ? { stripCoverage } : {}),
+    ...(mixVerification ? { mixVerification } : {}),
   };
 }

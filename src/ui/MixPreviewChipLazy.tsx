@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   clearMixPreviewLane,
   currentMixPreviewLane,
+  applyAndVerifyMixPreview,
   mixPreviewMatchesProject,
   onMixPreviewLane,
   type MixPreviewLane,
+  type MixPreviewVerification,
 } from "../mcp/mix-preview";
 import { storeRevision } from "../mcp/revision";
 import { useServices } from "./context";
@@ -14,6 +16,9 @@ type Side = "before" | "after";
 export function MixPreviewChipLazy() {
   const services = useServices();
   const [lane, setLane] = useState<MixPreviewLane | null>(currentMixPreviewLane());
+  const [appliedLane, setAppliedLane] = useState<MixPreviewLane | null>(null);
+  const [verification, setVerification] = useState<MixPreviewVerification | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [rendering, setRendering] = useState<Side | null>(null);
   const [playingSide, setPlayingSide] = useState<Side | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +35,10 @@ export function MixPreviewChipLazy() {
         stopPlayback();
         setPlayingSide(null);
         setError(null);
+        if (next !== null) {
+          setAppliedLane(null);
+          setVerification(null);
+        }
         setLane(next);
       }),
     [],
@@ -109,76 +118,120 @@ export function MixPreviewChipLazy() {
     }
   }
 
-  if (!lane) return null;
+  async function applyAndVerify() {
+    if (!lane || verifying) return;
+    stopPlayback();
+    setError(null);
+    const currentDoc = typeof services.store.getDoc === "function" ? services.store.getDoc() : null;
+    const currentRevision = storeRevision(services.store);
+    const revisionChanged =
+      lane.revisionAfterRender != null && currentRevision != null && lane.revisionAfterRender !== currentRevision;
+    if (revisionChanged || (currentDoc != null && !mixPreviewMatchesProject(lane, currentDoc, currentRevision))) {
+      setError("Project changed after this preview. Dismiss it and run the preview again before applying.");
+      return;
+    }
+    setAppliedLane(lane);
+    setVerifying(true);
+    try {
+      const outcome = await applyAndVerifyMixPreview(services, lane);
+      if (!outcome.applied) {
+        setAppliedLane(null);
+        setError("Project changed before Apply. Dismiss this preview and run it again.");
+        return;
+      }
+      setVerification(outcome.verification ?? null);
+    } catch (err) {
+      setAppliedLane(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  const visibleLane = lane ?? appliedLane;
+  if (!visibleLane && !verifying) return null;
 
   return (
     <div className="mix-preview-card" role="dialog" aria-label="Mix idea preview">
       <div className="mix-preview-head">
-        <span className="mix-preview-title">MIX PREVIEW</span>
-        <span className="mix-preview-label">{lane.label}</span>
+        <span className="mix-preview-title">{verification ? "POST-APPLY CHECK" : "MIX PREVIEW"}</span>
+        <span className="mix-preview-label">{visibleLane?.label ?? "Mix idea"}</span>
         <button
           type="button"
           className="mix-preview-x"
           aria-label="Dismiss preview"
+          disabled={verifying}
           onClick={() => {
             stopPlayback();
             clearMixPreviewLane();
+            setAppliedLane(null);
+            setVerification(null);
           }}
         >
           ✕
         </button>
       </div>
-      <span className="mix-preview-stats">
-        before {lane.stats.beforeLufs != null ? `${lane.stats.beforeLufs.toFixed(1)}` : "n/a"} · after{" "}
-        {lane.stats.afterLufs != null ? `${lane.stats.afterLufs.toFixed(1)}` : "n/a"} LUFS-I
-        {lane.stats.matchGainDb !== 0 &&
-          ` · after level-matched ${lane.stats.matchGainDb > 0 ? "+" : ""}${lane.stats.matchGainDb.toFixed(1)} dB`}
-      </span>
-      {lane.window && (
-        <span className="mix-preview-range">
-          range ticks {lane.window.startTick}..{lane.window.endTick} · {lane.window.durationSec.toFixed(2)} s · revision{" "}
-          {lane.projectRevision ?? "unknown"} → {lane.revisionAfterRender ?? "unknown"} ({lane.freshness ?? "unknown"})
+      {visibleLane && (
+        <span className="mix-preview-stats">
+          before {visibleLane.stats.beforeLufs != null ? `${visibleLane.stats.beforeLufs.toFixed(1)}` : "n/a"} · after{" "}
+          {visibleLane.stats.afterLufs != null ? `${visibleLane.stats.afterLufs.toFixed(1)}` : "n/a"} LUFS-I
+          {visibleLane.stats.matchGainDb !== 0 &&
+            ` · after level-matched ${visibleLane.stats.matchGainDb > 0 ? "+" : ""}${visibleLane.stats.matchGainDb.toFixed(1)} dB`}
         </span>
       )}
-      <div className="mix-preview-actions">
-        {(["before", "after"] as const).map((side) => (
+      {visibleLane?.window && (
+        <span className="mix-preview-range">
+          range ticks {visibleLane.window.startTick}..{visibleLane.window.endTick} ·{" "}
+          {visibleLane.window.durationSec.toFixed(2)} s · revision {visibleLane.projectRevision ?? "unknown"} →{" "}
+          {visibleLane.revisionAfterRender ?? "unknown"} ({visibleLane.freshness ?? "unknown"})
+        </span>
+      )}
+      {verification ? (
+        <div className="mix-preview-stats" role="status">
+          fresh render: {verification.status} · preview {formatLufs(verification.previewAfterLufs)} · measured after{" "}
+          {formatLufs(verification.actualAfterLufs)} · Δ from before {formatDelta(verification.actualDeltaLufs)}
+          {verification.differenceFromPreviewLufs !== null &&
+            ` · measured−preview ${formatDelta(verification.differenceFromPreviewLufs)}`}
+          {` · structure ${verification.structureMatchesPlan ? "matches plan" : "differs from plan"} · freshness ${verification.freshness}`}
+          {verification.reason ? ` · ${verification.reason}` : ""}
+        </div>
+      ) : verifying ? (
+        <div className="mix-preview-stats" role="status">
+          Applied; rendering the same scope to verify the actual LUFS result…
+        </div>
+      ) : null}
+      {lane && !verification && (
+        <div className="mix-preview-actions">
+          {(["before", "after"] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              className="btn btn-export mix-preview-play"
+              disabled={rendering != null || verifying}
+              onClick={() => void play(side)}
+            >
+              {rendering === side ? "rendering…" : playingSide === side ? "■ STOP" : `▶ ${side.toUpperCase()}`}
+            </button>
+          ))}
           <button
-            key={side}
             type="button"
-            className="btn btn-export mix-preview-play"
-            disabled={rendering != null}
-            onClick={() => void play(side)}
+            className="btn btn-export mix-preview-apply"
+            disabled={rendering != null || verifying}
+            onClick={() => void applyAndVerify()}
           >
-            {rendering === side ? "rendering…" : playingSide === side ? "■ STOP" : `▶ ${side.toUpperCase()}`}
+            {verifying ? "VERIFYING…" : "APPLY"}
           </button>
-        ))}
-        <button
-          type="button"
-          className="btn btn-export mix-preview-apply"
-          disabled={rendering != null}
-          onClick={() => {
-            stopPlayback();
-            const currentDoc = typeof services.store.getDoc === "function" ? services.store.getDoc() : null;
-            const currentRevision = storeRevision(services.store);
-            const revisionChanged =
-              lane.revisionAfterRender != null &&
-              currentRevision != null &&
-              lane.revisionAfterRender !== currentRevision;
-            if (
-              revisionChanged ||
-              (currentDoc != null && !mixPreviewMatchesProject(lane, currentDoc, currentRevision))
-            ) {
-              setError("Project changed after this preview. Dismiss it and run the preview again before applying.");
-              return;
-            }
-            services.store.execute(lane.command);
-            clearMixPreviewLane();
-          }}
-        >
-          APPLY
-        </button>
-      </div>
+        </div>
+      )}
       {error && <span className="mix-preview-error">{error}</span>}
     </div>
   );
+}
+
+function formatLufs(value: number | null): string {
+  return value === null ? "n/a" : `${value.toFixed(1)} LUFS-I`;
+}
+
+function formatDelta(value: number | null): string {
+  return value === null ? "n/a" : `${value >= 0 ? "+" : ""}${value.toFixed(1)} LU`;
 }
