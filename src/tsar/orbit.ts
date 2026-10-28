@@ -27,7 +27,7 @@
 
 import type { OrbitAxis, OrbitMapping } from "../project-model/types";
 import { TSAR_PARAM_DEFS } from "./params";
-import { isMutationAxisLive } from "./mutations";
+import { isMutationAxisLive } from "./liveness";
 import { ratioToTaper, taperToRatio, type SliderTaper } from "../shared/taper";
 
 /** One assignable target of the surface. */
