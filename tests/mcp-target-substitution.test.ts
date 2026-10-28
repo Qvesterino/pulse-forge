@@ -31,9 +31,10 @@ import { addEffectToTracks, removeEffectFromTracks } from "../src/commands/track
 import { setEffectParam } from "../src/commands/effectParams";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import type { Command } from "../src/commands/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 function ctxCapturing(store: ProjectStore, captured: Command[]): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command: Command) => {
       captured.push(command);
@@ -45,7 +46,7 @@ function ctxCapturing(store: ProjectStore, captured: Command[]): McpToolContext 
     historyLabels: () => store.history.map((e) => e.label),
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  } as unknown as McpToolContext;
+  }) as unknown as McpToolContext;
 }
 
 describe("F-08 — a substitution is disclosed, never silent", () => {

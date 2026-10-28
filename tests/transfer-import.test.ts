@@ -170,7 +170,9 @@ describe("DAW transfer import", () => {
     expect(track?.kind).toBe("instrument");
     expect(result.midiTrackNames).toContain("Automation Only");
     expect(result.doc.arrangement.midiClips ?? []).toHaveLength(0);
-    expect(clip?.points.at(-1)).toEqual({ tick: 240, value: 1 });
+    // F-07: an imported point carries its minted identity, so the lane can be
+    // edited by point and not by slot.
+    expect(clip?.points.at(-1)).toEqual({ id: expect.any(String), tick: 240, value: 1 });
   });
 
   it("keeps a larger song handoff's track mapping intact", () => {

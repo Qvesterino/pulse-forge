@@ -11,10 +11,10 @@ import { ServicesContext } from "../../src/ui/context";
 import { MixPreviewChipLazy as MixPreviewChip } from "../../src/ui/MixPreviewChipLazy";
 import { armMixPreviewLane, clearMixPreviewLane, type MixPreviewLane } from "../../src/mcp/mix-preview";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import type { ProjectDocument } from "../../src/project-model/types";
 import type { Services } from "../../src/services";
 
-function fakeLane(): MixPreviewLane {
-  const doc = createProjectFromTemplate("house");
+function fakeLane(doc: ProjectDocument): MixPreviewLane {
   return {
     id: "mp-test",
     idea: "warmer and glue the drums",
@@ -22,6 +22,8 @@ function fakeLane(): MixPreviewLane {
     targets: ["drums"],
     goals: ["warmer", "glue"],
     interpreter: "production",
+    steps: [],
+    warnings: [],
     beforeDoc: doc,
     afterDoc: doc,
     command: { execute: (input: unknown) => input, label: "test" } as never,
@@ -30,9 +32,15 @@ function fakeLane(): MixPreviewLane {
   };
 }
 
-function mountedServices() {
+/**
+ * The store must expose the document: APPLY first checks that the project has
+ * not moved under the preview (mixPreviewMatchesProject compares the lane's
+ * beforeDoc with the live one), and a store that cannot say what it holds
+ * cannot be applied to.
+ */
+function mountedServices(doc: ProjectDocument) {
   return {
-    store: { execute: vi.fn() },
+    store: { execute: vi.fn(), getDoc: () => doc },
     bank: {},
   } as unknown as Services;
 }
@@ -41,7 +49,7 @@ describe("MixPreviewChip", () => {
   it("renders nothing without a lane", () => {
     clearMixPreviewLane();
     const { container } = render(
-      <ServicesContext.Provider value={mountedServices()}>
+      <ServicesContext.Provider value={mountedServices(createProjectFromTemplate("house"))}>
         <MixPreviewChip />
       </ServicesContext.Provider>,
     );
@@ -50,14 +58,15 @@ describe("MixPreviewChip", () => {
 
   it("appears when a lane is armed and APPLY executes the command through the store", () => {
     clearMixPreviewLane();
-    const services = mountedServices();
+    const doc = createProjectFromTemplate("house");
+    const services = mountedServices(doc);
     render(
       <ServicesContext.Provider value={services}>
         <MixPreviewChip />
       </ServicesContext.Provider>,
     );
 
-    const lane = fakeLane();
+    const lane = fakeLane(doc);
     act(() => armMixPreviewLane(lane));
     expect(screen.getByText("MIX PREVIEW")).toBeTruthy();
     expect(screen.getByText(lane.label)).toBeTruthy();
@@ -73,14 +82,15 @@ describe("MixPreviewChip", () => {
 
   it("dismisses without touching the project", () => {
     clearMixPreviewLane();
-    const services = mountedServices();
+    const doc = createProjectFromTemplate("house");
+    const services = mountedServices(doc);
     render(
       <ServicesContext.Provider value={services}>
         <MixPreviewChip />
       </ServicesContext.Provider>,
     );
 
-    act(() => armMixPreviewLane(fakeLane()));
+    act(() => armMixPreviewLane(fakeLane(doc)));
     expect(screen.getByText("MIX PREVIEW")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss preview" }));
     expect(services.store.execute).not.toHaveBeenCalled();

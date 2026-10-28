@@ -5,6 +5,7 @@ import { setStemModelFlag } from "../src/analysis/stem-model/gate";
 import type { ProjectDocument } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { SampleBank } from "../src/sample-library/factory";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_separate — the separation step of the agent loop. The pinned
@@ -85,7 +86,7 @@ function makeCtx(
   doc: ProjectDocument,
   outcome?: { ok: true; result: SeparateStemsResult } | { ok: false; error: string },
 ): McpToolContext {
-  const base = {
+  const base = withAgentWriter({
     getDoc: () => doc,
     execute: () => undefined,
     undo: () => undefined,
@@ -100,7 +101,7 @@ function makeCtx(
       setLoop: () => undefined,
       setMetronome: () => undefined,
     },
-  } as unknown as McpToolContext;
+  }) as unknown as McpToolContext;
   if (outcome) {
     (base as { separateStems: unknown }).separateStems = async () => outcome;
   }

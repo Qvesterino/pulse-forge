@@ -21,6 +21,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { setTrackParams } from "../src/commands/project";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import type { Command } from "../src/commands/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 const house = () => createProjectFromTemplate("house");
 
@@ -29,7 +30,7 @@ const house = () => createProjectFromTemplate("house");
  * write — the race the finding is about.
  */
 function ctxRacing(store: ProjectStore, humanEdit: () => void): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command: Command) => {
       humanEdit();
@@ -47,7 +48,7 @@ function ctxRacing(store: ProjectStore, humanEdit: () => void): McpToolContext {
       setLoop() {},
       setMetronome() {},
     },
-  } as unknown as McpToolContext;
+  }) as unknown as McpToolContext;
 }
 
 describe("a stale AI write is refused, not applied (F-25)", () => {

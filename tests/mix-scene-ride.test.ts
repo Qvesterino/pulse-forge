@@ -52,7 +52,15 @@ describe("per-section pump ride (applyMixIntent scene lanes)", () => {
         expect(factor).toBeCloseTo(0.7 + 0.6 * intensity, 6); // the ride formula itself
         const lane = lanes.find((l) => l.sceneId === sceneId && l.target.kind === "fxParam" && l.target.fxId === fx.id);
         expect(lane, `${trackId}/${sceneId}`).toBeDefined();
-        expect(lane!.points).toEqual([{ tick: 0, value: Math.round(base * factor * 1000) / 1000 }]);
+        expect(lane!.points).toEqual([
+          {
+            // F-07: a point has a stable identity — the id is minted from the
+            // lane that carries it, so it is stable across a re-apply.
+            id: `pt-sceneAuto-${fx.id}-amount-${sceneId}-0`,
+            tick: 0,
+            value: Math.round(base * factor * 1000) / 1000,
+          },
+        ]);
         expect(lane!.id).toBe(`sceneAuto-${fx.id}-amount-${sceneId}`);
       }
     }
@@ -84,7 +92,12 @@ describe("per-section pump ride (applyMixIntent scene lanes)", () => {
   it("is deterministic across fresh applies (ids differ, musical content does not)", () => {
     const profile = planMixProfile(PUMP_INTENT);
     const shape = (doc: ProjectDocument) =>
-      pumpLanes(doc).map((lane) => ({ scene: lane.sceneId, points: lane.points }));
+      // The ids differ between two fresh applies (each mints its own); the
+      // MUSICAL content does not, and that is what determinism means here.
+      pumpLanes(doc).map((lane) => ({
+        scene: lane.sceneId,
+        points: lane.points.map((point) => ({ tick: point.tick, value: point.value })),
+      }));
     const a = applyMixIntent(docWithScenes(), profile).execute(docWithScenes());
     const b = applyMixIntent(docWithScenes(), profile).execute(docWithScenes());
     expect(shape(a)).toEqual(shape(b));

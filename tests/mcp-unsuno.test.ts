@@ -3,6 +3,7 @@ import { executeMcpTool, resetMcpUnsunoState, type McpToolContext } from "../src
 import type { ProjectDocument } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { goldenTracks, renderGoldenTrack, GOLDEN_SAMPLE_RATE } from "./unsuno/golden-synth";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_unsuno — the track-to-project pipeline for agents. The pure pipeline
@@ -16,7 +17,7 @@ const SR = GOLDEN_SAMPLE_RATE;
 
 function makeCtx(doc: ProjectDocument, options: { withLoader?: boolean; sample?: Float32Array } = {}): McpToolContext {
   let current = doc;
-  const base = {
+  const base = withAgentWriter({
     getDoc: () => current,
     execute: (command: {
       execute: (d: ProjectDocument) => ProjectDocument;
@@ -41,7 +42,7 @@ function makeCtx(doc: ProjectDocument, options: { withLoader?: boolean; sample?:
       setLoop: () => undefined,
       setMetronome: () => undefined,
     },
-  } as unknown as McpToolContext;
+  }) as unknown as McpToolContext;
   if (options.withLoader) {
     const sample = options.sample ?? new Float32Array(SR * 2);
     (base as { loadSampleMono: unknown }).loadSampleMono = async (sampleId: string) =>

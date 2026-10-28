@@ -20,9 +20,10 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { setTrackParams } from "../src/commands/project";
 import type { Command } from "../src/commands/types";
 import { executeMcpTool, resetMcpIdempotencyLedger, type McpToolContext } from "../src/mcp/tools";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 function makeCtx(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command: Command) => store.execute(command),
     undo: () => store.undo(),
@@ -37,7 +38,7 @@ function makeCtx(store: ProjectStore): McpToolContext {
       setLoop() {},
       setMetronome() {},
     },
-  } as unknown as McpToolContext;
+  }) as unknown as McpToolContext;
 }
 
 beforeEach(() => {

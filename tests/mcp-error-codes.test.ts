@@ -121,9 +121,12 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
     const { fileURLToPath } = await import("node:url");
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const source = await readFile(resolve(root, "src/mcp/tools.ts"), "utf8");
-    const codedLiterals = [...source.matchAll(/isError:\s*true[\s\S]{0,120}?errorCode:/g)].length;
+    // The property may be written longhand (`errorCode: "X"`) or as the
+    // shorthand (`errorCode,` — the telemetry ledger passes the code through
+    // a local). Both carry the code, so both count as coded.
+    const codedLiterals = [...source.matchAll(/isError:\s*true[\s\S]{0,120}?errorCode\s*[:,}]/g)].length;
     expect(codedLiterals, "expected the mcpError constructor to exist").toBeGreaterThan(0);
-    const unCoded = [...source.matchAll(/isError:\s*true(?![\s\S]{0,120}?errorCode:)/g)].length;
+    const unCoded = [...source.matchAll(/isError:\s*true(?![\s\S]{0,120}?errorCode\s*[:,}])/g)].length;
     expect(unCoded, "an isError:true without an errorCode is an un-coded error agents cannot branch on").toBe(0);
   });
 

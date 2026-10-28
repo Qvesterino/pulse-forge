@@ -231,6 +231,15 @@ INSTRUMENTS = sorted(
         "tsar",
         "kopa",
         "choral",
+        # The registry leads the shipped model by these kinds: they already
+        # ship in INSTRUMENT_DEFS, so the NEXT training run must know them -
+        # a run that does not would silently drop them from the head.
+        "ladic",
+        "hlas",
+        "struna",
+        "dymka",
+        "strk",
+        "cink",
     ]
 )
 EXPORT_FORMATS = sorted(["wav", "mp3"])

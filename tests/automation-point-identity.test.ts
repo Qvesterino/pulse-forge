@@ -36,11 +36,12 @@ import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { useDeterministicIds } from "../src/shared/ids";
 import type { Command } from "../src/commands/types";
 import type { AutomationLane, AutomationPoint, ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 const house = (): ProjectDocument => createProjectFromTemplate("house");
 
 function ctxCapturing(store: ProjectStore, captured: Command[], apply: boolean): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command: Command) => {
       captured.push(command);
@@ -52,7 +53,7 @@ function ctxCapturing(store: ProjectStore, captured: Command[], apply: boolean):
     historyLabels: () => store.history.map((e) => e.label),
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  } as unknown as McpToolContext;
+  }) as unknown as McpToolContext;
 }
 
 function laneOf(doc: ProjectDocument, trackId: string): AutomationLane | undefined {

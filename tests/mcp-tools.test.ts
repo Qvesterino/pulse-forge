@@ -80,7 +80,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
  * store.doc afterwards — the makeCtx holder would hide them). */
 function storeCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
   return withStoreAgentWriter(
-    {
+    withAgentWriter({
       getDoc: () => store.doc,
       execute: (command) => store.execute(command),
       undo: () => store.undo(),
@@ -96,7 +96,7 @@ function storeCtx(store: ProjectStore, options: { allowDestructive?: boolean } =
         setMetronome: () => {},
       },
       ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-    },
+    }),
     store,
   );
 }
@@ -3550,6 +3550,8 @@ describe("kyx_mix_idea — text-to-mix loop", () => {
             "targets",
             "goals",
             "interpreter",
+            "steps",
+            "warnings",
             "beforeLufs",
             "afterLufs",
             "matchGainDb",
@@ -3599,6 +3601,8 @@ describe("kyx_mix_idea — preview mode", () => {
         targets: ["drums"],
         goals: ["warmer", "glue"],
         interpreter: "production",
+        steps: [],
+        warnings: [],
         beforeDoc: store.doc,
         afterDoc: store.doc,
         command: { execute: (input: unknown) => input, label: "noop" } as never,
