@@ -29,9 +29,13 @@ export async function clickPanelAction(page: Page, label: string): Promise<void>
   await dockTabLocator(page, label).click();
 }
 
-/** Read a dock tab's open state (aria-selected on the tab role). */
+/** Read a dock tab's open state.
+ *
+ * The dock tab is a DISCLOSURE button: it reveals a panel, so it carries
+ * aria-expanded (aria-selected belongs to a tab role, and the dock row is
+ * not one - the panel is not a tab panel, it is a revealed region). */
 export async function panelOpen(page: Page, label: string): Promise<boolean> {
-  return (await dockTabLocator(page, label).getAttribute("aria-selected")) === "true";
+  return (await dockTabLocator(page, label).getAttribute("aria-expanded")) === "true";
 }
 
 /**
