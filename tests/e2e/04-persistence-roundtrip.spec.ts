@@ -25,6 +25,12 @@ test.describe("04 — persistence roundtrip", () => {
     // Export JSON: capture the download, assert the filename convention.
     await clickPanelAction(page, "EXPORT");
     await expect(page.locator('.export-panel[aria-label="Export"]')).toBeVisible();
+    // The JSON export lives in the panel's "more options" disclosure, so the
+    // button is not on the panel until that section is opened.
+    const moreOptions = page.locator(".export-panel details.export-more-options");
+    if (!(await moreOptions.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await moreOptions.locator("summary").click();
+    }
     const downloadPromise = page.waitForEvent("download");
     await page.locator('.export-panel button:has-text("EXPORT JSON")').click();
     const download = await downloadPromise;
