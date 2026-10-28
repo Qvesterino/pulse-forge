@@ -1525,6 +1525,56 @@ to render two bars and measure the second. The remaining wart is a **product** d
 wet stutter **mutes its track for the first loop**. Recorded here, not fixed — changing it is an audible
 product decision, and it belongs to the owner.
 
+### 10.13 The live↔offline class — a question asked, a measurement made, a handoff delivered
+
+A parallel session asked a direct question: had this audit found anything new about the `live↔offline null test`
+class? The honest answer is **no**, and it is worth recording why rather than leaving it implied.
+
+**What the audit did and did not cover.** The remit was the capability surface and its discoverability — what
+the product can do, and where a working capability cannot be reached from. Engine determinism is a different
+order of work. The report contains **no** mention of `live↔offline`, `null test`, `parity` or `determinism`,
+verified by search rather than by memory.
+
+**What this session measured anyway.** `scripts/verify-parity-probe.mjs` — the probe the parallel session had
+built for exactly this purpose — run on this machine with
+`KYX_PARITY_CASES=bitcrusher,ozvena,instrument:texture`:
+
+| case                   | liveNull     | corr   | liveRepeat | control   | rt-nondet | segHead  | segTail      |
+| ---------------------- | ------------ | ------ | ---------- | --------- | --------- | -------- | ------------ |
+| `bitcrusher` (control) | −51.0 dB     | 1.0000 | −325.2 dB  | −325.2 dB | false     | −50.3 dB | −75.5 dB     |
+| `ozvena`               | **−40.0 dB** | 1.0000 | −323.3 dB  | −323.3 dB | false     | −62.1 dB | **−34.4 dB** |
+| `instrument:texture`   | −81.5 dB     | 1.0000 | −83.1 dB   | −86.1 dB  | false     | −63.5 dB | −81.5 dB     |
+
+Three readings, none of them speculative:
+
+- **All three pass here.** The correlation is **1.0000** in every case and both determinism controls are
+  identical to the floor — the live and the offline render are the same signal. What separates them is a residual
+  sitting **on the acceptance floor**: `PARITY_NULL_FLOOR_DB = -40`, and `ozvena` measures **exactly −40.0 dB**.
+  A tenth of a decibel either way flips the verdict, which is the most plausible explanation for a corpus that
+  reports 6 of 67 on one machine and 22 of 67 on another with no code change between them.
+- **The divergence is in the tail.** For `ozvena` the head segment measures −62.1 dB (clean) while the tail
+  measures −34.4 dB (worse than the floor); `texture` is clean in both. For the flagship reverb the
+  live↔offline difference lives in the **reverb tail**, not in the body of the signal.
+- **The hypothesis this session started with was wrong.** The parallel session's working theory was a phase
+  offset — the live branch waits `CAPTURE_START_LEAD_SEC` from context construction
+  (`src/testing/live-offline-parity.ts:381`) while the offline branch starts at `t = 0` (`:280`). The measurement
+  does not support it: with `corr = 1.0000` there is no phase divergence in these cases. The refuted hypothesis is
+  kept here because a measurement that kills a plausible theory is worth more than a silent correction.
+
+**The structural observation that does survive.** The harness derives its exemption from a **property**, not a
+name list (`live-offline-parity.ts:1113-1118`) — the offline control must be clean and the live branch must be
+nondeterministic against itself. That is the right shape. But it names only two classes, and the corpus's own
+error message says what is missing: _"the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an
+acceptance criterion"_ (`:786`). The harness computes three phase-insensitive comparisons and the
+note-expression corpus accepts on them (`phaseInsensitiveParityAgrees`, `:645`), while the effect and instrument
+corpus refuses. A case whose only defect is phase therefore has **no derived class** and falls through to red.
+
+**What was handed over, and what was not done here.** The measurement, the reading, and the re-pin rule — the
+spec count is correct at **1325 claimed / 1325 measured**, and re-pinning to 1326 _before_ the untracked spec
+file is tracked would turn the gate red — were handed to the parallel session that owns the corpus. This
+session did not change the harness: the acceptance policy is a product decision, and the corpus is not this
+audit's to close.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
@@ -1679,6 +1729,6 @@ docs/audits/2026-10-27-hidden-creative-power/
 ```
 
 _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave and after the browser check
-(§10.7) and the four-instance drift story (§10.10–§10.11). Every claim is labelled Observed / Verified / Inferred
-/ Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the cited
-commit._
+(§10.7), the four-instance drift story (§10.10–§10.11) and the live↔offline handoff (§10.12–§10.13). Every
+claim is labelled Observed / Verified / Inferred / Hypothesized / Not verified, and every measurement in §10.2 was
+reproduced from the repository at the cited commit._
