@@ -246,13 +246,13 @@ jobs:
               echo "### npm run test:browser FAILED (exit $status)"
               echo '```'
               echo '--- failing checks ---'
-              grep -E '^\[check\] FAIL' /tmp/browser.log | head -20 || true
+              grep -E 'FAIL' /tmp/browser.log | head -20 || true
               echo '--- tail ---'
               tail -30 /tmp/browser.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             printf '::error title=browser audio checks failed (exit %s)::%s\n' "$status" \
-              "$( { grep -E '^\[check\] FAIL' /tmp/browser.log | head -12; echo '--- tail ---'; tail -20 /tmp/browser.log; } \
+              "$( { grep -E 'FAIL' /tmp/browser.log | head -12; echo '--- tail ---'; tail -20 /tmp/browser.log; } \
                  | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
           fi
           exit $status
