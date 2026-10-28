@@ -99,10 +99,11 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Verification:** jsdom specs pin both sides (Tab/Shift+Tab on a focused control not intercepted; canvas Tab still taken); verified in a real browser against the built bundle — synthetic Tab and Shift+Tab on a focused track tab leave `defaultPrevented` false while a canvas-focus Tab is still handled. New seam `tab-traversal` (absorbed into a peer commit with the manifest). The Playwright journey is staged in `keyboard-guards.spec.ts` for when the shared dev server is healthy.
 - **Acceptance met:** Tab from a control traverses; Tab on the canvas still belongs to the transport/transient features; all affected suites green (App 16/16, track-reorder, ux-audit, melodicKeys, a11y panels — 39/39).
 
-### CF-06 | Medium-High | Confirmed | Status: DESIGN REVIEW
+### CF-06 | Medium-High | Confirmed | Status: **FIXED — owner-approved, shipped in HEAD (absorbed by commit `f5832eec`)**
 
-- **Finding:** **Escape while playing stops playback and rewinds to bar 1.** Escape is the "back out" key; the contextual ladder (captureOffer → menu → help → selection → tool → blur, `App.tsx:1177-1215`) ends by falling through to the `stop` binding (`shortcuts.ts:121`), and `stop()` unconditionally resets `pauseTick = 0` (`Transport.ts:175-183`). A musician pressing Escape to dismiss a stray tooltip loses playback _and_ position. Space/Pause preserves position — the asymmetry has no documented rationale.
-- **Proposed:** decouple the ladder's exhausted case from transport stop (Escape with nothing to clear = no-op or blur), and/or give stop a "return to start" option instead of making rewind unconditional. This is a behavior contract change → design review, not a drive-by fix.
+- **Finding:** **Escape while playing stopped playback and rewound to bar 1.** Escape is the "back out" key; the contextual ladder (captureOffer → menu → help → selection → tool → blur, `App.tsx:1180-1225`) ended by falling through to the `stop` binding, and `stop()` unconditionally resets `pauseTick = 0` (`Transport.ts:175-183`). A musician pressing Escape to dismiss a stray tooltip lost playback _and_ position.
+- **Fix (the written rule, approved):** **Escape never touches the transport.** The stop chord moved from Escape to **Shift+Space** ("Stop — return to start"); Space still pauses in place, Home still returns to start; the exhausted Escape ladder is a documented no-op in the handler. Stop remains on the ■ button and in the command palette; the registry-derived surfaces (help, tooltips, statusbar) updated automatically.
+- **Verification:** four jsdom specs (bare Escape neither stops nor seeks; Shift+Space stops; bare Space still play/pauses and does NOT stop; Escape inside a text field blurs without stopping) + real-browser proof against the built bundle: during playback the transport showed `❚❚`, a synthetic bare Escape left it playing, Shift+Space returned it to `▶`.
 
 ### CF-07 | High (risk perception) | Confirmed | Status: PROTOTYPE
 
@@ -216,7 +217,7 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | TIER B                                             |
 | CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                             |
 | CF-22                | 2      | 3    | 5    | 4        | 5      | 19    | TIER A                                             |
-| CF-06                | 4      | 3    | 5    | 3        | 2      | 17    | DESIGN REVIEW                                      |
+| CF-06                | 4      | 3    | 5    | 3        | 2      | 17    | **FIXED after owner approval (Shift+Space chord)** |
 | CF-14                | 4      | 2    | 5    | 3        | 3      | 17    | DESIGN REVIEW                                      |
 | CF-17                | 4      | 2    | 4    | 1        | 2      | 13    | DESIGN REVIEW                                      |
 | CF-16/18/20/21/23/24 | 2–3    | 2–3  | 4–5  | 3–5      | 4      | 15–18 | TIER B / DEFER                                     |
@@ -247,11 +248,12 @@ Verification for the four (executed locally, 2026-10-27):
 
 ## 8. Deferred for design review / approval
 
-1. **CF-06 (Escape ≠ stop+rewind)** — a transport-behavior contract change; propose the written rule first ("Escape never touches the transport; Space pauses; Home returns"), then implement behind the existing stop binding.
-2. **CF-14 (MCP destructive authority)** — was design review here; a parallel session shipped the confirmation + visible authority (commit `5dda14f6`, "explicit MIDI/AUDIO record targets and a visible, confirmed MCP delete authority") while this audit ran — re-verify its surface against the F-05 acceptance criteria on the next audit pass.
-3. **CF-17 (unify the two comp systems)** — a capability-level design task (arrangement take lanes vs vocalchop), not a UI patch.
-4. **Desktop-size clip handles (F-09 remainder)** — invisible hit-area expansion without touching the visual affordance; needs the drag-arbitration probe the prior audit also flagged as untested.
-5. **F-11 (locale commitment)** — unchanged since the prior audit; a product decision, not an audit fix.
+_(Formerly deferred here: CF-06 — the transport rule was approved and shipped; see §4.)_
+
+1. **CF-14 (MCP destructive authority)** — was design review here; a parallel session shipped the confirmation + visible authority (commit `5dda14f6`, "explicit MIDI/AUDIO record targets and a visible, confirmed MCP delete authority") while this audit ran — re-verify its surface against the F-05 acceptance criteria on the next audit pass.
+2. **CF-17 (unify the two comp systems)** — a capability-level design task (arrangement take lanes vs vocalchop), not a UI patch.
+3. **Desktop-size clip handles (F-09 remainder)** — invisible hit-area expansion without touching the visual affordance; needs the drag-arbitration probe the prior audit also flagged as untested.
+4. **F-11 (locale commitment)** — unchanged since the prior audit; a product decision, not an audit fix.
 
 _(Formerly deferred here: CF-05 — approved and shipped as `892dcc61`; see §4.)_
 
