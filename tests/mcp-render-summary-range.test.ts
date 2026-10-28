@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
-import {
-  analyzeBufferMetrics,
-  formatRenderSummary,
-  mcpRenderSummary,
-  type RenderSummaryData,
-} from "../src/mcp/render-summary";
+import { analyzeBufferMetrics, formatRenderSummary, mcpRenderSummary } from "../src/mcp/render-summary";
 import { addArrangementClip } from "../src/commands/commands";
 import { arrangementSecondsBetweenTicks } from "../src/project-model/scene-time";
 import { ticksPerBar } from "../src/project-model/schema";
