@@ -18,7 +18,7 @@ import { sanitizeProjectProducerBrief } from "../src/project-model/producer-brie
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { BriefContract } from "../src/intent/brief-contract";
-import type { ProjectProducerBriefV1 } from "../src/project-model/types";
+import type { ProjectDocument, ProjectProducerBriefV1 } from "../src/project-model/types";
 import type { ParsedIntent } from "../src/intent/text-parser";
 
 const contract: BriefContract = {
@@ -220,6 +220,31 @@ describe("project Producer Brief persistence", () => {
     await repo.save(cleared);
     const reopenedCleared = await repo.load(doc.id);
     expect(reopenedCleared).not.toHaveProperty("producerBrief");
+  });
+
+  it("recovers the project when its optional stored Producer Brief is malformed", async () => {
+    const repo = new ProjectRepository();
+    const doc = createProjectFromTemplate("house");
+    const corrupted = {
+      ...doc,
+      producerBrief: {
+        version: 1,
+        facts: [{ prompt: "invalid payload" }],
+      } as unknown as ProjectDocument["producerBrief"],
+    };
+
+    await repo.save(corrupted);
+
+    const listed = await repo.listAll();
+    expect(listed.some((project) => project.id === doc.id)).toBe(true);
+
+    const loaded = await repo.load(doc.id);
+    expect(loaded?.id).toBe(doc.id);
+    expect(loaded).not.toHaveProperty("producerBrief");
+
+    const recent = await repo.loadMostRecent();
+    expect(recent?.id).toBe(doc.id);
+    expect(recent).not.toHaveProperty("producerBrief");
   });
 
   it("saves and clears through one undoable command each", () => {

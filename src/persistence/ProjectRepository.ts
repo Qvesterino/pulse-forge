@@ -1,5 +1,6 @@
 import type { ProjectDocument, ProjectTransferOriginV1 } from "../project-model/types";
 import { SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
+import { sanitizeProjectProducerBrief } from "../project-model/producer-brief";
 import { uid } from "../shared/ids";
 import { STORE_META, STORE_PROJECTS, openDb, tx } from "./db";
 
@@ -51,6 +52,28 @@ function metaOf(doc: ProjectDocument): SavedProjectMeta {
   };
 }
 
+/**
+ * A malformed optional Producer Brief must not make the rest of a stored
+ * project disappear. Repair only that optional domain before applying the
+ * normal project-shape checks; all other invalid project data stays rejected.
+ */
+function recoverStoredProject(doc: unknown): ProjectDocument | null {
+  if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return null;
+  let candidate = doc as ProjectDocument;
+
+  if (candidate.producerBrief !== undefined) {
+    const producerBrief = sanitizeProjectProducerBrief(candidate.producerBrief);
+    if (producerBrief === undefined) {
+      candidate = { ...candidate };
+      delete candidate.producerBrief;
+    } else if (producerBrief !== candidate.producerBrief) {
+      candidate = { ...candidate, producerBrief };
+    }
+  }
+
+  return validateProjectShape(candidate) ? candidate : null;
+}
+
 export class ProjectRepository {
   private dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -75,10 +98,11 @@ export class ProjectRepository {
 
   async load(id: string): Promise<ProjectDocument | null> {
     const db = await this.db();
-    const result = await tx<ProjectDocument | undefined>(db, STORE_PROJECTS, "readonly", (store) => store.get(id));
-    if (!result || !validateProjectShape(result)) return null;
+    const result = await tx<unknown>(db, STORE_PROJECTS, "readonly", (store) => store.get(id));
+    const recovered = recoverStoredProject(result);
+    if (!recovered) return null;
     try {
-      return migrateProject(result);
+      return migrateProject(recovered);
     } catch (err) {
       // Incompatible record (e.g. written by a newer app version). It must not
       // take down callers that merely wanted "this project or nothing".
@@ -88,8 +112,9 @@ export class ProjectRepository {
   }
 
   /** Migrate one stored record; returns null instead of throwing on bad records. */
-  private safeMigrate(doc: ProjectDocument): SavedProjectMeta | null {
-    if (!validateProjectShape(doc)) return null;
+  private safeMigrate(raw: unknown): SavedProjectMeta | null {
+    const doc = recoverStoredProject(raw);
+    if (!doc) return null;
     try {
       return metaOf(migrateProject(doc));
     } catch (err) {
@@ -101,7 +126,7 @@ export class ProjectRepository {
   /** All saved projects as lightweight metadata, most recently updated first. */
   async listAll(): Promise<SavedProjectMeta[]> {
     const db = await this.db();
-    const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    const all = await tx<unknown[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
     // One poisoned record (corrupted row, future schema version from a newer
     // install) must never blank the whole library — skip it.
     return all
@@ -119,23 +144,26 @@ export class ProjectRepository {
    */
   async listIncompatible(): Promise<IncompatibleProjectMeta[]> {
     const db = await this.db();
-    const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    const all = await tx<unknown[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
     return all
-      .filter((doc) => {
-        if (!validateProjectShape(doc)) return false;
-        if (typeof doc.schemaVersion !== "number") return false;
+      .flatMap((raw) => {
+        const doc = recoverStoredProject(raw);
+        if (!doc) return [];
+        if (typeof doc.schemaVersion !== "number") return [];
         // A future version cannot be downgraded; a non-integer version was
         // never written by any build. Both are refused by `migrateProject`, so
         // both must be listed here — otherwise the project vanishes.
-        return doc.schemaVersion > SCHEMA_VERSION || !Number.isInteger(doc.schemaVersion);
+        if (doc.schemaVersion <= SCHEMA_VERSION && Number.isInteger(doc.schemaVersion)) return [];
+        return [
+          {
+            id: doc.id,
+            name: typeof doc.name === "string" && doc.name.length > 0 ? doc.name : "Untitled project",
+            updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : new Date(0).toISOString(),
+            schemaVersion: doc.schemaVersion,
+            direction: doc.schemaVersion > SCHEMA_VERSION ? ("newer" as const) : ("unsupported" as const),
+          },
+        ];
       })
-      .map((doc) => ({
-        id: doc.id,
-        name: typeof doc.name === "string" && doc.name.length > 0 ? doc.name : "Untitled project",
-        updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : new Date(0).toISOString(),
-        schemaVersion: doc.schemaVersion as number,
-        direction: (doc.schemaVersion as number) > SCHEMA_VERSION ? ("newer" as const) : ("unsupported" as const),
-      }))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }
 
@@ -214,10 +242,11 @@ export class ProjectRepository {
       const doc = await this.load(recentId);
       if (doc) return doc;
     }
-    const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    const all = await tx<unknown[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
     // Most recent VALID project — bad records are skipped, not fatal.
     const sorted = all
-      .filter(validateProjectShape)
+      .map(recoverStoredProject)
+      .filter((doc): doc is ProjectDocument => doc !== null)
       .sort((a, b) => ((a.updatedAt ?? "") < (b.updatedAt ?? "") ? 1 : -1));
     for (const candidate of sorted) {
       try {
