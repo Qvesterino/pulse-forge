@@ -23,6 +23,7 @@ import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } fr
 import type { IntentSpec } from "./types";
 import { MIX_TARGET_WORDS, ROLE_TARGETS, trackOrdinalFromText, type MixTargetId } from "./semantics/target-registry";
 import { targetTrackIds } from "./semantics/target-resolution";
+import { assignPointIds } from "../project-model/automation";
 
 /**
  * INTENT → MIX CHAIN (INTENT_ENGINE.md D1) — the intent shapes not just the
@@ -614,11 +615,16 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
         const intensity = clamp01(typeof scene.intensity === "number" ? scene.intensity : 0.5);
         const value =
           Math.round(clampEffectParam("pump", "amount", ride.baseAmount * (0.7 + 0.6 * intensity)) * 1000) / 1000;
+        const laneId = `sceneAuto-${ride.fxId}-amount-${scene.id}`;
         expected.push({
-          id: `sceneAuto-${ride.fxId}-amount-${scene.id}`,
+          id: laneId,
           sceneId: scene.id,
           target: { kind: "fxParam", trackId: ride.trackId, fxId: ride.fxId, paramId: "amount" },
-          points: [{ tick: 0, value }],
+          // The lane is minted with the SAME point ids the normaliser mints
+          // for it. Without them the stored lane never equals the freshly
+          // built one, so a second identical apply reported "changed" (and
+          // burned an undo step) instead of the honest no-op.
+          points: assignPointIds(laneId, [{ tick: 0, value }]),
         });
       }
     }
