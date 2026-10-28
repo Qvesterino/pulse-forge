@@ -10,6 +10,13 @@ import {
   measureArrangementCensusEnergy,
   type ArrangementCensus,
 } from "../analysis/arrangement-census";
+import {
+  analyzeKickBassRisk,
+  makeIsolatedKickDoc,
+  notAnalyzedKickBassRisk,
+  selectKickBassSourcePair,
+  type KickBassRiskReport,
+} from "../analysis/kick-bass-risk";
 import { analyzeMixHealth, type MixHealthReport } from "../analysis/mixDoctor";
 import { storeRevision } from "./revision";
 
@@ -54,6 +61,7 @@ export interface RenderSummaryData {
   trackWindow?: TrackWindowAnalysis;
   range?: RenderRangeAnalysis;
   arrangementCensus?: ArrangementCensus;
+  kickBassRisk?: KickBassRiskReport;
 }
 
 /**
@@ -239,7 +247,63 @@ export function formatRenderSummary(data: RenderSummaryData): string {
     lines.push(`  MASTER — ${formatStrip(masterStrip)} · ${verdict}`);
   }
   if (data.arrangementCensus) lines.push(...formatArrangementCensus(data.arrangementCensus));
+  if (data.kickBassRisk) lines.push(...formatKickBassRisk(data.kickBassRisk));
   return lines.join("\n");
+}
+
+function formatKickBassRisk(report: KickBassRiskReport): string[] {
+  const lines = [
+    `onset-aligned kick/bass spectrum v${report.algorithm.version}: ${report.status}${report.reason ? ` — ${report.reason}` : ""}`,
+  ];
+  if (report.selection && !report.pair) {
+    lines.push(
+      `  identified ${report.selection.kickCandidates} kick pad candidate(s), ${report.selection.bassCandidates} bass track candidate(s)`,
+    );
+  }
+  if (report.pair) {
+    lines.push(
+      `  sources: ${report.pair.kick.trackName} / ${report.pair.kick.padName} (${report.pair.kick.trackId}/${report.pair.kick.padId}) ↔ ${report.pair.bass.trackName} (${report.pair.bass.instrument}, ${report.pair.bass.trackId})`,
+    );
+    lines.push(
+      `  measured ${report.measurement.analyzedOnsets}/${report.measurement.detectedOnsets} kick onsets; shared low-band energy at ${report.summary.sharedBandOnsets} (${(report.summary.overlapRate * 100).toFixed(1)}%); risk candidates ${report.summary.riskCandidateOnsets} (${(report.summary.riskCandidateRate * 100).toFixed(1)}%), including ${report.summary.closePeakOnsets} same-bin peak(s); FFT ${report.measurement.fftSize} (${report.measurement.frameMs.toFixed(1)} ms, ${report.measurement.binSpacingHz.toFixed(2)} Hz/bin)`,
+    );
+    lines.push(
+      `  bands: 25–60, 60–120, 120–180 Hz; shared-energy floor ${report.measurement.measurableFloorDbfs} dBFS; candidate if both band levels ≥${report.measurement.candidateFloorDbfs} dBFS within ${report.measurement.maxLevelDifferenceDb} dB, or peaks are within ${report.measurement.samePeakBinToleranceHz.toFixed(2)} Hz`,
+    );
+    const cooccurrences = report.events.filter((event) => event.sharedBands.length > 0 || event.closePeakCandidate);
+    const candidates = cooccurrences.slice(0, 12);
+    for (const event of candidates) {
+      const kickPeak =
+        event.kick.dominantPeakHz === null
+          ? "n/a"
+          : `${event.kick.dominantPeakHz.toFixed(1)} Hz ${event.kick.dominantPeakDbfs?.toFixed(1) ?? "n/a"} dBFS`;
+      const bassPeak =
+        event.bass.dominantPeakHz === null
+          ? "n/a"
+          : `${event.bass.dominantPeakHz.toFixed(1)} Hz ${event.bass.dominantPeakDbfs?.toFixed(1) ?? "n/a"} dBFS`;
+      const bandEvidence = event.sharedBands
+        .map(
+          (band) => `${band} K ${event.kick.bandDbfs[band].toFixed(1)}/B ${event.bass.bandDbfs[band].toFixed(1)} dBFS`,
+        )
+        .join(", ");
+      const classification = event.riskCandidate ? "RISK CANDIDATE" : "shared energy";
+      const peakDistance = event.peakDistanceHz === null ? "" : `; peak gap ${event.peakDistanceHz.toFixed(1)} Hz`;
+      lines.push(
+        `  tick ${event.tick} (${event.onsetSec.toFixed(3)} s): kick ${kickPeak} ↔ bass ${bassPeak}${peakDistance}; ${bandEvidence || "no shared band above floor"}; ${classification}`,
+      );
+    }
+    if (cooccurrences.length > candidates.length) {
+      lines.push(
+        `  text lists first ${candidates.length} of ${cooccurrences.length} co-occurring onsets; structured data contains ${report.events.length} analyzed events`,
+      );
+    }
+    if (report.measurement.onsetsTruncated)
+      lines.push(
+        `  onset sample distributed across range; ${report.measurement.detectedOnsets - report.measurement.analyzedOnsets} events omitted`,
+      );
+  }
+  for (const caveat of report.caveats) lines.push(`  caveat: ${caveat}`);
+  return lines;
 }
 
 function formatArrangementCensus(census: ArrangementCensus): string[] {
@@ -304,6 +368,31 @@ function sliceChannels(buffer: AnalyzableBuffer, startSample: number, endSample:
     slices.push(buffer.getChannelData(channel).slice(startSample, endSample));
   }
   return slices;
+}
+
+function monoWindow(buffer: AnalyzableBuffer, startSample: number, endSample: number): Float32Array {
+  const length = Math.max(0, endSample - startSample);
+  const mono = new Float32Array(length);
+  let strongestChannel = 0;
+  let strongestPower = -1;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const data = buffer.getChannelData(channel);
+    let power = 0;
+    for (let sample = startSample; sample < endSample; sample += 1) {
+      const value = data[sample];
+      if (Number.isFinite(value)) power += value * value;
+    }
+    if (power > strongestPower) {
+      strongestPower = power;
+      strongestChannel = channel;
+    }
+  }
+  const source = buffer.numberOfChannels > 0 ? buffer.getChannelData(strongestChannel) : new Float32Array(0);
+  for (let offset = 0; offset < length; offset += 1) {
+    const sample = source[startSample + offset];
+    mono[offset] = Number.isFinite(sample) ? sample : 0;
+  }
+  return mono;
 }
 
 /** analyzeBufferMetrics over an already-sliced window. */
@@ -374,6 +463,8 @@ async function renderSongWindow(
     arrangementOnly: true,
     signal,
   };
+  const kickBassSelection = selectKickBassSourcePair(doc);
+  let selectedBassBuffer: AnalyzableBuffer | null = null;
 
   const strips: RenderStripSummary[] = [];
   let stripCoverage: RenderSummaryData["stripCoverage"];
@@ -390,6 +481,7 @@ async function renderSongWindow(
       throwIfAborted(signal);
       const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
       const buffer = await renderProject(stemDoc, services.bank, { ...renderOptions, masterProcessing: false });
+      if (track.id === kickBassSelection.pair?.bass.trackId) selectedBassBuffer = buffer;
       if (buffer.length < resolved.endSample) {
         throw new Error(
           `offline render ended at sample ${buffer.length}; the window needs samples ${resolved.startSample}..${resolved.endSample}`,
@@ -418,7 +510,6 @@ async function renderSongWindow(
     master = measureWindow(buffer, resolved.startSample, resolved.endSample);
   }
 
-  const revisionAfterRender = storeRevision(services.store);
   let arrangementCensus = analyzeArrangementCensus(
     doc,
     { startTick: request.startTick, endTick: request.endTick },
@@ -439,6 +530,71 @@ async function renderSongWindow(
       },
     );
   }
+  const riskWindow = {
+    startTick: request.startTick,
+    endTick: request.endTick,
+    startSec: resolved.startSec,
+    endSec: resolved.endSec,
+    sampleRate: 44100,
+  };
+  let kickBassRisk: KickBassRiskReport;
+  if (kickBassSelection.pair === null) {
+    kickBassRisk = notAnalyzedKickBassRisk(riskWindow, kickBassSelection.reason ?? "source roles are unavailable", {
+      kickCandidates: kickBassSelection.kickCandidates,
+      bassCandidates: kickBassSelection.bassCandidates,
+    });
+  } else {
+    const pair = kickBassSelection.pair;
+    try {
+      throwIfAborted(signal);
+      const kickStem = buildStemProject(
+        makeIsolatedKickDoc(doc, pair),
+        (candidate) => candidate.id === pair.kick.trackId,
+      );
+      const kickBuffer = await renderProject(kickStem, services.bank, { ...renderOptions, masterProcessing: false });
+      let bassBuffer = selectedBassBuffer;
+      if (bassBuffer === null) {
+        throwIfAborted(signal);
+        const bassStem = buildStemProject(doc, (candidate) => candidate.id === pair.bass.trackId);
+        bassBuffer = await renderProject(bassStem, services.bank, { ...renderOptions, masterProcessing: false });
+      }
+      if (bassBuffer === null || kickBuffer.length < resolved.endSample || bassBuffer.length < resolved.endSample) {
+        kickBassRisk = notAnalyzedKickBassRisk(
+          riskWindow,
+          `source render ended before the requested analysis window (kick ${kickBuffer.length} samples, bass ${bassBuffer?.length ?? 0} samples; need ${resolved.endSample})`,
+          { kickCandidates: kickBassSelection.kickCandidates, bassCandidates: kickBassSelection.bassCandidates },
+        );
+      } else {
+        const bassChannels = Array.from({ length: bassBuffer.numberOfChannels }, (_, channel) =>
+          bassBuffer.getChannelData(channel),
+        );
+        kickBassRisk = analyzeKickBassRisk({
+          doc,
+          pair,
+          kickMono: monoWindow(kickBuffer, resolved.startSample, resolved.endSample),
+          bassChannels,
+          startSample: resolved.startSample,
+          startTick: request.startTick,
+          endTick: request.endTick,
+          startSec: resolved.startSec,
+          endSec: resolved.endSec,
+          sampleRate: kickBuffer.sampleRate,
+          selectionCounts: {
+            kickCandidates: kickBassSelection.kickCandidates,
+            bassCandidates: kickBassSelection.bassCandidates,
+          },
+        });
+      }
+    } catch (error) {
+      throwIfAborted(signal);
+      kickBassRisk = notAnalyzedKickBassRisk(
+        riskWindow,
+        `isolated source render failed: ${error instanceof Error ? error.message : String(error)}`,
+        { kickCandidates: kickBassSelection.kickCandidates, bassCandidates: kickBassSelection.bassCandidates },
+      );
+    }
+  }
+  const revisionAfterRender = storeRevision(services.store);
   return {
     scope: "range",
     strips,
@@ -446,6 +602,7 @@ async function renderSongWindow(
     referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
     ...(stripCoverage ? { stripCoverage } : {}),
     arrangementCensus,
+    kickBassRisk,
     range: {
       window: { startTick: request.startTick, endTick: request.endTick },
       timing: {
