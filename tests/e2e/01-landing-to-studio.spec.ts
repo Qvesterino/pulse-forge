@@ -28,6 +28,11 @@ test.describe("01 — landing to studio", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(String(err)));
+    // The console text of a failed request carries no URL — record them here so
+    // the filter below can tell an optional-service refusal from a real fault.
+    // Same pattern as scripts/verify-browser.mjs.
+    const failedRequests: string[] = [];
+    page.on("requestfailed", (req) => failedRequests.push(req.url()));
 
     await openHouseTemplateFromLanding(page);
 
@@ -41,7 +46,28 @@ test.describe("01 — landing to studio", () => {
     await expect(backToBrowser).toBeVisible();
 
     // Filter the same AudioContext/autoplay noise the smoke script tolerates.
-    const fatal = consoleErrors.filter((e) => !/AudioContext|autoplay|user gesture/i.test(e));
+    //
+    // A refused request to the OPTIONAL local gallery/collab service is not a
+    // boot failure — but only when EVERY failed request went there. The intake
+    // tray polls that service for pending handoffs on every project open, and
+    // with no relay running the BROWSER logs the refusal itself: JavaScript
+    // cannot silence a failed fetch. Measured on a clean Linux checkout
+    // (2026-10-28): two ERR_CONNECTION_REFUSED for
+    // http://<host>:1234/api/intake — and the refusal landed BEFORE this
+    // assertion on the slow CI runner, while the fast dev box had already
+    // finished the test. That race made this gate red on CI and green on the
+    // dev machine, which is the worst kind of red: it was never about the app.
+    const optionalServiceOnly =
+      failedRequests.length > 0 &&
+      failedRequests.every((url) => /^(?:https?|wss?):\/\/(?:127\.0\.0\.1|localhost):1234(?:\/|$)/.test(url));
+    if (optionalServiceOnly) {
+      console.log(`[info] ignored ${failedRequests.length} refused request(s) to the optional local service`);
+    }
+    const fatal = consoleErrors.filter(
+      (e) =>
+        !/AudioContext|autoplay|user gesture/i.test(e) &&
+        !(optionalServiceOnly && /Failed to load resource: net::ERR_CONNECTION_REFUSED/.test(e)),
+    );
     expect(fatal, `unexpected console errors: ${fatal.slice(0, 3).join(" | ")}`).toEqual([]);
   });
 
