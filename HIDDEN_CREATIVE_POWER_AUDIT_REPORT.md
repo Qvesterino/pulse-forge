@@ -983,22 +983,25 @@ The wave landed on a tree that two other sessions kept changing, so the suites w
 peer's undo-frame commit (`83ed86d5`) was in HEAD** — the number below is measured against the tree as it
 stands, not against the tree the work was written on.
 
-| check                                                                            | result                                                                                            |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                      |
-| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                    |
-| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                   |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                |
-| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                |
-| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                |
-| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                |
-| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                |
-| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                   |
-| **total**                                                                        | **11 suites · 105 tests green**                                                                   |
-| `npx tsc --noEmit --incremental false`                                           | **my 9 files: 0 errors.** 4 files with errors remain, **all in parallel sessions' files** (§10.3) |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                              |
+| check                                                                            | result                                                                           |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                     |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                   |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                  |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                               |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                               |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                               |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                               |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                               |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                               |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                               |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                  |
+| `tests/drift-check.test.ts`                                                      | ✅ **11 tests** — the derivable-artifact gate                                    |
+| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                               |
+| **total**                                                                        | **13 suites · 120 tests green**                                                  |
+| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)  |
+| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift — derivable artifacts match their generators` (§10.9) |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                             |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -1018,9 +1021,12 @@ stands, not against the tree the work was written on.
 - **that a row which cannot run renders `aria-disabled="true"`, shows its reason, and refuses to run on both
   click and Enter — verified by rendering the real overlay**
 
-### 10.3 Typecheck failures that are NOT mine
+### 10.3 Typecheck — what was failing, and what it is now
 
-Two runs, both against `npx tsc --noEmit --incremental false`.
+**The tree typechecks clean today (exit 0).** The runs below are kept because the middle of them is the
+evidence for one decision (§10.5): that this audit's wave moves the spec-file count by **zero**.
+
+Four runs, all against `npx tsc --noEmit --incremental false`.
 
 **Run 1 — the quick wins (2026-10-27):**
 
@@ -1052,9 +1058,12 @@ tests/mcp-tools.test.ts                         (parallel session)
 tests/ui/MixPreviewChip.test.tsx                (parallel session)
 ```
 
+**Run 4 — the drift wave (2026-10-28, later still):** `npx tsc --noEmit --incremental false` → **exit 0**.
+The parallel sessions' files were repaired and landed in the meantime; the whole tree typechecks.
+
 The list is a **moving target** — it shrank from seven files to four between run 2 and run 3 as other
-sessions landed their own fixes. That is the honest shape of a shared worktree: the number belongs to a
-moment, not to this document.
+sessions landed their own fixes, and to zero by run 4. That is the honest shape of a shared worktree: the
+number belongs to a moment, not to this document.
 
 **Every one of them is in a file owned by another active session.** None is in a file this audit touched.
 The audit's own files — `src/intent/command-for-route.ts`, `src/mcp/onboarding.ts`, `src/mcp/tools.ts`,
@@ -1085,14 +1094,14 @@ six patches are entirely mine in `03d845d0`.
 
 ### 10.5 Coverage gaps — what was NOT run
 
-| gap                              | why                                                                                                                                                                                                                                                                                                                                       |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the full vitest suite            | the tree was in continuous flux from parallel sessions; a whole-suite run would report other sessions' in-flight failures and cannot be attributed. The 10 suites that cover every touched file were run instead.                                                                                                                         |
-| the full Playwright suite        | same reason; the one e2e spec that covers a touched surface (keyboard shortcuts) was targeted.                                                                                                                                                                                                                                            |
-| `npm run build` + bundle budgets | no bundle-relevant file was touched; the budgets measure the shipped closure, not a badge and a string.                                                                                                                                                                                                                                   |
-| **any audio-level verification** | **no microphone and no audio device** — recording, monitoring, take audio and loudness were not exercised at all (§2.3).                                                                                                                                                                                                                  |
+| gap                              | why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the full vitest suite            | the tree was in continuous flux from parallel sessions; a whole-suite run would report other sessions' in-flight failures and cannot be attributed. The 10 suites that cover every touched file were run instead.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| the full Playwright suite        | same reason; the one e2e spec that covers a touched surface (keyboard shortcuts) was targeted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `npm run build` + bundle budgets | no bundle-relevant file was touched; the budgets measure the shipped closure, not a badge and a string.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **any audio-level verification** | **no microphone and no audio device** — recording, monitoring, take audio and loudness were not exercised at all (§2.3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `docs/CURRENT-STATE.md`          | **deliberately not updated — and the net effect on its numbers is zero.** The row was rewritten later the same day by the session that landed the MCP performance wave. The spec-file count reads **1319**, and the live measurement is **1319**: this audit's wave **removed one spec** (the duplicate `tests/ui/palette-command-registry.test.ts`, §10.8) and **added one** (`tests/ui/strip-silence-naming.test.ts`), so it moves the count by **zero**. The count check in the drift gate therefore passes, and a session that edited that row would have been editing a file another session had just rewritten. |
-| the MCP server process           | the MCP surface was exercised through `executeMcpTool` (the real dispatcher), not through a live MCP client over stdio.                                                                                                                                                                                                                   |
+| the MCP server process           | the MCP surface was exercised through `executeMcpTool` (the real dispatcher), not through a live MCP client over stdio.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### 10.6 The e2e run — what happened, and why it matters that it was re-run
 
@@ -1169,6 +1178,37 @@ rather than hidden:
    a **duplicate spec**, the exact anti-pattern the repo's own vitest config warns about. This session's
    commit removes the `.ts` file, which the `.tsx` file supersedes (it contains every one of the `.ts`
    tests plus the five rendering tests).
+
+### 10.9 The drift gate — run to the end, and the trace it used to leave
+
+**The gate is green on the current `main`:** `npm run drift:check` → `✓ no drift — derivable artifacts
+match their generators`, across all four sections (mcp-mirrors, domain-goldens, status, counts).
+
+**A correction to my own earlier claim.** I first reported that the drift gate "exceeds 600 s on this
+machine". That was **my harness budget, not a property of the gate** — a parallel session ran the same
+command to completion and measured it. A timeout I impose is not a measurement of the tool; it is a
+measurement of me. (Recorded in my agent memory, because the lesson already existed there and I still got
+it wrong: **the number in a report belongs to the reporter**.)
+
+**And running the gate to the end exposed a defect in it.** `npm run status:report` writes two files:
+`docs/status.json` (the stable payload the gate compares with HEAD) and `docs/STATUS.md` (the same claims
+as a page, whose header carries a generation timestamp). The gate owned only the first — correctly, since a
+timestamp cannot be compared with anything — but the restore loop restores only **owned** paths, so the
+volatile file was left **dirty after every single gate run**. In a shared worktree that is a hazard: the
+next session's `git add .` sweeps it into an unrelated commit. It is not hypothetical — it produced this
+session's commit `8f63a22e`, whose entire content is a clock reading.
+
+The fix separates the two questions one file list was answering at once:
+
+- **`ownedPaths`** — compared with HEAD, and the source of a drift finding;
+- **`volatilePaths`** — never compared (a timestamp cannot be), but restored after the check, so a gate run
+  leaves no trace.
+
+The gate's **verdict** is unchanged: `docs/status.json` is still owned, still compared, still the source of
+the `[status]` finding. Only the trace is gone. Verified end to end — after the fix, a full gate run leaves
+the worktree with **only** the files I was deliberately editing. Four pins in `tests/drift-check.test.ts`
+hold the distinction, because collapsing the two lists is the one change that would put the gate back in the
+red: owning a volatile path would compare a timestamp and fail on every run.
 
 ---
 
