@@ -220,6 +220,187 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_context",
+    description:
+      "Build a fresh, versioned, READ-ONLY musical evidence packet for a selected arrangement range. Pass either inclusive 1-based fromBar/toBar or half-open startTick/endTick; optional trackIds and clipIds narrow the target. The packet joins project facts (clips, patterns, automation, routing and FX), tempo-aware seconds and 44.1 kHz render-timeline sample positions, user goals/protected elements, and provenance/freshness caveats. No document changes are possible. Set renderScope to master, tracks, or all only when you want an offline render; that can take time and is still a measurement, not a verdict about sound quality. Kick/bass collision output is a risk estimate, never proof of audible masking. Re-read when freshness is stale or unknown.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fromBar: {
+          type: "integer",
+          minimum: 1,
+          description: "Inclusive first bar (1-based); use with toBar, not ticks",
+        },
+        toBar: {
+          type: "integer",
+          minimum: 1,
+          description: "Inclusive last bar (1-based); use with fromBar, not ticks",
+        },
+        startTick: {
+          type: "integer",
+          minimum: 0,
+          description: "Inclusive arrangement tick; use with endTick, not bars",
+        },
+        endTick: {
+          type: "integer",
+          minimum: 1,
+          description: "Exclusive arrangement tick; use with startTick, not bars",
+        },
+        trackIds: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 128,
+          },
+          maxItems: 24,
+          description: "Optional exact track IDs; omit to include all tracks in the time range",
+        },
+        clipIds: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 128,
+          },
+          maxItems: 128,
+          description: "Optional exact clip IDs; each must overlap the requested range and selected tracks",
+        },
+        goals: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 240,
+          },
+          maxItems: 8,
+          description: "User-stated production goals for this read-only review",
+        },
+        protectedElements: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 240,
+          },
+          maxItems: 8,
+          description: "User-stated elements to preserve; returned as preferences, not project facts",
+        },
+        renderScope: {
+          type: "string",
+          enum: ["master", "tracks", "all"],
+          description: "Optional offline render measurements for the same range; omitted means no render is started",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        agentId: {
+          type: "string",
+          maxLength: 32,
+          description:
+            "Optional per-call agent identity (lowercase letters, digits, dashes). The relay token is the real gate — this makes the audit log, history-label attribution and foreign-work undo consent LEGIBLE when several agents share one transport. Declared by the caller, so treat it as a label, not an auth boundary.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        snapshot: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            schema: {
+              type: "string",
+              enum: ["kyx.musical-context"],
+            },
+            version: {
+              type: "integer",
+              enum: [1],
+            },
+            capturedAt: {
+              type: "string",
+            },
+            project: {
+              type: "object",
+              additionalProperties: true,
+            },
+            freshness: {
+              type: "string",
+              enum: ["current_at_capture", "current", "unknown", "stale"],
+            },
+            scope: {
+              type: "object",
+              additionalProperties: true,
+            },
+            time: {
+              type: "object",
+              additionalProperties: true,
+            },
+            evidence: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: true,
+              },
+              maxItems: 64,
+            },
+            analysis: {
+              type: "object",
+              additionalProperties: true,
+            },
+            assistantContract: {
+              type: "object",
+              additionalProperties: true,
+            },
+            coverage: {
+              type: "object",
+              additionalProperties: true,
+            },
+            limitations: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+              maxItems: 32,
+            },
+          },
+          required: [
+            "schema",
+            "version",
+            "capturedAt",
+            "project",
+            "freshness",
+            "scope",
+            "time",
+            "evidence",
+            "analysis",
+            "assistantContract",
+            "coverage",
+            "limitations",
+          ],
+        },
+      },
+      required: ["status", "stage", "snapshot"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
+  },
+  {
     name: "kyx_save",
     description:
       'Force the autosave pipeline to flush the CURRENT project to the repository and report the durable result. `op:"saveAs"` saves a COPY under `name` and leaves the current project open (switching the open document is a human ProjectBrowser action); it requires `confirm:true`. Use this before ending an agent session when you need a persistence receipt; `mutated` is false. Refused honestly on transports without a repository hook.',

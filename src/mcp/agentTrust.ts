@@ -50,6 +50,7 @@ export type ToolRisk = "read" | "runtime" | "mutate" | "destructive";
 export const TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   // ── reads ────────────────────────────────────────────────────────────────
   kyx_state: "read",
+  kyx_context: "read",
   kyx_meter: "read",
   kyx_catalog: "read",
   // ── runtime / side effects on the outside world ──────────────────────────
@@ -115,6 +116,10 @@ export function effectiveRisk(name: string, args: unknown): ToolRisk {
     args != null && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
   const op = typeof record.op === "string" ? record.op : typeof record.action === "string" ? record.action : "";
   switch (name) {
+    case "kyx_context":
+      return record.renderScope === "master" || record.renderScope === "tracks" || record.renderScope === "all"
+        ? "runtime"
+        : "read";
     case "kyx_checkpoint":
       return op === "save" || op === "list" || op === "diff" ? "read" : risk;
     case "kyx_generate":

@@ -29,6 +29,7 @@ const LONG_RUNNING_MCP_TOOLS = new Set([
   "kyx_import_sfz",
   "kyx_batch",
   "kyx_render_summary",
+  "kyx_context",
   "kyx_diagnose_mix",
   "kyx_arrange",
   "kyx_song",

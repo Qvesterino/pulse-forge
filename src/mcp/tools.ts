@@ -125,6 +125,13 @@ import { resolveProductionTargets } from "../intent/production";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { logIntentMiningEvent } from "../intent/failure-log";
 import { formatRenderSummary } from "./render-summary";
+import { attachMusicalContextRenderEvidence } from "./musical-context-evidence";
+import {
+  buildMusicalContextSnapshot,
+  musicalContextSummary,
+  MusicalContextInputError,
+  parseMusicalContextRequest,
+} from "../analysis/musical-context";
 import {
   applyPresetIntentCommand,
   FAMILY_INSTRUMENTS as PRESET_FAMILY_INSTRUMENTS,
@@ -326,6 +333,50 @@ const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
     range: { type: "object" },
   },
   required: ["scope", "strips", "referenceLufs"],
+};
+const OUTPUT_MUSICAL_CONTEXT: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    status: { type: "string" },
+    stage: {
+      type: "string",
+      enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+    },
+    snapshot: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        schema: { type: "string", enum: ["kyx.musical-context"] },
+        version: { type: "integer", enum: [1] },
+        capturedAt: { type: "string" },
+        project: { type: "object", additionalProperties: true },
+        freshness: { type: "string", enum: ["current_at_capture", "current", "unknown", "stale"] },
+        scope: { type: "object", additionalProperties: true },
+        time: { type: "object", additionalProperties: true },
+        evidence: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 64 },
+        analysis: { type: "object", additionalProperties: true },
+        assistantContract: { type: "object", additionalProperties: true },
+        coverage: { type: "object", additionalProperties: true },
+        limitations: { type: "array", items: { type: "string" }, maxItems: 32 },
+      },
+      required: [
+        "schema",
+        "version",
+        "capturedAt",
+        "project",
+        "freshness",
+        "scope",
+        "time",
+        "evidence",
+        "analysis",
+        "assistantContract",
+        "coverage",
+        "limitations",
+      ],
+    },
+  },
+  required: ["status", "stage", "snapshot"],
 };
 /** kyx_diagnose_mix - attributed findings + suggested actions. */
 const OUTPUT_DIAGNOSE_MIX: McpOutputSchema = {
@@ -1653,8 +1704,16 @@ const OUTPUT_SONG = receiptSchema({
 const OUTPUT_UNSUNO = receiptSchema({
   action: { type: "string", enum: ["transcribe", "restyle", "regen", "similarity"] },
 });
+const OUTPUT_PERFORMANCE: McpOutputSchema = receiptSchema({
+  op: { type: "string" },
+  setId: { type: "string" },
+  macroId: { type: "string" },
+  sets: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 32 },
+  macros: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 64 },
+});
 const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
   kyx_state: OUTPUT_STATE,
+  kyx_context: OUTPUT_MUSICAL_CONTEXT,
   kyx_intent: OUTPUT_INTENT,
   kyx_tracks: OUTPUT_TRACKS,
   kyx_fx: OUTPUT_FX,
@@ -1757,6 +1816,54 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["subject"],
     },
+  },
+  {
+    name: "kyx_context",
+    description:
+      "Build a fresh, versioned, READ-ONLY musical evidence packet for a selected arrangement range. " +
+      "Pass either inclusive 1-based fromBar/toBar or half-open startTick/endTick; optional trackIds and clipIds narrow the target. " +
+      "The packet joins project facts (clips, patterns, automation, routing and FX), tempo-aware seconds and 44.1 kHz render-timeline sample positions, user goals/protected elements, and provenance/freshness caveats. " +
+      "No document changes are possible. Set renderScope to master, tracks, or all only when you want an offline render; that can take time and is still a measurement, not a verdict about sound quality. " +
+      "Kick/bass collision output is a risk estimate, never proof of audible masking. Re-read when freshness is stale or unknown.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fromBar: { type: "integer", minimum: 1, description: "Inclusive first bar (1-based); use with toBar, not ticks" },
+        toBar: { type: "integer", minimum: 1, description: "Inclusive last bar (1-based); use with fromBar, not ticks" },
+        startTick: { type: "integer", minimum: 0, description: "Inclusive arrangement tick; use with endTick, not bars" },
+        endTick: { type: "integer", minimum: 1, description: "Exclusive arrangement tick; use with startTick, not bars" },
+        trackIds: {
+          type: "array",
+          items: { type: "string", maxLength: 128 },
+          maxItems: 24,
+          description: "Optional exact track IDs; omit to include all tracks in the time range",
+        },
+        clipIds: {
+          type: "array",
+          items: { type: "string", maxLength: 128 },
+          maxItems: 128,
+          description: "Optional exact clip IDs; each must overlap the requested range and selected tracks",
+        },
+        goals: {
+          type: "array",
+          items: { type: "string", maxLength: 240 },
+          maxItems: 8,
+          description: "User-stated production goals for this read-only review",
+        },
+        protectedElements: {
+          type: "array",
+          items: { type: "string", maxLength: 240 },
+          maxItems: 8,
+          description: "User-stated elements to preserve; returned as preferences, not project facts",
+        },
+        renderScope: {
+          type: "string",
+          enum: ["master", "tracks", "all"],
+          description: "Optional offline render measurements for the same range; omitted means no render is started",
+        },
+      },
+    },
+    outputSchema: OUTPUT_MUSICAL_CONTEXT,
   },
   {
     name: "kyx_save",
@@ -4715,6 +4822,13 @@ function dryRunContext(ctx: McpToolContext): { ctx: McpToolContext; applied: () 
 
 const INSTANCE_INDEXED_MCP_TOOLS = new Set(["kyx_fx", "kyx_plugin_param", "kyx_automation", "kyx_master"]);
 
+function isLongRunningMcpCall(name: string, args: unknown): boolean {
+  if (name !== "kyx_context") return LONG_RUNNING_AGENT_TOOLS.has(name);
+  if (args == null || typeof args !== "object" || Array.isArray(args)) return false;
+  const scope = (args as Record<string, unknown>).renderScope;
+  return scope === "master" || scope === "tracks" || scope === "all";
+}
+
 function invalidInstanceIndexMessage(name: string, args: unknown): string | null {
   if (!INSTANCE_INDEXED_MCP_TOOLS.has(name) || args == null || typeof args !== "object") return null;
   const record = args as Record<string, unknown>;
@@ -5067,7 +5181,8 @@ ${preview.text}`,
   // Long-running calls surface in the Job Center so a user can see (and
   // cancel) what the agent is waiting on — same tool set the transports give
   // the extended 60 s call budget.
-  const job = LONG_RUNNING_AGENT_TOOLS.has(name)
+  const longRunning = isLongRunningMcpCall(name, args);
+  const job = longRunning
     ? startJob({
         kind: "agent",
         label: `${agent} · ${name}`,
@@ -5114,7 +5229,7 @@ ${preview.text}`,
   ctx = { ...ctx, signal: callController.signal };
   const deadlineTimer = setTimeout(
     () => callController.abort(new DOMException("MCP call deadline exceeded", "AbortError")),
-    LONG_RUNNING_AGENT_TOOLS.has(name) ? MCP_CALL_DEADLINE_LONG_MS : MCP_CALL_DEADLINE_MS,
+    longRunning ? MCP_CALL_DEADLINE_LONG_MS : MCP_CALL_DEADLINE_MS,
   );
   if (requestId !== "") mcpCancellableCalls.set(requestId, callController);
   try {
@@ -5428,6 +5543,68 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     if (!isFactoryPresetsWarm()) await warmFactoryPresets();
   }
   switch (name) {
+    case "kyx_context": {
+      const doc = ctx.getDoc();
+      const revision = ctx.getRevision?.() ?? null;
+      let request;
+      try {
+        request = parseMusicalContextRequest(doc, record);
+      } catch (error) {
+        if (error instanceof MusicalContextInputError) return mcpError("INVALID_ARGUMENTS", error.message);
+        throw error;
+      }
+      let snapshot = buildMusicalContextSnapshot(doc, request, {
+        revision,
+        recordingActive: ctx.isMicRecordingActive(),
+      });
+      if (request.renderScope !== null) {
+        if (ctx.renderSummary == null) {
+          snapshot = {
+            ...snapshot,
+            analysis: {
+              status: "unavailable",
+              requestedScope: request.renderScope,
+              reason: "offline render is not available on this MCP transport",
+            },
+          };
+        } else {
+          try {
+            const summary = await ctx.renderSummary(
+              { scope: request.renderScope, startTick: request.startTick, endTick: request.endTick },
+              ctx.signal,
+            );
+            const currentDoc = ctx.getDoc();
+            snapshot = attachMusicalContextRenderEvidence(
+              snapshot,
+              summary,
+              currentDoc.id,
+              ctx.getRevision?.() ?? null,
+            );
+          } catch (error) {
+            rethrowIfMcpAborted(error, ctx);
+            snapshot = {
+              ...snapshot,
+              analysis: {
+                status: "unavailable",
+                requestedScope: request.renderScope,
+                reason: error instanceof Error ? error.message : String(error),
+              },
+            };
+          }
+        }
+      }
+      const text = musicalContextSummary(snapshot);
+      return {
+        text,
+        mutated: false,
+        stage: request.renderScope === null ? "read" : "runtime",
+        data: {
+          status: snapshot.freshness === "stale" ? "stale" : "read",
+          stage: request.renderScope === null ? "read" : "runtime",
+          snapshot,
+        },
+      };
+    }
     case "kyx_state": {
       const subject = String(record.subject ?? "overview");
       if (subject === "capabilities") {
