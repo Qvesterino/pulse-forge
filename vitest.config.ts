@@ -70,15 +70,19 @@ export default defineConfig({
     // 39 MB WebAssembly module (the Audiotool NEXUS document validator) on
     // its first createOfflineDocument() call: measured 776 ms and +377 MB RSS
     // on an idle machine, and the compile is CACHED, so every later test in
-    // that file awaits the SAME promise. On the CI runner (2 cores, 1326 spec
-    // files in parallel) the compile does not fit in 5 s — the first test
-    // expires, the shared promise is still pending, and every later test in
-    // that file expires with it. That is exactly the observed failure: 8
-    // reds, all of them the tests that touch the WASM, while the 26 tests in
-    // the same file that do not, pass.
-    // 30 s fits the real cost (8x the idle measurement) and still fails a
-    // genuinely hung test in half a minute. Specs with their own budget
-    // (the 300 s DSP soak gates) keep it.
+    // that file awaits the SAME promise. A CI runner with 2 cores running
+    // 1326 spec files is not an idle machine, and 5 s is the library default
+    // - not a budget this repo chose for a workload that compiles 39 MB of
+    // WebAssembly.
+    //
+    // This budget was NOT the cause of the 8 reds that file reported in CI:
+    // the cause was Node 20 lacking Promise.withResolvers (see ci.yml,
+    // node-version: 24). The measurement above stands on its own, so the
+    // budget is raised anyway - it removes a load-dependent flake class that
+    // would otherwise show up as a red that no one can reproduce.
+    //
+    // 30 s still fails a genuinely hung test in half a minute. Specs with
+    // their own budget (the 300 s DSP soak gates) keep it.
     testTimeout: 30_000,
     hookTimeout: 30_000,
     // The 300 s DSP soak gates compare retained heap before/after GC. Vitest
