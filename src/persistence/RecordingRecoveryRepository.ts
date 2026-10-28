@@ -7,6 +7,14 @@ import {
   STORE_USER_SAMPLE_AUDIO,
 } from "./db";
 import type { PcmRecordingAudioRef, UserSampleAsset } from "./UserSampleRepository";
+import { RecordingStorageQuotaError } from "../shared/recordingQuota";
+
+// The owner identity and the quota error live in the shared layer so the
+// capture recorder (audio engine) can agree on them WITHOUT importing this
+// module — the architecture layer gate forbids that edge. They are
+// re-exported here, so every existing importer keeps working unchanged.
+export { RECORDING_OWNER_ID } from "../shared/recordingOwner";
+export { RecordingStorageQuotaError } from "../shared/recordingQuota";
 
 export interface RecordingSession {
   id: string;
@@ -71,19 +79,6 @@ const RECOVERY_STALE_MS = 5_000;
 const MAX_TAKE_BOUNDARIES_PER_CHUNK = 16_384;
 const MAX_CHUNKS_PER_APPEND_BATCH = 128;
 
-/**
- * Surfaced when `begin()` runs the IndexedDB out of disk budget while
- * arming a recording session. UI can offer a "free up space" path; the
- * recording tab must NOT silently retry.
- */
-export class RecordingStorageQuotaError extends Error {
-  override readonly name = "RecordingStorageQuotaError";
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message);
-    if (options?.cause !== undefined) (this as Error & { cause?: unknown }).cause = options.cause;
-  }
-}
-
 function isQuotaExceeded(err: unknown): boolean {
   // DOMException (thrown by IndexedDB on quota exhaustion) is NOT an instanceof
   // Error in jsdom/fake-indexeddb; check the name field on any object.
@@ -135,20 +130,6 @@ function validatePcmChunkForAppend(chunk: RecordingPcmChunk): void {
  * would eventually crowd project saves out under IndexedDB quota pressure.
  */
 export const RECORDING_PRUNE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-/**
- * Identifies this browser context (tab load) so `listRecoverable` can hide
- * the tab's own still-live take. A crash keeps the row with the old owner id,
- * so after a reload (new id) the interrupted take remains recoverable.
- */
-export const RECORDING_OWNER_ID: string = (() => {
-  try {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  } catch {
-    /* fall through */
-  }
-  return `owner-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-})();
 
 /**
  * Durable, append-only staging for live microphone takes. A chunk is only

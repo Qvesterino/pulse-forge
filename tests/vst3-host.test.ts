@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
 
@@ -181,13 +182,18 @@ describe("scanEntries aggregation", () => {
 
 describe("standard directories (environment mapping)", () => {
   it("maps Common Files and AppData VST3 folders", () => {
+    // The expected paths are built with path.join, like the CLAP sibling
+    // spec: the manager joins with the PLATFORM separator, so a hardcoded
+    // "C:\\..." literal is only correct on Windows — on Linux the join
+    // produces forward slashes and the assertion failed there (measured
+    // 2026-10-28: red on CI, green on the dev machine).
     const dirs = defaultScanDirectories({
-      CommonProgramFiles: "C:\\Program Files\\Common Files",
-      APPDATA: "C:\\Users\\x\\AppData\\Roaming",
-      ProgramFiles: "C:\\Program Files",
+      CommonProgramFiles: "C:/Program Files/Common Files",
+      APPDATA: "C:/Users/x/AppData/Roaming",
+      ProgramFiles: "C:/Program Files",
     });
-    expect(dirs).toContain("C:\\Program Files\\Common Files\\VST3");
-    expect(dirs).toContain("C:\\Users\\x\\AppData\\Roaming\\Programs\\Common\\VST3");
+    expect(dirs).toContain(path.join("C:/Program Files/Common Files", "VST3"));
+    expect(dirs).toContain(path.join("C:/Users/x/AppData/Roaming", "Programs", "Common", "VST3"));
   });
 
   it("missing environment variables yield no directories (no throw)", () => {

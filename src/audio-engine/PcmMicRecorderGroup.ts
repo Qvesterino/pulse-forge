@@ -5,7 +5,7 @@ import {
   type PcmRecordingMetadata,
 } from "./PcmMicRecorder";
 import type { MaterializedPcmTake } from "./pcmRecording";
-import { RecordingRecoveryRepository, type RecordingPcmChunk } from "../persistence/RecordingRecoveryRepository";
+import type { RecordingPcmChunk } from "../persistence/RecordingRecoveryRepository";
 import type { IRecordingRecoveryRepository } from "../persistence/contracts";
 
 const PREPARE_TIMEOUT_MS = 20_000;
@@ -120,10 +120,11 @@ export class PcmMicRecorderGroup {
     this.context = context;
 
     this.startBarrier = new PcmCaptureStartBarrier(inputs.length);
-    const fallbackRecovery = inputs.find((input) => input.dependencies.recovery)?.dependencies.recovery;
-    const defaultRecovery = fallbackRecovery ?? new RecordingRecoveryRepository();
     this.entries = inputs.map((input) => {
-      const recovery = input.dependencies.recovery ?? defaultRecovery;
+      // The recovery sink is INJECTED (architecture layer gate: the audio
+      // engine must not construct storage itself). Every input carries its
+      // own; the group only batches their chunk writes.
+      const recovery = input.dependencies.recovery;
       const recorder = new PcmMicRecorder({
         ...input.dependencies,
         recovery,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve, join, relative, dirname } from "node:path";
+import { resolve, join, relative, dirname, isAbsolute } from "node:path";
 
 /**
  * ARCHITECTURE LAYER GATE — the long-term erosion defence.
@@ -134,9 +134,20 @@ function resolveImport(from: string, spec: string): string | null {
   return null;
 }
 
-/** Check if an absolute path lives under the given directory prefix. */
+/**
+ * Check if an absolute path lives under the given directory prefix.
+ *
+ * The comparison MUST be separator-agnostic. The previous version appended a
+ * hardcoded "/" to the prefix — on Windows (where paths use "\") it matched
+ * NOTHING, so the whole gate went green without ever running a rule. For a
+ * gate that is the worst possible failure: it reported "no violations" while
+ * never looking, and the violations it hid were red on CI (measured
+ * 2026-10-28: three real layer violations, invisible on the dev machine).
+ * `path.relative` answers containment the same way on every platform.
+ */
 function underDir(absPath: string, dirPrefix: string): boolean {
-  return absPath.startsWith(resolve(process.cwd(), dirPrefix) + "/");
+  const rel = relative(resolve(process.cwd(), dirPrefix), absPath);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
 describe("architecture layer gate", () => {
@@ -169,4 +180,12 @@ describe("architecture layer gate", () => {
       }
     });
   }
+
+  it("the containment check actually recognises a path inside its layer", () => {
+    // The gate's own blind spot: a separator-hardcoded prefix matches
+    // NOTHING on Windows, so every rule reports "clean" without looking.
+    // This pins the check itself — a known in-repo path must be recognised.
+    expect(underDir(resolve(process.cwd(), "src/ui/App.tsx"), "src/ui")).toBe(true);
+    expect(underDir(resolve(process.cwd(), "src/mcp/tools.ts"), "src/ui")).toBe(false);
+  });
 });

@@ -1,14 +1,13 @@
 import { assetUrl } from "../shared/assetUrls";
 import { materializePcmTake, type MaterializedPcmTake } from "./pcmRecording";
-import {
-  RECORDING_OWNER_ID,
-  RecordingRecoveryRepository,
-  RecordingStorageQuotaError,
-  type RecordingPcmChunk,
-  type RecordingChannelDestination,
-  type RecordingSession,
+import type {
+  RecordingPcmChunk,
+  RecordingChannelDestination,
+  RecordingSession,
 } from "../persistence/RecordingRecoveryRepository";
 import type { IRecordingRecoveryRepository } from "../persistence/contracts";
+import { RECORDING_OWNER_ID } from "../shared/recordingOwner";
+import { RecordingStorageQuotaError } from "../shared/recordingQuota";
 import { loadRecordingInputDeviceId } from "./recordingInput";
 import {
   estimateRecordingStoragePreflight,
@@ -217,7 +216,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 export interface PcmMicRecorderDependencies {
   ctx: AudioContext;
-  recovery?: IRecordingRecoveryRepository;
+  /**
+   * Durable staging sink for crash recovery. REQUIRED: the audio engine must
+   * not construct storage itself (the architecture layer gate forbids the
+   * audio-engine → persistence edge) — the composition root injects it.
+   */
+  recovery: IRecordingRecoveryRepository;
   /** Empty string explicitly selects the system default; omitted uses the saved user preference. */
   inputDeviceId?: string;
   /** Require this many independent capture channels; omitted leaves browser defaults untouched. */
@@ -330,7 +334,7 @@ export class PcmMicRecorder {
   private readonly inputDeviceId: string;
 
   constructor(private readonly deps: PcmMicRecorderDependencies) {
-    this.recovery = deps.recovery ?? new RecordingRecoveryRepository();
+    this.recovery = deps.recovery;
     this.inputDeviceId = deps.inputDeviceId ?? loadRecordingInputDeviceId();
     this.inputGainDb = clampInputGainDb(deps.inputGainDb ?? 0);
   }

@@ -8,7 +8,7 @@ import {
 import { snapshot } from "../commands/core";
 import { parseProductionIntent, planProductionActions, type ProductionTarget } from "../intent/production";
 import { parseEffectIntent } from "../effect-intent/parser";
-import { applyEffectIntentOnTrack } from "../ui/fxAddAssistant";
+import { applyEffectIntentOnTrack } from "../effect-intent/applyOnTrack";
 import { EFFECT_DEFS } from "../effects/registry";
 
 /**
