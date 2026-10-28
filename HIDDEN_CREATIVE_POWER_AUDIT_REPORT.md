@@ -996,9 +996,9 @@ stands, not against the tree the work was written on.
 | `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                               |
 | `tests/collab-contract-parity.test.ts`                                           | ✅                                                                               |
 | `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                  |
-| `tests/drift-check.test.ts`                                                      | ✅ **11 tests** — the derivable-artifact gate                                    |
+| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                    |
 | `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                               |
-| **total**                                                                        | **13 suites · 120 tests green**                                                  |
+| **total**                                                                        | **13 suites · 121 tests green**                                                  |
 | `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)  |
 | `npm run drift:check`                                                            | ✅ **green** — `✓ no drift — derivable artifacts match their generators` (§10.9) |
 | `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                             |
@@ -1094,14 +1094,14 @@ six patches are entirely mine in `03d845d0`.
 
 ### 10.5 Coverage gaps — what was NOT run
 
-| gap                              | why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the full vitest suite            | the tree was in continuous flux from parallel sessions; a whole-suite run would report other sessions' in-flight failures and cannot be attributed. The 10 suites that cover every touched file were run instead.                                                                                                                                                                                                                                                                                                                                                                                                     |
-| the full Playwright suite        | same reason; the one e2e spec that covers a touched surface (keyboard shortcuts) was targeted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `npm run build` + bundle budgets | no bundle-relevant file was touched; the budgets measure the shipped closure, not a badge and a string.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| **any audio-level verification** | **no microphone and no audio device** — recording, monitoring, take audio and loudness were not exercised at all (§2.3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `docs/CURRENT-STATE.md`          | **deliberately not updated — and the net effect on its numbers is zero.** The row was rewritten later the same day by the session that landed the MCP performance wave. The spec-file count reads **1319**, and the live measurement is **1319**: this audit's wave **removed one spec** (the duplicate `tests/ui/palette-command-registry.test.ts`, §10.8) and **added one** (`tests/ui/strip-silence-naming.test.ts`), so it moves the count by **zero**. The count check in the drift gate therefore passes, and a session that edited that row would have been editing a file another session had just rewritten. |
-| the MCP server process           | the MCP surface was exercised through `executeMcpTool` (the real dispatcher), not through a live MCP client over stdio.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| gap                              | why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the full vitest suite            | the tree was in continuous flux from parallel sessions; a whole-suite run would report other sessions' in-flight failures and cannot be attributed. The 10 suites that cover every touched file were run instead.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| the full Playwright suite        | same reason; the one e2e spec that covers a touched surface (keyboard shortcuts) was targeted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `npm run build` + bundle budgets | no bundle-relevant file was touched; the budgets measure the shipped closure, not a badge and a string.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **any audio-level verification** | **no microphone and no audio device** — recording, monitoring, take audio and loudness were not exercised at all (§2.3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `docs/CURRENT-STATE.md`          | **deliberately not updated — and the net effect on its numbers is zero.** The row is rewritten by whichever session lands the specs; the number it holds has moved on twice since this audit's wave (1319 → 1321), and each move belongs to another session's wave, not to this one. What is measured rather than assumed: this audit's wave **removed one spec** (the duplicate `tests/ui/palette-command-registry.test.ts`, §10.8) and **added one** (`tests/ui/strip-silence-naming.test.ts`), so it moves the count by **zero**. A session that had edited that row would have been editing a file another session had just rewritten — and, as CI #431 showed, would have had to re-pin the generated snapshot in `docs/status.json` as well (§10.10). |
+| the MCP server process           | the MCP surface was exercised through `executeMcpTool` (the real dispatcher), not through a live MCP client over stdio.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ### 10.6 The e2e run — what happened, and why it matters that it was re-run
 
@@ -1198,17 +1198,71 @@ volatile file was left **dirty after every single gate run**. In a shared worktr
 next session's `git add .` sweeps it into an unrelated commit. It is not hypothetical — it produced this
 session's commit `8f63a22e`, whose entire content is a clock reading.
 
-The fix separates the two questions one file list was answering at once:
+**The first fix was right about the trace and wrong about the file.** It split the one list into
+`ownedPaths` (compared with HEAD) and `volatilePaths` (never compared, but restored) — which stopped the
+trace. But excluding the page from the comparison **entirely** was the wrong answer, and §10.10 is how the
+hole showed: the page carries the **live claim rows** as well as the timestamp, and a row that sat at
+**1319** while the tree said **1323** is a stale number on a published page that **no gate could see**.
+
+The final mechanism ignores **exactly one thing** and compares the rest:
 
 - **`ownedPaths`** — compared with HEAD, and the source of a drift finding;
-- **`volatilePaths`** — never compared (a timestamp cannot be), but restored after the check, so a gate run
-  leaves no trace.
+- **`ignoreCompareLines`** — the volatile lines stripped from BOTH sides before the comparison. The
+  timestamp never decides the verdict; the live rows always do.
 
-The gate's **verdict** is unchanged: `docs/status.json` is still owned, still compared, still the source of
-the `[status]` finding. Only the trace is gone. Verified end to end — after the fix, a full gate run leaves
-the worktree with **only** the files I was deliberately editing. Four pins in `tests/drift-check.test.ts`
-hold the distinction, because collapsing the two lists is the one change that would put the gate back in the
-red: owning a volatile path would compare a timestamp and fail on every run.
+So `docs/STATUS.md` is now **owned** and compared **minus its timestamp line**: a stale row is a drift
+finding, and a new timestamp is not. And because owned paths are restored after a clean run, the gate still
+leaves **no trace** — verified end to end: after a full gate run the worktree holds **only** the files I was
+deliberately editing. Four pins in `tests/drift-check.test.ts` hold the distinction, because the one change
+that would put the gate back in the red is either owning a file with a timestamp and no ignore rule (the
+gate flaps forever) or ignoring a file's live rows (the gate goes blind).
+
+### 10.10 The drift that reached CI — and the fast half of the slow gate
+
+The failure mode §10.9 describes was not theoretical. It happened, in the other direction, on 2026-10-28:
+
+- a parallel session moved the **hand-maintained** number in `docs/CURRENT-STATE.md` to **1321**;
+- the **generated** snapshot in `docs/status.json` still said **1319** — because the two live in different
+  places and only one of them was updated;
+- the `[status]` section went red, and the red arrived as a **red CI Hygiene job (#431)**, hours after the
+  commit that caused it, on a machine with no way to explain itself.
+
+The drift gate caught it. But that gate takes minutes and runs in CI, which means the mistake is found by
+someone else's pipeline rather than by the session that made it. The same question — _does the committed
+payload still describe the tree we are standing in?_ — can be asked in **milliseconds**.
+
+So it is now asked there, in the unit suite (`tests/drift-check.test.ts`):
+
+> the committed status snapshot's `spec-counts` claim must equal the live count, RIGHT NOW.
+
+**Falsified before it was trusted.** Reverting the payload to the exact stale value that caused CI #431
+("1319 claimed, 1319 measured", against a live 1321) turns the new check **red in 139 ms** — not on a
+missing symbol, but on the claim itself. Restored, all twelve checks in that file are green.
+
+This is the difference between a gate that fires **hours later, on someone else's machine** and one that
+fires **while the mistake is still in the author's hands**. It does not replace the drift gate; it is the
+fast half of it.
+
+**It then fired for real, on the next wave.** Two more spec files landed (`tests/proposal-constraints.test.ts`
+and `tests/musical-proposal.test.ts`), the count moved to **1323**, and the row stayed at **1321**. The new
+check went **red in 139 ms** — locally, while the session that caused it was still working — and the slow
+gate confirmed it minutes later:
+
+```
+✗ DRIFT [status] docs/status.json: committed artifact is stale
+✗ DRIFT [counts] docs/CURRENT-STATE.md:Vitest spec files: CURRENT-STATE says 1321, live code measures 1323
+```
+
+**And the third instance was the one nobody could see.** The published status page `docs/STATUS.md` had
+been sitting at **1319** since `8dadef42` — the same day, the same count, the same wave — because the page
+was excluded from the comparison entirely, and the timestamp was the excuse. A stale number on a published
+page is a documentation defect that no gate could reach. With the page now owned and compared **minus its
+timestamp line**, it is a drift finding like any other.
+
+The count is a **whole-tree measurement**: it belongs to nobody's wave. This audit's wave still moves it by
+**zero** — one spec removed, one added — and every wave that adds or removes a spec has to re-pin it. That
+is the ritual the artifact rule in `AGENTS.md` now names, and the fast check enforces it in the unit suite
+rather than in someone else's CI.
 
 ---
 
