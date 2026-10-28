@@ -91,13 +91,13 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Was:** the blanket typing guard sat before every chord handler (`App.tsx:1232`), so Ctrl+S did nothing while the caret was in any input/select/textarea — including the intent prompt and the project-name field. The registry documents Ctrl+S unconditionally (`shortcuts.ts:124-132`).
 - **Fix:** the save chord is handled before the bail (`App.tsx:1233-1240`); every other chord keeps native text behavior — Ctrl+Z inside a field is still text-level undo, pinned by a negative spec.
 
-### CF-05 | High | Confirmed | Status: PROTOTYPE (needs a decision — narrows an established binding)
+### CF-05 | High | Confirmed | Status: **FIXED — commit `892dcc61`** (the design decision was approved by the product owner)
 
-- **Finding:** bare **Tab** is bound to "next track" (`shortcuts.ts:157-158`) and the global matcher preventDefaults it whenever any focusable element holds focus (`App.tsx:1608-1628`). Keyboard-only users cannot traverse a single panel's controls: Tab from any button/slider jumps track selection instead. This is the single largest keyboard-accessibility gap in the product.
-- **Root cause:** the matcher does not distinguish "focus on the canvas/body" from "focus inside a panel control". The transient-jump branch (`App.tsx:1256-1261`) already handles the body-focus case — the asymmetry is that focused-element Tab is _hijacked_ rather than passed through.
-- **Proposed:** when the event target is an interactive element (button/select/[tabindex]), let the browser traverse; keep Tab = next track when focus is on the body/canvas. Shift+Tab unchanged. FL-style muscle memory is preserved for the dominant case (hands in the grid).
-- **Why not fixed now:** it changes the scope of an established, deliberate binding — exactly the class of change the implementation gate reserves for design review. Regression surface: every keyboard journey in `tests/e2e/05-keyboard-shortcuts.spec.ts`.
-- **Acceptance:** Tab from a mixer button moves DOM focus; Tab on the canvas still selects the next track; all existing shortcut specs stay green.
+- **Finding:** bare **Tab** fell through the global keydown handler to next/prev track whenever any focusable element held focus — the transient-jump branch only owned the body-focus case (`tabNavigationTarget` computed, `App.tsx:1269-1275`), so a keyboard user could not reach a second control in any panel. The single largest keyboard-accessibility gap in the product.
+- **Root cause:** the inverted asymmetry — canvas-focus Tab was owned by the transient-jump feature (or next/prev track when no clip is selected), while focused-element Tab was hijacked to track selection.
+- **Fix:** the handler returns before the transient-jump branch when the target sits inside the interactive selector that branch already computes — no action, no `preventDefault`, the panel's controls traverse natively. Canvas focus keeps both FL behaviors untouched. Registry labels disclose the scope ("Next track (when no control has focus)").
+- **Verification:** jsdom specs pin both sides (Tab/Shift+Tab on a focused control not intercepted; canvas Tab still taken); verified in a real browser against the built bundle — synthetic Tab and Shift+Tab on a focused track tab leave `defaultPrevented` false while a canvas-focus Tab is still handled. New seam `tab-traversal` (absorbed into a peer commit with the manifest). The Playwright journey is staged in `keyboard-guards.spec.ts` for when the shared dev server is healthy.
+- **Acceptance met:** Tab from a control traverses; Tab on the canvas still belongs to the transport/transient features; all affected suites green (App 16/16, track-reorder, ux-audit, melodicKeys, a11y panels — 39/39).
 
 ### CF-06 | Medium-High | Confirmed | Status: DESIGN REVIEW
 
@@ -199,27 +199,27 @@ Three root causes explain most of the register:
 
 Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher is better; effort⁻¹ 5 = hours, 1 = weeks).
 
-| ID                   | Impact | Freq | Conf | Effort⁻¹ | Risk⁻¹ | Sum   | Category                                  |
-| -------------------- | ------ | ---- | ---- | -------- | ------ | ----- | ----------------------------------------- |
-| CF-01                | 4      | 3    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                     |
-| CF-02                | 5      | 5    | 5    | 4        | 4      | 23    | **FIX NOW (shipped)**                     |
-| CF-03                | 3      | 5    | 5    | 5        | 5      | 23    | **FIX NOW (shipped)**                     |
-| CF-04                | 3      | 4    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                     |
-| CF-05                | 5      | 5    | 5    | 3        | 2      | 20    | PROTOTYPE (binding change — decide first) |
-| CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | PROTOTYPE (disclosure toast)              |
-| CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | PROTOTYPE (record loop)                   |
-| CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | PROTOTYPE (follow-playhead)               |
-| CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                 |
-| CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | TIER B                                    |
-| CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | TIER B                                    |
-| CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | TIER B                                    |
-| CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | TIER B                                    |
-| CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                    |
-| CF-22                | 2      | 3    | 5    | 4        | 5      | 19    | TIER A                                    |
-| CF-06                | 4      | 3    | 5    | 3        | 2      | 17    | DESIGN REVIEW                             |
-| CF-14                | 4      | 2    | 5    | 3        | 3      | 17    | DESIGN REVIEW                             |
-| CF-17                | 4      | 2    | 4    | 1        | 2      | 13    | DESIGN REVIEW                             |
-| CF-16/18/20/21/23/24 | 2–3    | 2–3  | 4–5  | 3–5      | 4      | 15–18 | TIER B / DEFER                            |
+| ID                   | Impact | Freq | Conf | Effort⁻¹ | Risk⁻¹ | Sum   | Category                                           |
+| -------------------- | ------ | ---- | ---- | -------- | ------ | ----- | -------------------------------------------------- |
+| CF-01                | 4      | 3    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                              |
+| CF-02                | 5      | 5    | 5    | 4        | 4      | 23    | **FIX NOW (shipped)**                              |
+| CF-03                | 3      | 5    | 5    | 5        | 5      | 23    | **FIX NOW (shipped)**                              |
+| CF-04                | 3      | 4    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                              |
+| CF-05                | 5      | 5    | 5    | 3        | 2      | 20    | **FIXED after owner approval (commit `892dcc61`)** |
+| CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | PROTOTYPE (disclosure toast)                       |
+| CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | PROTOTYPE (record loop)                            |
+| CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | PROTOTYPE (follow-playhead)                        |
+| CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                          |
+| CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | TIER B                                             |
+| CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | TIER B                                             |
+| CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | TIER B                                             |
+| CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | TIER B                                             |
+| CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                             |
+| CF-22                | 2      | 3    | 5    | 4        | 5      | 19    | TIER A                                             |
+| CF-06                | 4      | 3    | 5    | 3        | 2      | 17    | DESIGN REVIEW                                      |
+| CF-14                | 4      | 2    | 5    | 3        | 3      | 17    | DESIGN REVIEW                                      |
+| CF-17                | 4      | 2    | 4    | 1        | 2      | 13    | DESIGN REVIEW                                      |
+| CF-16/18/20/21/23/24 | 2–3    | 2–3  | 4–5  | 3–5      | 4      | 15–18 | TIER B / DEFER                                     |
 
 Rejected proposals (would trade control for clicks, or add a second source of truth): a palette that reimplements commands instead of calling them; a second track-order array in React; auto-scroll that hijacks the user's scroll position without hysteresis; replacing REPLACE's semantics with a modal in the middle of a performance; serializing actor provenance into the project document.
 
@@ -247,12 +247,13 @@ Verification for the four (executed locally, 2026-10-27):
 
 ## 8. Deferred for design review / approval
 
-1. **CF-05 (Tab traversal)** — needs an explicit decision that Tab-through-panels is wanted inside an FL-style binding map; then a prototype with the full `05-keyboard-shortcuts` e2e as the regression net.
-2. **CF-06 (Escape ≠ stop+rewind)** — a transport-behavior contract change; propose the written rule first ("Escape never touches the transport; Space pauses; Home returns"), then implement behind the existing stop binding.
-3. **CF-14 (MCP destructive authority)** — confirmation dialog + global badge + optional idle expiry; touches flag persistence and the token UX, so it belongs with the MCP surface owners.
-4. **CF-17 (unify the two comp systems)** — a capability-level design task (arrangement take lanes vs vocalchop), not a UI patch.
-5. **Desktop-size clip handles (F-09 remainder)** — invisible hit-area expansion without touching the visual affordance; needs the drag-arbitration probe the prior audit also flagged as untested.
-6. **F-11 (locale commitment)** — unchanged since the prior audit; a product decision, not an audit fix.
+1. **CF-06 (Escape ≠ stop+rewind)** — a transport-behavior contract change; propose the written rule first ("Escape never touches the transport; Space pauses; Home returns"), then implement behind the existing stop binding.
+2. **CF-14 (MCP destructive authority)** — was design review here; a parallel session shipped the confirmation + visible authority (commit `5dda14f6`, "explicit MIDI/AUDIO record targets and a visible, confirmed MCP delete authority") while this audit ran — re-verify its surface against the F-05 acceptance criteria on the next audit pass.
+3. **CF-17 (unify the two comp systems)** — a capability-level design task (arrangement take lanes vs vocalchop), not a UI patch.
+4. **Desktop-size clip handles (F-09 remainder)** — invisible hit-area expansion without touching the visual affordance; needs the drag-arbitration probe the prior audit also flagged as untested.
+5. **F-11 (locale commitment)** — unchanged since the prior audit; a product decision, not an audit fix.
+
+_(Formerly deferred here: CF-05 — approved and shipped as `892dcc61`; see §4.)_
 
 ---
 
@@ -270,7 +271,7 @@ Verification for the four (executed locally, 2026-10-27):
 CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-07 REPLACE recovery toast; CF-10 take-start parking (behind a documented default); CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. Exit: each has a seam entry with a negative.
 
 **60 days — the listening loops.**
-CF-09 follow-playhead prototype (hysteresis, census gate watching); CF-08 calibration surfaced from the record toolbar; CF-19 MixPreview staleness guard; CF-13 project search; CF-11 zoom/focus persistence via the layout store; CF-05 Tab prototype if approved. Exit: time-to-audition journeys run in a real browser once the tree calms — this audit's blocked e2e pass is the first measurement to take.
+CF-09 follow-playhead prototype (hysteresis, census gate watching); CF-08 calibration surfaced from the record toolbar; CF-19 MixPreview staleness guard; CF-13 project search; CF-11 zoom/focus persistence via the layout store. The CF-05 Playwright journey (staged in `keyboard-guards.spec.ts`) joins the regular suite once the shared dev server is healthy — that run is also the first real-browser measurement this audit's blocked e2e pass was waiting for.
 
 **90 days — trust and unification.**
 CF-14 destructive-authority confirmation + badge; CF-17 comp-system unification design (one lane model, two entries); F-11 locale decision; desktop hit-area expansion with a drag-arbitration probe; ActivityCenter human-readable rows (CF-23); re-run the 2026-10-25 audit's remaining owner gates (Firefox/Safari smoke) against the same journeys.
