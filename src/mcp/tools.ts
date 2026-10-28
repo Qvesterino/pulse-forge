@@ -343,6 +343,7 @@ const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
     referenceLufs: { type: "number" },
     trackWindow: { type: "object" },
     range: { type: "object" },
+    cache: { type: "string", enum: ["hit", "miss", "disabled"] },
   },
   required: ["scope", "strips", "referenceLufs"],
 };
@@ -3152,6 +3153,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       "together: KYX renders that isolated track pre-master and returns exact " +
       "window timing, mix-health metrics, and the project revision before/after " +
       "rendering. Use before/after mix moves so decisions cite numbers, not vibes. " +
+      "Repeat calls at the same document revision are served from a revision-keyed " +
+      "evidence cache (data.cache reports hit/miss/disabled); ANY edit bumps the " +
+      "revision and forces a re-render, so a stale answer is impossible by keying. " +
       "Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
       type: "object",

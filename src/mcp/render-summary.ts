@@ -19,6 +19,7 @@ import {
 } from "../analysis/kick-bass-risk";
 import { analyzeMixHealth, type MixHealthReport } from "../analysis/mixDoctor";
 import { storeRevision } from "./revision";
+import { cachedEvidence, type EvidenceCacheMode } from "./evidence-cache";
 
 /**
  * KYX MCP — RENDER SUMMARY BRIDGE (kyx_render_summary, the agent's "ears").
@@ -63,6 +64,9 @@ export interface RenderSummaryData {
   arrangementCensus?: ArrangementCensus;
   kickBassRisk?: KickBassRiskReport;
   mixVerification?: import("./mix-preview").MixPreviewVerification;
+  /** E10: how this evidence was obtained — freshly computed, served from the
+   * revision-keyed cache, or uncached because the store reports no revision. */
+  cache?: EvidenceCacheMode;
 }
 
 /**
@@ -191,6 +195,17 @@ function formatRangeHeader(range: RenderRangeAnalysis): string[] {
   return lines;
 }
 
+/** One line stating how the evidence was obtained (E10). Absent when the
+ * caller ran without cache wiring. */
+function formatCacheLine(cache: EvidenceCacheMode | undefined): string[] {
+  if (cache === "hit")
+    return ["evidence: CACHED for this document revision — any edit bumps the revision and forces a re-render"];
+  if (cache === "disabled")
+    return ["evidence cache: disabled (the store reports no revision, so staleness cannot be keyed)"];
+  if (cache === "miss") return ["evidence: freshly rendered"];
+  return [];
+}
+
 /** The agent-facing read-back: evidence table + relative deltas + the
  * streaming-reference verdict for the master. */
 export function formatRenderSummary(data: RenderSummaryData): string {
@@ -209,6 +224,7 @@ export function formatRenderSummary(data: RenderSummaryData): string {
       `metrics: ${lufs}; peak ${(-metrics.headroomDb).toFixed(1)} dBFS (${metrics.peak.toFixed(4)} linear); ${metrics.headroomDb.toFixed(1)} dB headroom; crest ${metrics.crestDb.toFixed(1)} dB; clipped samples ${metrics.clippedSamples}; DC ${metrics.dcOffset.toFixed(6)}; low-end share ${(metrics.lowEndShare * 100).toFixed(1)}%; stereo correlation ${correlation}`,
       `flags: ${metrics.flags.length > 0 ? metrics.flags.map((flag) => `${flag.severity} ${flag.check}: ${flag.detail}`).join("; ") : "none"}`,
       `render coverage: ${data.trackWindow.renderCoverage}`,
+      ...formatCacheLine(data.cache),
     ];
     if (result.caveats.length > 0) lines.push(`caveats: ${result.caveats.map((caveat) => caveat.detail).join("; ")}`);
     return lines.join("\n");
@@ -216,6 +232,7 @@ export function formatRenderSummary(data: RenderSummaryData): string {
 
   const lines: string[] = [];
   if (data.range) lines.push(...formatRangeHeader(data.range));
+  lines.push(...formatCacheLine(data.cache));
   if (data.stripCoverage) {
     const { sourceTracksTotal, sourceTracksMeasured, sourceTracksOmitted, limit } = data.stripCoverage;
     lines.push(
@@ -756,16 +773,25 @@ export async function mcpRenderSummary(
     // E1: a tick window WITHOUT a trackId measures the FULL MIX inside the
     // window — the chorus-vs-verse surface. The track-window branch below
     // keeps its meaning: an isolated track, pre-master.
-    return renderSongWindow(
-      services,
-      doc,
-      {
-        startTick: request.startTick as number,
-        endTick: request.endTick as number,
-        scope,
-      },
-      signal,
+    // E10: served from the revision-keyed cache on repeat calls at the same
+    // document revision; any edit bumps the revision and forces a re-render.
+    const { data, cache } = await cachedEvidence(
+      services.store,
+      "render-summary",
+      { kind: "range", scope, startTick: request.startTick, endTick: request.endTick },
+      () =>
+        renderSongWindow(
+          services,
+          doc,
+          {
+            startTick: request.startTick as number,
+            endTick: request.endTick as number,
+            scope,
+          },
+          signal,
+        ),
     );
+    return { ...data, cache };
   }
   const hasWindowRequest =
     request.trackId !== undefined || request.startTick !== undefined || request.endTick !== undefined;
@@ -778,77 +804,93 @@ export async function mcpRenderSummary(
     ) {
       throw new Error("track-window analysis requires trackId, startTick, and endTick together");
     }
-    const trackWindow = await renderTrackWindow(
-      services,
-      doc,
-      {
-        trackId: request.trackId,
-        startTick: request.startTick,
-        endTick: request.endTick,
+    const windowTrackId = request.trackId;
+    const windowStartTick = request.startTick;
+    const windowEndTick = request.endTick;
+    const { data, cache } = await cachedEvidence(
+      services.store,
+      "render-summary",
+      { kind: "track-window", trackId: windowTrackId, startTick: windowStartTick, endTick: windowEndTick },
+      async () => {
+        const trackWindow = await renderTrackWindow(
+          services,
+          doc,
+          {
+            trackId: windowTrackId,
+            startTick: windowStartTick,
+            endTick: windowEndTick,
+          },
+          signal,
+        );
+        return {
+          scope: "track-window" as const,
+          strips: [] as RenderStripSummary[],
+          master: null,
+          referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+          trackWindow,
+        };
       },
-      signal,
     );
-    return {
-      scope: "track-window",
-      strips: [],
-      master: null,
-      referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
-      trackWindow,
-    };
+    return { ...data, cache };
   }
-  const { renderProject } = await import("../rendering/renderer");
-  const mode = doc.arrangement.clips.length > 0 ? "song" : "pattern";
-  const sampleRate = 44100 as const;
+  // E10: the whole-project pass is the most expensive read an agent makes
+  // (N+1 renders); at the same revision it is served from the cache instead.
+  const { data, cache } = await cachedEvidence(services.store, "render-summary", { kind: "whole", scope }, async () => {
+    const { renderProject } = await import("../rendering/renderer");
+    const mode = doc.arrangement.clips.length > 0 ? "song" : "pattern";
+    const sampleRate = 44100 as const;
 
-  const strips: RenderStripSummary[] = [];
-  let stripCoverage: RenderSummaryData["stripCoverage"];
-  if (scope !== "master") {
-    const candidates = doc.tracks.filter((t) => t.kind !== "group");
-    const included = candidates.slice(0, STRIP_CAP);
-    stripCoverage = {
-      sourceTracksTotal: candidates.length,
-      sourceTracksMeasured: included.length,
-      sourceTracksOmitted: candidates.length - included.length,
-      limit: STRIP_CAP,
-    };
-    for (const track of included) {
-      // The N+1 loop is the big cancellation win: a 14-strip summary that is
-      // aborted at strip 3 stops there instead of rendering 11 more stems.
-      throwIfAborted(signal);
-      const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
-      const buffer = await renderProject(stemDoc, services.bank, {
-        mode,
-        sampleRate,
-        tailSeconds: 0.6,
-        masterProcessing: false,
-        signal,
-      });
-      strips.push({
-        id: track.id,
-        name: track.name,
-        kind: track.kind,
-        ...analyzeBufferMetrics(buffer),
-      });
+    const strips: RenderStripSummary[] = [];
+    let stripCoverage: RenderSummaryData["stripCoverage"];
+    if (scope !== "master") {
+      const candidates = doc.tracks.filter((t) => t.kind !== "group");
+      const included = candidates.slice(0, STRIP_CAP);
+      stripCoverage = {
+        sourceTracksTotal: candidates.length,
+        sourceTracksMeasured: included.length,
+        sourceTracksOmitted: candidates.length - included.length,
+        limit: STRIP_CAP,
+      };
+      for (const track of included) {
+        // The N+1 loop is the big cancellation win: a 14-strip summary that is
+        // aborted at strip 3 stops there instead of rendering 11 more stems.
+        throwIfAborted(signal);
+        const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
+        const buffer = await renderProject(stemDoc, services.bank, {
+          mode,
+          sampleRate,
+          tailSeconds: 0.6,
+          masterProcessing: false,
+          signal,
+        });
+        strips.push({
+          id: track.id,
+          name: track.name,
+          kind: track.kind,
+          ...analyzeBufferMetrics(buffer),
+        });
+      }
     }
-  }
 
-  let master: RenderSummaryData["master"] = null;
-  if (scope !== "tracks") {
-    throwIfAborted(signal);
-    const buffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6, signal });
-    master = analyzeBufferMetrics(buffer);
-  }
+    let master: RenderSummaryData["master"] = null;
+    if (scope !== "tracks") {
+      throwIfAborted(signal);
+      const buffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6, signal });
+      master = analyzeBufferMetrics(buffer);
+    }
 
-  const revisionAfterRender = storeRevision(services.store);
-  const { takeMixPreviewVerification } = await import("./mix-preview");
-  const mixVerification = takeMixPreviewVerification(doc.id, null, revisionAfterRender);
+    const revisionAfterRender = storeRevision(services.store);
+    const { takeMixPreviewVerification } = await import("./mix-preview");
+    const mixVerification = takeMixPreviewVerification(doc.id, null, revisionAfterRender);
 
-  return {
-    scope,
-    strips,
-    master,
-    referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
-    ...(stripCoverage ? { stripCoverage } : {}),
-    ...(mixVerification ? { mixVerification } : {}),
-  };
+    return {
+      scope,
+      strips,
+      master,
+      referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
+      ...(stripCoverage ? { stripCoverage } : {}),
+      ...(mixVerification ? { mixVerification } : {}),
+    } satisfies RenderSummaryData;
+  });
+  return { ...data, cache };
 }

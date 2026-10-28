@@ -4952,7 +4952,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_render_summary",
     description:
-      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. RANGE MODE: startTick+endTick WITHOUT trackId (or fromBar+toBar, 1-based inclusive bars) measures the FULL MIX inside that window — the timeline is rendered from 0 and only the measurement is sliced, so tails and earlier notes stay in the numbers. Use it for range-conditional questions (is the drop louder than the chorus? did the fix land in the bridge?). For a focused single-track read, provide trackId, startTick, and endTick together: KYX renders that isolated track pre-master and returns exact window timing, mix-health metrics, and the project revision before/after rendering. Use before/after mix moves so decisions cite numbers, not vibes. Slow (N+1 offline renders); render-bound transports only.",
+      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. RANGE MODE: startTick+endTick WITHOUT trackId (or fromBar+toBar, 1-based inclusive bars) measures the FULL MIX inside that window — the timeline is rendered from 0 and only the measurement is sliced, so tails and earlier notes stay in the numbers. Use it for range-conditional questions (is the drop louder than the chorus? did the fix land in the bridge?). For a focused single-track read, provide trackId, startTick, and endTick together: KYX renders that isolated track pre-master and returns exact window timing, mix-health metrics, and the project revision before/after rendering. Use before/after mix moves so decisions cite numbers, not vibes. Repeat calls at the same document revision are served from a revision-keyed evidence cache (data.cache reports hit/miss/disabled); ANY edit bumps the revision and forces a re-render, so a stale answer is impossible by keying. Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -5030,6 +5030,10 @@ export const MCP_TOOL_DEFS = [
         },
         range: {
           type: "object",
+        },
+        cache: {
+          type: "string",
+          enum: ["hit", "miss", "disabled"],
         },
       },
       required: ["scope", "strips", "referenceLufs"],

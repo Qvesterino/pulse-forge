@@ -375,3 +375,43 @@ describe("App — Tab traversal vs next-track scope (CF-05)", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 });
+
+describe("App — Escape never touches the transport (CF-06)", () => {
+  function escHarness() {
+    const services = mockServices();
+    renderWithContext(<App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />, {
+      services,
+    });
+    return { services };
+  }
+
+  it("NEGATIVE: bare Escape with nothing to clear does not stop or seek the transport", () => {
+    const { services } = escHarness();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(services.playback.stop).not.toHaveBeenCalled();
+    expect(services.playback.seek).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Space is the stop chord (positive control — the action did not die)", () => {
+    const { services } = escHarness();
+    fireEvent.keyDown(window, { key: " ", shiftKey: true });
+    expect(services.playback.stop).toHaveBeenCalled();
+  });
+
+  it("NEGATIVE: bare Space must NOT trigger stop (Shift+Space only)", () => {
+    const { services } = escHarness();
+    fireEvent.keyDown(window, { key: " " });
+    expect(services.playback.stop).not.toHaveBeenCalled();
+    // …and the unmodified Space chord still reaches play/pause.
+    expect(services.playback.playPause).toHaveBeenCalled();
+  });
+
+  it("NEGATIVE: Escape inside a text field blurs it and does not stop (ladder intact)", () => {
+    const { services } = escHarness();
+    const nameField = screen.getByLabelText("Project name");
+    nameField.focus();
+    fireEvent.keyDown(nameField, { key: "Escape" });
+    expect(document.activeElement).not.toBe(nameField);
+    expect(services.playback.stop).not.toHaveBeenCalled();
+  });
+});

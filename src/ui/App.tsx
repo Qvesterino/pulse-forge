@@ -1177,7 +1177,11 @@ export function App({
         runShortcutRef.current(matchedShortcut, event);
         return;
       }
-      // Escape is contextual: close menu/help → clear unified selection → reset tool → blur inputs
+      // Escape is contextual: close menu/help → clear unified selection → reset tool → blur inputs.
+      // When the ladder has nothing to clear, Escape is a deliberate NO-OP
+      // (CF-06): it never falls through to the transport, because a musician
+      // pressing Escape to dismiss something must not lose playback AND the
+      // playhead position. Stop lives on Shift+Space / the ■ button / palette.
       if (event.key === "Escape") {
         if (captureOffer) {
           setCaptureOffer(false);

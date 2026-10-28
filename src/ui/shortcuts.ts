@@ -118,7 +118,18 @@ export const SHORTCUTS: Shortcut[] = [
   },
   // keyHint must equal the literal event.key ("Escape", not "Esc") — the
   // matcher lowercases but does not alias key names.
-  { key: "stop", label: "Stop (clears help/selection first)", group: "Transport", keyHint: "Escape" },
+  // CF-06: stop moved off Escape — Escape is the universal "back out" key and
+  // a musician pressing it to dismiss something must not lose playback AND
+  // the playhead position (stop() rewinds unconditionally). Space pauses in
+  // place, Shift+Space is the explicit stop chord, Home returns to the start.
+  // The exhausted Escape ladder in App is a deliberate no-op.
+  {
+    key: "stop",
+    label: "Stop — return to start",
+    group: "Transport",
+    keyHint: " ",
+    shift: true,
+  },
   { key: "seekHome", label: "Return to start", group: "Transport", keyHint: "Home" },
   { key: "seekBack", label: "Nudge −1 bar", group: "Transport", keyHint: "," },
   { key: "seekForward", label: "Nudge +1 bar", group: "Transport", keyHint: "." },
