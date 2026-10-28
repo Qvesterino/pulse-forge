@@ -30,7 +30,7 @@ export const QMR_BRIDGE_VERSION = "1.0.0";
  * Qvester side can adopt it verbatim). */
 export const QMR_KYX_MANIFEST = {
   appId: QMR_APP_ID,
-  appName: "KYX — Pulse Forge",
+  appName: "KYX",
   appIcon: "PF",
   supports: {
     newProject: true,
