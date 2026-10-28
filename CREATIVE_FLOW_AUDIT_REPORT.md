@@ -105,10 +105,11 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Fix (the written rule, approved):** **Escape never touches the transport.** The stop chord moved from Escape to **Shift+Space** ("Stop — return to start"); Space still pauses in place, Home still returns to start; the exhausted Escape ladder is a documented no-op in the handler. Stop remains on the ■ button and in the command palette; the registry-derived surfaces (help, tooltips, statusbar) updated automatically.
 - **Verification:** four jsdom specs (bare Escape neither stops nor seeks; Shift+Space stops; bare Space still play/pauses and does NOT stop; Escape inside a text field blurs without stopping) + real-browser proof against the built bundle: during playback the transport showed `❚❚`, a synthetic bare Escape left it playing, Shift+Space returned it to `▶`.
 
-### CF-07 | High (risk perception) | Confirmed | Status: PROTOTYPE
+### CF-07 | High (risk perception) | Confirmed | Status: **FIXED — commit `e063fa0e`**
 
-- **Finding:** selecting **REPLACE while armed clears the active pattern instantly** — straight from the dropdown `onChange` (`TopBar.tsx:719`), via `setArmed`/`setMode` (`patternRecorder.ts:78-109`) into `prepareRecordPattern` (`project.ts:88-115`). During a performance, one mis-click empties the beat. The whole pass (clear + notes) is ONE "Recorded take" undo frame, but nothing surfaces that at the moment of the clear; the only guard is tooltip text.
-- **Proposed (no friction added to the happy path):** keep the behavior, disclose the recovery _at the moment it matters_ — a toast "Pattern cleared — Ctrl+Z restores the previous take" using the existing toast surface. Optionally require the transport to be stopped before REPLACE can be selected (punch mode already does this, `:1224-1226`).
+- **Finding:** selecting **REPLACE while armed clears the active pattern instantly** — straight from the dropdown `onChange`, via `setArmed`/`setMode` into `prepareRecordPattern`. During a performance, one mis-click empties the beat. The whole pass (clear + notes) is ONE "Recorded take" undo frame, but nothing surfaced that at the moment of the clear; the only guard was tooltip text.
+- **Fix (the approved proposal — behavior kept, silence removed):** every trigger funnels through `runReplaceClear()`, which now fires an `onReplaceClear` hook; services turns it into a window event and the TopBar answers on its existing `mode-hint` surface: "REPLACE cleared the pattern — one Ctrl+Z brings it back". The copy is honest at any moment — `ProjectStore.undo` seals the open record frame first, so the single undo takes the whole pass back, clear included, even mid-take. The wipe itself is unchanged; no friction added to the happy path.
+- **Verification:** recorder unit specs (hook fires exactly once per pass — at arm and on a mid-pass mode flip — and never on overdub), TopBar specs (the `role="status"` disclosure renders on the event and NOT when arming through the real record button), seam `pattern-replace-disclosure` (96 seams, gate green), typecheck clean. Real-browser run was skipped this time: the in-app browser guest refused to attach for the whole session — the two-sided jsdom seam carries the proof.
 
 ### CF-08 | High (for the recording journey) | Confirmed | Status: TIER B
 
@@ -207,7 +208,7 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-03                | 3      | 5    | 5    | 5        | 5      | 23    | **FIX NOW (shipped)**                              |
 | CF-04                | 3      | 4    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                              |
 | CF-05                | 5      | 5    | 5    | 3        | 2      | 20    | **FIXED after owner approval (commit `892dcc61`)** |
-| CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | PROTOTYPE (disclosure toast)                       |
+| CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | **FIX NOW (shipped — disclosure, not friction)**   |
 | CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | PROTOTYPE (record loop)                            |
 | CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | PROTOTYPE (follow-playhead)                        |
 | CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                          |
@@ -270,7 +271,7 @@ _(Formerly deferred here: CF-05 — approved and shipped as `892dcc61`; see §4.
 ## 10. 30/60/90-day optimization roadmap
 
 **30 days — disclosure and parking (small, mostly additive).**
-CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-07 REPLACE recovery toast; CF-10 take-start parking (behind a documented default); CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. Exit: each has a seam entry with a negative.
+CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-10 take-start parking (behind a documented default); CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`.) Exit: each has a seam entry with a negative.
 
 **60 days — the listening loops.**
 CF-09 follow-playhead prototype (hysteresis, census gate watching); CF-08 calibration surfaced from the record toolbar; CF-19 MixPreview staleness guard; CF-13 project search; CF-11 zoom/focus persistence via the layout store. The CF-05 Playwright journey (staged in `keyboard-guards.spec.ts`) joins the regular suite once the shared dev server is healthy — that run is also the first real-browser measurement this audit's blocked e2e pass was waiting for.
