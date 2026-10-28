@@ -6,11 +6,23 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A stale run for a superseded commit wastes runners and can race the newest
-# result — cancel it in favor of the latest push.
+# A stale run for a superseded commit wastes runners — but cancelling the
+# RUNNING one costs more than that, because the verdict is the product here.
+# Measured 2026-10-28: the unit-tests job needs 22-29 min on a GitHub runner
+# (it compiles a 39 MB WebAssembly module and runs 1326 spec files), and the
+# team pushes every ~5 min. With cancel-in-progress: true every one of those
+# pushes killed the run in flight: 22 runs cancelled that day, and the
+# unit-tests job NEVER reached a verdict — so nobody could tell whether it
+# was green. My own verification run was cancelled 5.4 min in, by a push that
+# had nothing to do with the change under test.
+#
+# With cancel-in-progress: false the running job finishes and reports, and
+# GitHub keeps only the LATEST pending run in the group (an older pending
+# run is cancelled and replaced). So at most one superseded run is wasted,
+# and every run that starts produces a verdict.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   typecheck:
