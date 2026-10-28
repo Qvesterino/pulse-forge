@@ -41,11 +41,19 @@ test.describe("04 — persistence roundtrip", () => {
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
 
+    // The library loads asynchronously, so the project may not be on offer
+    // the moment the browser renders: wait for it before opening it.
     const continueCard = page.locator(".pb-continue-card").first();
+    await expect
+      .poll(async () => (await continueCard.count()) + (await page.locator(".pb-row .pb-row-name").count()), {
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
     if ((await continueCard.count()) > 0) {
       await continueCard.click();
     } else {
-      await page.locator(".pb-row button:has-text(OPEN)").first().click();
+      // A library row opens by its NAME button - there is no "OPEN" button.
+      await page.locator(".pb-row .pb-row-name").first().click();
     }
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
 
