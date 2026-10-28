@@ -168,6 +168,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",
+      "kyx_performance",
     ]);
   });
 
@@ -1061,6 +1062,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",
+      "kyx_performance",
     ]);
   });
 

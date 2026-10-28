@@ -370,6 +370,15 @@
         "destructiveHint": false,
         "idempotentHint": false
       }
+    },
+    {
+      "name": "kyx_performance",
+      "risk": "mutate",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      }
     }
   ]
 }

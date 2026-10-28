@@ -235,6 +235,15 @@ function census(): CensusEntry[] {
       args: () => ({ fromBar: 1, toBar: 4 }),
       kind: "read",
     },
+    {
+      // ADR 0077 — the performance DOCUMENT surface. createSet is the
+      // mutating branch (Live Sets are plain document commands, one undo
+      // step), so the census observes it as a document member: the document
+      // must move and the agent must be told what landed.
+      tool: "kyx_performance",
+      args: () => ({ op: "createSet", name: "Census Set" }),
+      kind: "document",
+    },
   ];
 }
 
