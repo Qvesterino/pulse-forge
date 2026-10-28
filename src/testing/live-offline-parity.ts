@@ -1204,6 +1204,10 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     }
   }
 
+  // A failure reads "<label>: <detail>", where the label is the corpus key
+  // ("fx:<type>" / "instrument:<kind>"). A failure that carries no prefix is
+  // its own label.
+  const labelOf = (failure: string) => failure.split(": ")[0] ?? failure;
   return {
     name: "live↔offline null test: same engine + events on both contexts",
     ok: failures.length === 0,
@@ -1212,10 +1216,20 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     // and fixing those eight REVEALED the next eight instead of turning the
     // gate green. A gate must report how many cases failed, not how many fit
     // in one line.
+    //
+    // It now LEADS with the label of every failed case. The per-case
+    // diagnostics are ~500 characters each and the CI annotation truncates
+    // the message at a byte budget, so a tail-first message loses the cases
+    // at its end — the triage then sees six of twenty-two and cannot name
+    // the rest. The labels come first so every failure is named; the
+    // diagnostics follow for the first eight.
     message:
       failures.length === 0
         ? `passed=${cases}/${cases}`
-        : `failed=${failures.length}/${cases} (first ${Math.min(8, failures.length)} shown) — ${failures.slice(0, 8).join(" | ")}`,
+        : `failed=${failures.length}/${cases} — failing cases: ${failures.map(labelOf).join(", ")} — details for the first ${Math.min(
+            8,
+            failures.length,
+          )}: ${failures.slice(0, 8).join(" | ")}`,
   };
 }
 

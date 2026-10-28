@@ -106,7 +106,38 @@ jobs:
       # the failure set must exactly match suite-expectations.json — a new
       # red OR a cured ledger entry fails the build (the baseline may only
       # shrink; see scripts/suite-expectations.mjs).
-      - run: npm run test:expectations
+      # The failing spec names go to the job summary AND to an error
+      # annotation. A failed job's log sits behind a login, and "Process
+      # completed with exit code 1" alone cannot tell the next agent WHICH
+      # spec regressed — the ratchet decides on the failure SET, so the
+      # annotation has to carry the set.
+      - name: Run npm run test:expectations
+        run: |
+          set +e
+          npm run test:expectations 2>&1 | tee /tmp/vitest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run test:expectations FAILED (exit $status)"
+              echo '```'
+              grep -E 'suite run:|NEW REDS|CURED \(|LEDGER PROBLEMS|ledger matches reality' /tmp/vitest.log | head -20 || true
+              echo '--- vitest failures ---'
+              grep -E '^[[:space:]]*FAIL[[:space:]]' /tmp/vitest.log | head -40 || true
+              echo '--- ledger entries ---'
+              grep -E '^ +- ' /tmp/vitest.log | head -60 || true
+              echo '--- tail ---'
+              tail -30 /tmp/vitest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=unit tests failed (exit %s)::%s\n' "$status" \
+              "$( { grep -E 'suite run:|NEW REDS|CURED \(|LEDGER PROBLEMS|ledger matches reality' /tmp/vitest.log | head -20; \
+                   echo '--- vitest failures ---'; \
+                   grep -E '^[[:space:]]*FAIL[[:space:]]' /tmp/vitest.log | head -40; \
+                   echo '--- ledger entries ---'; \
+                   grep -E '^ +- ' /tmp/vitest.log | head -60; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 60000)"
+          fi
+          exit $status
         env:
           NODE_OPTIONS: --expose-gc
       - run: npm run ai:performance
@@ -253,7 +284,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             printf '::error title=browser audio checks failed (exit %s)::%s\n' "$status" \
               "$( { grep -E 'FAIL' /tmp/browser.log | head -12; echo '--- tail ---'; tail -20 /tmp/browser.log; } \
-                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 60000)"
           fi
           exit $status
       # Real-browser AI-control gate: the persisted-save receipt through
