@@ -86,6 +86,37 @@ function kickBassRiskEvidence(summary: RenderSummaryData): MusicalEvidence | nul
   };
 }
 
+function mixVerificationEvidence(
+  snapshot: MusicalContextSnapshotV1,
+  summary: RenderSummaryData,
+): MusicalEvidence | null {
+  const receipt = summary.mixVerification;
+  if (
+    !receipt ||
+    receipt.status !== "measured" ||
+    receipt.freshness !== "current" ||
+    receipt.projectId !== snapshot.project.id ||
+    snapshot.project.revision === null ||
+    receipt.revisionAfterRender !== snapshot.project.revision ||
+    receipt.appliedRevision !== snapshot.project.revision ||
+    receipt.window?.startTick !== snapshot.scope.startTick ||
+    receipt.window.endTick !== snapshot.scope.endTick
+  ) {
+    return null;
+  }
+  return {
+    id: "analysis.mix-verification",
+    kind: "measurement",
+    claim: "Fresh post-apply loudness measurement compared with the preview for this project range",
+    value: structuredClone(receipt),
+    provenance: { source: "kyx_render_summary", tool: "kyx_render_summary", path: "mixVerification" },
+    confidence: null,
+    uncertainty:
+      "LUFS measures loudness only. Structural agreement and loudness changes do not establish that the requested musical goal was achieved; use a human level-matched A/B verdict.",
+    invalidatedBy: ["project_revision", "source_audio", "render_chain", "tempo_map"],
+  };
+}
+
 export function attachMusicalContextRenderEvidence(
   snapshot: MusicalContextSnapshotV1,
   summary: RenderSummaryData,
@@ -129,10 +160,17 @@ export function attachMusicalContextRenderEvidence(
   const measurements = renderMeasurement(summary, freshness);
   const census = arrangementCensusEvidence(summary);
   const risk = kickBassRiskEvidence(summary);
+  const verification = mixVerificationEvidence(snapshot, summary);
   return {
     ...snapshot,
-    freshness,
-    evidence: [...snapshot.evidence, measurements, ...(census ? [census] : []), ...(risk ? [risk] : [])],
+    freshness: freshness === "current" ? "current_at_capture" : "unknown",
+    evidence: [
+      ...snapshot.evidence,
+      measurements,
+      ...(census ? [census] : []),
+      ...(risk ? [risk] : []),
+      ...(verification ? [verification] : []),
+    ],
     analysis: { status: "measured", requestedScope: snapshot.analysis.requestedScope, measuredScope: summary.scope },
     limitations:
       freshness === "unknown"
