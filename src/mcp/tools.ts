@@ -14349,6 +14349,11 @@ function executePerformanceTool(ctx: McpToolContext, record: Record<string, unkn
     return {
       text: lines.join("\n"),
       mutated: false,
+      // A listing is a non-document FACT, so it declares its disposition
+      // (stage: "read") instead of letting the dispatch perimeter guess one.
+      // The refusal-taxonomy gate (audit F-05) requires this of every result
+      // that changed no document.
+      stage: "read",
       data: {
         status: "read",
         sets:
