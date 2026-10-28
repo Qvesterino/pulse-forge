@@ -1748,13 +1748,6 @@ const OUTPUT_SONG = receiptSchema({
 const OUTPUT_UNSUNO = receiptSchema({
   action: { type: "string", enum: ["transcribe", "restyle", "regen", "similarity"] },
 });
-const OUTPUT_PERFORMANCE: McpOutputSchema = receiptSchema({
-  op: { type: "string" },
-  setId: { type: "string" },
-  macroId: { type: "string" },
-  sets: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 32 },
-  macros: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 64 },
-});
 const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
   kyx_state: OUTPUT_STATE,
   kyx_context: OUTPUT_MUSICAL_CONTEXT,
