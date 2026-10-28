@@ -12723,24 +12723,23 @@ function masterSignalFlowStatus(doc: ProjectDocument): string[] {
 /** kyx_separate — the separation step of the agent loop (stem-separate.ts). */
 async function executeSeparateTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   if (!ctx.separateStems) {
-    return {
-      text:
-        "kyx_separate needs a live session with the sample bank to separate and register buffers — this context cannot (headless?). " +
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      "kyx_separate needs a live session with the sample bank to separate and register buffers — this context cannot (headless?). " +
         'Separate in the app (the separation panel), then kyx_master op:"stems" import still works with those buffer ids.',
-      mutated: false,
-    };
+    );
   }
   const sourceId = typeof record.sourceId === "string" ? record.sourceId.trim() : "";
   if (!sourceId)
-    return { text: 'kyx_separate needs sourceId — a user-library audio id (tier defaults to "hpss").', mutated: false };
+    return mcpError("INVALID_ARGUMENTS", 'kyx_separate needs sourceId — a user-library audio id (tier defaults to "hpss").');
   const tier = record.tier === "model" ? "model" : "hpss";
   const maxSeconds =
     typeof record.maxSeconds === "number" && Number.isFinite(record.maxSeconds) && record.maxSeconds > 0
       ? record.maxSeconds
       : undefined;
   const outcome = await ctx.separateStems({ sourceId, tier, maxSeconds });
-  if (!outcome.ok) return { text: `kyx_separate: ${outcome.error}`, mutated: false };
-  return { text: describeSeparation(outcome.result), mutated: false, data: outcome.result };
+  if (!outcome.ok) return mcpError("EXECUTION_FAILED", `kyx_separate: ${outcome.error}`);
+  return { text: describeSeparation(outcome.result), mutated: false, stage: "runtime", data: outcome.result };
 }
 
 /** kyx_unsuno — the track-to-project pipeline for agents. */

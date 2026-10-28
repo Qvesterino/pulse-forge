@@ -6,6 +6,7 @@ import ts from "typescript";
 import { executeMcpTool, resetMcpIdempotencyLedger, type McpErrorCode, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE REFUSAL TAXONOMY (audit F-05) — the complementary half of the gate that
@@ -48,6 +49,7 @@ const TAXONOMY: readonly McpErrorCode[] = [
   "WRITE_CONFLICT",
   "CONFIRMATION_REQUIRED",
   "RESOURCE_LIMIT",
+  "CANCELLED",
 ];
 
 function isFalseLiteral(node: ts.Node): boolean {
@@ -131,7 +133,7 @@ describe("the MCP refusal taxonomy (audit F-05)", () => {
 
     function makeCtx(document: ProjectDocument): McpToolContext {
       let current = document;
-      return {
+      return withAgentWriter({
         getDoc: () => current,
         execute: (command) => {
           current = command.execute(current);
@@ -142,7 +144,7 @@ describe("the MCP refusal taxonomy (audit F-05)", () => {
         historyLabels: () => [],
         isMicRecordingActive: () => false,
         transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-      };
+      });
     }
 
     beforeEach(() => {

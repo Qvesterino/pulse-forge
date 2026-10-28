@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { executeMcpTool, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE RECEIPT CENSUS.
@@ -224,6 +225,11 @@ function census(): CensusEntry[] {
       kind: "external",
       why: "records the A/B trial log — the document is not the witness",
     },
+    {
+      tool: "kyx_separate",
+      args: () => ({ sourceId: "user.song" }),
+      kind: "read",
+    },
   ];
 }
 
@@ -239,7 +245,7 @@ function harness(start: ProjectDocument): Harness {
   const labels: string[] = [];
   return {
     doc: () => current,
-    ctx: {
+    ctx: withAgentWriter({
       getDoc: () => current,
       execute: (command) => {
         current = command.execute(current);
@@ -271,7 +277,7 @@ function harness(start: ProjectDocument): Harness {
         setLoop: () => {},
         setMetronome: () => {},
       },
-    },
+    }),
   };
 }
 

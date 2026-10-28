@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { addArrangementClip } from "../src/commands/commands";
@@ -29,7 +30,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -59,7 +60,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 /** Two scene clips at bars 0-3 and 4-7, plus one audio clip on the drum lane.

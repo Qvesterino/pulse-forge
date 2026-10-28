@@ -28,6 +28,11 @@ function makeCtx(): McpToolContext {
   return {
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
+    // The ISOLATED writer every MCP write lands through (`83ed86d5`). A host
+    // without it has its write refused — so the harness exposes the real one.
+    executeAgentCommand: (command, frameToken) => store.executeAgentCommand(command, frameToken),
+    beginOwnedUndoFrame: (label) => store.beginOwnedUndoFrame(label),
+    endOwnedUndoFrame: (token) => store.endOwnedUndoFrame(token),
     undo: () => store.undo(),
     redo: () => store.redo(),
     undoStackLength: () => store.undoStackLength,

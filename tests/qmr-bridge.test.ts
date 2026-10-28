@@ -127,6 +127,10 @@ describe("qmr bridge — parity with the MCP surface", async () => {
       {
         getDoc: () => store2.doc,
         execute: (c) => store2.execute(c),
+        // The ISOLATED writer every MCP write lands through (`83ed86d5`).
+        executeAgentCommand: (c, frameToken) => store2.executeAgentCommand(c, frameToken),
+        beginOwnedUndoFrame: (label) => store2.beginOwnedUndoFrame(label),
+        endOwnedUndoFrame: (token) => store2.endOwnedUndoFrame(token),
         undo: () => store2.undo(),
         redo: () => store2.redo(),
         undoStackLength: () => store2.undoStackLength,
