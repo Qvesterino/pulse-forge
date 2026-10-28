@@ -310,6 +310,37 @@ export interface SampleLayer {
   root?: number;
 }
 
+/**
+ * One axis of the TSAR ORBIT surface (ADR 0074).
+ *
+ * `paramId` is a STABLE TSAR parameter id — the same identity the patch,
+ * the automation lane and the mod matrix use. It never becomes an index:
+ * a parameter added later must not renumber the axes of a saved project.
+ *
+ * `min`/`max` are the axis RANGE in parameter units, not the parameter's
+ * own limits: a cutoff axis from 200 Hz to 12 kHz is a musical choice, and
+ * it travels with the patch so the same gesture means the same thing on
+ * another machine.
+ */
+export interface OrbitAxis {
+  paramId: string;
+  min: number;
+  max: number;
+}
+
+/**
+ * The ORBIT mapping of one track: which parameter each axis drives.
+ *
+ * The POSITION of the surface is NOT stored here — it lives in the track's
+ * ordinary `params`, so the value the producer sees, the value the engine
+ * plays and the value an automation lane writes are the same number. The
+ * mapping is what the position cannot say: which parameter, over which range.
+ */
+export interface OrbitMapping {
+  x: OrbitAxis;
+  y: OrbitAxis;
+}
+
 export interface InstrumentTrack {
   id: ID;
   kind: "instrument";
@@ -349,6 +380,12 @@ export interface InstrumentTrack {
    * Absent = dry monitoring, which is the unchanged default.
    */
   inputInsert?: TrackInputInsert;
+  /**
+   * The TSAR ORBIT surface's mapping — which parameter the X and Y axes
+   * drive, and over which range (ADR 0074). Absent = the track has no ORBIT
+   * surface, which is the unchanged default for every non-TSAR track.
+   */
+  orbit?: OrbitMapping;
 }
 
 export interface GroupTrack {

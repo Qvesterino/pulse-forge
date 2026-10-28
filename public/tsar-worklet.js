@@ -929,7 +929,16 @@
           break;
         }
         case "param":
-          this.proc.setParam(message.name, message.value);
+          if (typeof message.when === "number" && Number.isFinite(message.when)) {
+            this.proc.postEvent({
+              type: "param",
+              when: message.when,
+              name: message.name,
+              value: message.value
+            });
+          } else {
+            this.proc.setParam(message.name, message.value);
+          }
           break;
         case "bpm":
           if (!Number.isFinite(message.bpm)) break;

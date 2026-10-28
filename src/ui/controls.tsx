@@ -193,23 +193,14 @@ interface SliderProps {
  * 0..1 drag ratio onto min..max geometrically (midpoint = geometric mean),
  * so a 20 Hz–20 kHz knob puts 632 Hz in the middle instead of 10 kHz.
  * Log requires min > 0 and max > min, otherwise it falls back to linear.
+ *
+ * The implementation lives in `src/shared/taper.ts` so DOM-free modules can
+ * use it too (the TSAR ORBIT surface maps a pad position onto a parameter's
+ * range). It is re-exported here, so every existing import site is unchanged.
  */
-export type SliderTaper = "linear" | "log";
-
-export function taperToRatio(min: number, max: number, value: number, taper: SliderTaper = "linear"): number {
-  if (taper !== "log" || !(min > 0) || !(max > min)) {
-    return (value - min) / (max - min);
-  }
-  return Math.log(value / min) / Math.log(max / min);
-}
-
-export function ratioToTaper(min: number, max: number, ratio: number, taper: SliderTaper = "linear"): number {
-  const r = Math.min(1, Math.max(0, ratio));
-  if (taper !== "log" || !(min > 0) || !(max > min)) {
-    return min + r * (max - min);
-  }
-  return min * Math.pow(max / min, r);
-}
+export type { SliderTaper } from "../shared/taper";
+export { taperToRatio, ratioToTaper } from "../shared/taper";
+import { taperToRatio, ratioToTaper } from "../shared/taper";
 
 /**
  * Parse a hand-typed control value into the control's domain (pure —

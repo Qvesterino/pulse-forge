@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useServices, useTracks } from "./context";
+import { useServices, useTracks, useAutomation } from "./context";
 import { Slider } from "./controls";
 import { tsarParams } from "../tsar/params";
 import {
@@ -7,7 +7,25 @@ import {
   applyInstrumentPreset,
   setInstrumentParam,
   applyForgeCandidateCommand,
+  applyOrbitPreset,
+  clearOrbitRecording,
+  recordOrbitPath,
+  restoreDefaultOrbitMapping,
+  setOrbitMapping,
+  setOrbitPosition,
+  type OrbitSample,
 } from "../commands/commands";
+import {
+  ORBIT_PRESETS,
+  ORBIT_TARGETS,
+  ORBIT_TARGET_BY_ID,
+  defaultOrbitMapping,
+  isOrbitAxisLive,
+  normalizeOrbitMapping,
+  orbitAxisPosition,
+  orbitAxesCollide,
+} from "../tsar/orbit";
+import { TsarOrbit } from "./TsarOrbit";
 import { forgeCandidates as forgeCandidateSet, candidateSummary, type ForgeCandidate } from "../tsar/forge-candidates";
 import {
   buildSourceRecord,
@@ -178,6 +196,78 @@ export function TsarPanel() {
   const [mutRuns, setMutRuns] = useState<{ key: string; seed: number; variants: TsarMutation[] }[]>([]);
   const [mutNote, setMutNote] = useState<string | null>(null);
 
+  // ── ORBIT — the 2-D performance surface (ADR 0074) ─────────────────────
+  /**
+   * The MAPPING lives in the project (the track's patch); the POSITION lives
+   * in the two parameters' values. The panel derives what it draws and
+   * dispatches what the producer did — it never holds the truth (R6: the UI
+   * is not the source of truth for the audio callback).
+   */
+  const [orbitRecording, setOrbitRecording] = useState(false);
+  const [orbitNote, setOrbitNote] = useState<string | null>(null);
+  /** The samples of the gesture in progress (one per tick). */
+  const orbitSamplesRef = useRef<OrbitSample[]>([]);
+  const automationLanes = useAutomation();
+
+  const orbitMapping = useMemo(() => normalizeOrbitMapping(track?.orbit), [track?.orbit]);
+  const orbitPosition = useMemo(() => {
+    const params = track?.params ?? {};
+    const valueOf = (paramId: string): number => {
+      const raw = params[paramId];
+      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+      return ORBIT_TARGET_BY_ID[paramId]?.default ?? 0;
+    };
+    return {
+      x: orbitAxisPosition(orbitMapping.x, valueOf(orbitMapping.x.paramId)),
+      y: orbitAxisPosition(orbitMapping.y, valueOf(orbitMapping.y.paramId)),
+    };
+  }, [orbitMapping, track?.params]);
+  const orbitSilent = useMemo(() => {
+    const params = track?.params ?? {};
+    const reason = (paramId: string): string | null =>
+      isOrbitAxisLive(paramId, params)
+        ? null
+        : (ORBIT_TARGET_BY_ID[paramId]?.silentBecause ?? "not audible with this patch");
+    return { x: reason(orbitMapping.x.paramId), y: reason(orbitMapping.y.paramId) };
+  }, [orbitMapping, track?.params]);
+  const orbitActivePresetId = useMemo(() => {
+    const found = ORBIT_PRESETS.find(
+      (preset) =>
+        preset.x.paramId === orbitMapping.x.paramId &&
+        preset.y.paramId === orbitMapping.y.paramId &&
+        preset.x.min === orbitMapping.x.min &&
+        preset.x.max === orbitMapping.x.max &&
+        preset.y.min === orbitMapping.y.min &&
+        preset.y.max === orbitMapping.y.max,
+    );
+    return found?.id ?? null;
+  }, [orbitMapping]);
+  const orbitCanRestore = useMemo(() => {
+    const fallback = defaultOrbitMapping();
+    return (
+      orbitMapping.x.paramId !== fallback.x.paramId ||
+      orbitMapping.y.paramId !== fallback.y.paramId ||
+      orbitMapping.x.min !== fallback.x.min ||
+      orbitMapping.x.max !== fallback.x.max ||
+      orbitMapping.y.min !== fallback.y.min ||
+      orbitMapping.y.max !== fallback.y.max
+    );
+  }, [orbitMapping]);
+  const orbitHasRecording = useMemo(() => {
+    const trackId = track?.id;
+    if (!trackId) return false;
+    const owned = new Set([orbitMapping.x.paramId, orbitMapping.y.paramId]);
+    return automationLanes.some(
+      (lane) =>
+        lane.target.kind === "instParam" &&
+        lane.target.trackId === trackId &&
+        !lane.target.fxId &&
+        Boolean(lane.target.paramId) &&
+        owned.has(lane.target.paramId!) &&
+        lane.points.length > 0,
+    );
+  }, [automationLanes, orbitMapping, track?.id]);
+
   if (!track) {
     return (
       <div className="tsar-panel" role="region" aria-label="TSAR engine">
@@ -190,6 +280,87 @@ export function TsarPanel() {
 
   const onParam = (paramId: string, value: number) => {
     services.store.execute(setInstrumentParam(services.store.doc, track.id, paramId, value));
+  };
+
+  // ── ORBIT handlers ─────────────────────────────────────────────────────
+  /** The surface moved: write the two parameters, and sample it if recording. */
+  const orbitMove = (x: number, y: number) => {
+    if (!track) return;
+    services.store.execute(setOrbitPosition(services.store.doc, track.id, x, y));
+    if (!orbitRecording) return;
+    const tick = Math.max(0, Math.round(services.transport.position));
+    const samples = orbitSamplesRef.current;
+    const last = samples[samples.length - 1];
+    // One sample per tick: the surface moves faster than the transport, and
+    // the curve wants the value the producer LEFT at that tick.
+    if (last && last.tick === tick) {
+      last.x = x;
+      last.y = y;
+    } else {
+      samples.push({ tick, x, y });
+    }
+  };
+  /** The gesture began: open the undo frame, so a whole drag is ONE entry. */
+  const orbitGestureStart = () => {
+    services.store.beginUndoFrame("ORBIT move");
+    orbitSamplesRef.current = [];
+  };
+  /**
+   * The gesture ended: flush the recording INSIDE the frame, so one Ctrl+Z
+   * takes back the movement AND the curve it produced.
+   */
+  const orbitGestureEnd = () => {
+    const samples = orbitSamplesRef.current;
+    orbitSamplesRef.current = [];
+    if (orbitRecording && track && samples.length > 0) {
+      if (!services.transport.playing) {
+        setOrbitNote("The transport must be running to record a performance.");
+      } else {
+        services.store.execute(recordOrbitPath(services.store.doc, track.id, samples));
+        setOrbitNote(`Recorded ${samples.length} point${samples.length === 1 ? "" : "s"} into the project automation.`);
+      }
+    }
+    services.store.endUndoFrame();
+  };
+  const orbitChangeTarget = (axis: "x" | "y", paramId: string) => {
+    if (!track) return;
+    const target = ORBIT_TARGET_BY_ID[paramId];
+    if (!target) return;
+    const next = {
+      x:
+        axis === "x"
+          ? { paramId, min: target.min, max: target.max }
+          : { ...orbitMapping.x },
+      y:
+        axis === "y"
+          ? { paramId, min: target.min, max: target.max }
+          : { ...orbitMapping.y },
+    };
+    if (orbitAxesCollide(next)) {
+      setOrbitNote("Both axes drive the same parameter — the surface would have nothing to say.");
+      return;
+    }
+    setOrbitNote(null);
+    services.store.execute(setOrbitMapping(services.store.doc, track.id, next));
+  };
+  const orbitApplyPreset = (presetId: string) => {
+    if (!track) return;
+    setOrbitNote(null);
+    services.store.execute(applyOrbitPreset(services.store.doc, track.id, presetId));
+  };
+  const orbitRestore = () => {
+    if (!track) return;
+    services.store.execute(restoreDefaultOrbitMapping(services.store.doc, track.id));
+    setOrbitNote("The original mapping is back.");
+  };
+  const orbitToggleRecord = () => {
+    setOrbitNote(null);
+    setOrbitRecording((value) => !value);
+  };
+  const orbitClearRecording = () => {
+    if (!track) return;
+    services.store.execute(clearOrbitRecording(services.store.doc, track.id));
+    setOrbitNote("The recorded curve is gone.");
   };
 
   const presets = TSAR_FACTORY_PRESETS.filter((preset) => {
@@ -537,6 +708,30 @@ export function TsarPanel() {
           </div>
         </section>
       </div>
+
+      <section className="tsar-orbit-section" aria-label="ORBIT performance surface">
+        <h3 className="tsar-section-title">ORBIT · 2D SURFACE</h3>
+        <TsarOrbit
+          mapping={orbitMapping}
+          position={orbitPosition}
+          silent={orbitSilent}
+          targets={ORBIT_TARGETS}
+          presets={ORBIT_PRESETS}
+          activePresetId={orbitActivePresetId}
+          recording={orbitRecording}
+          hasRecording={orbitHasRecording}
+          canRestore={orbitCanRestore}
+          onMove={orbitMove}
+          onGestureStart={orbitGestureStart}
+          onGestureEnd={orbitGestureEnd}
+          onTargetChange={orbitChangeTarget}
+          onPreset={orbitApplyPreset}
+          onRestore={orbitRestore}
+          onRecordToggle={orbitToggleRecord}
+          onClearRecording={orbitClearRecording}
+        />
+        {orbitNote && <div className="tsar-orbit-status">{orbitNote}</div>}
+      </section>
 
       <div className="tsar-bottom">
         <section

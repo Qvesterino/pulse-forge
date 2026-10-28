@@ -15,6 +15,7 @@ export * from "./freeze";
 export * from "./instrument";
 export * from "./automation";
 export * from "./automationClips";
+export * from "./tsarOrbit";
 export * from "./master";
 export * from "./notes";
 export * from "./quantize";

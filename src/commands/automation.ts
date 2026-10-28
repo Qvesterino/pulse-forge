@@ -238,6 +238,40 @@ export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: n
   };
 }
 
+/**
+ * Write a value AT a tick — the upsert a RECORDING needs.
+ *
+ * `addAutomationPoint` INSERTS: its duplicate guard blocks an identical
+ * (tick, value) pair, so two different values at one tick were allowed and
+ * the lane then held two points at the same place — which no document-level
+ * diff can tell apart. A recorded performance walks through ticks and writes
+ * the value it found there, so it needs the opposite: ONE point per tick,
+ * the newest value wins.
+ *
+ * The point keeps its IDENTITY when it is overwritten (audit F-07): a
+ * re-anchored undo and the collab delta must still see the same point.
+ */
+export function setAutomationPointAt(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
+  const lane = automationLaneOf(doc, laneId);
+  if (!lane) throw new Error(`Lane ${laneId} not found`);
+  const safeTick = Number.isFinite(tick) ? Math.max(0, Math.round(tick)) : 0;
+  // Audit F-12: the value the point ends up with may differ from the one that
+  // was asked for — the difference is disclosed, not silent.
+  const { events, sink: record } = collectClamps();
+  const clamped = clampAutomationPointValue(doc, lane.target, value, targetClampSink(doc, lane.target, record));
+  const existing = lane.points.find((point) => point.tick === safeTick);
+  const next = withLane(doc, laneId, (laneNow) => ({
+    ...laneNow,
+    points: existing
+      ? laneNow.points.map((point) => (point.tick === safeTick ? { ...point, value: clamped } : point))
+      : insertPointSorted(laneNow.points, { id: uid("pt"), tick: safeTick, value: clamped }),
+  }));
+  return {
+    ...snapshot("setAutomationPointAt", "Write automation value", doc, next),
+    ...(events.length > 0 ? { clamps: events } : {}),
+  };
+}
+
 export function moveAutomationPoint(
   doc: ProjectDocument,
   laneId: string,

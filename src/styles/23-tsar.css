@@ -371,6 +371,107 @@
   color: var(--accent);
 }
 
+/* ── ORBIT — the 2-D performance surface (ADR 0074) ─────────────────── */
+
+.tsar-orbit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tsar-orbit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tsar-orbit-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tsar-orbit-title {
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.tsar-orbit-mapping {
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  color: var(--text-faint);
+}
+
+.tsar-orbit-pad {
+  width: 260px;
+  height: 260px;
+  max-width: 100%;
+  border-radius: 3px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.tsar-orbit-pad:focus-visible {
+  outline: 1px solid var(--accent, #6ea8fe);
+  outline-offset: 2px;
+}
+
+.tsar-orbit-fields,
+.tsar-orbit-targets,
+.tsar-orbit-presets,
+.tsar-orbit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tsar-orbit-field,
+.tsar-orbit-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+}
+
+.tsar-orbit-input,
+.tsar-orbit-select {
+  height: 22px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  padding: 0 4px;
+}
+
+.tsar-orbit-input {
+  width: 56px;
+}
+
+.tsar-orbit-select {
+  max-width: 130px;
+}
+
+.tsar-orbit-note,
+.tsar-orbit-status {
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.tsar-orbit-status {
+  color: var(--accent);
+}
+
 .tsar-presets {
   display: flex;
   flex-direction: column;

@@ -10,6 +10,7 @@
  * Messaging (main thread -> worklet):
  *  { type: "init", params, events? }            params + optional seeded queue
  *  { type: "param", name, value }               immediate
+ *  { type: "param", name, value, when }         scheduled (absolute ctx time)
  *  { type: "noteOn", pitch, velocity, when }    absolute ctx time
  *  { type: "noteOff", pitch, when }
  *  { type: "pressure", pitch, value }
@@ -103,7 +104,23 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
         break;
       }
       case "param":
-        this.proc.setParam(message.name, message.value);
+        // A param message WITHOUT `when` is immediate — the panel's knob
+        // write, the sync pass, anything that means "this value, now".
+        // A param message WITH `when` is a SCHEDULED write: it joins the event
+        // queue so the DSP applies it at its own sample. That is what a
+        // recorded automation curve needs — an immediate apply collapsed the
+        // whole curve onto t=0, so an offline export heard the last point of
+        // the curve for the entire render (ADR 0074).
+        if (typeof message.when === "number" && Number.isFinite(message.when)) {
+          this.proc.postEvent({
+            type: "param",
+            when: message.when,
+            name: message.name,
+            value: message.value,
+          });
+        } else {
+          this.proc.setParam(message.name, message.value);
+        }
         break;
       case "bpm":
         if (!Number.isFinite(message.bpm)) break;

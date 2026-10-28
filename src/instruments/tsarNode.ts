@@ -39,6 +39,18 @@ export interface TsarRuntime extends InstrumentRuntime {
   prepareOfflineRender?: () => void;
   /** Second source identity (Source B); mirrors `setSample` for slot A. */
   setSampleB?: (id: string | null) => void;
+  /**
+   * A TIMED parameter write (ADR 0074).
+   *
+   * The automation bridge schedules every device parameter through
+   * `setParameterAt` when the runtime offers it, and falls back to
+   * `setParameter` when it does not. That fallback is an IMMEDIATE write, so
+   * a recorded curve on a TSAR parameter used to land entirely at t=0 — in an
+   * offline export every point of the curve was written before the first
+   * sample, so the LAST point won for the whole render and the export was
+   * not the performance.
+   */
+  setParameterAt?: (id: string, value: number, when: number) => void;
 }
 
 export interface TsarRuntimeOptions {
@@ -127,6 +139,25 @@ export function createTsarFallbackRuntime(ctx: BaseAudioContext, track: Instrume
     syncBpm() {},
     setParameter(id, value) {
       if (Number.isFinite(value)) params = { ...params, [id]: value };
+    },
+    /**
+     * The fallback is a native graph, so a scheduled write lands on the
+     * AudioParam at its own time — the same contract the worklet gives.
+     * The param mirror is updated too, so a voice that starts LATER in the
+     * render still reads the newest value.
+     */
+    setParameterAt(id, value, when) {
+      if (!Number.isFinite(value)) return;
+      params = { ...params, [id]: value };
+      if (!Number.isFinite(when)) return;
+      for (const voice of voices.values()) {
+        try {
+          if (id === "srcACutoff") voice.filter.frequency.setValueAtTime(value, when);
+          else if (id === "srcAQ") voice.filter.Q.setValueAtTime(Math.max(0.0001, value * 0.2), when);
+        } catch {
+          /* the voice was stopped */
+        }
+      }
     },
     panic() {
       for (const pitch of [...voices.keys()]) stopVoice(pitch, ctx.currentTime);
@@ -333,6 +364,36 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
         }
       } else {
         pendingEvents.push({ type: "param", when: 0, name, value });
+      }
+    },
+    /**
+     * A TIMED parameter write (ADR 0074).
+     *
+     * The scheduled value is deliberately NOT written into the runtime's
+     * param mirror: the mirror is the PROJECT's base value (the offline
+     * barrier snapshots it into `processorOptions.params`), and a curve's
+     * last point would otherwise become the base for the whole render.
+     * A scheduled write is an OVERRIDE at a time — the base stays where the
+     * project put it, and the DSP applies the override at its own sample.
+     *
+     * LIVE: the message carries `when`, so the worklet routes it through the
+     * event queue instead of applying it on arrival.
+     * OFFLINE: the render schedules its automation BEFORE the barrier that
+     * builds the worklet, so the node does not exist yet — the event is
+     * BUFFERED and seeded into `processorOptions.events` at
+     * `prepareOfflineRender()`, the same contract the notes use.
+     */
+    setParameterAt(name, value, when) {
+      if (!Number.isFinite(value)) return;
+      if (!Number.isFinite(when)) {
+        // No usable time — an immediate write is the honest fallback.
+        runtime.setParameter(name, value);
+        return;
+      }
+      if (node) {
+        node.port.postMessage({ type: "param", name, value, when });
+      } else {
+        pendingEvents.push({ type: "param", when, name, value });
       }
     },
     panic() {
