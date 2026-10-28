@@ -184,7 +184,10 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
   // registered bridge (percent-100 for the mix params) and demands the deep
   // range cover the DOCUMENT range. A widened doc def the deep DSP cannot
   // honor now fails here, flagship or not.
-  const FLAGSHIP_DEEP: [EffectType, Readonly<{ id: string; minValue: number; maxValue: number }>[]][] = [
+  const FLAGSHIP_DEEP: readonly [
+    EffectType,
+    readonly Readonly<{ id: string; minValue: number; maxValue: number }>[],
+  ][] = [
     ["ultina", ULTINA_DEEP],
     ["morphdynamics", MORPH_DEEP],
   ];
@@ -195,7 +198,8 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
       const deepById = new Map(deep.map((d) => [d.id, d]));
       for (const def of EFFECT_META[effect].params) {
         if (def.deprecated) continue;
-        const bridge = scaleBridgeFor(effect, def.id);
+        // toDescriptorValue applies the registered bridge itself (percent-100
+        // for the mix params) — a local `bridge` binding here was dead code.
         const docMin = toDescriptorValue(effect, def.id, def.min);
         const docMax = toDescriptorValue(effect, def.id, def.max);
         const desc = deepById.get(def.id);

@@ -104,7 +104,12 @@ function deaccentLower(text: string): string {
     .replace(/[\u0300-\u036f]/g, "")} `;
 }
 
-function paramDefOf(effectType: EffectType, paramId: string): ParamDef | null {
+function paramDefOf(effectType: EffectType | "instrument", paramId: string): ParamDef | null {
+  // "instrument" names an instParam source: instrument parameters are
+  // automatable through the same lane model, but they live in the instrument
+  // registry, not in EFFECT_META — so there is no effect def (and no unit) to
+  // format with, and the caller falls back to its own default.
+  if (effectType === "instrument") return null;
   return EFFECT_META[effectType]?.params.find((param) => param.id === paramId) ?? null;
 }
 

@@ -4,6 +4,7 @@ import { separateStemsForAgent, type SeparateStemsResult } from "../src/mcp/stem
 import { setStemModelFlag } from "../src/analysis/stem-model/gate";
 import type { ProjectDocument } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { SampleBank } from "../src/sample-library/factory";
 
 /**
  * kyx_separate — the separation step of the agent loop. The pinned
@@ -53,28 +54,30 @@ function tonalWithClicks(): Float32Array {
 }
 
 function fakeServices() {
-  const bank = new Map<string, FakeAudioBuffer>();
-  const samples = new Map<string, Float32Array>([["user.song", tonalWithClicks()]]);
+  // The REAL SampleBank, not a map stand-in: the separation step calls
+  // bank.add/bank.get, and a fake that drifts from SampleBank's surface
+  // (it grew listeners, a revision counter and a size getter) is a type
+  // error waiting to happen.
+  const bank = new SampleBank();
   const services = {
-    bank: {
-      add: (id: string, buffer: FakeAudioBuffer) => void bank.set(id, buffer),
-      get: (id: string) => bank.get(id) ?? null,
-    },
+    bank,
     userSamples: {
-      loadAudio: async (id: string) => {
-        const pcm = samples.get(id);
-        if (!pcm) return null;
-        // Encode as raw bytes the loader treats as an ArrayBuffer payload —
-        // the real loader decodes; this fake hands the PCM through a
-        // WAV-less path by returning it via the bank-first route instead.
-        return null;
-      },
+      invalidateCache: () => undefined,
+      list: async () => [],
+      save: async () => undefined,
+      loadAudio: async () => undefined,
+      listAudio: async () => [],
+      remove: async () => undefined,
     },
   };
   // Pre-register in the bank: loadUserSampleMono's common path is a bank hit.
-  const sourceBuffer = new FakeAudioBuffer({ length: tonalWithClicks().length, numberOfChannels: 1, sampleRate: SR });
-  sourceBuffer.copyToChannel(tonalWithClicks(), 0);
-  services.bank.add("user.song", sourceBuffer as unknown as AudioBuffer);
+  const sourceBuffer = new FakeAudioBuffer({
+    length: tonalWithClicks().length,
+    numberOfChannels: 1,
+    sampleRate: SR,
+  }) as unknown as AudioBuffer;
+  sourceBuffer.copyToChannel(new Float32Array(tonalWithClicks()), 0);
+  bank.add("user.song", sourceBuffer);
   return { services, bank };
 }
 
@@ -148,7 +151,6 @@ describe("kyx_separate — agent surface", () => {
   });
 
   it("an unknown source refuses and registers nothing", async () => {
-    const doc = createProjectFromTemplate("house");
     const { services, bank } = fakeServices();
     const outcome = await separateStemsForAgent(services, "user.nope", { tier: "hpss" });
     expect(outcome.ok).toBe(false);
@@ -156,7 +158,6 @@ describe("kyx_separate — agent surface", () => {
   });
 
   it("the model tier is owner-gated: flag off → refusal naming the flag, no fallback", async () => {
-    const doc = createProjectFromTemplate("house");
     const { services, bank } = fakeServices();
     const outcome = await separateStemsForAgent(services, "user.song", { tier: "model" });
     expect(outcome.ok).toBe(false);
