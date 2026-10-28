@@ -47,6 +47,27 @@ function openWebSocket(url: string): Promise<WebSocket> {
   });
 }
 
+/**
+ * The collab health endpoint, once the server has released everything.
+ *
+ * The server frees a room when ITS socket closes - a tick or more after the
+ * client's own close event - so this polls instead of racing the teardown.
+ * A room that never empties still fails the assertion.
+ */
+async function waitForReleasedCollab(port: number): Promise<{
+  collab: { rooms: number; connections: number };
+}> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const health = (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as {
+      collab: { rooms: number; connections: number };
+    };
+    if (health.collab.rooms === 0 && health.collab.connections === 0) return health;
+    if (Date.now() >= deadline) return health;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 function rejectedWebSocket(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const conn = new WebSocket(url);
@@ -358,10 +379,11 @@ describe("y-websocket parity after the http refactor", () => {
       first.once("close", () => resolve());
       first.close();
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const healthAfterClose = (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as {
-      collab: { rooms: number; connections: number };
-    };
+    // The server releases the room when ITS socket closes, which is a tick or
+    // more after the client's own close event. Polling keeps the assertion
+    // honest (a room that never empties still fails) without racing the
+    // server's teardown.
+    const healthAfterClose = await waitForReleasedCollab(port);
     expect(healthAfterClose.collab).toMatchObject({ rooms: 0, connections: 0 });
   });
 

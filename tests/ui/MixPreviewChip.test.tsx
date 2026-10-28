@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ServicesContext } from "../../src/ui/context";
 import { MixPreviewChipLazy as MixPreviewChip } from "../../src/ui/MixPreviewChipLazy";
-import { armMixPreviewLane, clearMixPreviewLane, type MixPreviewLane } from "../../src/mcp/mix-preview";
+import { armMixPreviewLane, clearMixPreviewLane, currentMixPreviewLane, type MixPreviewLane } from "../../src/mcp/mix-preview";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
 import type { Services } from "../../src/services";
@@ -56,7 +56,7 @@ describe("MixPreviewChip", () => {
     expect(container.querySelector(".mix-preview-card")).toBeNull();
   });
 
-  it("appears when a lane is armed and APPLY executes the command through the store", () => {
+  it("appears when a lane is armed and APPLY executes the command through the store", async () => {
     clearMixPreviewLane();
     const doc = createProjectFromTemplate("house");
     const services = mountedServices(doc);
@@ -73,10 +73,17 @@ describe("MixPreviewChip", () => {
     expect(screen.getByText(/before -14.2/)).toBeTruthy();
     expect(screen.getByText(/level-matched -1.1 dB/)).toBeTruthy();
 
-    fireEvent.click(screen.getByText("APPLY"));
+    // APPLY is asynchronous: it applies, then re-renders to verify the
+    // result, so the card's final shape is only known once that settles.
+    await act(async () => {
+      fireEvent.click(screen.getByText("APPLY"));
+    });
     expect(services.store.execute).toHaveBeenCalledTimes(1);
     expect(services.store.execute).toHaveBeenCalledWith(lane.command);
-    // The lane is consumed — the card leaves.
+    // The lane is consumed — and the card turns into the post-apply check
+    // (it does not simply vanish: the check is what the human reads next).
+    expect(currentMixPreviewLane()).toBeNull();
+    expect(await screen.findByText("POST-APPLY CHECK")).toBeTruthy();
     expect(screen.queryByText("MIX PREVIEW")).toBeNull();
   });
 
