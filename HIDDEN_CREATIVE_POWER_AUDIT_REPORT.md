@@ -201,10 +201,14 @@ Classification per the brief: **A** available & discoverable · **B** buried · 
 
 ---
 
-## 5. Top 15 Hidden Creative Power Findings
+## 5. Top 16 Hidden Creative Power Findings
 
-Every finding below is evidence-backed. The nine highest-value ones use the full template; the remaining six
+Every finding below is evidence-backed. The nine highest-value ones use the full template; the remaining seven
 are condensed but still carry their evidence.
+
+**HCP-03-16 was found after this ranking was closed** — by the CI triage in §10.12, not by the audit workers — so
+it carries no rank in §8 and is appended rather than inserted. On a fresh scoring it belongs in the upper half of
+that table: high confidence, high severity, and content-sized effort.
 
 ### 5.0 The one finding that did not survive measurement — HCP-03-06 (WITHDRAWN)
 
@@ -649,6 +653,55 @@ reuse the existing role-landing values (`src/effects/role-presets.ts:54`) as the
 knowledge and taste, and it is exactly "adding new functionality" that the brief subordinates to surfacing
 what exists. Proposed, not shipped.
 
+### HCP-03-16 — The preset-audition gate certifies silence
+
+**Class:** E · **Priority:** unranked (appended after the ranking closed — see §8) · **Confidence:** **Measured**
+· **Status:** proposed
+
+**Existing capability and evidence:** the product ships **671 factory presets** and an audition gate that renders
+each one and reports `presets: auditions finite/unclipped + loudness map in sync`. The generated loudness map
+(`src/presets/preset-loudness.generated.ts`, 671 entries, produced by `scripts/measure-preset-loudness.mjs`
+through a BS.1770-4 analyser) records **62 of the 671 presets below −45 LUFS**, while the map's own family
+targets are −21.7 LUFS (texture), −24.7 (pad), −24.9 (keys), −27.1 (pluck) and −29.6 (vocal). The quiet tail is
+not one instrument: below −45 LUFS the map holds **keys 24, pluck 14, granular 13, drumsynth 6, sampler 2, vsco
+2, vocalchop 1**, and the quietest preset in the whole library is `factory.granular.ambient.dust` at
+**−70.0 LUFS**. The product then applies the map's own gain to close the gap — and the gain map is **clamped at
+±18 dB** (`src/presets/normalization.ts`), so for the granular family the applied gain is **+18 dB on 15 of the
+16 presets** and the result is still **−52.0 … −20.5 LUFS**: **7 of the 16 stay below −40 LUFS and 10 of the 16
+stay below −30 LUFS** after the product has done everything the map tells it to do.
+
+**Why the gate says PASS anyway — the root cause, in two conditions.** `src/browser-checks.ts:258` compares the
+render against the map, and only if the preset **is in the map**; `:260` then exempts anything measuring
+**below −70 LUFS**. So the criterion is _fidelity to the map_, and the map's expected value for these presets
+**is** near-silence. "Finite and unclipped" is satisfied by silence: a parallel session measured four granular
+presets at **peak = 0.0001**, and the gate reported them as passed. The gate is not broken — it measures the
+wrong thing, and it measures it faithfully.
+
+**A second, independent defect in the same gate.** `src/presets/loudnessPath.ts:26` lists **only `kopa`** as a
+worklet-path instrument, so the audition never loads the granular worklet; `src/instruments/registry.ts:2832`
+therefore takes the JS fallback (`isWorkletReady("grainVoice")` is false in that context) and the map records
+the **fallback's** level. This is the exact failure the KOPA comment at `src/browser-checks.ts:202-206`
+describes — "the gate was comparing two different syntheses … describing a sound the product never exports" —
+fixed for KOPA, never applied to granular.
+
+**Barrier and root cause:** _the check certifies a measurement instead of a threshold_. The audibility gate
+answers "does this preset still sound like the map says?", and the map says "quiet". Nothing in the pipeline
+asks "is this preset audible at all?".
+
+**Recommended minimal intervention:** two halves, in this order. (1) **Give the gate an audibility floor** — a
+preset whose rendered integrated loudness falls below, say, −45 LUFS should FAIL as "inaudible", not PASS as
+"in sync". (2) **Re-balance and re-record** the 62 presets the floor catches: raise the source levels, then
+re-run `npm run presets:loudness`. Half (1) alone turns the gate red until (2) lands — which is the point, but
+it is a decision about levels, not a patch.
+
+**Risk / why it is not a quick win:** (2) is **content and taste**, in the same class as HCP-03-07. The
+measurement itself may also need re-recording per environment: a parallel session found six sampler
+loudness-map entries drifting 3–10 LU against the map, consistent with the map having been recorded on a
+machine that had the sample packs. Proposed, not shipped.
+
+**Not verified:** that the 62 presets are inaudible to a human ear — the map's numbers are the evidence and the
+audibility judgement is an inference from them; and the exact DSP reason the granular fallback is near-silent.
+
 ---
 
 ## 6. Creative Combination Opportunities
@@ -824,13 +877,14 @@ Scores are 1–5 on the brief's axes. **CV** creative value unlocked · **FR** f
 | 23  | HCP-05-06 rebinding restricted to Ctrl+Shift+letter      | 2   | 2   | 3   | 4   | 3   | 3   | **EXPERIMENT**                                            | widen carefully; OS-reserved chords still blocked                                            |
 | 24  | HCP-03-03 post-fader sends not configurable              | 3   | 2   | 3   | 4   | 4   | 3   | **DESIGN APPROVAL**                                       | a model change; the _disclosure_ shipped                                                     |
 | 25  | HCP-03-13 legacy inline EffectRack branch                | 1   | 1   | 2   | 4   | 2   | 3   | **DO NOT SURFACE**                                        | delete after confirming no surface is planned                                                |
+| 26  | HCP-03-16 the audition gate certifies silence            | 4   | 3   | 4   | 5   | 4   | 2   | **WORKFLOW FIX**                                          | 62 of 671 presets measure below −45 LUFS and the gate passes them for "in sync"              |
 
 ### 8.1 Classification totals
 
 | class           | count                                                          |
 | --------------- | -------------------------------------------------------------- |
 | QUICK WIN       | 10 (7 shipped, 3 not started — all gated out by scope or risk) |
-| WORKFLOW FIX    | 15                                                             |
+| WORKFLOW FIX    | 16                                                             |
 | EXPERIMENT      | 3                                                              |
 | DESIGN APPROVAL | 2                                                              |
 | DO NOT SURFACE  | 1                                                              |
@@ -1426,6 +1480,50 @@ source files, and the published page that had been lying turned true without bei
 
 That is the whole lesson of the four instances in one sentence: **a derivable artifact is not a document, it is a
 measurement — and a measurement is only right on the tree that produced it.**
+
+### 10.12 The sixteenth finding — the loudness map, read as a measurement
+
+The CI triage in the parallel session fixed three gates and, in fixing them, exposed a **product-level** finding
+that no audit worker had reached: the preset-audition gate reports **PASS for presets that render as
+near-silence**. It is written up as **HCP-03-16**; this is the measurement behind it.
+
+Measured from the generated map alone (`src/presets/preset-loudness.generated.ts`, 671 entries) on a clean
+detached worktree at `b50af438`:
+
+| measurement                                    | value                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| the audition gate, granular family only        | `passed=16/16` — **PASS**                                                   |
+| presets in the map below −45 LUFS              | **62 of 671** (9.3 %)                                                       |
+| the map's own family targets                   | −21.7 (texture) … −29.6 (vocal) LUFS                                        |
+| the quietest preset in the whole library       | `factory.granular.ambient.dust` at **−70.0 LUFS**                           |
+| the quiet tail's composition                   | keys 24, pluck 14, granular 13, drumsynth 6, sampler 2, vsco 2, vocalchop 1 |
+| the granular family after the product's +18 dB | −52.0 … −20.5 LUFS — 7 of 16 still below −40, 10 of 16 below −30            |
+
+The two conditions that let it pass are in the gate itself: `src/browser-checks.ts:258` requires the preset to be
+**in the map**, and `:260` exempts anything measuring **below −70 LUFS**. The map's expected value for these
+presets is near-silence, so "in sync" is satisfied — and "finite and unclipped" is satisfied by silence.
+
+**What this session measured, and what it took from the parallel session.** The `passed=16/16` verdict, the map
+contents and the arithmetic are measured here. The **peak = 0.0001** figure for four granular presets and the
+**3–10 LU sampler drift** are the parallel session's measurements, reproduced in their message and not
+re-measured here; they are labelled as such in HCP-03-16.
+
+**One correction this session made to itself.** The first hypothesis was that the granular presets were _absent_
+from the loudness map, which would have made the check vacuous by omission. A `Select-String` appeared to
+confirm it and was wrong; a parser that separates the file's two maps shows all 16 present, with the map's
+minimum belonging to the granular family. The corrected finding is stronger, not weaker: the map **records** the
+near-silence as the expected value and the gate then faithfully certifies it.
+
+That is the same shape as §10.9 and §10.11 — a check that reports ✓ without asking the question it appears to
+ask — except that this one is about **sound**, not about a number on a page.
+
+**A second, smaller finding, from the same triage.** The stutter effect reads from **one loop behind** — a
+circular delay buffer of one loop cycle — so during its first cycle that buffer is empty and a fully wet stutter
+is **silent by design**. The gate that checks it rendered exactly one loop (the house pattern is one bar) and
+measured that bar, so it measured the effect's **pre-roll**, not its gate; the parallel session fixed the check
+to render two bars and measure the second. The remaining wart is a **product** decision, not a gate bug: a fully
+wet stutter **mutes its track for the first loop**. Recorded here, not fixed — changing it is an audible
+product decision, and it belongs to the owner.
 
 ---
 
