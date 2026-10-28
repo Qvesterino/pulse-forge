@@ -12,6 +12,7 @@
     "ai:performance": "vite-node scripts/ai-performance.mts",
     "perf:hotpath": "vite-node scripts/bench-hotpath.ts",
     "perf:tick": "vite-node scripts/perf-tick.mts",
+    "musical-context:smoke": "vite-node scripts/musical-context-smoke.mts",
     "taste:benchmark": "vite-node scripts/taste-benchmark.mts",
     "taste:benchmark:bless": "vite-node scripts/taste-benchmark.mts --write",
     "verify:wav": "node tools/kyx-verify/kyx-verify.mjs",

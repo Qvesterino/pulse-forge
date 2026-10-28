@@ -24,6 +24,8 @@ Build a small, local-only fixture set across arrangement transitions, kick/bass 
 
 Keep projects, rendered audio, full notes, and identity mappings outside Git. Store only anonymized IDs and approved aggregate results in the repository. Any provider that receives project data needs separate consent recorded before preregistration; audio and lyrics require their own consent.
 
+Before preparing scored fixtures, run `npm run musical-context:smoke`. It checks the MusicalContext v1 parser and snapshot builder without rendering audio. It does not exercise the MCP transport, and a pass is not evidence of musical accuracy or listening quality.
+
 ## Budget and procedure
 
 Before collecting results, fill the study template with the fixture digests, a shared wall-clock cap per task, agent token/provider caps, rater count, planned sample size, and the minimum useful rating difference. Estimate the rating variance in a pilot first; then preregister the final sample size and thresholds before the scored run.
