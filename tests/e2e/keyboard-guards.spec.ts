@@ -89,3 +89,48 @@ test("destructive shortcuts are inert while a panel field has focus", async ({ p
 
   expect(jsErrors, jsErrors.join(" | ")).toHaveLength(0);
 });
+
+test("Tab on an interactive control traverses; Tab on the canvas still moves track selection (CF-05)", async ({
+  page,
+}) => {
+  const jsErrors: string[] = [];
+  page.on("pageerror", (e) => jsErrors.push(`pageerror: ${e.message}`));
+
+  await openArrangement(page);
+
+  // Focus a real control — the first track tab — then Tab. The selection must
+  // NOT jump to the next track, and DOM focus must move off the tab.
+  const tabs = page.locator(".track-tab");
+  await tabs.first().click();
+  await page.waitForTimeout(200);
+  const firstTabName = await tabs.first().textContent();
+  const activeClassBefore = await tabs.first().getAttribute("class");
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(300);
+  const activeClassAfter = await tabs.first().getAttribute("class");
+  expect(
+    activeClassAfter,
+    `Tab from a track tab must not move the track selection (${activeClassBefore} -> ${activeClassAfter})`,
+  ).toBe(activeClassBefore);
+  const focusedAfterTab = await page.evaluate(() => document.activeElement?.className ?? "");
+  expect(focusedAfterTab, "focus must have left the track tab (native traversal)").not.toContain("track-tab");
+  console.info(`[keys] tab-traversal from "${firstTabName}" -> ${focusedAfterTab.slice(0, 60)}`);
+
+  // Positive control: with the canvas holding focus (body after a lane click)
+  // and no audio clip selected, Tab still selects the NEXT track.
+  await page
+    .locator(".arr-lane")
+    .first()
+    .click({ position: { x: 5, y: 5 } });
+  await page.waitForTimeout(200);
+  const currentTrackName = () =>
+    page.evaluate(() => document.querySelector<HTMLElement>(".track-tab[data-current-track]")?.textContent ?? "");
+  const activeBefore = await currentTrackName();
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(300);
+  const activeAfter = await currentTrackName();
+  console.info(`[keys] canvas Tab: "${activeBefore}" -> "${activeAfter}"`);
+  expect(activeAfter, "canvas Tab must move the track selection (positive control)").not.toBe(activeBefore);
+
+  expect(jsErrors, jsErrors.join(" | ")).toHaveLength(0);
+});

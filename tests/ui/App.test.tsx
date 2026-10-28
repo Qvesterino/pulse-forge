@@ -330,3 +330,48 @@ describe("App — force save stays live while typing (CF-04)", () => {
     expect(services.store.undo).not.toHaveBeenCalled();
   });
 });
+
+describe("App — Tab traversal vs next-track scope (CF-05)", () => {
+  function tabHarness() {
+    const services = mockServices();
+    const view = renderWithContext(<App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />, {
+      services,
+    });
+    return { services, view };
+  }
+
+  const tabOn = (element: Element) => {
+    const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  const shiftTabOn = (element: Element) => {
+    const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  it("NEGATIVE: Tab on a focused control (a track tab button) is not intercepted — the browser may traverse", () => {
+    const { view } = tabHarness();
+    const tab = view.container.querySelector(".track-tab");
+    expect(tab, "track tab did not render — the probe measured nothing").not.toBeNull();
+    // Both canvas Tab actions (transient jump, next track) preventDefault;
+    // leaving the event alive is the fix — the panel's controls now traverse.
+    expect(tabOn(tab!)).toBe(false);
+    expect(shiftTabOn(tab!)).toBe(false);
+  });
+
+  it("NEGATIVE: Tab on a slider (a [tabindex] control, e.g. the sequencer tabpanel) is not intercepted", () => {
+    tabHarness();
+    const panel = screen.getByRole("tabpanel");
+    expect(tabOn(panel)).toBe(false);
+  });
+
+  it("canvas Tab is still taken by the handler (transient jump or next track)", () => {
+    tabHarness();
+    const event = new KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+});

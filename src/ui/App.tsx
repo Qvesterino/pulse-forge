@@ -1272,6 +1272,16 @@ export function App({
         target?.closest(
           "button, a[href], area[href], input, select, textarea, summary, audio[controls], video[controls], iframe, [tabindex], [contenteditable]",
         );
+      // CF-05: when an interactive control holds focus, Tab/Shift+Tab is that
+      // panel's DOM traversal — the global handler must neither act on it nor
+      // preventDefault it. Before this guard the event fell through to the
+      // next/prev-track shortcuts, so a keyboard user could never reach a
+      // second control in any panel. Canvas focus (body, or a non-focusable
+      // lane click) keeps the FL behaviors below: the transient jump when an
+      // audio clip is selected, next/prev track otherwise.
+      if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && tabNavigationTarget) {
+        return;
+      }
       if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !tabNavigationTarget) {
         const clips = (doc.arrangement.audioClips ?? []).filter((clip) => selection.clipIds.includes(clip.id));
         if (clips.length > 0) {

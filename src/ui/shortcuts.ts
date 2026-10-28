@@ -154,8 +154,22 @@ export const SHORTCUTS: Shortcut[] = [
     ],
   },
 
-  { key: "nextTrack", label: "Next track", group: "Tracks", keyHint: "Tab" },
-  { key: "prevTrack", label: "Previous track", group: "Tracks", keyHint: "Tab", shift: true },
+  // CF-05: Tab on an interactive control traverses that panel's controls, so
+  // next/prev track own Tab only when no control holds focus — the label says
+  // so, because a binding that fires "sometimes" must say when.
+  {
+    key: "nextTrack",
+    label: "Next track (when no control has focus)",
+    group: "Tracks",
+    keyHint: "Tab",
+  },
+  {
+    key: "prevTrack",
+    label: "Previous track (when no control has focus)",
+    group: "Tracks",
+    keyHint: "Tab",
+    shift: true,
+  },
   { key: "selectTrack1", label: "Select track 1", group: "Tracks", keyHint: "1" },
   { key: "selectTrack2", label: "Select track 2", group: "Tracks", keyHint: "2" },
   { key: "selectTrack3", label: "Select track 3", group: "Tracks", keyHint: "3" },
