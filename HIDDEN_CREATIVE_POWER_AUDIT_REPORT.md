@@ -1,8 +1,8 @@
 # THE HIDDEN CREATIVE POWER AUDIT
 
 **KYX / Pulse Forge** — capability archaeology, discoverability engineering and creative activation
-**Date:** 2026-10-27 · **Baseline:** `main` @ `5dba8e75` → quick wins shipped @ `03d845d0`
-**Repo:** `D:\pulse-forge` · **Status:** Phase 0–8 complete; 7 QUICK WINs shipped, everything else proposed
+**Date:** 2026-10-27 (updated 2026-10-28) · **Baseline:** `main` @ `5dba8e75` → quick wins @ `03d845d0` → P-4 naming @ `6a7d265c` → P-1 curated palette registry
+**Repo:** `D:\pulse-forge` · **Status:** Phase 0–8 complete; 7 QUICK WINs shipped; the P-1 curated registry and the P-4 naming shipped; the rest proposed
 
 ---
 
@@ -48,9 +48,18 @@ transport refuses; **a false success on the MCP surface became an honest refusal
 it is absent instead of vanishing; and a send readout that printed "67 %" while its own caption said
 "100 % fully wet" now prints the scale its caption describes.
 
-**What requires approval:** everything in §11 — chiefly a palette that is derived from the _command registry_
-rather than from the shortcut table (the structural cause of the 7.4 %), a first-run flow that teaches one
-thing once, and the disclosure of a fixed post-fader send rule as a configurable choice.
+**And then the two approved proposals landed (§9.2).** The palette grew from **55 to 75 actions** and the
+number of representative capability queries that matched **nothing fell from 24 of 48 to 9 of 48** — twelve
+capabilities that no query could reach (freeze, quantize, macro, marker, crossfade, chord, groove, velocity,
+effect, plugin, humanize, swing) are now findable by name, and each one is pinned by a spec to the exact
+action that owns it. The mechanism is a **curated command registry** (`src/commands/palette-registry.ts`),
+not a dump of all 297 factories: twenty commands, three rules, and an honest disabled-with-reason state for
+the ones that cannot run yet. **The recording family is still not in the palette** — that is P-2, and it is
+the largest remaining hole.
+
+**What requires approval:** everything still open in §11 — chiefly a first-run flow that teaches one
+thing once, the disclosure of a fixed post-fader send rule as a configurable choice, and the capture
+actions that P-1's second phase would put in the palette.
 
 ---
 
@@ -94,7 +103,10 @@ worker and an evidence file under `docs/audits/2026-10-27-hidden-creative-power/
   so a reader can re-find the code when the line has moved.
 - **The parallel-session sweep.** My `src/ui/Mixer.tsx` change (QW-7) was absorbed into another session's
   commit `11d3e6b0` before I could commit it. The content is intact and its regression test lands in my
-  commit `03d845d0`; §10.4 records the split honestly.
+  commit `03d845d0`; §10.4 records the split honestly. The same thing happened to the **whole P-1 wave**:
+  a peer session's `git add .` commit `aa5b6e83` ("ranny commit") swept in `src/commands/palette-registry.ts`,
+  the palette wiring and the specs. The content is intact and verified (§10.1); the **authorship** of that
+  commit is the other session's. §10.8 records it.
 - **One worker finding was refuted by measurement** (§5.0, HCP-03-06). Findings that did not survive a
   measurement are reported as refuted, not quietly dropped.
 - No usage telemetry exists. **No adoption, satisfaction, time-saving or conversion claim is made anywhere in
@@ -214,7 +226,7 @@ not against the file where the code happens to live.
 
 ### HCP-05-01 — The palette exposes 7.4 % of the command surface
 
-**Class:** B · **Priority:** 1 · **Confidence:** Verified in code + Observed · **Status:** proposed
+**Class:** B · **Priority:** 1 · **Confidence:** Verified in code + Observed · **Status:** **PARTLY SHIPPED (§9.2.2)** — the curated registry landed; the _derived_ index is still open
 
 **Creative goal:** a producer who knows "KYX can freeze a track" or "KYX can comp takes" must be able to
 reach it in two keystrokes.
@@ -266,7 +278,7 @@ were **observed live**. Not verified: what a real user searches for.
 
 ### HCP-02-01 — The palette contains zero capture actions
 
-**Class:** B · **Priority:** 2 · **Confidence:** **Observed live** + Verified in code · **Status:** proposed
+**Class:** B · **Priority:** 2 · **Confidence:** **Observed live** + Verified in code · **Status:** **STILL OPEN** — the curated registry could not reach the capture family; it is blocked on P-2 (§9.2.2)
 
 **Creative goal:** recording is the highest-value act in music production. It must be reachable from the
 surface the product itself advertises as "every action, searchable" (the tooltip on the Ctrl+K button,
@@ -865,26 +877,116 @@ schema version, no dependency, no bundle budget.
 
 ---
 
+## 9.2 The P-1 and P-4 wave — what shipped after the proposals were approved
+
+Two proposals from §11 were approved and implemented in a second wave.
+
+### 9.2.1 P-4 · The naming decisions (`6a7d265c`)
+
+Five files, +20/−8, four suites green. The four decisions and what each one resolved:
+
+| decision                | the problem                                                                        | the resolution                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| "Strip Silence (PT)"    | the acronym has no legend anywhere in `src/`                                       | **"Strip Silence"** plus a tooltip that states pitch and speed are preserved     |
+| Consolidate vs Bounce   | two different operations, two similar names, one word apart                        | **"Consolidate to one clip"**; the Bounce row now says "A/B review, then commit" |
+| MOD MATRIX vs MOD panel | the panel and the matrix had similar names and no separator                        | a visible **MOD MATRIX** caption in the component, on both surfaces              |
+| four panel labels       | `panelArr` said "Toggle arrangement" while its nine siblings said "Toggle X panel" | all four say **"Toggle X panel"**                                                |
+
+The scope is now distinguished, not the vocabulary: "Consolidate" stays a word in the app because the app's
+own vocabulary uses it (`src/ui/ContextMenu.tsx:138`), and the **scope** is what the label now carries.
+
+### 9.2.2 P-1 · The curated palette command registry
+
+The structural cause of HCP-05-01 was that the palette was a **view of the keyboard layer**:
+`buildPaletteActions` read `getActiveShortcuts()`, so it could only ever show what the global shortcut table
+already had. 297 command factories existed; the palette reached 22 of them (7.4 %).
+
+**Why a curated list and not all 297.** A registry-driven palette over every factory would leak internal and
+destructive commands into the user's search box by default, and the brief's own "cognitive clutter" axis is a
+real cost. So the registry is a **whitelist**: a command earns a place by being a one-shot operation, fully
+described by the document plus the selection, and reversible through the ordinary undo stack. Three rules hold
+it together, and a spec gates each of them:
+
+1. **ONE SHOT** — what needs a dialog, a typed value or a rendered buffer does not belong in the palette. That
+   is why tempo, sample and waveform are _not_ here: they need a value only the user can supply.
+2. **HONEST** — `precondition` returns the reason the action cannot run right now, and the palette renders the
+   row **disabled with that reason visible**. `aria-disabled`, not the `disabled` attribute: a disabled button
+   fires no hover, so the reason would never be readable — which is exactly the HCP-05-07 failure mode.
+3. **NO NEW POWER** — every spec's `build` returns a command the product already has. The registry adds no
+   mutation, no audio path and no edit semantics; it only gives the existing commands a way in.
+
+**20 commands**, drawn from the 30 blind modules (pattern ×6, groove ×2, marker, scenes ×2, live set,
+instrument, effects ×2, mix, chords, macros, clips ×2).
+
+**The measurement, before and after:**
+
+| measure                                                  | before   | after       |
+| -------------------------------------------------------- | -------- | ----------- |
+| palette actions                                          | 55       | **75**      |
+| representative capability queries that match **nothing** | 24 of 48 | **9 of 48** |
+| capabilities findable by name                            | —        | **12**      |
+
+The twelve are pinned by spec to the exact action that owns each one — freeze, quantize, macro, marker,
+crossfade, chord, groove, velocity, effect, plugin, humanize, swing — because a **count would have flattered
+the result**: "record", "tempo" and "stem" also stopped being zero, but only by coincidence of the
+subsequence matcher ("record" lands on "Conform the selected clips to the chord track"). **The recording
+family is still unreachable from the palette**, and that is not a registry entry: `armedTrackId` and the
+recorder state are local React state inside the arrangement panel (`src/ui/ArrangementPanel.tsx:755`), so
+exposing them is the **P-2** proposal — one address for the recording surface.
+
+The nine that still match nothing — **bounce, automation, midi clip, silence, consolidate, warp, waveform,
+sample, reference** — are commands that need a dialog, a value, or a rendered buffer.
+
+**Where the failures go.** A palette command that fails surfaces through `store.notify` → the existing global
+`CommandToast`, not through `pf-arrangement-action-error` — that one has a single subscriber and is silent
+whenever the ARR panel is not open (HCP-05-08). The precondition is re-checked **at execution time**
+(`src/ui/App.tsx:1829`), not only when the palette was built: the user may have changed the selection between
+opening the palette and pressing Enter. Both stores (`ProjectStore` and `YDocStore`) expose the same
+`notify` member, because the collab path types the store as a union of the two.
+
+---
+
 ## 10. Verification
 
 ### 10.1 What passed
 
-| check                                                                            | result                                                                                 |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `npx tsc --noEmit --incremental false`                                           | **my 6 files: 0 errors.** 6 errors remain, **all in parallel sessions' files** (§10.3) |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                     |
-| `tests/ui/FxAddPopover.test.tsx`                                                 | ✅ (12 tests)                                                                          |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅ (4 tests)                                                                           |
-| `tests/ui/Mixer.test.tsx`                                                        | ✅ (14 tests)                                                                          |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                     |
-| `tests/ui/PresetBrowser.test.tsx`                                                | ✅ (4 tests)                                                                           |
-| `tests/mcp-onboarding.test.ts`                                                   | ✅ (13 tests)                                                                          |
-| `tests/mcp-error-codes.test.ts`                                                  | ✅ (12 tests) — the typed error contract still holds                                   |
-| `tests/mcp-refusal-taxonomy.test.ts`                                             | ✅ (8 tests) — the ADR 0070 source gate still holds                                    |
-| `tests/intent-command-route-kinds.test.ts`                                       | ✅ (3 tests, new)                                                                      |
-| **total**                                                                        | **10 suites · 96 tests green**                                                         |
-| `npx prettier --write` on every touched path                                     | ✅ clean                                                                               |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                   |
+| check                                        | result                                                                                 |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `npx tsc --noEmit --incremental false`       | **my 6 files: 0 errors.** 6 errors remain, **all in parallel sessions' files** (§10.3) |
+| `tests/ui/shortcuts.test.ts`                 | ✅                                                                                     |
+| `tests/ui/FxAddPopover.test.tsx`             | ✅ (12 tests)                                                                          |
+| `tests/ui/ModMatrixRow.test.tsx`             | ✅ (4 tests)                                                                           |
+| `tests/ui/Mixer.test.tsx`                    | ✅ (14 tests)                                                                          |
+| `tests/ui/HelpOverlay.test.tsx`              | ✅                                                                                     |
+| `tests/ui/PresetBrowser.test.tsx`            | ✅ (4 tests)                                                                           |
+| `tests/mcp-onboarding.test.ts`               | ✅ (13 tests)                                                                          |
+| `tests/mcp-error-codes.test.ts`              | ✅ (12 tests) — the typed error contract still holds                                   |
+| `tests/mcp-refusal-taxonomy.test.ts`         | ✅ (8 tests) — the ADR 0070 source gate still holds                                    |
+| `tests/intent-command-route-kinds.test.ts`   | ✅ (3 tests, new)                                                                      |
+| **total**                                    | **10 suites · 96 tests green**                                                         |
+| `npx prettier --write` on every touched path | ✅ clean                                                                               |
+
+#### 10.1.1 The P-1 / P-4 wave — re-verified against the current `main`
+
+The wave landed on a tree that two other sessions kept changing, so the suites were **re-run after the
+peer's undo-frame commit (`83ed86d5`) was in HEAD** — the number below is measured against the tree as it
+stands, not against the tree the work was written on.
+
+| check                                                                            | result                                                                                            |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                      |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                    |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                   |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                |
+| **total**                                                                        | **10 suites · 101 tests green**                                                                   |
+| `npx tsc --noEmit --incremental false`                                           | **my 9 files: 0 errors.** 7 files with errors remain, **all in parallel sessions' files** (§10.3) |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                              |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -896,8 +998,19 @@ schema version, no dependency, no bundle budget.
 - the instrument preset count per kind (31 kinds) — measured against the **warmed loader bank**
 - the number of disabled controls and how many explain themselves — scanned
 - the number of route kinds with no MCP builder (5) — enumerated + probed
+- **the palette's 75 actions and the 48-query capability sweep — computed against the real
+  `buildPaletteActions` + the real `fuzzyScore`/`filterActions`, and pinned by
+  `tests/ui/palette-search-coverage.test.ts` so a regression fails CI**
+- **the 20 registry specs' preconditions, their built commands, and that each command executes without
+  throwing — verified in `tests/ui/palette-command-registry.test.tsx`**
+- **that a row which cannot run renders `aria-disabled="true"`, shows its reason, and refuses to run on both
+  click and Enter — verified by rendering the real overlay**
 
 ### 10.3 Typecheck failures that are NOT mine
+
+Two runs, both against `npx tsc --noEmit --incremental false`.
+
+**Run 1 — the quick wins (2026-10-27):**
 
 ```
 src/project-model/schema.ts(1870,17)      TS2345   (parallel session, in flight)
@@ -906,10 +1019,28 @@ tests/clip-verb-coverage.test.ts(27,24)    TS6133   (parallel session)
 tests/param-range-coherence.test.ts        TS4104 ×2, TS6133  (parallel session)
 ```
 
-All six are in files owned by other active sessions at the time of the run. **None is in a file this audit
-touched.** The audit's own files — `src/intent/command-for-route.ts`, `src/mcp/onboarding.ts`,
-`src/mcp/tools.ts`, `src/ui/FxAddPopover.tsx`, `src/ui/ModMatrixRow.tsx`, `src/ui/shortcuts.ts`,
-`src/ui/Mixer.tsx` and the six test files — typecheck clean.
+**Run 2 — the P-1 / P-4 wave (2026-10-28), re-run after the peer's undo-frame commit:**
+
+```
+src/intent/param-intent.ts                     (parallel session)
+src/mcp/render-summary.ts                       (parallel session)
+tests/mcp-param-automation-disclosure.test.ts    (parallel session, new)
+tests/mcp-render-summary-range.test.ts           (parallel session, new)
+tests/mcp-stem-separate.test.ts                 (parallel session)
+tests/param-range-coherence.test.ts             (parallel session)
+tests/ui/ProjectBrowser.test.tsx                (parallel session)
+```
+
+**Every one of them is in a file owned by another active session.** None is in a file this audit touched.
+The audit's own files — `src/intent/command-for-route.ts`, `src/mcp/onboarding.ts`, `src/mcp/tools.ts`,
+`src/ui/FxAddPopover.tsx`, `src/ui/ModMatrixRow.tsx`, `src/ui/shortcuts.ts`, `src/ui/Mixer.tsx`,
+`src/ui/ArrangementPanel.tsx`, `src/commands/palette-registry.ts`, `src/ui/commandPalette.ts`,
+`src/ui/PaletteOverlay.tsx`, `src/ui/App.tsx`, `src/store/ProjectStore.ts`, `src/collab/YDocStore.ts`,
+`src/styles/14-command-palette.css` and the ten test files — typecheck clean.
+
+**Read this the honest way:** a green typecheck on _my_ files in a tree where _other_ files do not compile is
+a weaker statement than a green tree. It is stated here rather than hidden, because the alternative — a
+"typecheck passes" claim for the repository — would be false.
 
 ### 10.4 The commit split — recorded honestly
 
@@ -961,17 +1092,72 @@ regex over `src/presets/factory.ts` said "nine instruments ship with an empty pr
 **warmed loader bank** showed all 31 kinds have presets (TSAR 48, KOPA 16, CHORÁL 4 …) and the finding was
 withdrawn, the patch reverted and the test removed.
 
+### 10.7 The P-1 browser check that did NOT happen — stated, not papered over
+
+**The P-1 wave was verified in the DOM, not in a running browser.** The attempt was made and it failed for
+environmental reasons:
+
+- the shared worktree's dev server was in **HMR staleness** — the browser failed with
+  `Failed to fetch dynamically imported module /src/services.ts`;
+- a **stale tab held the IndexedDB lock**, so the project browser could not open its database and the boot
+  never completed;
+- the console showed **no application errors** — the failure was the harness, not the product.
+
+**Why that is stated rather than retried until it went green:** the evidence collected is **stronger** than
+a screenshot would have been. `tests/ui/palette-command-registry.test.tsx` renders the **real** `PaletteOverlay`
+and asserts on the DOM the user would see — `aria-disabled="true"` on a row that cannot run, the reason text
+present in the rendered output, a click and an Enter that both do nothing, and the same row becoming
+runnable once its precondition is met. A screenshot proves a pixel; this proves the behaviour.
+
+**What remains genuinely unverified by a browser:** the **visual** reading of the disabled row — that the
+greyed-out treatment and the reason line are legible at real font sizes and in the real theme, and that the
+`.palette-unavailable` rule does not overflow the row. That is a **design check, not a correctness check**,
+and it is named here so the next person with a free browser knows to look at it.
+
+### 10.8 The P-1 commit attribution — recorded honestly
+
+The P-1 wave's **content** was verified, measured and pinned by specs. Its **authorship** in the history is
+a parallel session's:
+
+```
+aa5b6e83  ranny commit
+          src/commands/palette-registry.ts          (new)
+          src/ui/commandPalette.ts
+          src/ui/PaletteOverlay.tsx
+          src/ui/App.tsx
+          src/store/ProjectStore.ts
+          src/collab/YDocStore.ts
+          src/styles/14-command-palette.css
+          tests/ui/palette-search-coverage.test.ts
+          tests/ui/palette-command-registry.test.ts  (new)
+          tests/ui/palette-command-registry.test.tsx (new)
+          — plus that session's own MCP / undo-frame work
+```
+
+A peer's `git add .` swept the whole wave into its commit before this session could stage it. The content
+survived intact and was re-verified against the tree afterwards (§10.1.1). Two consequences are recorded
+rather than hidden:
+
+1. the P-1 code is in `main` under a commit message that does not describe it — **the audit trail for it is
+   this report and the specs**, not the commit subject;
+2. that commit contains **both** `palette-command-registry.test.ts` and `palette-command-registry.test.tsx` —
+   a **duplicate spec**, the exact anti-pattern the repo's own vitest config warns about. This session's
+   commit removes the `.ts` file, which the `.tsx` file supersedes (it contains every one of the `.ts`
+   tests plus the five rendering tests).
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
 
 None of these is implemented. Each needs a product decision, not a patch.
 
-**P-1 · A command-registry-derived index (the root fix).**
-Make the command registry the single source of _what the product can do_; derive the palette from it, let MCP
-generate its tools from it, and let the intent router use it as a completeness check. This is the structural
-cause of HCP-05-01, HCP-02-01, HCP-04-01 and HCP-04-03. **Needs:** a decision on what "visible in the
-palette" means per command (an explicit flag, not a heuristic), and a ceiling on the palette's action count.
+**P-1 · A command-registry-derived index (the root fix).** — **PHASE 1 SHIPPED (§9.2.2).**
+The curated registry landed: 20 commands, three rules, 55 → 75 palette actions, 24 → 9 zero-hit queries, and
+twelve capabilities findable by name. **Still open:** the registry is a **curated whitelist**, not a derived
+index. Making the command registry the single source of _what the product can do_ — so the palette, the MCP
+tool surface and the intent router all read the same table — remains the structural fix for HCP-05-01,
+HCP-04-01 and HCP-04-03. **Needs:** a decision on what "visible in the palette" means per command (an
+explicit flag, not a heuristic), and the action-count ceiling (currently pinned at 100 by the coverage spec).
 **Rejected alternative:** adding palette entries by hand — it reproduces the same list-of-lists problem one
 entry at a time.
 
@@ -979,19 +1165,18 @@ entry at a time.
 Capture, arm, punch, comp, freeze and take review are six verbs spread over three dock tabs, a context menu
 and a footer chip. The proposal is **one address**, not one panel: the session-state chip already exists and
 already aggregates the state — it is the natural home for the verbs. **Needs:** a decision on whether the
-ARR REC strip stays where it is.
+ARR REC strip stays where it is. **Note:** this is now the single largest hole the palette still has — the
+recording family is the one family the curated registry could not reach, because `armedTrackId` and the
+recorder state are local React state rather than project state (§9.2.2).
 
 **P-3 · One first-run, one key.**
 Five onboarding mechanisms with five storage keys; the tour and the hint bar teach the same material
 simultaneously on a fresh profile. **Needs:** agreement on which of the two survives.
 
-**P-4 · Naming decisions that need the author, not the audit.**
-
-- "Strip Silence **(PT)**" — the acronym appears nowhere else in `src/`; this audit cannot know what it means.
-- "Consolidate" vs "Bounce the selected range to an audio clip" — two different operations, two similar
-  names, one word apart.
-- "MOD MATRIX" vs the "MOD" panel.
-- `panelArr` is labelled "Toggle arrangement" while all nine sibling panels say "Toggle X panel".
+**P-4 · Naming decisions that need the author, not the audit.** — **SHIPPED (`6a7d265c`, §9.2.1).**
+The author answered; all four decisions landed. "Strip Silence (PT)" → "Strip Silence" plus a tooltip that
+pitch and speed are preserved; "Consolidate" → "Consolidate to one clip"; "MOD MATRIX" now carries a visible
+caption that separates it from the MOD panel; the four panel labels all say "Toggle X panel".
 
 **P-5 · Post-fader sends become a choice.**
 The disclosure shipped (QW-7). Making the rule configurable is a **model change** — `sends: Record<ID, number>`
@@ -1027,15 +1212,21 @@ Backlog numbers refer to §8; the shipped `QW-n` ids refer to §9.
 7. **Backlog #18 (HCP-03-08): the "♪ tuned for …" badge promises a landing that no flagship has** — either
    extend the role landings to the six suites or stop showing the promise.
 8. **Measure:** instrument the palette's own empty state (how many queries return zero) — the only honest
-   way to size P-1.
+   way to size P-1. **— DONE.** The 48-query capability sweep is pinned by
+   `tests/ui/palette-search-coverage.test.ts`, which holds the zero-hit count at **9** and the action count at
+   **75** (ceiling 100).
 
 ### 60 days — build the index
 
 1. **P-1, phase 1:** a command→palette adapter with an explicit `label` and a `paletteVisible` flag, applied
    to the **30 blind modules** first (automation, quantize, scenes, plugins, effect params, clip playback,
    instruments, chord tracks, live sets, markers, master, freeze, smart comp, stem tracks).
+   **— PARTLY DONE (§9.2.2).** The curated registry covers **20 commands** across those modules; the
+   `paletteVisible` flag is still missing, and the registry is still hand-curated rather than derived.
 2. **P-1, phase 2:** give the palette **capture actions** (HCP-02-01), dispatched through the same handlers
-   and the same preconditions as the REC button — with the disabled-with-reason state.
+   and the same preconditions as the REC button — with the disabled-with-reason state. **— NOT DONE, and
+   blocked on P-2**: the recorder's state has to leave local React state before a registry entry can exist
+   for it.
 3. **Give the five unwired intent kinds real MCP builders** (HCP-04-01, the wiring half) — reusing the
    commands the in-app panel already calls.
 4. **Expose the Assist engine** over MCP and the intent router (HCP-04-03).
@@ -1050,14 +1241,18 @@ Backlog numbers refer to §8; the shipped `QW-n` ids refer to §9.
 4. **The disabled-state lint** reaches a durable gate: a disabled button without a `title` fails CI, seeded
    by an exception list built from the 222 sites.
 5. **Revisit the Visibility Matrix.** The whole point of a ledger is that it can be re-measured: this
-   document's numbers (7.4 %, 40.3 %, 5 unwired kinds, 55 palette actions) should be pinned by specs so the
-   next audit measures movement rather than re-deriving the baseline.
+   document's numbers (7.4 %, 40.3 %, 5 unwired kinds, **75** palette actions) should be pinned by specs so the
+   next audit measures movement rather than re-deriving the baseline. **— partly done:** the palette side is
+   pinned (`tests/ui/palette-search-coverage.test.ts` + `tests/ui/palette-command-registry.test.tsx`); the
+   40.3 % disabled-control figure and the 5 unwired intent kinds are still un-pinned.
 
 ---
 
 ## 13. Open questions
 
-1. **What does "PT" mean in "Strip Silence (PT)"?** It appears nowhere else in `src/`. The author has to say.
+1. **What does "PT" mean in "Strip Silence (PT)"?** — **answered by the author on 2026-10-28.** The suffix had
+   no legend anywhere in `src/`, so it is gone; the tooltip now states what the operation preserves (pitch and
+   speed). The acronym's origin stays unrecorded — nothing depends on it any more.
 2. **Which window listener wins a shared chord?** The piano roll and the app both register `window`
    `keydown` listeners; neither calls `stopImmediatePropagation`. `Alt+S` is both "Solo selected track"
    (global) and "Slide (portamento)" (piano roll). **Not verified.**
@@ -1085,11 +1280,23 @@ npx vitest run tests/intent-command-route-kinds.test.ts tests/ui/shortcuts.test.
   tests/mcp-onboarding.test.ts tests/mcp-error-codes.test.ts tests/mcp-refusal-taxonomy.test.ts
 npx tsc --noEmit --incremental false
 
+# the P-1 / P-4 wave
+git show 6a7d265c              # the naming decisions
+git show aa5b6e83 -- src/commands/palette-registry.ts src/ui/commandPalette.ts \
+  src/ui/PaletteOverlay.tsx src/ui/App.tsx src/store/ProjectStore.ts src/collab/YDocStore.ts \
+  src/styles/14-command-palette.css tests/ui/palette-search-coverage.test.ts \
+  tests/ui/palette-command-registry.test.tsx   # the curated registry (§10.8: peer-authored commit)
+npx vitest run tests/ui/palette-command-registry.test.tsx tests/ui/palette-search-coverage.test.ts \
+  tests/ui/command-palette.test.tsx tests/ui/shortcuts.test.ts tests/ui/ModMatrixRow.test.tsx \
+  tests/ui/HelpOverlay.test.tsx tests/ui/DockChrome.test.tsx tests/ui/App.test.tsx \
+  tests/a11y/icon-only-buttons.test.tsx tests/collab-contract-parity.test.ts
+
 # the domain evidence
 docs/audits/2026-10-27-hidden-creative-power/
   01-clip-arrangement.md  02-recording-persistence.md  03-sound-design-mixing.md
   04-ai-intent-mcp.md     05-productivity-discoverability.md
 ```
 
-_Prepared 2026-10-27 against `main`. Every claim is labelled Observed / Verified / Inferred / Hypothesized /
-Not verified, and every measurement in §10.2 was reproduced from the repository at the cited commit._
+_Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave. Every claim is labelled
+Observed / Verified / Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from
+the repository at the cited commit._
