@@ -4780,7 +4780,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_mix_idea",
     description:
-      "TEXT-TO-MIX REMOTE CONTROL — one natural-language mix idea, the full loop: 'warm it up and glue the drums' → a PLAN of concrete device steps with the WHY attributed per step (nothing applied) → apply:true lands the whole idea as ONE undo step → verify with kyx_render_summary and let the human judge via kyx_blind_ab. Understands production concepts (warmer, punchier, brighter, deeper, wider, air…) and their targets from the sentence itself (drums, bass, lead, chords, the mix, kick/snare/hats); an explicit target overrides the text. Plan first — the plan is cheap and pure, the apply is a mutation.",
+      "TEXT-TO-MIX REMOTE CONTROL — one natural-language mix idea, the full loop: 'warm it up and glue the drums' → a PLAN of concrete device steps with the WHY attributed per step (nothing applied) → apply:true lands the whole idea as ONE undo step → verify with kyx_render_summary and let the human judge via kyx_blind_ab. Understands production concepts (warmer, punchier, brighter, deeper, wider, air…) and their targets from the sentence itself (drums, bass, lead, chords, the mix, kick/snare/hats); an explicit target overrides the text. Plan first — the plan is cheap and pure, the apply is a mutation. For a focused before/after audition, preview:true with startTick+endTick measures and plays only that arrangement window; Apply refuses if the project changed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4802,7 +4802,17 @@ const MCP_TOOL_DEFS = [
         preview: {
           type: "boolean",
           description:
-            "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Read-only; render-bound transports only",
+            "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Optional startTick+endTick scopes both measurement and audition. Read-only; render-bound transports only",
+        },
+        startTick: {
+          type: "integer",
+          minimum: 0,
+          description: "Optional inclusive arrangement tick for a range preview; requires preview:true and endTick",
+        },
+        endTick: {
+          type: "integer",
+          minimum: 1,
+          description: "Optional exclusive arrangement tick for a range preview; requires preview:true and startTick",
         },
         requestId: {
           type: "string",
@@ -4935,6 +4945,64 @@ const MCP_TOOL_DEFS = [
             },
             studioBound: {
               type: "boolean",
+            },
+            window: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              properties: {
+                startTick: {
+                  type: "integer",
+                  minimum: 0,
+                },
+                endTick: {
+                  type: "integer",
+                  minimum: 1,
+                },
+                startSec: {
+                  type: "number",
+                  minimum: 0,
+                },
+                endSec: {
+                  type: "number",
+                  minimum: 0,
+                },
+                durationSec: {
+                  type: "number",
+                  minimum: 0,
+                },
+                startSample: {
+                  type: "integer",
+                  minimum: 0,
+                },
+                endSample: {
+                  type: "integer",
+                  minimum: 1,
+                },
+                sampleRate: {
+                  type: "number",
+                  minimum: 1,
+                },
+              },
+              required: [
+                "startTick",
+                "endTick",
+                "startSec",
+                "endSec",
+                "durationSec",
+                "startSample",
+                "endSample",
+                "sampleRate",
+              ],
+            },
+            projectRevision: {
+              type: ["number", "null"],
+            },
+            revisionAfterRender: {
+              type: ["number", "null"],
+            },
+            freshness: {
+              type: "string",
+              enum: ["current", "stale", "unknown"],
             },
           },
           required: [
