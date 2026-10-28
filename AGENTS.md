@@ -528,8 +528,18 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
   `docs/status.json`. A commit where the artifact runs AHEAD of its source
   describes a tree that does not exist, and the drift gate then goes red
   in the direction nobody expects, with a diff that looks like somebody
-  else broke it. `npm run drift:bless` regenerates in place: review the
-  diff and commit it together with the source that caused it.
+  else broke it.
+- **Regenerate from a CLEAN tree at the commit that will carry the
+  artifact.** `npm run drift:bless` regenerates IN PLACE — and "in place" is
+  the shared working tree, which carries other sessions' in-flight changes.
+  Measured 2026-10-28 on `main`: the committed payload claimed `93 seams`
+  while the committed `tests/seam-manifest.json` declared **95**, and
+  `1323 claimed` while the committed row and the live count both said
+  **1325** — so the artifact described a tree that did not exist and the
+  drift gate stayed red after the commit. A detached worktree at the commit
+  (`git worktree add --detach <path> <commit>`) generates an artifact that
+  matches the commit it ships with; move the generated files into the
+  working tree and commit them with the source.
 - **Schema versioning**: any change to the on-disk project shape must bump `SCHEMA_VERSION` in `src/project-model/schema.ts` and add a migration in `migrateProject`. Loading code rejects unknown future versions.
 - **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 5998 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB, optional FX-extras worklet 64 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. Any budget increase needs a measured justification and a script update.
 - **Live and offline render parity**: the renderer hands the same `AudioEngine` an `OfflineAudioContext`. If a feature only works in one path, that's a bug. Verify by exporting the project and listening to the result.
