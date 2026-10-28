@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { clearMixPreviewLane, currentMixPreviewLane, onMixPreviewLane, type MixPreviewLane } from "../mcp/mix-preview";
+import {
+  clearMixPreviewLane,
+  currentMixPreviewLane,
+  mixPreviewMatchesProject,
+  onMixPreviewLane,
+  type MixPreviewLane,
+} from "../mcp/mix-preview";
+import { storeRevision } from "../mcp/revision";
 import { useServices } from "./context";
 
 type Side = "before" | "after";
@@ -61,7 +68,12 @@ export function MixPreviewChipLazy() {
           const { renderProject } = await import("../rendering/renderer");
           const doc = side === "before" ? lane.beforeDoc : lane.afterDoc;
           const mode = doc.arrangement.clips.length > 0 ? ("song" as const) : ("pattern" as const);
-          const rendered = await renderProject(doc, services.bank, { mode, sampleRate: 44100, tailSeconds: 0.6 });
+          const rendered = await renderProject(doc, services.bank, {
+            mode,
+            sampleRate: 44100,
+            tailSeconds: 0.6,
+            ...(lane.window ? { minimumDurationTicks: lane.window.endTick, arrangementOnly: true } : {}),
+          });
           if (side === "before") buffers.before = rendered;
           else buffers.after = rendered;
           return rendered;
@@ -79,7 +91,8 @@ export function MixPreviewChipLazy() {
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(gain);
-      source.start();
+      if (lane.window) source.start(ctx.currentTime, lane.window.startSec, lane.window.durationSec);
+      else source.start();
       sourceRef.current = source;
       setPlayingSide(side);
       source.onended = () => {
@@ -121,6 +134,12 @@ export function MixPreviewChipLazy() {
         {lane.stats.matchGainDb !== 0 &&
           ` · after level-matched ${lane.stats.matchGainDb > 0 ? "+" : ""}${lane.stats.matchGainDb.toFixed(1)} dB`}
       </span>
+      {lane.window && (
+        <span className="mix-preview-range">
+          range ticks {lane.window.startTick}..{lane.window.endTick} · {lane.window.durationSec.toFixed(2)} s · revision{" "}
+          {lane.projectRevision ?? "unknown"} → {lane.revisionAfterRender ?? "unknown"} ({lane.freshness ?? "unknown"})
+        </span>
+      )}
       <div className="mix-preview-actions">
         {(["before", "after"] as const).map((side) => (
           <button
@@ -139,6 +158,19 @@ export function MixPreviewChipLazy() {
           disabled={rendering != null}
           onClick={() => {
             stopPlayback();
+            const currentDoc = typeof services.store.getDoc === "function" ? services.store.getDoc() : null;
+            const currentRevision = storeRevision(services.store);
+            const revisionChanged =
+              lane.revisionAfterRender != null &&
+              currentRevision != null &&
+              lane.revisionAfterRender !== currentRevision;
+            if (
+              revisionChanged ||
+              (currentDoc != null && !mixPreviewMatchesProject(lane, currentDoc, currentRevision))
+            ) {
+              setError("Project changed after this preview. Dismiss it and run the preview again before applying.");
+              return;
+            }
             services.store.execute(lane.command);
             clearMixPreviewLane();
           }}

@@ -508,6 +508,33 @@ const OUTPUT_MIX_IDEA: McpOutputSchema = {
         matchGainDb: { type: "number", minimum: -12, maximum: 12 },
         seconds: { type: "number", minimum: 0 },
         studioBound: { type: "boolean" },
+        window: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            startTick: { type: "integer", minimum: 0 },
+            endTick: { type: "integer", minimum: 1 },
+            startSec: { type: "number", minimum: 0 },
+            endSec: { type: "number", minimum: 0 },
+            durationSec: { type: "number", minimum: 0 },
+            startSample: { type: "integer", minimum: 0 },
+            endSample: { type: "integer", minimum: 1 },
+            sampleRate: { type: "number", minimum: 1 },
+          },
+          required: [
+            "startTick",
+            "endTick",
+            "startSec",
+            "endSec",
+            "durationSec",
+            "startSample",
+            "endSample",
+            "sampleRate",
+          ],
+        },
+        projectRevision: { type: ["number", "null"] },
+        revisionAfterRender: { type: ["number", "null"] },
+        freshness: { type: "string", enum: ["current", "stale", "unknown"] },
       },
       required: [
         "laneId",
@@ -3020,7 +3047,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       "concepts (warmer, punchier, brighter, deeper, wider, air…) and their " +
       "targets from the sentence itself (drums, bass, lead, chords, the mix, " +
       "kick/snare/hats); an explicit target overrides the text. Plan first — " +
-      "the plan is cheap and pure, the apply is a mutation.",
+      "the plan is cheap and pure, the apply is a mutation. For a focused " +
+      "before/after audition, preview:true with startTick+endTick measures and " +
+      "plays only that arrangement window; Apply refuses if the project changed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -3039,7 +3068,17 @@ export const MCP_TOOLS: McpToolDef[] = [
         preview: {
           type: "boolean",
           description:
-            "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Read-only; render-bound transports only",
+            "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Optional startTick+endTick scopes both measurement and audition. Read-only; render-bound transports only",
+        },
+        startTick: {
+          type: "integer",
+          minimum: 0,
+          description: "Optional inclusive arrangement tick for a range preview; requires preview:true and endTick",
+        },
+        endTick: {
+          type: "integer",
+          minimum: 1,
+          description: "Optional exclusive arrangement tick for a range preview; requires preview:true and startTick",
         },
       },
       required: ["idea"],
@@ -3828,7 +3867,7 @@ export interface McpToolContext {
   /** kyx_mix_idea preview: render the before/after pair, measure, arm the
    * session lane the studio chip picks up. Read-only over the project. */
   mixPreview?: (
-    request: { idea: string; target?: string },
+    request: { idea: string; target?: string; startTick?: number; endTick?: number },
     signal?: AbortSignal,
   ) => Promise<import("./mix-preview").MixPreviewOutcome>;
 }
@@ -7986,6 +8025,23 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (record.apply === true && record.preview === true) {
         return mcpError("INVALID_ARGUMENTS", "apply and preview are mutually exclusive");
       }
+      const hasStartTick = record.startTick !== undefined;
+      const hasEndTick = record.endTick !== undefined;
+      if (hasStartTick !== hasEndTick) {
+        return mcpError("INVALID_ARGUMENTS", "range preview needs both startTick and endTick");
+      }
+      if (hasStartTick && record.preview !== true) {
+        return mcpError("INVALID_ARGUMENTS", "startTick/endTick are only valid with preview:true");
+      }
+      if (
+        hasStartTick &&
+        (!Number.isSafeInteger(record.startTick) ||
+          !Number.isSafeInteger(record.endTick) ||
+          (record.startTick as number) < 0 ||
+          (record.endTick as number) <= (record.startTick as number))
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "range preview needs non-negative integer ticks with endTick > startTick");
+      }
       const target = typeof record.target === "string" ? record.target.trim() : undefined;
       const apply = record.apply === true;
       if (record.preview === true) {
@@ -7999,7 +8055,14 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         try {
           const { formatMixPreview } = await import("./mix-preview");
-          const outcome = await ctx.mixPreview({ idea, ...(target ? { target } : {}) }, ctx.signal);
+          const outcome = await ctx.mixPreview(
+            {
+              idea,
+              ...(target ? { target } : {}),
+              ...(hasStartTick ? { startTick: record.startTick as number, endTick: record.endTick as number } : {}),
+            },
+            ctx.signal,
+          );
           const data = outcome.ok
             ? {
                 status: "previewed",
@@ -8016,6 +8079,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
                   matchGainDb: outcome.lane.stats.matchGainDb,
                   seconds: outcome.lane.stats.seconds,
                   studioBound: outcome.studioBound,
+                  window: outcome.lane.window ?? null,
+                  projectRevision: outcome.lane.projectRevision ?? null,
+                  revisionAfterRender: outcome.lane.revisionAfterRender ?? null,
+                  freshness: outcome.lane.freshness ?? "unknown",
                 },
               }
             : { status: "rejected", ok: false, applied: false, reason: outcome.reason };
