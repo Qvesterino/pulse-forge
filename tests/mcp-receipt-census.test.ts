@@ -230,6 +230,11 @@ function census(): CensusEntry[] {
       args: () => ({ sourceId: "user.song" }),
       kind: "read",
     },
+    {
+      tool: "kyx_context",
+      args: () => ({ fromBar: 1, toBar: 4 }),
+      kind: "read",
+    },
   ];
 }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import http from "node:http";
@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_TOOLS } from "../src/mcp/tools";
+import { setMcpAllowMutations } from "../src/mcp/flags";
 import { startMcpDesktopHost, type DesktopMcpApi } from "../src/mcp/desktop-host";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";
@@ -95,6 +96,14 @@ const runningProcesses: Array<{ kill(): void }> = [];
 afterEach(() => {
   while (runningProcesses.length > 0) runningProcesses.pop()?.kill();
   for (const server of runningServers.splice(0)) server.close();
+  setMcpAllowMutations(false);
+});
+
+// The desktop stdio transport IS an external agent (attributed
+// "desktop-stdio"), so ADR 0065 requires standing consent before it may
+// mutate. The human's own edits are not gated - this bridge is.
+beforeEach(() => {
+  setMcpAllowMutations(true);
 });
 
 describe("desktop mcp tool defs — mirror pin", () => {
@@ -1156,7 +1165,7 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     return { child, writeLine, nextLine };
   }
 
-  it("initialize → tools/list (39 tools) → tools/call round-trips through the bridge", async () => {
+  it("initialize → tools/list (the whole surface) → tools/call round-trips through the bridge", async () => {
     const { child, writeLine, nextLine } = await startChain(true);
     writeLine({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
     const init = JSON.parse(await nextLine()) as {
@@ -1310,7 +1319,7 @@ describe("official MCP SDK client over the desktop stdio transport", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(39);
+      expect(tools.tools).toHaveLength(MCP_TOOLS.length);
       expect(tools.tools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toBeDefined();
 
       const preview = await client.callTool({ name: "kyx_audio_preview", arguments: { bars: 1 } });

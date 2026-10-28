@@ -126,7 +126,10 @@ describe("PlaybackController generative lifecycle", () => {
 describe("key-repeat transport guards (audit 02)", () => {
   it("App dispatch skips repeat for transport shortcuts", () => {
     const source = readFileSync(resolve(process.cwd(), "src/ui/App.tsx"), "utf8");
-    const start = source.indexOf("const matched = matchShortcut(event);");
+    // The anchor must still exist: a stale anchor would slice the wrong
+    // window and the guard below would pass (or fail) by accident.
+    const start = source.indexOf("const matched = matchedShortcut;");
+    expect(start).toBeGreaterThan(-1);
     const guard = source.slice(start, start + 900);
     expect(guard).toContain("event.repeat");
     for (const key of ["playPause", "stop", "seekHome", "seekBack", "seekForward"]) {
@@ -134,10 +137,19 @@ describe("key-repeat transport guards (audit 02)", () => {
     }
   });
 
-  it("TopBar loop toggle + assist shortcuts are repeat-guarded", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/ui/TopBar.tsx"), "utf8");
-    const loopStart = source.indexOf('matchShortcut(event) === "toggleLoop"');
-    expect(source.slice(loopStart, loopStart + 200)).toContain("event.repeat");
+  it("the loop toggle + assist shortcuts are repeat-guarded", () => {
+    // The keyboard handling is GLOBAL (App.tsx) - TopBar's LOOP is a mouse
+    // button, so a pin that looked for a key handler there could never pass.
+    // The guard itself is the thing that matters: the transport shortcuts
+    // must not re-fire on auto-repeat.
+    const source = readFileSync(resolve(process.cwd(), "src/ui/App.tsx"), "utf8");
+    const start = source.indexOf("const matched = matchedShortcut;");
+    expect(start).toBeGreaterThan(-1);
+    const guard = source.slice(start, start + 900);
+    expect(guard).toContain("event.repeat");
+    for (const key of ["toggleLoop", "assistVary", "assistFill"]) {
+      expect(guard).toContain(`"${key}"`);
+    }
   });
 });
 

@@ -1,9 +1,10 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { startQmrBridge, QMR_KYX_MANIFEST, QMR_APP_ID, type QmrRuntimeContract } from "../src/interop/qmrBridge";
 import { executeMcpTool, MCP_TOOLS } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { setMcpAllowMutations } from "../src/mcp/flags";
 import type { Services } from "../src/services";
 
 /**
@@ -28,6 +29,15 @@ function fakeServices(): { services: Services; store: ProjectStore } {
 
 afterEach(() => {
   delete (window as unknown as { qvesterQmr?: unknown }).qvesterQmr;
+  // The permission lattice (ADR 0065) gates EXTERNAL agents behind standing
+  // consent. The bridge IS an external agent ("qmr"), so a mutating call is
+  // refused with CONFIRMATION_REQUIRED unless the human granted consent. The
+  // bridge's whole job is to drive those calls, so the test grants it.
+  setMcpAllowMutations(false);
+});
+
+beforeEach(() => {
+  setMcpAllowMutations(true);
 });
 
 describe("qmr bridge — manifest", async () => {
@@ -64,7 +74,13 @@ describe("qmr bridge — runtime contract", async () => {
     expect((window as unknown as { qvesterQmr?: unknown }).qvesterQmr).toBeUndefined();
   });
 
-  it("executeCommand routes kyx.<tool> through the MCP layer (real read-back, real undo)", async () => {
+  it(
+    "executeCommand routes kyx.<tool> through the MCP layer (real read-back, real undo)",
+    // The bridge now really mutates (the permission lattice no longer refuses
+    // it), so the call does the work instead of failing fast. On a loaded
+    // machine the generation + undo path needs more than the 5 s default.
+    { timeout: 30_000 },
+    async () => {
     const { services, store } = fakeServices();
     const stop = startQmrBridge(services);
     const runtime = (window as unknown as { qvesterQmr: QmrRuntimeContract }).qvesterQmr;
@@ -80,7 +96,8 @@ describe("qmr bridge — runtime contract", async () => {
     const undone = await runtime.executeCommand("kyx.undo", { action: "undo" });
     expect(undone.mutated).toBe(true);
     stop();
-  });
+    },
+  );
 
   it("unknown and non-kyx command types are honest isError refusals", async () => {
     const { services } = fakeServices();

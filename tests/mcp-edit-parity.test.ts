@@ -412,7 +412,7 @@ describe("MCP edit parity — verbs the command layer has and the tool surface d
 
   it("audio ops address by family and refuse an ambiguous / missing address", async () => {
     const ctx = makeCtx(fixture());
-    const noAddress = await executeMcpTool(ctx, "kyx_clips", { op: "audioUpdate", gain: 1 });
+    const noAddress = await executeMcpTool(ctx, "kyx_clips", { op: "audioUpdate", bar: 2, gain: 1 });
     expect(noAddress.mutated).toBe(false);
     expect(noAddress.text).toContain("need trackId or family");
 

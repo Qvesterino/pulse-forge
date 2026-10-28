@@ -94,7 +94,13 @@ function readBody(lines: string[], startIdx: number): string[] {
   return buf;
 }
 
-const PUBLIC_INTERFACES: string[] = ["UserSampleAsset", "UserSampleAudio", "PcmRecordingAudioRef"];
+const PUBLIC_INTERFACES: string[] = [
+  "UserSampleAsset",
+  "UserSampleAudio",
+  "PcmRecordingAudioRef",
+  "UserSampleRestoreFailure",
+  "UserSampleRestoreReport",
+];
 
 const PUBLIC_HELPERS: string[] = [
   "isPcmRecordingAudio",

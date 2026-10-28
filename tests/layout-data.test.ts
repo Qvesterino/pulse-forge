@@ -57,8 +57,8 @@ const fullState = (overrides: Partial<LayoutState> = {}): LayoutState => ({
 });
 
 describe("layout-data · panel registry is the single source of truth", () => {
-  it("exposes the 13 panels and keeps them unique", () => {
-    expect(PANEL_KEYS).toHaveLength(13);
+  it("exposes the 14 panels and keeps them unique", () => {
+    expect(PANEL_KEYS).toHaveLength(14);
     expect(new Set(PANEL_KEYS).size).toBe(PANEL_KEYS.length);
   });
 

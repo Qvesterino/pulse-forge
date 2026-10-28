@@ -279,7 +279,19 @@ describe("collab server — one relay executor window", () => {
     expect(relayed.tool).toBe("kyx_state");
 
     second.send(
-      JSON.stringify({ type: "mcp-result", id: relayed.id, result: { text: "owner answered", mutated: false } }),
+      JSON.stringify({
+        type: "mcp-result",
+        id: relayed.id,
+        // The owner answers with the WHOLE result, data twin included: the
+        // server checks the tool's outputSchema and rewrites a result that
+        // carries no structured content into an error. The real bridge sends
+        // the whole thing (src/mcp/bridge.ts -> src/mcp/tools.ts).
+        result: {
+          text: "owner answered",
+          mutated: false,
+          data: { status: "read", stage: "read", subject: "overview" },
+        },
+      }),
     );
     const answered = await call;
     // MCP carries tool text as content parts, not a bare `text` field.

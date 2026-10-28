@@ -58,15 +58,20 @@ describe("mcp core — protocol with an authenticated session", () => {
     return { hub, delivered };
   }
 
-  it("initialize returns capabilities + serverInfo; tools/list returns the 39 tools", async () => {
+  it("initialize returns capabilities + serverInfo; tools/list returns the whole surface", async () => {
     const { hub } = makeHub();
     const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", {}, 1));
     expect(init.result.protocolVersion).toBe("2026-07-28");
     expect(init.result.capabilities.tools).toBeDefined();
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
-    expect(listedTools).toHaveLength(39);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(34);
+    // The COUNT is a property of the surface, not a constant to maintain: a new
+    // tool must not have to edit this file to stay green. The exact name set is
+    // pinned further down, and the mirror is deep-pinned against MCP_TOOLS.
+    expect(listedTools).toHaveLength(MCP_TOOLS.length);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(
+      MCP_TOOLS.filter((tool) => tool.outputSchema != null).length,
+    );
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -124,6 +129,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
+      "kyx_context",
       "kyx_save",
       "kyx_undo",
       "kyx_transport",
@@ -158,6 +164,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_song",
       "kyx_routing",
       "kyx_unsuno",
+      "kyx_separate",
       "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",
@@ -1011,10 +1018,11 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(delivered).toHaveLength(1);
   });
 
-  it("tool definitions match the KYX surface (39 tools, known names)", () => {
+  it("tool definitions match the KYX surface (every tool, known names)", () => {
     expect(MCP_TOOL_DEFS.map((tool: { name: string }) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
+      "kyx_context",
       "kyx_save",
       "kyx_undo",
       "kyx_transport",
@@ -1049,6 +1057,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_song",
       "kyx_routing",
       "kyx_unsuno",
+      "kyx_separate",
       "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",

@@ -76,7 +76,9 @@ describe("agent onboarding resources", async () => {
       cancellation: { supported: boolean };
     };
     expect(snapshot.hooks.save).toBe(false);
-    expect(snapshot.cancellation.supported).toBe(false);
+    // Cancellation IS supported (cooperative, AS-009 phase 2) - the same
+    // capability three other specs pin as true.
+    expect(snapshot.cancellation.supported).toBe(true);
   });
 
   it("ROT GUARD: every registered tool is documented in playbook+vocab", async () => {

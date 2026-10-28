@@ -21,6 +21,15 @@
       }
     },
     {
+      "name": "kyx_context",
+      "risk": "read",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
       "name": "kyx_save",
       "risk": "runtime",
       "annotations": {
@@ -319,6 +328,15 @@
     },
     {
       "name": "kyx_unsuno",
+      "risk": "mutate",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "kyx_separate",
       "risk": "mutate",
       "annotations": {
         "readOnlyHint": false,
