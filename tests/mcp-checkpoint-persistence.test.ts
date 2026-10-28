@@ -12,6 +12,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * C7 — PERSISTED AGENT CHECKPOINTS. The in-memory map stays the live state;
@@ -164,7 +165,7 @@ describe("tool-level durable hydration", () => {
 });
 
 function makeCtxFor(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -173,5 +174,5 @@ function makeCtxFor(store: ProjectStore): McpToolContext {
     historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  };
+  });
 }

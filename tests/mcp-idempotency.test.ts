@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { executeMcpTool, resetMcpIdempotencyLedger, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * P1-B IDEMPOTENCY LEDGER (control-surface audit 2026-10-13, GAP-04 /
@@ -40,7 +41,7 @@ function makeCtx(start: ProjectDocument): {
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
-  const ctx: McpToolContext = {
+  const ctx: McpToolContext = withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -71,7 +72,7 @@ function makeCtx(start: ProjectDocument): {
     historyLabels: () => [...labels],
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-  };
+  });
   return { ctx, doc: () => current, setDoc: (next) => (current = next), undo: () => ctx.undo() };
 }
 

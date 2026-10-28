@@ -9,6 +9,7 @@ import {
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * AGENT SIMULATION E2E (docs/AGENTIC-DAW-PLAN.md — the regression gate).
@@ -57,7 +58,7 @@ function spawnAgent(options: { allowDestructive?: boolean } = {}): FakeAgent {
       return executeMcpToolAsync(ctx, name, args);
     },
   };
-  const ctx: McpToolContext = {
+  const ctx: McpToolContext = withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => {
       store.execute(command);
@@ -93,7 +94,7 @@ function spawnAgent(options: { allowDestructive?: boolean } = {}): FakeAgent {
       };
     },
     allowDestructive: options.allowDestructive === true ? () => true : undefined,
-  };
+  });
   return agent;
 }
 

@@ -3,6 +3,7 @@ import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { verifiedMutation } from "../src/mcp/verified-mutation";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE FALSE AI SUCCESS — the class R-02 closes.
@@ -20,7 +21,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
   let current = doc;
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -45,7 +46,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-  };
+  });
 }
 
 describe("a mutation becomes a claim only when the document backs it", () => {

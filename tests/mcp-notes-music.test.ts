@@ -3,6 +3,7 @@ import { executeMcpTool, explicitTrackIds, MCP_TOOLS, type McpToolContext } from
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_notes + kyx_music — the melodic composition + musical state surface.
@@ -13,7 +14,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 
 function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
   let current = doc;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -25,11 +26,11 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 function projectStoreCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -39,7 +40,7 @@ function projectStoreCtx(store: ProjectStore, options: { allowDestructive?: bool
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 function freshDoc(): ProjectDocument {

@@ -7,6 +7,7 @@ import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "../src/
 import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * MCP → COMMAND → STORE → ENGINE PROJECTION → PERSISTENCE (control-surface
@@ -96,7 +97,7 @@ function wirePersistence(
 
 /** Context bound to the REAL store (the storeCtx shape from mcp-tools.test.ts). */
 function storeCtx(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -105,7 +106,7 @@ function storeCtx(store: ProjectStore): McpToolContext {
     historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-  };
+  });
 }
 
 function bootDoc(): ProjectDocument {

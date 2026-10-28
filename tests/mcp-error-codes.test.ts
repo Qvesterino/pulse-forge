@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { executeMcpTool, resetMcpIdempotencyLedger, type McpErrorCode, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * P2-B TYPED ERROR CONTRACT (control-surface audit 2026-10-13, GAP-08).
@@ -24,7 +25,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 
 function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
   let current = doc;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -36,7 +37,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 beforeEach(() => {

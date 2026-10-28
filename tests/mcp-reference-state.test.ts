@@ -4,6 +4,7 @@ import { setMatchEqReference } from "../src/intent/match-eq";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * REFERENCE CONDITIONING SURFACING (complement to the reference-mix wave) —
@@ -18,7 +19,7 @@ function makeCtx(): McpToolContext {
   resetDeterministicIds();
   resetMcpCheckpoints();
   const store = new ProjectStore(createProjectFromTemplate("house"));
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -27,7 +28,7 @@ function makeCtx(): McpToolContext {
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  };
+  });
 }
 
 /** A few seconds of band-ish noise at real amplitude — plausible enough for

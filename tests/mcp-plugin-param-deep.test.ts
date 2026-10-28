@@ -5,6 +5,7 @@ import { setEffectParam } from "../src/commands/effectParams";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * F-08 — kyx_plugin_param must reach the DEEP/structured params, and its
@@ -22,7 +23,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  */
 
 function makeCtx(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -38,7 +39,7 @@ function makeCtx(store: ProjectStore): McpToolContext {
       setMetronome: () => {},
     },
     allowDestructive: () => true,
-  };
+  });
 }
 
 function docWithPrismAndUltina(): { store: ProjectStore; trackId: string; prismId: string; ultinaId: string } {

@@ -9,6 +9,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { testDoc } from "./fixtures/doc";
 import type { McpToolResult } from "../src/mcp/tools";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * P2-D REMAINDER (parity sweep follow-up, 2026-10-14):
@@ -23,7 +24,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => ProjectDocument } {
   let current = doc;
   return {
-    ctx: {
+    ctx: withAgentWriter({
       getDoc: () => current,
       execute: (command) => {
         current = command.execute(current);
@@ -34,7 +35,7 @@ function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => Projec
       historyLabels: () => [],
       isMicRecordingActive: () => false,
       transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-    },
+    }),
     doc: () => current,
   };
 }

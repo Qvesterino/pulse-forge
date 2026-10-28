@@ -5,6 +5,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
 import type { Command } from "../src/commands/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * MULTI-AGENT SESSION ATTRIBUTION (C6 v1) — shared document, shared LIFO
@@ -20,7 +21,7 @@ function makeCtx(): McpToolContext {
   useDeterministicIds();
   resetDeterministicIds();
   const store = new ProjectStore(createProjectFromTemplate("house"));
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command: Command) => store.execute(command),
     undo: () => store.undo(),
@@ -33,7 +34,7 @@ function makeCtx(): McpToolContext {
     // attributed agent is an EXTERNAL agent, so it needs the user's standing
     // consent before it may change the document — granted here on purpose.
     allowMutations: () => true,
-  };
+  });
 }
 
 describe("withAgentAttribution", () => {

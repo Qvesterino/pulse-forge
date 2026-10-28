@@ -35,6 +35,7 @@ import { createProjectBriefFromContract, projectBriefIntentPatch } from "../src/
 import { intentHash } from "../src/intent/hash";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import type { ProjectDocument, TimeSignature } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 const FOUR_FOUR: TimeSignature = { numerator: 4, denominator: 4 };
 const THREE_FOUR: TimeSignature = { numerator: 3, denominator: 4 };
@@ -138,7 +139,7 @@ describe("ADR 0057 — the intent engine asks in the document's bars", () => {
 function mcpCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => ProjectDocument } {
   let current = doc;
   const labels: string[] = [];
-  const ctx: McpToolContext = {
+  const ctx: McpToolContext = withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -156,7 +157,7 @@ function mcpCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => Project
       setLoop: () => {},
       setMetronome: () => {},
     },
-  };
+  });
   return { ctx, doc: () => current };
 }
 

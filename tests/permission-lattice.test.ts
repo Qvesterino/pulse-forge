@@ -21,6 +21,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import type { ProjectDocument } from "../src/project-model/types";
 import type { Command } from "../src/commands/types";
 import type { DeltaPath } from "../src/commands/docDelta";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * PERMISSION LATTICE + SCOPE GUARD (ADR 0065).
@@ -260,7 +261,7 @@ describe("the lattice inside the MCP write path", () => {
     // unlocked — before the tool's own per-op D4 gate ever ran.
     const store = new ProjectStore(createDefaultProject());
     const result = await executeMcpTool(
-      {
+      withAgentWriter({
         getDoc: () => store.getDoc(),
         execute: (command) => store.execute(command),
         undo: () => store.undo(),
@@ -270,7 +271,7 @@ describe("the lattice inside the MCP write path", () => {
         isMicRecordingActive: () => false,
         transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
         allowDestructive: () => true,
-      },
+      }),
       "kyx_tracks",
       { op: "addDrum" },
     );
@@ -282,7 +283,7 @@ describe("the lattice inside the MCP write path", () => {
   it("refuses an external agent's mutating call without standing consent", async () => {
     const store = new ProjectStore(createDefaultProject());
     const result = await executeMcpTool(
-      {
+      withAgentWriter({
         getDoc: () => store.getDoc(),
         execute: (command) => store.execute(command),
         undo: () => store.undo(),
@@ -293,7 +294,7 @@ describe("the lattice inside the MCP write path", () => {
         transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
         agentId: "web-relay",
         allowMutations: () => false,
-      },
+      }),
       "kyx_tracks",
       { op: "addDrum" },
     );

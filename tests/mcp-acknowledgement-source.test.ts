@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { executeMcpTool, resetMcpIdempotencyLedger, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE ACKNOWLEDGEMENT COMES FROM THE COMMITTED DOCUMENT (audit F-24).
@@ -29,7 +30,7 @@ function makeCtx(
   options: { allowDestructive?: boolean } = {},
 ): McpToolContext {
   let current = document;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -42,7 +43,7 @@ function makeCtx(
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 /** A store that CHANGES the value after the command landed — the store's own

@@ -3,6 +3,7 @@ import { executeMcpTool, resetMcpCheckpoints, type McpToolContext } from "../src
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * C7.5 — CHECKPOINT DIFF: the agent decides whether to restore with
@@ -15,7 +16,7 @@ function makeCtx(): McpToolContext {
   useDeterministicIds();
   resetDeterministicIds();
   const store = new ProjectStore(createProjectFromTemplate("house"));
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -24,7 +25,7 @@ function makeCtx(): McpToolContext {
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  };
+  });
 }
 
 beforeEach(() => {

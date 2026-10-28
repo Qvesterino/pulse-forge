@@ -7,6 +7,7 @@ import { INTENT_COMMAND_ROUTE_KINDS } from "../src/intent/command-for-route";
 import { executeMcpTool, resetMcpIdempotencyLedger, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * HCP-04-01 — the MCP intent surface used to report a FALSE SUCCESS.
@@ -55,7 +56,7 @@ function routeKindsInTheSwitch(): string[] {
 
 function makeCtx(doc: ProjectDocument): McpToolContext {
   let current = doc;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -67,7 +68,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     allowDestructive: () => true,
-  };
+  });
 }
 
 beforeEach(() => {

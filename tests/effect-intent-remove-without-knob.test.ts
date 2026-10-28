@@ -5,6 +5,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { addEffectToTracks } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import type { EffectType, ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * A TYPE-LEVEL effect remove must not need a primary knob.
@@ -37,7 +38,7 @@ function removeIntent(effect: EffectType, trackId: string): EffectIntent {
 }
 
 function makeCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -53,7 +54,7 @@ function makeCtx(store: ProjectStore, options: { allowDestructive?: boolean } = 
       setMetronome: () => {},
     },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 describe("a type-level effect remove needs no primary knob", () => {

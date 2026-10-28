@@ -16,6 +16,7 @@ import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
 import { ticksPerBar } from "../src/project-model/schema";
 import { clearAdjustmentLedger } from "../src/intent/adjustment-recording";
+import { withAgentWriter, withStoreAgentWriter, withoutOwnedFrames } from "./helpers/mcpAgentWriter";
 
 /**
  * MCP TOOLS — headless verification against a real ProjectStore-backed
@@ -33,7 +34,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -72,29 +73,32 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
       setMetronome: () => {},
     },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 /** Context whose mutations land in the REAL store (structured tests read
  * store.doc afterwards — the makeCtx holder would hide them). */
 function storeCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
-  return {
-    getDoc: () => store.doc,
-    execute: (command) => store.execute(command),
-    undo: () => store.undo(),
-    redo: () => store.redo(),
-    undoStackLength: () => store.undoStackLength,
-    historyLabels: () => store.history.map((entry) => entry.label),
-    isMicRecordingActive: () => false,
-    transport: {
-      play: () => {},
-      stop: () => {},
-      pause: () => {},
-      setLoop: () => {},
-      setMetronome: () => {},
+  return withStoreAgentWriter(
+    {
+      getDoc: () => store.doc,
+      execute: (command) => store.execute(command),
+      undo: () => store.undo(),
+      redo: () => store.redo(),
+      undoStackLength: () => store.undoStackLength,
+      historyLabels: () => store.history.map((entry) => entry.label),
+      isMicRecordingActive: () => false,
+      transport: {
+        play: () => {},
+        stop: () => {},
+        pause: () => {},
+        setLoop: () => {},
+        setMetronome: () => {},
+      },
+      ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
     },
-    ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+    store,
+  );
 }
 
 function datasetDoc(): ProjectDocument {
@@ -127,7 +131,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", async () => {
-  it("tool surface: the 40 documented tools", async () => {
+  it("tool surface: the documented tools", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_catalog")?.outputSchema).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -176,6 +180,7 @@ describe("mcp tools — headless execution", async () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
+      "kyx_context",
       "kyx_save",
       "kyx_undo",
       "kyx_transport",
@@ -2463,18 +2468,24 @@ describe("mcp P2 batch — transactional multi-call", async () => {
     expect(data.results[1].text).toContain("fx op failed");
   });
 
-  it("without frame support it degrades honestly (per-call undo steps)", async () => {
+  it("without frame support it refuses honestly (no batch calls were run)", async () => {
     const store = new ProjectStore(datasetDoc());
-    const ctx = storeCtx(store);
+    // A transport that can write but cannot OWN a frame. The batch cannot be
+    // grouped into one undo transaction, so it is refused outright - running
+    // the calls one by one would leave the project half-written and tell the
+    // agent it had a single step to undo.
+    const ctx = withoutOwnedFrames(storeCtx(store));
     const result = await executeMcpTool(ctx, "kyx_batch", {
       calls: [
         { tool: "kyx_intent", args: { instruction: "set tempo to 135" } },
         { tool: "kyx_intent", args: { instruction: "mute the drums" } },
       ],
     });
-    expect(result.mutated).toBe(true);
-    expect(result.text).toContain("no undo-frame support");
-    expect(store.undoStackLength).toBe(2);
+    expect(result.mutated).toBe(false);
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("UNAVAILABLE_ON_TRANSPORT");
+    expect(result.text).toContain("cannot safely isolate and group MCP batch writes");
+    expect(store.undoStackLength).toBe(0);
   });
 
   it("refuses async tools inside the batch and oversized batches", async () => {

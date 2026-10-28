@@ -1,5 +1,7 @@
 import { createUndoFrameToken, type UndoFrameToken } from "../../src/store/undoFrame";
 import type { McpToolContext } from "../../src/mcp/tools";
+import type { ProjectStore } from "../../src/store/ProjectStore";
+import type { Command } from "../../src/commands/types";
 
 /**
  * Attach the ISOLATED project writer to a hand-rolled MCP test context.
@@ -36,4 +38,31 @@ export function withAgentWriter(ctx: McpToolContext): McpToolContext {
       return true;
     },
   };
+}
+
+/**
+ * The same, but the writer and the frames are the REAL store's — so the
+ * isolation semantics under test are the product's own (a store refuses a
+ * write that tries to join somebody else's undo frame).
+ */
+export function withStoreAgentWriter(ctx: McpToolContext, store: ProjectStore): McpToolContext {
+  return {
+    ...ctx,
+    executeAgentCommand: (command: Command, frameToken?: UndoFrameToken) =>
+      store.executeAgentCommand(command, frameToken),
+    beginOwnedUndoFrame: (label?: string) => store.beginOwnedUndoFrame(label),
+    endOwnedUndoFrame: (token: UndoFrameToken) => store.endOwnedUndoFrame(token),
+  };
+}
+
+/**
+ * A context that can write but cannot OWN a frame — the shape a transport has
+ * when it cannot group a batch into one undo transaction. The batch refuses it
+ * honestly (UNAVAILABLE_ON_TRANSPORT) instead of running the calls one by one.
+ */
+export function withoutOwnedFrames(ctx: McpToolContext): McpToolContext {
+  const { beginOwnedUndoFrame, endOwnedUndoFrame, ...rest } = ctx;
+  void beginOwnedUndoFrame;
+  void endOwnedUndoFrame;
+  return rest;
 }

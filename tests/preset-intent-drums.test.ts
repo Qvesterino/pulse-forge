@@ -8,6 +8,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 import { KOPA_FACTORY_PRESETS } from "../src/presets/kopa-factory";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * DRUMS preset-intent family (KOPA plan §4.1, ADR 0035) — "load the trap
@@ -151,7 +152,7 @@ describe("drums preset intent — exact ops stay on the drum rack", () => {
 describe("drums preset intent — MCP loadPreset family:drums", () => {
   function makeCtx(doc: ProjectDocument): McpToolContext {
     let current = doc;
-    return {
+    return withAgentWriter({
       getDoc: () => current,
       execute: (command) => {
         current = command.execute(current);
@@ -162,7 +163,7 @@ describe("drums preset intent — MCP loadPreset family:drums", () => {
       historyLabels: () => [],
       isMicRecordingActive: () => false,
       transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-    };
+    });
   }
 
   it("loadPreset family:'drums' lands a KOPA preset and reads back per track", async () => {

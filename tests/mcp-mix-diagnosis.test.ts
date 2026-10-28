@@ -11,6 +11,7 @@ import {
   type StripDocFacts,
 } from "../src/mcp/mix-diagnosis";
 import type { MixHealthReport } from "../src/analysis/mixDoctor";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_diagnose_mix — the agent's EARS v2. Pins the pure interpretation
@@ -307,7 +308,7 @@ describe("read-back + action list", () => {
 });
 
 function makeCtx(hook?: NonNullable<McpToolContext["diagnoseMix"]>): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => ({}) as never,
     execute: () => undefined,
     undo: () => undefined,
@@ -317,7 +318,7 @@ function makeCtx(hook?: NonNullable<McpToolContext["diagnoseMix"]>): McpToolCont
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(hook ? { diagnoseMix: hook } : {}),
-  };
+  });
 }
 
 describe("kyx_diagnose_mix transport contract", () => {

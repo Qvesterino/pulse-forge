@@ -9,6 +9,7 @@ import {
 } from "../src/intent/param-intent";
 import { testDoc } from "./fixtures/doc";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE PARAM READ-BACK — the AI's window onto a knob it did not touch itself.
@@ -42,7 +43,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -74,7 +75,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
       setLoop: () => {},
       setMetronome: () => {},
     },
-  };
+  });
 }
 
 /** Rename the instrument tracks (in order) — the POSITION stays the same. */

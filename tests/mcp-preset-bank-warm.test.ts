@@ -3,6 +3,7 @@ import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { isFactoryPresetsWarm } from "../src/presets/factory-loader";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE COLD-BANK CONTRACT - the factory preset bank is a lazy chunk
@@ -26,7 +27,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
   let current = doc;
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -53,7 +54,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
       setLoop: () => {},
       setMetronome: () => {},
     },
-  };
+  });
 }
 
 describe("mcp lazy factory bank — the tool layer warms its own bank", () => {

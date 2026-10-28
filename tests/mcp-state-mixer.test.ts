@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_state subject:"mixer" — the ONE-CALL mix board for mixing agents:
@@ -12,7 +13,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 
 function makeCtx(doc: ProjectDocument): McpToolContext {
   let current = doc;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -23,7 +24,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-  };
+  });
 }
 
 describe("kyx_state mixer snapshot", async () => {

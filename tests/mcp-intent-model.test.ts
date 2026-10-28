@@ -4,6 +4,7 @@ import { setIntentModelProvider, type IntentModelProvider } from "../src/intent/
 import { clearIntentMiningLog, readIntentMiningLog } from "../src/intent/failure-log";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * THE INTENT MODEL SERVES MCP — P1+P2 of the 100% push. The deterministic
@@ -27,7 +28,7 @@ function fakeProvider(responses: Record<string, unknown>): IntentModelProvider {
 
 function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
   let current = doc;
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -39,7 +40,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 afterEach(() => {

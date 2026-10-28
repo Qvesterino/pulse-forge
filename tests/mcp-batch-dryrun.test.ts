@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { executeMcpTool, resetMcpIdempotencyLedger, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * P2-C BATCH SAFEGUARDS + DRY-RUN (control-surface audit 2026-10-13, GAP-11;
@@ -21,7 +22,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => ProjectDocument } {
   let current = doc;
   return {
-    ctx: {
+    ctx: withAgentWriter({
       getDoc: () => current,
       execute: (command) => {
         current = command.execute(current);
@@ -32,7 +33,7 @@ function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => Projec
       historyLabels: () => [],
       isMicRecordingActive: () => false,
       transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-    },
+    }),
     doc: () => current,
   };
 }

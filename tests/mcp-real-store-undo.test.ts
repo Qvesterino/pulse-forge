@@ -3,6 +3,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import type { Command } from "../src/commands/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * MCP → REAL ProjectStore UNDO GATE (seam: mcp-to-real-projectstore)
@@ -19,7 +20,7 @@ import type { Command } from "../src/commands/types";
 
 function realCtx() {
   const store = new ProjectStore(createProjectFromTemplate("house"));
-  const ctx: McpToolContext = {
+  const ctx: McpToolContext = withAgentWriter({
     getDoc: () => store.doc,
     execute: (command: Command) => store.execute(command),
     undo: () => store.undo(),
@@ -28,7 +29,7 @@ function realCtx() {
     historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  };
+  });
   return { store, ctx };
 }
 

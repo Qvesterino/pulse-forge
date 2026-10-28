@@ -6,6 +6,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { createScene, setSceneRole } from "../src/commands/scenes";
 import { addArrangementClip } from "../src/commands/arrangement";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_checkpoint — the agent time machine (Fáza C, docs/AGENTIC-DAW-PLAN.md).
@@ -14,7 +15,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  */
 
 function storeCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -24,7 +25,7 @@ function storeCtx(store: ProjectStore, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 function datasetStore(): ProjectStore {

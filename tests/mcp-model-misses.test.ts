@@ -4,6 +4,7 @@ import { logIntentMiningEvent, INTENT_FAILURE_LOG_KEY } from "../src/intent/fail
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * MODEL-MISSES SURFACING (kyx_state subject:model-misses) — the failure-
@@ -17,7 +18,7 @@ function makeCtx(): McpToolContext {
   useDeterministicIds();
   resetDeterministicIds();
   const store = new ProjectStore(createProjectFromTemplate("house"));
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -26,7 +27,7 @@ function makeCtx(): McpToolContext {
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-  };
+  });
 }
 
 beforeEach(() => {

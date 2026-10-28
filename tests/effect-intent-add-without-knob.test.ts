@@ -6,6 +6,7 @@ import { addEffectToTracks } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 import type { EffectType, ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * F-17 — an ADD ask on an effect without a primary knob must not be refused.
@@ -38,7 +39,7 @@ function moreIntent(effect: EffectType, trackId: string): EffectIntent {
 }
 
 function makeCtx(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -54,7 +55,7 @@ function makeCtx(store: ProjectStore): McpToolContext {
       setMetronome: () => {},
     },
     allowDestructive: () => true,
-  };
+  });
 }
 
 describe("an add ask on a knob-less effect adds the instance", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * F-06 — kyx_intent's paramIntent branch must read the state back.
@@ -14,7 +15,7 @@ import { testDoc } from "./fixtures/doc";
  */
 
 function makeCtx(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -30,7 +31,7 @@ function makeCtx(store: ProjectStore): McpToolContext {
       setMetronome: () => {},
     },
     allowDestructive: () => true,
-  };
+  });
 }
 
 describe("kyx_intent paramIntent read-back", () => {

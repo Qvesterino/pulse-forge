@@ -3,6 +3,7 @@ import { executeMcpTool, resetMcpIdempotencyLedger, type McpToolContext } from "
 import { withAgentAttribution } from "../src/mcp/attribution";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
@@ -26,7 +27,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 
 function makeCtx(doc: ProjectDocument, agentId?: "web-relay" | "desktop-stdio"): McpToolContext {
   let current = doc;
-  const base: McpToolContext = {
+  const base: McpToolContext = withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -41,7 +42,7 @@ function makeCtx(doc: ProjectDocument, agentId?: "web-relay" | "desktop-stdio"):
     // attributed agent is an EXTERNAL agent, so it needs the user's standing
     // consent before it may change the document — granted here on purpose.
     allowMutations: () => true,
-  };
+  });
   return agentId ? withAgentAttribution(base, agentId) : base;
 }
 

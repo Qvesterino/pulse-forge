@@ -4,6 +4,7 @@ import { ReactionLedger, setActiveReactionLedger, setReactionLedgerEnabled } fro
 import { executeMcpToolAsync } from "../src/mcp/tools";
 import type { McpToolContext } from "../src/mcp/tools";
 import type { ReactionEntry } from "../src/intent/reaction-ledger";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * F2 — the report as an agent sees it, on kyx_diagnose_mix.
@@ -99,7 +100,7 @@ describe("F2 agent report", () => {
 /* ------------------------------------------------------------------ */
 
 function makeCtx(): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => ({}) as never,
     execute: () => undefined,
     undo: () => undefined,
@@ -118,7 +119,7 @@ function makeCtx(): McpToolContext {
         attributions: [],
         suggestedActions: [],
       }) as never,
-  };
+  });
 }
 
 describe("F2 on kyx_diagnose_mix", () => {

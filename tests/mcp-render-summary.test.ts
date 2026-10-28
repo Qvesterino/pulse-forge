@@ -6,6 +6,7 @@ import {
   formatRenderSummary,
   type RenderSummaryData,
 } from "../src/mcp/render-summary";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_render_summary — the agent's EARS. Pins the pure evidence layer
@@ -26,7 +27,7 @@ function fakeBuffer(samples: number[], sampleRate = 48000) {
 }
 
 function makeCtx(hook?: NonNullable<McpToolContext["renderSummary"]>): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => ({}) as never,
     execute: () => undefined,
     undo: () => undefined,
@@ -36,7 +37,7 @@ function makeCtx(hook?: NonNullable<McpToolContext["renderSummary"]>): McpToolCo
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(hook ? { renderSummary: hook } : {}),
-  };
+  });
 }
 
 const SUMMARY: RenderSummaryData = {

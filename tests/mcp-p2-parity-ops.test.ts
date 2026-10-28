@@ -19,6 +19,7 @@ import { setAudioClipsMute } from "../src/commands/audioClips";
 import { setClipsLocked } from "../src/commands/clipGroups";
 import { normalizeProject } from "../src/project-model/schema";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * WAVE 22 — the P2 MCP parity gaps, closed (owner-approved 2026-10-14).
@@ -45,7 +46,7 @@ function makeCtx(
   const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
-  return {
+  return withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -79,7 +80,7 @@ function makeCtx(
       ...(options.position !== undefined ? { position: options.position } : {}),
     },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
-  };
+  });
 }
 
 /** Scene clips at bars 0-3 and 4-7, plus two audio clips on the drum lane. */

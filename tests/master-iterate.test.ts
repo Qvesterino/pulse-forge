@@ -6,6 +6,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { addEffectToTracks } from "../src/commands/commands";
 import { executeMcpTool } from "../src/mcp/tools";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * CLOSED-LOOP TONAL ITERATOR pins. Each iteration produces bounded
@@ -81,7 +82,7 @@ describe("kyx_master op:iterate — wiring pin", () => {
     // the collect phase instead, so the spec body stays milliseconds.
     const store = new ProjectStore(createProjectFromTemplate("house"));
     store.execute(addEffectToTracks(store.doc, [store.doc.tracks[0].id], "zenit"));
-    const ctx = {
+    const ctx = withAgentWriter({
       getDoc: () => store.doc,
       execute: (cmd: Command) => store.execute(cmd),
       undo: () => store.undo(),
@@ -90,7 +91,7 @@ describe("kyx_master op:iterate — wiring pin", () => {
       historyLabels: () => store.history.map((e) => e.label),
       isMicRecordingActive: () => false,
       transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
-    };
+    });
     const result = await executeMcpTool(ctx, "kyx_master", { op: "iterate", targetLufs: -14 });
     expect(result.mutated).toBe(false);
     expect(result.text).toContain("needs ctx.renderMix");

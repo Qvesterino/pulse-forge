@@ -4,6 +4,7 @@ import { mcpFxMetersFromServices } from "../src/mcp/meters";
 import { createDefaultProject } from "../src/project-model/schema";
 import { MASTER_EFFECT_OWNER_ID } from "../src/project-model/types";
 import type { Services } from "../src/services";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_meter scope:"fx" — the closed loop for an EFFECT change.
@@ -19,7 +20,7 @@ import type { Services } from "../src/services";
 
 function makeCtx(fxMeters?: () => McpFxMeterSnapshot | null): McpToolContext {
   const doc = createDefaultProject();
-  return {
+  return withAgentWriter({
     getDoc: () => doc,
     execute: () => undefined,
     undo: () => undefined,
@@ -29,7 +30,7 @@ function makeCtx(fxMeters?: () => McpFxMeterSnapshot | null): McpToolContext {
     isMicRecordingActive: () => false,
     transport: { play() {}, stop() {}, pause() {}, setLoop() {}, setMetronome() {} },
     ...(fxMeters ? { fxMeters } : {}),
-  };
+  });
 }
 
 function snapshot(): McpFxMeterSnapshot {

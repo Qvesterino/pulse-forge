@@ -3,6 +3,7 @@ import { executeMcpTool, executeMcpToolAsync, type McpToolContext } from "../src
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_song — the MEGA producer move (Fáza D completion): generate the genre
@@ -14,7 +15,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
  */
 
 function storeCtx(store: ProjectStore, extra: Partial<McpToolContext> = {}): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -24,7 +25,7 @@ function storeCtx(store: ProjectStore, extra: Partial<McpToolContext> = {}): Mcp
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...extra,
-  };
+  });
 }
 
 function emptyArrangementStore(): ProjectStore {

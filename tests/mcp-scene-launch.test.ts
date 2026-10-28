@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * LIVE SCENE SWITCHING — kyx_transport launchScene + kyx_sections intensity.
@@ -38,7 +39,7 @@ function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; transport: FakeTr
       transport.seeks.push(tick);
     },
   };
-  const ctx: McpToolContext = {
+  const ctx: McpToolContext = withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -49,7 +50,7 @@ function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; transport: FakeTr
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport,
-  };
+  });
   return { ctx, transport };
 }
 

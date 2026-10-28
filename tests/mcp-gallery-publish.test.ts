@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { executeMcpTool, executeMcpToolAsync, type McpToolContext } from "../src/mcp/tools";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * kyx_publish_gallery — the AGENT-MADE publishing tool. Pins the honest
@@ -8,7 +9,7 @@ import { executeMcpTool, executeMcpToolAsync, type McpToolContext } from "../src
  */
 
 function baseCtx(hook?: NonNullable<McpToolContext["shareToGallery"]>): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => ({}) as never,
     execute: () => undefined,
     undo: () => undefined,
@@ -18,7 +19,7 @@ function baseCtx(hook?: NonNullable<McpToolContext["shareToGallery"]>): McpToolC
     isMicRecordingActive: () => false,
     transport: {} as never,
     ...(hook ? { shareToGallery: hook } : {}),
-  };
+  });
 }
 
 describe("kyx_publish_gallery", async () => {

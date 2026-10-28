@@ -14,6 +14,7 @@ import {
   masterProfileProvenance,
   masterProfileRecommendedFormat,
 } from "../src/mastering/profiles";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /** Minimal local fixtures (the ones in mcp-tools.test.ts are file-local). */
 function datasetDoc(): ProjectDocument {
@@ -21,7 +22,7 @@ function datasetDoc(): ProjectDocument {
 }
 
 function storeCtx(store: ProjectStore): McpToolContext {
-  return {
+  return withAgentWriter({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
@@ -30,7 +31,7 @@ function storeCtx(store: ProjectStore): McpToolContext {
     historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
-  } as McpToolContext;
+  }) as McpToolContext;
 }
 
 /**

@@ -3,6 +3,7 @@ import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { addAudioClip } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
+import { withAgentWriter } from "./helpers/mcpAgentWriter";
 
 /**
  * P2-D MISSING CAPABILITIES (control-surface audit 2026-10-13; parity sweep
@@ -22,7 +23,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => ProjectDocument } {
   let current = doc;
   return {
-    ctx: {
+    ctx: withAgentWriter({
       getDoc: () => current,
       execute: (command) => {
         current = command.execute(current);
@@ -34,7 +35,7 @@ function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; doc: () => Projec
       isMicRecordingActive: () => false,
       transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
       allowDestructive: () => true,
-    },
+    }),
     doc: () => current,
   };
 }
