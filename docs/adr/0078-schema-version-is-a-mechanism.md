@@ -1,4 +1,7 @@
-# ADR 0077 — The schema version is a mechanism, not a comment
+# ADR 0078 — The schema version is a mechanism, not a comment
+
+> **ADR number.** This was drafted as 0077 and renumbered: a parallel session claimed 0077 for
+> `0077-mcp-performance-surface-boundary.md` while this finding was being repaired.
 
 Date: 2026-10-28 · Status: Accepted (shipped) · Scope: project model, migration path, persistence boundary, project browser
 
