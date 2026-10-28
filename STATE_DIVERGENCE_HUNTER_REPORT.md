@@ -41,13 +41,13 @@
 >
 > **The audit's own verdict line ("29 findings, 3 resolved, 26 open, 1
 > Critical") is the state as DELIVERED.** With the repairs above it reads:
-> **29 findings, 23 resolved, 6 open, 0 Critical.**
+> **29 findings, 24 resolved, 5 open, 0 Critical.**
 >
 > **Still open, and the next wave:** §6's TOP 10 is now **fully closed** (all ten
 > entries); what remains is the systemic improvements in §7 — **S-1 is closed**,
 > its four gaps were F-05, F-06, F-24 and F-26, so **S-2 … S-5 remain** — the
-> remaining phases in §8, and the six findings still listed as open above:
-> **F-15, F-19, F-21, F-22, F-23 and F-27**.
+> remaining phases in §8, and the five findings still listed as open above:
+> **F-15, F-19, F-21, F-23 and F-27**.
 > _(An earlier revision of this block said "the rest of §11" — §11 is the
 > method appendix, not a work list; the pointer is corrected here.)_
 >
@@ -171,7 +171,7 @@ is deliberate rather than accidental.
 | Domain value                  | Authority                                                                                                               | Writers                                                | Consumers                                                | Transition contract                                                                                                                                        | Persistence                                                                                     | Potential drift                                                                          |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Project document (all slices) | `ProjectStore.doc_` (`src/store/ProjectStore.ts:77, 264`) — replaced, never mutated                                     | `store.execute` / `executeUserEdit` only; `replaceDoc` | UI hooks, engine, scheduler, renderer                    | command → `execute` → identity guard (`:256-263`) → `normalizeProject` (`:264`) → undo push (`:265`)                                                       | IndexedDB `projects`, whole doc, one transaction (`src/persistence/ProjectRepository.ts:50-62`) | none at this layer — verified                                                            |
-| Undo / redo history           | `ProjectStore.undoStack` / `redoStack` (`:28-29`)                                                                       | `applyCommand` (`:265`), `undo`/`redo`                 | UI history panel, `kyx_undo`                             | delta snapshot (`src/commands/core.ts:34-45`), history capped at 256 (`:269-273`)                                                                          | not persisted                                                                                   | undo inside an open frame (F-22)                                                         |
+| Undo / redo history           | `ProjectStore.undoStack` / `redoStack` (`:28-29`)                                                                       | `applyCommand` (`:265`), `undo`/`redo`                 | UI history panel, `kyx_undo`                             | delta snapshot (`src/commands/core.ts:34-45`), history capped at 256 (`:269-273`)                                                                          | not persisted                                                                                   | undo inside an open frame (F-22) — **repaired, ADR 0079**                                |
 | Save status / watermark       | `ProjectStore.saveStatus_` / `lastSavedAt_`                                                                             | `services.doSave` only                                 | TopBar, `kyx_save`                                       | revision-guarded (`src/services.ts:1153, 1173-1179`)                                                                                                       | **never persisted**                                                                             | three notions of "when" (F-15)                                                           |
 | Unload recovery buffer        | `localStorage["kyx:recovery-buffer:v1:<projectId>"]` — one slot **per project**; a legacy single key is migrated        | `services.onUnload` (sync)                             | `ProjectBrowser`                                         | per-project slot; the write result is **discarded**                                                                                                        | localStorage                                                                                    | **a failed write is not surfaced (F-04, second half)**                                   |
 | Project snapshots             | IndexedDB `project-snapshots`                                                                                           | `SnapshotRepository.save`                              | History panel                                            | separate store                                                                                                                                             | IndexedDB                                                                                       | none found                                                                               |
@@ -1309,6 +1309,58 @@ modMacroGain` (`:1904-1906`). So the audible channel gain is **0.8 × 0.5 = 0.4*
 - **Smallest safe repair:** have `undo()` seal or reconcile the open frame, exactly as `jumpTo`
   does.
 
+- **REPAIR (2026-10-28, ADR 0079).** The finding was **re-measured** against today's tree before
+  anything was written, and the measurement **overturned the audit's own narrowing** without
+  overturning its mechanism:
+
+  1. **the audit's named recipe is dead — but the recipe was never the defect.** The audit narrowed
+     the hazard to a _value-addressed_ undo plus a _duplicate point_. F-07 closed both halves: the
+     automation point's undo re-anchors on the point's **ID** (`src/commands/automation.ts:67`), so it
+     is idempotent, and `addAutomationPoint` refuses an identical `(tick, value)` at the **command
+     boundary** (`src/commands/automation.ts:219`), so the duplicate cannot be authored.
+  2. **the mechanism reproduces anyway — with no recipe at all.** Three commands in a legacy frame and
+     **one key press** (an undo inside the frame) is enough. The compound was built from
+     `frameCommands`, which still wrapped the undone command, while the undo had popped a stack entry
+     the frame owns — so the compound covered **more commands than it owned entries**. The frame's redo
+     **re-applied** the undone command (the resurrection), and the redo stack held that command a
+     second time, so the **next redo applied it twice**. Measured: the lane ended with **four** points,
+     **two of them at `2880@0.3`**.
+  3. **why the damage is a duplicate and not just a surprise.** The second application is not a new
+     command — it is a replay of the captured `ins` delta, so F-07's duplicate guard, which lives at
+     the **command boundary**, never saw it. The normaliser then issued a fresh id for the copy, so the
+     document held two _distinct_ entities at one tick/value — the exact ambiguity F-07 removed.
+  4. **the owned (MCP batch) frame was already correct.** The same user action on the owned frame
+     undoes the batch as ONE history entry and restores it exactly once. The legacy frame and the
+     owned frame were never supposed to differ.
+  5. **the precedent was already in the codebase.** `jumpTo` seals the frame **first**, and its comment
+     names this exact failure: _"the compound wrapped commands already undone by the jump, and **redo
+     executed them a second time**"_. The hazard was known, documented and fixed for the jump path;
+     `undo()` — the path a human actually takes — had no such seal.
+  6. **one hypothesis was NOT confirmed and is not claimed.** The companion idea that a **redo** inside
+     an open frame loses the redone command's history entry did **not** reproduce: the redo branch is
+     already dead by then (`beginUndoFrame` clears it, every command clears it), so the redo did
+     nothing.
+
+  The repair is one line, in the same place and the same shape as `jumpTo`
+  (`src/store/ProjectStore.ts:543-562`):
+  - `undo()` **seals the open frame before it pops** — `if (this.frameCommands) this.endUndoFrame();`.
+    The frame is ONE history entry, so an undo inside it takes the whole pass back — exactly what the
+    owned frame already did, and what the user gets anyway if they release the gesture first.
+  - The seal happens **before** the pop, so `grew = undoStack.length − frameOpenDepth` is measured
+    against an unmutated stack: the compound covers exactly the entries it owns.
+  - The redo stack then holds **one** entry, not two — the undone command is inside the compound and
+    is not also a standalone redo entry — so the double application cannot happen.
+  - `redo()` was deliberately **not** changed: after the repair the redo stack is provably empty
+    during an open legacy frame (measured, point 6), so a redo seal would only close a live gesture for
+    nothing. `YDocStore` was not changed either — its frame is a yjs `stopCapturing` seam with no
+    command list, so the mechanism does not exist there.
+  - **Gate:** `tests/undo-frame-inner-undo.test.ts` (5 specs, new) — the frame is sealed by the undo;
+    the undo takes the whole frame back; the redo restores it **exactly once** with no duplicated
+    `(tick, value)`; the legacy frame and the owned MCP frame reach the same document and stack depth;
+    undo-all → baseline and redo-all → final survive an inner undo; the gesture's own `endUndoFrame()`
+    afterwards adds no second entry. **Falsified**: removing the seal line turns all five red, each on
+    its own claim.
+
 ---
 
 ### F-23 — The onset cache is keyed by buffer id, not by content
@@ -1659,7 +1711,7 @@ product but no probe or test in this audit exercised it.
 | Rapid consecutive changes coalesced in history, only partially restored       | a drag gesture coalesces within the window        | the coalesced entry restores the pre-gesture state   | **Observed** — the coalesce branch keeps the original before-snapshot              | `src/store/ProjectStore.ts:248-275`                                          | low           | coalesce a gesture, undo once, assert the pre-gesture state                                                 |
 | Drag preview cancelled or interrupted, leaving domain state modified          | the pointer is released outside the target        | the domain is untouched                              | **Untested** — not exercised by this audit                                         | `src/ui/ArrangementPanel.tsx`                                                | medium        | cancel a drag mid-flight and assert the document is byte-identical                                          |
 | Track/clip removal while dependent selections or automation references remain | the human deletes a track that has lanes          | the references are invalidated cleanly               | **Observed** — `deleteTrack` cleans cross-references; the undo round-trips         | probe P2 (`deleteTrack`); `tests/delete-track-undo-cross-references.test.ts` | low           | —                                                                                                           |
-| Undo while a previous write or background load is in flight                   | undo during an open undo frame                    | the undone command is not resurrected on redo        | **Untested / Strongly indicated** — `undo()` never consults `frameCommands`        | `src/store/ProjectStore.ts:358-389, 366-409, 432`                            | medium (F-22) | build a ≥3-command frame, undo inside it, redo, assert the undone command does not return                   |
+| Undo while a previous write or background load is in flight                   | undo during an open undo frame                    | the undone command is not resurrected on redo        | **REPAIRED 2026-10-28, ADR 0079** — `undo()` seals the frame, as `jumpTo` did      | src/store/ProjectStore.ts:543-562                                            | medium (F-22) | build a ≥3-command frame, undo inside it, redo, assert the undone command does not return — **DONE**        |
 
 #### C. Audio engine and plugin synchronization
 
@@ -2047,6 +2099,7 @@ A reader about to remediate a finding in those areas must expect those guards to
 | **F-07's other half** — an AI undo deleting the _human's_ point | **Executed — MEASURED** (T7a–T7d, §5.7)      | —                                                                  | points carry no identity and the undo delta is positional → the AI's undo removes the human's point when the lane shifted → **F-29** |
 | P6 idempotency of the _mixer_ setters                           | **Executed — PASS** (T8, §5.7)               | —                                                                  | a repeated identical mixer write adds **no** history entry ✅                                                                        |
 | Undo-inside-a-frame resurrection                                | **Executed — NOT REPRODUCED** (T9/T9b, §5.7) | —                                                                  | the frame's single Ctrl+Z restored the baseline exactly → **F-22 downgraded to Hypothesis**                                          |
+| Undo-inside-a-frame resurrection (re-measured 2026-10-28)       | **Executed — REPRODUCED** (ADR 0079)         | —                                                                  | the frame's redo resurrected the undone command; the next redo applied it twice → **F-22 confirmed and fixed**                       |
 | **Collab vs solo document shape**                               | **Executed — MEASURED** (T10, §5.9)          | —                                                                  | the same command yields `globalMix` 1 solo and 30 in collab; leaving collab rewrites it → **F-16 confirmed; F-28 is mode-dependent** |
 | **Perceptual** audio truth for the remaining audible claims     | **Not executed**                             | jsdom has no `OfflineAudioContext`; the graph was measured instead | F-09, F-11, F-17, F-18, F-19 (§10)                                                                                                   |
 
@@ -2156,7 +2209,7 @@ search results.
 | **F-05**        | `tests/mcp-error-codes.test.ts:107-124`                                                 | **PARTIALLY GUARDED — the _other half_ of the gate exists.** The repo already gates _un-coded_ errors. F-05's refusal is `isError: undefined` — not an error at all — so that gate cannot see it. F-05 is the **missing complementary half of an existing gate**, not a new idea.                                                                                                                                                  |
 | **F-06**        | `tests/mcp-idempotency.test.ts:16-17, 22-23, 94, 143-153`                               | **DUPLICATE (the stale read-back) + a real finding (the envelope).** The spec pins the replay's exact text and pins that it survives an undo: _"the replay still returns the original outcome"_ (ID6). The stale value is a **deliberate, pinned contract** — a product judgement, not a defect. What survives: the replay returns **before** the R-02 gate, so `mutated: true` contradicts its own text.                          |
 | **F-07 + F-29** | `tests/automation-audit.test.ts` (audit 06, D3)                                         | **THE FIX PATTERN ALREADY EXISTS — for the sibling command.** The spec pins _"move tolerates a shifted index by re-anchoring on the captured point"_ (`:91-110`), and the source names it: _"Audit 06 D3: re-anchor by IDENTITY, then by (tick, value)"_ (`src/commands/automation.ts:128-131`). `addAutomationPoint.undo` never got it. **F-29 is the missed sibling, not a new mechanism.**                                      |
-| **F-22**        | —                                                                                       | **NOT GUARDED, and not reproducible** (§5.7 T9/T9b). The mechanism exists but is idempotent for the commands exercised.                                                                                                                                                                                                                                                                                                            |
+| **F-22**        | `tests/undo-frame-inner-undo.test.ts` (5 specs, new)                                    | **GUARDED — and REPRODUCED + FIXED (ADR 0079).** T9 could not reproduce it because the commands it exercised were idempotent; F-07 then closed the audit's named recipe. Re-measured today, it reproduces with three ordinary commands and one key press: the frame's redo resurrects the undone command, and the next redo applies it twice. `undo()` now seals the frame, as `jumpTo` already did                                |
 | **F-01**        | none                                                                                    | **NOT GUARDED.** The scan's only hit is an unrelated comment (_"The map was never stale"_). **No spec asserts that the stem/track export path checks the document's freshness** — the master path's `assertMasterSourceCurrent` has no sibling on the export side.                                                                                                                                                                 |
 | **F-28**        | `tests/fxeq-host-integration.test.ts`, `tests/ui/fxeq-crossover-numeric-entry.test.tsx` | **NOT GUARDED — and the gap is exactly the seam where the bug lives.** The repo tests both _ends_ of the write-back: the worklet→host protocol (`undoParam` posts, the history reply resolves with the restored entry) and the UI→`onParam` write. **Nothing tests the join** — that `onParam`'s value reaches the _document_ as the same value, and survives a save + reload. Both ends green, the middle untested: that is F-28. |
 
@@ -2275,7 +2328,7 @@ effort and regression risk.
 | contract**, §5.8, so what remains is the envelope ambiguity), **F-17** (bypass cold restart),         |
 | **F-18/F-19** (fallback                                                                               |
 | honesty), **F-20** (unit duplication), **F-21** (playhead freeze), **F-22** (undo-in-frame — now      |
-| **Hypothesis: not reproduced** by the §5.7 probe), **F-23**                                           |
+| **reproduced and fixed**, ADR 0079), **F-23**                                                         |
 | (onset cache), **F-24** (automation ack), **F-27** (a reopened instance resets to defaults) are all   |
 | **below the top 10**: real, documented, and scheduled for a later wave.)*                             |
 | **F-10 left this list in the correction pass.** It was ranked **#5** on the claim that the track-gain |
@@ -2522,7 +2575,16 @@ landing in one `SCHEMA_VERSION` bump). Then **F-08** (disclose the ordinal subst
 > carries the identity **and** the mechanism that will hold the next meaning-change. The chain holds
 > one step (the v19 → v20 master-link split) — the measurement says that is the only version in this
 > project's history whose reading is version-conditional; everything else was additive or tolerant.
-> **F-22** (undo seals the open frame) is the remaining entry in this phase.
+> **F-22** (undo seals the open frame) was the remaining entry in this phase — see the update below.
+>
+> **UPDATE (2026-10-28, ADR 0079): F-22 HAS LANDED, and this phase is CLOSED.** The undo inside an
+> open frame now seals the frame first, exactly as `jumpTo` already did. The finding was
+> **reproduced on the way**: the audit's §5.7 T9 could not reproduce it because the commands it
+> exercised were idempotent, and F-07 then closed the audit's _named recipe_ — but the mechanism
+> itself was alive. Three ordinary commands and one key press made the frame's redo resurrect the
+> undone command, and the next redo apply it twice (a second point at one tick/value). The owned
+> MCP-batch frame already behaved correctly; the legacy frame diverged from it. The repair makes
+> them one contract, and `tests/undo-frame-inner-undo.test.ts` (5 specs) guards it.
 
 _Gate:_ the identity-based reproduction (object identity, not JSON) passes; projects written by
 v38 still open; a round-trip of every project fixture is byte-identical.

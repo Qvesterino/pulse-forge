@@ -542,6 +542,23 @@ export class ProjectStore {
 
   undo(): void {
     this.sealOwnedUndoFrame();
+    // Audit F-22: an undo INSIDE an open frame popped a history entry the
+    // frame owns, while the frame kept its OWN command list. The compound
+    // built at the seal then re-applied the undone command on redo — the
+    // resurrection — and the redo stack held that command a SECOND time, so
+    // the next redo applied it twice (measured: a duplicate automation point
+    // at one tick/value, the exact ambiguity F-07 removed from the command
+    // boundary).
+    //
+    // `jumpTo` already seals for precisely this reason ("the compound
+    // wrapped commands already undone by the jump, and redo executed them a
+    // second time"). The undo path had no such seal — the hazard was real.
+    //
+    // The frame is ONE history entry, so the undo takes the whole frame back
+    // — exactly what the owned (MCP batch) frame already does. A frame that
+    // owns nothing yet simply dissolves; the undo then pops the entry from
+    // before the frame, which is what the key press asked for.
+    if (this.frameCommands) this.endUndoFrame();
     const command = this.undoStack.pop();
     this.timestamps.pop();
     if (!command) {
