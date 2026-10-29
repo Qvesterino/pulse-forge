@@ -63,9 +63,10 @@ const CAPTURE_QUANTUM_FRAMES = 128;
  * The offline branch used to start COLD (leadSec = 0), so the two branches
  * were compared at the same nominal time while their worklet state differed
  * by a whole capture lead. The divergence that produced was the LEAD, not
- * the engine — which is exactly what the nine PARITY_FX_EXCLUSIONS say
+ * the engine — which is exactly what the PARITY_FX_EXCLUSIONS say
  * ("the realtime instance is mid-modulation at capture", "the offline one
- * starts cold").
+ * starts cold", "the realtime instance has already consumed quanta before
+ * the captured event").
  *
  * The offline render therefore gets the SAME lead: it renders that many
  * frames of silence before the compared window and the comparison skips
