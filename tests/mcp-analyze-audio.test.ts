@@ -30,7 +30,7 @@ function fakeBuffer(seconds: number, level: number, toneHz: number): any {
     length,
     sampleRate: SR,
     numberOfChannels: 2,
-    getChannelData: (channel: number) => data,
+    getChannelData: (_channel: number) => data,
   };
 }
 
@@ -50,7 +50,7 @@ describe("mcpAnalyzeAudio — the kyx_analyze bridge", () => {
   it("mix-health: the digest is bounded and provenance-rich", async () => {
     const { store, trackId } = TRACK();
     const result = await mcpAnalyzeAudio({ store } as any, { trackId, featureSet: "mix-health" }, undefined, {
-      render: async (doc, id, opts) => fakeBuffer(8, 0.4, 220),
+      render: async (_doc, _id, _opts) => fakeBuffer(8, 0.4, 220),
     });
     expect(result.status).toBe("analyzed");
     expect(result.provenance.trackId).toBe(trackId);
