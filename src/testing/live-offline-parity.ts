@@ -78,6 +78,30 @@ export const PARITY_MIN_SPECTRAL_WINDOWS = 8;
  */
 export const PARITY_ALIGN_TOLERANCE = 512;
 
+/**
+ * The corpus case that says whether THIS ENVIRONMENT can measure the corpus
+ * at all.
+ *
+ * `bitcrusher` is deterministic by construction: the same document rendered
+ * twice offline has to come out bit-identical, and its two live captures have
+ * to agree just as well. Every other case is judged against a null floor,
+ * but that floor only means something if the arithmetic underneath it is
+ * exact — so this case is the environment's own health check. When it is
+ * dirty, the corpus's numbers describe the load of the machine rather than
+ * the engine, and the verdict has to say THAT instead of listing divergences.
+ */
+export const PARITY_CALIBRATION_CASE = "bitcrusher";
+
+/**
+ * How clean the calibration case's offline determinism control has to be for
+ * the environment to count as able to measure the corpus. A deterministic
+ * effect rendered twice offline is bit-identical, and the measured control
+ * of the calibration case sits at about -325 dB. Anything above this floor
+ * means the environment's arithmetic is not exact enough to attribute a
+ * divergence to the engine.
+ */
+export const PARITY_CALIBRATION_MAX_CONTROL_DB = -200;
+
 export interface ParityCheckResult {
   name: string;
   ok: boolean;
@@ -774,7 +798,24 @@ async function nullTestCase(
     // fallback is allowed only for the note-expression audit and only when an
     // offline repeat is deterministic and phase-insensitive spectrum/level
     // agree for live↔offline, offline↔offline, and live↔live.
-    if (!phaseInsensitiveFallback && m.realtimeNondeterministic && m.correlation >= PARITY_MIN_CORRELATION) return null;
+    // A case whose REALTIME branch does not reproduce ITSELF cannot be
+    // attributed to the engine: the comparison's own live side is not
+    // reproducible, so the divergence it shows says nothing about the
+    // processing path. `realtimeNondeterministic` is exactly that condition —
+    // the second live capture of the same script disagrees at least as much
+    // as the offline reference does, while the offline determinism control
+    // stays clean.
+    //
+    // The escape used to ALSO demand corr >= PARITY_MIN_CORRELATION, and that
+    // made it unreachable for the very class it was built for: the noise that
+    // makes the realtime branch nondeterministic is exactly what destroys the
+    // correlation (measured on the pluck case: liveRepeat -4.6 dB at corr
+    // 0.8063). So every case the escape was written for was reported as a red
+    // engine divergence, while a genuinely different processing path — which
+    // is DETERMINISTIC, and therefore has a clean live↔live comparison — was
+    // not excused at all. The correlation was a proxy for "same processing
+    // path"; the live↔live comparison answers that question directly.
+    if (!phaseInsensitiveFallback && m.realtimeNondeterministic) return null;
     const rmsRatio = m.liveRms / Math.max(1e-12, m.refRms);
     const phaseInsensitive = m.phaseInsensitive;
     return `${label}: null ${m.liveNullDb.toFixed(1)} dB corr=${m.correlation.toFixed(
@@ -783,9 +824,7 @@ async function nullTestCase(
       3,
     )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} segHead=${m.segmentNullDb.head.toFixed(1)} dB segTail=${m.segmentNullDb.tail.toFixed(1)} dB livePeak=${m.livePeak.toFixed(4)} refPeak=${m.refPeak.toFixed(4)} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB realtimeNondeterministic=${m.realtimeNondeterministic} (needs ≤ ${
       PARITY_NULL_FLOOR_DB
-    } dB; the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion — the effect corpus accepts a case only when the waveform null is clean, or when the REALTIME branch is itself nondeterministic (live↔live within 3 dB of live↔offline, offline control clean) and corr ≥ ${
-      PARITY_MIN_CORRELATION
-    }, i.e. the divergence is the device clock rather than the engine)`;
+    } dB; the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion — the effect corpus accepts a case only when the waveform null is clean, or when the REALTIME branch is itself nondeterministic (live↔live within 3 dB of live↔offline, offline control clean), i.e. the divergence is the device clock rather than the engine; corr is reported for DIAGNOSIS only (a value near ${PARITY_MIN_CORRELATION} means the same processing path with a moved sample)`;
   }
   return null;
 }
@@ -1171,8 +1210,25 @@ export async function __runParityCaseForProbe(
  */
 export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCheckResult> {
   const failures: string[] = [];
+  // Every case's measurement, so the verdict can also report what it did NOT
+  // judge: the cases whose realtime branch did not reproduce itself (their
+  // divergence is not attributable to the engine) and the environment's own
+  // calibration case. A gate that reports only its failures hides the part
+  // of the corpus it could not measure.
+  const measurements = new Map<string, ParityMeasurement>();
+  const excused: string[] = [];
   const template = createProjectFromTemplate("house");
   let cases = 0;
+
+  const record = (label: string) => (m: ParityMeasurement) => {
+    measurements.set(label, m);
+    // The same condition nullTestCase uses to excuse a case: the realtime
+    // branch did not reproduce itself, so this case's divergence says nothing
+    // about the processing path.
+    if (m.realtimeNondeterministic && (!Number.isFinite(m.liveNullDb) || m.liveNullDb > PARITY_NULL_FLOOR_DB)) {
+      excused.push(label);
+    }
+  };
 
   for (const type of parityFxCorpus()) {
     cases++;
@@ -1183,7 +1239,7 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
         engine.trigger("parity-drums", drum.pads[0], at(0.05), 1);
         engine.trigger("parity-drums", drum.pads[4] ?? drum.pads[0], at(0.28), 1);
       };
-      const failure = await nullTestCase(bank, doc, script, `fx:${type}`);
+      const failure = await nullTestCase(bank, doc, script, `fx:${type}`, record(`fx:${type}`));
       if (failure) failures.push(failure);
     } catch (error) {
       failures.push(`fx:${type}: ${String(error)}`);
@@ -1197,7 +1253,7 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
       const script: ParityScript = (engine, at) => {
         engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3);
       };
-      const failure = await nullTestCase(bank, doc, script, `instrument:${kind}`);
+      const failure = await nullTestCase(bank, doc, script, `instrument:${kind}`, record(`instrument:${kind}`));
       if (failure) failures.push(failure);
     } catch (error) {
       failures.push(`instrument:${kind}: ${String(error)}`);
@@ -1208,6 +1264,26 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   // ("fx:<type>" / "instrument:<kind>"). A failure that carries no prefix is
   // its own label.
   const labelOf = (failure: string) => failure.split(": ")[0] ?? failure;
+  // The environment's own health check, read off the calibration case: a
+  // deterministic effect rendered twice offline is bit-identical (measured
+  // control ≈ -325 dB), and a runner whose arithmetic is that far from exact
+  // cannot attribute a divergence to the engine.
+  const calibration = measurements.get(`fx:${PARITY_CALIBRATION_CASE}`);
+  const calibrationControlDb = calibration?.controlNullDb ?? Number.NaN;
+  const calibrationMeasurable =
+    Number.isFinite(calibrationControlDb) && calibrationControlDb <= PARITY_CALIBRATION_MAX_CONTROL_DB;
+  const environment =
+    calibration === undefined
+      ? `environment=unknown (calibration fx:${PARITY_CALIBRATION_CASE} was not measured)`
+      : `environment=${calibrationMeasurable ? "measurable" : "NOT measurable"} (calibration fx:${PARITY_CALIBRATION_CASE} control=${
+          Number.isFinite(calibrationControlDb) ? calibrationControlDb.toFixed(1) : "n/a"
+        } dB, needs ≤ ${PARITY_CALIBRATION_MAX_CONTROL_DB} dB)`;
+  // The cases the corpus could NOT judge: their realtime branch did not
+  // reproduce itself, so their divergence is not attributable to the engine.
+  // Naming them keeps a green verdict honest about what it did not measure.
+  const excusedLine = `not measurable=${excused.length} (the realtime branch did not reproduce itself)${
+    excused.length > 0 ? `: ${excused.join(", ")}` : ""
+  }`;
   return {
     name: "live↔offline null test: same engine + events on both contexts",
     ok: failures.length === 0,
@@ -1223,10 +1299,18 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     // at its end — the triage then sees six of twenty-two and cannot name
     // the rest. The labels come first so every failure is named; the
     // diagnostics follow for the first eight.
+    //
+    // It also says what the corpus could NOT measure: the environment's
+    // calibration and the cases whose realtime branch did not reproduce
+    // itself. A verdict that lists only its failures hides its own blind
+    // spot — and a reader who cannot tell a measurement from a coincidence
+    // cannot act on it.
     message:
       failures.length === 0
-        ? `passed=${cases}/${cases}`
-        : `failed=${failures.length}/${cases} — failing cases: ${failures.map(labelOf).join(", ")} — details for the first ${Math.min(
+        ? `passed=${cases}/${cases} — ${environment} — ${excusedLine}`
+        : `failed=${failures.length}/${cases} — ${environment} — failing cases: ${failures
+            .map(labelOf)
+            .join(", ")} — ${excusedLine} — details for the first ${Math.min(
             8,
             failures.length,
           )}: ${failures.slice(0, 8).join(" | ")}`,
