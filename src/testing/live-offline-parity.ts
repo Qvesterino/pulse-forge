@@ -102,6 +102,23 @@ export const PARITY_CALIBRATION_CASE = "bitcrusher";
  */
 export const PARITY_CALIBRATION_MAX_CONTROL_DB = -200;
 
+/**
+ * How clean the calibration case's REALTIME reproducibility has to be for the
+ * environment to count as able to measure the corpus.
+ *
+ * The control above measures the OFFLINE branch (the same document rendered
+ * twice offline has to be bit-identical). This one measures the REALTIME
+ * branch: the same script captured twice has to reproduce itself. Both axes
+ * have to be exact before a live↔offline divergence can be attributed to the
+ * engine — a divergence measured against a realtime branch that does not
+ * reproduce itself describes the device clock, not the processing path.
+ *
+ * Measured: the calibration case's live↔live sits at -231.3 dB on one desktop
+ * and -325.2 dB on another, so the floor below keeps more than 30 dB of
+ * margin on the tightest measured machine.
+ */
+export const PARITY_CALIBRATION_MAX_REPEAT_DB = -200;
+
 export interface ParityCheckResult {
   name: string;
   ok: boolean;
@@ -1270,14 +1287,20 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   // cannot attribute a divergence to the engine.
   const calibration = measurements.get(`fx:${PARITY_CALIBRATION_CASE}`);
   const calibrationControlDb = calibration?.controlNullDb ?? Number.NaN;
+  const calibrationRepeatDb = calibration?.liveRepeatNullDb ?? Number.NaN;
   const calibrationMeasurable =
-    Number.isFinite(calibrationControlDb) && calibrationControlDb <= PARITY_CALIBRATION_MAX_CONTROL_DB;
+    Number.isFinite(calibrationControlDb) &&
+    calibrationControlDb <= PARITY_CALIBRATION_MAX_CONTROL_DB &&
+    Number.isFinite(calibrationRepeatDb) &&
+    calibrationRepeatDb <= PARITY_CALIBRATION_MAX_REPEAT_DB;
   const environment =
     calibration === undefined
       ? `environment=unknown (calibration fx:${PARITY_CALIBRATION_CASE} was not measured)`
       : `environment=${calibrationMeasurable ? "measurable" : "NOT measurable"} (calibration fx:${PARITY_CALIBRATION_CASE} control=${
           Number.isFinite(calibrationControlDb) ? calibrationControlDb.toFixed(1) : "n/a"
-        } dB, needs ≤ ${PARITY_CALIBRATION_MAX_CONTROL_DB} dB)`;
+        } dB needs ≤ ${PARITY_CALIBRATION_MAX_CONTROL_DB} dB, live↔live=${
+          Number.isFinite(calibrationRepeatDb) ? calibrationRepeatDb.toFixed(1) : "n/a"
+        } dB needs ≤ ${PARITY_CALIBRATION_MAX_REPEAT_DB} dB)`;
   // The cases the corpus could NOT judge: their realtime branch did not
   // reproduce itself, so their divergence is not attributable to the engine.
   // Naming them keeps a green verdict honest about what it did not measure.
