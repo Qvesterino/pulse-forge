@@ -1878,6 +1878,168 @@ whose claim it is, is to measure it on a clean checkout of the commit rather tha
 complaint was made from. Twice in this audit the working tree and the commit disagreed — here, and at the
 payload re-pin in §10.9 — and both times the commit was the truth.
 
+### 10.16 Three readings of the CI numbers that the verdicts did not give
+
+Three findings from the CI runs of 2026-10-29, all measured from the Actions API (one request per question), and
+all of them about what a red run **means** rather than about the product.
+
+#### 10.16.1 The queue is the cost, not the runner minutes
+
+`.github/workflows/ci.yml:23-25` puts every push to `main` into **one** concurrency group:
+
+```yaml
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+```
+
+`cancel-in-progress: false` means a **running** job is never killed — but GitHub keeps only the **latest pending**
+run in the group, so a push arriving while an older run is still queued **replaces** it (the file's own comment,
+`:19-22`, says exactly this). The group is a queue of depth one that keeps only the newest entry.
+
+**Measured, 2026-10-29 (Actions API, `per_page=15`):**
+
+| quantity         | measured                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------- |
+| arrivals         | **13.2 runs/hour** (15 runs between 04:48:37Z and 05:57:01Z = 68.4 min)                             |
+| service          | **3.2 runs/hour** — wall clock of the three runs that reached a verdict: **24.4 / 15.9 / 16.3 min** |
+| oversubscription | **≈ 4.1×** (13.2 ÷ 3.2)                                                                             |
+| cancelled        | **10 of 15 (67%)**                                                                                  |
+| verdicts         | 3 — all `failure`                                                                                   |
+
+`cancelled` means **not measured** — never "failed", never "passed". Ten of the last fifteen pushes to `main`
+have **no verdict at all**.
+
+**The live proof of where the missing verdict lands.** At 07:06:39Z, run **#486 (`de355323`, HEAD)** had been
+`pending` for **69.6 minutes**, while the only run the group would let proceed, **#483 (`08fbbb2e`)**, had been
+`in_progress` since 05:49:21Z — **77 minutes**. Run **#485 (`975ab227`) was cancelled at 05:57:02Z, the exact
+second #486 was created**: it was still queued, and the newer push took its slot. The verdict that is missing is
+therefore not the verdict of some old commit — it is the verdict of **HEAD**, and of the commit immediately
+before it.
+
+**Why "give every commit its own group" is the wrong fix here.** The obvious next thought is a per-SHA group, so
+that nothing is ever replaced. The capacity numbers say that thought is wrong, and they say it in two steps:
+
+- GitHub's documented limit for standard hosted runners on the **Free** plan is **20 concurrent jobs** per
+  repository ([docs.github.com/en/actions/reference/limits](https://docs.github.com/en/actions/reference/limits.md));
+  usage is free for public repositories, and this one is public (`"private": false` in the run payload). That is
+  **1200 job-minutes/hour** of capacity.
+- Measured consumption is **43.8 job-minutes per run** (#475) and **33.5** (#479) → at 13.2 runs/hour that is
+  **≈ 440–580 job-minutes/hour**, about **half** the capacity. The runner minutes are not the bottleneck.
+
+But a run is not a job. One run holds **11 job slots** at its peak, and two runs' full job sets would need **22
+slots > 20** — so only about one run can be resident at a time, whatever the group policy is. A per-SHA group
+would therefore remove the _cancellations_ and leave the _backlog_: 13.2 arrivals/hour against ≈ 3 runs/hour of
+service, with nothing ever cancelled — an unbounded queue in which HEAD's verdict arrives after an unbounded
+wait. **That is worse than a cancelled run**, because a cancelled run at least says "not measured".
+
+**The move that the measurement supports is to split the workflow by cost, and to give each half the policy its
+role needs** (job durations measured in run #475):
+
+| half                   | jobs (min)                                                                                               | wall     | job-min/run | policy                                          | why                                                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- | -------- | ----------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **fast** (attribution) | typecheck 1.6 · hygiene 2.8 · build 2.4 · prod browser smoke 2.0 · e2e 2.5 · ui-gate 2.9 · dep audit 0.7 | 2.9 min  | **14.9**    | own workflow, **per-SHA group**                 | 13.2/h × 14.9 = **197 job-min/h** vs 1200 → the queue **drains**; every commit gets a verdict in minutes                                                  |
+| **slow** (release)     | unit tests 19.4 · browser audio 9.4                                                                      | 19.4 min | **28.8**    | own workflow, **shared `ci-${{ github.ref }}`** | 13.2/h × 28.8 = **380 job-min/h** vs 1200 → it fits; and here "replace the superseded run" is _correct_, because only HEAD's slow verdict gates a release |
+
+The two MRT2 boundary jobs belong to neither column: they carry `needs:` on the other eight (`ci.yml:513-521`),
+so they run only when the whole chain is green — and in the measured window they ran **zero times**, because every
+run that reached a verdict had a red upstream job. A release-boundary gate that sits downstream of a frequently
+red gate is a gate that never reports.
+
+**This section proposes; it does not implement.** Splitting a workflow and choosing concurrency groups is a
+resource decision as much as a structural one, and it belongs to the owner. What is recorded here is the
+measurement and one correction: the per-SHA instinct is right for the cheap half and wrong for the expensive one,
+because the split has to be by **cost**.
+
+#### 10.16.2 The perf gate's machine test — the environment must explain the gate, never fail it
+
+The browser gate's perf and realtime budgets decided "machine loaded" from a **single snapshot**: the **max of
+three CPU spins against a hardcoded 18 ms floor**. A floor in milliseconds is a property of the **machine**, not of
+the code — a fast runner never trips it, a slow one always does — so the same tree flipped between "machine
+loaded, informational run" and real FAILs on one busy dev machine. A verdict that flips with the weather is not a
+measurement.
+
+The fix (`d1a93517`, `src/browser-checks.ts:4728-4745`) keeps the floor and adds the signal that is
+**machine-independent**:
+
+```ts
+const spins: number[] = [];
+for (let i = 0; i < 5; i++) spins.push(spinMs());
+const calibMs = Math.max(...spins);
+const calibSpread = calibMs / Math.max(0.001, Math.min(...spins));
+const machineLoaded = calibMs > 18 || calibSpread > 2;
+```
+
+`calibSpread` is a **ratio**, so it is dimensionless. A machine whose timings disagree with each other cannot
+time anything reliably, and that is what a co-tenant which idles for a moment and then competes for the rest of
+the window looks like; a 2× spread between the slowest and the fastest of five identical spins is a signal no
+processor speed can produce on its own.
+
+**And the number is reported.** A new check — `"perf environment: this machine's timing is measurable"`
+(`:4737-4745`) — **always passes** and states `environment=measurable` / `environment=NOT measurable` plus the
+measured values; the same `calibNote` is threaded into every budget message that degrades to informational
+(`auditRtBudget` `:458`, `auditDenseRender` `:555`, and the render-budget messages). This is the same `environment=`
+line the audio-parity corpus now prints (§10.14), and the reason for it is the same: **a verdict that cannot say
+whether the machine can measure is a verdict nobody can act on.**
+
+**Two properties make this safe, and they are the rules worth keeping.** First, **the environment check never
+fails the gate — it explains it.** A gate that fails on its environment is a gate about the machine; the product
+is not what it measured. Second, **both detection changes can only move a run towards informational** (the
+spread adds a "loaded" case; the max is now over five samples instead of three), so neither can turn a green gate
+red on a loaded machine. And because a degraded run must not hide a real regression behind a machine-load
+excuse, the numbers have to travel with the verdict — a silent "informational run" is a verdict nobody can act on.
+
+**What this section does NOT claim.** The change is **verified in code** and, per the commit message, by
+`tsc --noEmit --incremental false` (exit 0) and Prettier. It has **not** been observed at runtime: the browser
+gate has not been run end-to-end since the change, and **no spec covers the calibration** (nothing in `tests/`
+matches `calibSpread`, `perf environment` or `machine loaded`). The _shape_ of the environment line is verified
+from the source; the _number_ it prints on a real runner is **Not verified**.
+
+#### 10.16.3 A red job whose product code never ran — and three reds that were three different things
+
+Run **#470** (`ee899de7`, "fix(parity): a verdict must say what it could not measure") reported **four** red jobs.
+They were four different things, and one of them was not a defect at all.
+
+| job                             | failing step                   | what it actually was                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **E2E smoke (Playwright)**      | **#4 `Run npm ci`**            | **the install step failed**; #5 (`playwright install`) and #6 (`npm run test:e2e:smoke`) were **skipped** — the product code never ran                                                                                                                                                                                                                   |
+| Hygiene (format + drift)        | #5 `npm run format:check`      | Prettier dirt: `scripts/verify-audible-loop-browser.mjs` is **dirty at that commit** (blob hash `2d2ba4b2ab` vs. hash of its Prettier output `49e8954312`), fixed in `9499c79a`                                                                                                                                                                          |
+| Unit tests (vitest)             | #5 `npm run test:expectations` | the **suite-expectations ledger** gate (`scripts/suite-expectations.mjs:20-29`): a test that fails without being listed in `suite-expectations.json` is a "new red", and a listed test that now passes is a "cured" red — both are FAIL. The ledger did **not** change between `ee899de7` and HEAD, so this was drift between reality and a fixed ledger |
+| Browser audio checks (Chromium) | #6 `npm run test:browser`      | the live↔offline null corpus (§10.14) — still open, and the owner's decision                                                                                                                                                                                                                                                                             |
+
+**The E2E red is the sharpest instance in this audit: a red job whose code never executed.** The failing step was
+the **install**, and the scenario step was skipped — so the run says nothing about the product. Two further
+measurements agree: the same `npm ci` on the same tree **succeeded** in the five jobs of that run that reached
+their own steps (Typecheck, Production build, Production dependency audit, Production browser smoke, UI gates —
+all `success`), and the E2E job was **green in the next three runs that reached a verdict** (#475 2.5 min, #476,
+#479 2.5 min). A transient install failure, not a regression.
+
+**And the CF-10 hypothesis is falsified twice.** The natural suspicion was CF-10 — the single-take playhead
+change (`197f89c8`), the only product change in that window. It cannot be the cause: (i) **CF-10 is not an
+ancestor of that commit** — `git merge-base --is-ancestor 197f89c8 ee899de7` exits **1**, while
+`ee899de7 → 197f89c8` exits **0**: CF-10 landed **two commits later**, so its code was not in the tree at all; and
+(ii) the scenario step was skipped, so the scenario could not have failed. The hypothesis was recorded, checked,
+and dropped.
+
+**The other three reds of that run each got fixed by a different commit in the next three runs — the rule stated
+a third way.** In #475 and #476 the Hygiene red had moved from `format:check` to `drift:check` (step #6): the
+format half was `9499c79a`, the drift half (four stale artifacts) `02f1888d` + `a6167368`. In #479 Typecheck and
+Production build went red as well — the four unused parameters of §10.15, fixed by `18f1d517`. One run, four
+reds, four causes, four different fixes; filed under one label ("CI is red") they would have looked like one
+defect with four symptoms.
+
+**The rule this section adds to the ones above.** A red run is not one thing — the classification lives in the
+**job's step list**, and a step that **never ran measures nothing**. A cancelled run is "not measured" (§10.13);
+a run whose product step was skipped is "not measured" in a sharper way, because the machine never reached the
+product. The only red that is a verdict about the product is one whose **failing step is the product's own step**.
+
+**Verification performed for this section.** Actions API: the run list for the last 15 runs, the job lists with
+step conclusions for runs #470, #475, #476 and #479, and the per-job durations (#475 = 43.8 job-minutes, #479 =
+33.5); git plumbing for the ancestry check and for the changed-path list of `ee899de7`; a blob-hash comparison
+against Prettier's own output to decide the formatting state of two files at that commit; and the source of
+`src/browser-checks.ts:4728-4745` for the perf gate. The 20-concurrent-jobs figure is GitHub's **documented**
+limit, not a measurement on this machine.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
