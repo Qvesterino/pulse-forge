@@ -1581,6 +1581,15 @@ values are **identical on Windows and on the Linux runner** — `ozvena` −39.2
 a knife edge, and they are **stable across platforms** — which inverts this session's conclusion: a
 reproducible live↔offline difference is a **divergence in the engine**, not rounding in the environment.
 
+**That generalisation was itself falsified — and it is the most transferable thing in this report.** The
+differences were indeed reproducible; what that proved was **not** that they came from the engine. They came from
+the **capture lead** — the live branch is half a second warm when the offline branch is cold — and a fixed
+0.5 s of lead is _perfectly reproducible on every platform_, which is exactly why the numbers looked so stable
+(§10.16.5). **Reproducibility is a property of the measurement, not of the product.** A harness artifact that is
+deterministic will look identical on Windows and on a Linux runner, and it will look identical on every commit,
+forever. The lesson generalises past audio: before asking _what does a reproducible difference mean_, ask _what was
+compared_ — two things can be deterministic and still not be the same thing.
+
 **What the corpus actually shows, per the parallel session's two CI runs.** The run-to-run difference is in the
 **instrument** cases — 22 of 67, then 21 of 67, the latter mostly instruments (`808`, `texture`, `keys`,
 `organ`, `strings`, `bell`, `reese`, `clav`, `acid`, `brass`, `fm`, `pluck`, `flute`, `logdrum`, `drumsynth`,
@@ -1702,13 +1711,30 @@ bit-identical). That is an **invariant-3 product finding**: the export does not 
 does so for a reason rather than by accident. The parallel session located the suspect — the **offline parameter
 regime in `src/effects/registry.ts`** — and deliberately left the four red.
 
-**A gate whose verdict moves between runs on the same commit is not a gate.** The agreed direction is to make
-the null corpus a **non-blocking report** in CI — visible, but not deciding — until the phase anchor is fixed:
-the offline branch has to receive the same phase anchoring as the live one (`motionPhase`, `hallEngine
-lfoPhase`, the per-partial PLL). **That anchor is the desktop's four findings, and it is a product fix.** The CI
-runner's own flapping has a **different** cause — the platform realtime divergence of the 17 instrument cases
-above — and the anchor will not fix it; the environment verdict and the second calibration axis are what make
-that difference visible instead of hiding it behind a red count.
+**And this section's central claim was falsified the next day — by the capture lead.** The four divergences were
+**not** a product finding. The corpus compared the live branch against an offline branch that started **cold**,
+while the live branch's capture starts `CAPTURE_START_LEAD_SEC` (**0.5 s**) into the live context
+(`src/testing/live-offline-parity.ts:54`): by the time the first event lands, every realtime worklet has already
+processed half a second of history — a free-running modulation phase, a filter's memory, a comb's drift, a pitch
+tracker's buffer. The two branches were therefore compared at the same **nominal** time while their internal state
+differed by a whole capture lead. The divergence the corpus measured was **the lead, not the engine**: with the
+offline render given the same lead (`ae372bf4` — `renderOffline` at `:344-353`), three of the four become
+**bit-identical** and the fourth falls to −72.7 dB, below the corpus's own acceptance floor. **Invariant 3 was never
+violated**, the suspect named above was **not** the cause, and the reading of this section's numbers as "four real
+findings" is **withdrawn**. §10.16.5 has the measurement, the mechanism, and what this does to the rest of this
+section.
+
+**A gate whose verdict moves between runs on the same commit is not a gate.** The agreed direction was to make
+the null corpus a **non-blocking report** in CI — visible, but not deciding — until the "phase anchor" was fixed:
+the offline branch has to receive the same phase anchoring as the live one (`motionPhase`, `hallEngine lfoPhase`,
+the per-partial PLL). **That anchor was the desktop's four findings, and it was believed to be a product fix. It was
+not** — the cause was neither a phase anchor nor the engine, it was the **capture lead** (§10.16.5), and the fix
+belongs to the **harness**, not to the product. The non-blocking direction still stands on its own merits: the CI
+runner's own flapping has a **different** cause — the platform realtime divergence of the 17 instrument cases above
+— and no anchor will fix it; the environment verdict and the second calibration axis are what make that difference
+visible instead of hiding it behind a red count. But the premise the direction was built on is gone: with the lead
+fixed, the corpus has no effect cases to report on a measurable environment, and what remains on the runner is the
+platform divergence — which the environment line is there to expose.
 
 **One addition this session proposes, from the corpus's own material — now implemented and measured, on two axes.**
 The corpus already contains a calibration case — `bitcrusher`, a deterministic effect whose controls are
@@ -2063,27 +2089,120 @@ limit, not a measurement on this machine.
 The same local browser-gate run produced the second environment line this audit has been asking for, and the gate
 around it:
 
-| what               | measured                                                                                                                                                             |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the whole gate     | **438 of 439 checks passed**                                                                                                                                         |
-| the one red        | the live↔offline null corpus — **failed=4/67**, `environment=measurable`, calibration control **−334.4 dB**, calibration live↔live **−334.4 dB**, `not measurable=0` |
-| the four red cases | `fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal` — the same four §10.14 named                                                                         |
+| what               | measured                                                                                                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the whole gate     | **438 of 439 checks passed**                                                                                                                                          |
+| the one red        | the live↔offline null corpus — **failed=4/67**, `environment=measurable`, calibration control **−334.4 dB**, calibration live↔live **−334.4 dB**, `not measurable=0`  |
+| the four red cases | `fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal` — the same four §10.14 named, and **historical**: they were the capture lead, not findings (§10.16.5) |
 
-**This is the number §10.14 was waiting for.** On the CI runner the same corpus reports **21/67**, because the
-runner's realtime path diverges from its own offline path for 17 instrument cases that are green on every desktop.
-On a measurable desktop it reports **4/67** — and the four are exactly the product findings §10.14 named, with the
-calibration clean on **both** axes. So the corpus's verdict splits cleanly into _four real findings_ and _seventeen
-platform artefacts_, and the discriminator is now printed **in the verdict itself** (`environment=measurable` plus
-the two calibration numbers) instead of being inferred from a red count. That is the difference between a corpus
-whose red list a reader must interpret and a corpus whose red list states what it could measure.
+**This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
+runner the same corpus reports **21/67**; on a measurable desktop it reports **4/67**, with the calibration clean on
+**both** axes. The environment line is the durable part of this measurement: it says **in the verdict itself**
+(`environment=measurable` plus the two calibration numbers) whether the machine could measure, instead of leaving a
+reader to infer it from a red count. That is the difference between a corpus whose red list a reader must interpret
+and a corpus whose red list states what it could measure.
+
+**But the four red cases in that run are not what §10.14 said they were, and this report's first reading of them was
+wrong.** They were the **capture lead**, not product findings: the corpus was comparing a warm live branch against a
+cold offline one (§10.16.5). So the split this section originally drew — "_four real findings_ and _seventeen
+platform artefacts_" — was wrong in the part that mattered. The four were an **artefact of the measurement**; the
+seventeen were real platform divergences. The `4/67` in the table above is a **historical** number: it was produced
+by the harness before `ae372bf4`, and the corpus's own count has moved since.
 
 **Provenance, stated precisely.** This run was made by the parallel session on its working tree, which carried
-uncommitted changes to the parity harness. Those changes are **diagnostic** — message text, segment-null ranges,
+uncommitted changes to the parity harness. Those changes were **diagnostic** — message text, segment-null ranges,
 `profileText()` in the failure lines — and they leave the corpus's **membership and acceptance rule** alone; the
 failing list in the log is the same four cases. The perf calibration comes from `src/browser-checks.ts`
-(`d1a93517`), which that session did not touch, so the perf numbers measure the **committed** code while the corpus
-number measures a tree that is **not** HEAD. The corpus's `4/67` should therefore be re-measured on a clean
-checkout of `de355323` before it is quoted as HEAD's number — **Not verified on HEAD.**
+(`d1a93517`), which that session did not touch, so the perf numbers measure the **committed** code, while the corpus
+number measures a tree that is **not** HEAD. And the corpus number is in any case **historical**: the harness moved
+under it at `ae372bf4`, which is the subject of §10.16.5.
+
+#### 10.16.5 The four findings were the measurement — and §10.14 is corrected by it
+
+The parallel session's commit `ae372bf4` ("the corpus measured the capture lead, not the engine") falsifies the
+central claim of §10.14, and this report's first reading of §10.16.4 with it. The account follows, because **a
+corrected hypothesis is part of the evidence, not a footnote**.
+
+**The mechanism, verified in the source at `ae372bf4`.** The live branch's capture starts `CAPTURE_START_LEAD_SEC`
+(**0.5 s**) into the live context (`src/testing/live-offline-parity.ts:54`) — deliberately, so that note events can be
+queued before the capture starts. By the time the first event lands, every realtime worklet has therefore already
+processed half a second of history: a free-running modulation phase, a filter's memory, a comb's drift, a pitch
+tracker's buffer. The offline branch started **cold** (`leadSec = 0`). Both branches were compared at the same
+**nominal** time while their internal state differed by a whole capture lead. The fix gives the offline render the
+same lead and compares from where the capture starts:
+
+```ts
+// src/testing/live-offline-parity.ts:344-353 (ae372bf4)
+script(engine, (offset) => CAPTURE_LEAD_FRAMES / sampleRate + leadSec + eventPrerollSec + offset);
+// …
+return buffer.getChannelData(0).subarray(CAPTURE_LEAD_FRAMES); // the lead is history, not signal
+```
+
+**The measurement — the parallel session's local run; measured, not estimated.**
+
+| case          | before the fix | after the fix                                           |
+| ------------- | -------------- | ------------------------------------------------------- |
+| ozvena        | −40.0 dB       | **−72.7 dB**                                            |
+| morphdynamics | −26.5 dB       | **−324.2 dB** (bit-identical)                           |
+| bassHarmonic  | −33.2 dB       | **−322.8 dB** (bit-identical)                           |
+| portal        | −3.5 dB        | **−322.0 dB** (bit-identical)                           |
+| reverb        | −5.3 dB        | **−323.4 dB** (bit-identical; excluded from the corpus) |
+| eq (control)  | −64.1 dB       | **−325.1 dB** (control, still green)                    |
+
+With the corpus's acceptance floor at `PARITY_NULL_FLOOR_DB = −40` (`:82`), every one of the **after** values is
+**below** the floor — so the corpus has no reason to report any of them. §10.14's "four product findings" were four
+measurements of the harness's own artifact.
+
+**I did not re-measure these numbers, and the reason is part of the record.** The parallel session had a full browser
+gate in flight on the same machine, and a second browser run would have contaminated the measurement the numbers
+depend on. They are recorded here as **measured by the parallel session, verified in the source at `ae372bf4`**; the
+full browser gate with the fix was still running when this section was written, so its verdict is **pending**.
+
+**What this does to §10.14, stated plainly.** §10.14 concluded that the four divergences were "an **invariant-3
+product finding**", that "the export does not sound like the live branch", and that the suspect was the offline
+parameter regime in `src/effects/registry.ts`. **All three are withdrawn.** Invariant 3 was never violated; the
+divergence was the harness comparing two branches that were not in the same state; and the suspect was wrong. §10.14
+stays as the record of what was believed on 2026-10-29, with this section as its correction — the same treatment
+§10.14 gave its own earlier narrowing.
+
+**The corpus knew.** This is the part worth keeping. The exclusions list in the very same file already said, in
+words: _"Free-running LFO / phase state: the live instance is mid-modulation when the capture starts; the offline
+instance starts from phase zero"_ (`:157-160`); svFilter's reason is _"the realtime instance is mid-glide at
+capture"_; vinyl's is _"the vinyl instance is mid-modulation at capture"_. The harness **documented its own bias and
+then charged that bias to the product** — it excluded the cases it could not explain and measured the ones it could,
+wrongly. A corpus that names the artifact it cannot control is halfway to measuring it; the step it did not take was
+to **make the two branches comparable** instead of **excluding the incomparable ones**.
+
+**The exclusion list is wider than the count that was reported.** The code's own comment (`:66`) and the parallel
+session's message both say "the nine `PARITY_FX_EXCLUSIONS`". The effect map at `:157-240` holds **19** entries, and
+**twelve** of them state the lead's reason in their own words: phaser, flanger, chorus, tremolo, autowah, ringMod,
+pitchShift, vinyl, reverb, svFilter, kaskada, wowFlutter. The instrument map (`:247-253`) adds `wavetable`
+("free-running table scan phase") — a scan position that has advanced by the lead, i.e. a candidate **thirteenth**,
+but that is **Hypothesized, not measured**. The rest are a different class: seven "bar-scale transport state" cases
+and `granular`'s per-voice RNG ordering. So the blind spot the fix opens is at least **twelve** cases wide, not
+nine — and each of them has to be re-measured before its exclusion can be lifted.
+
+**The reverb exclusion is demonstrably inaccurate now.** It was excluded with the reason "free-running 0.5 Hz
+read-position modulator; device-clock jitter accumulates over the tail" — yet with the lead fixed, reverb measures
+**−323.4 dB, bit-identical**, and its live↔live was −323 dB in one run: the jitter the exclusion predicted did not
+materialise.
+
+**Two instruments that came out of the correction.** First, the corpus now prints a **time-resolved divergence
+profile** — 12 slices plus the onset (`divergenceProfile`, `:1033`; `profileText`, `:1071`) — because a single null
+number cannot tell a startup transient from an accumulating state divergence from a discrete jump; it says **when**
+the branches part. Second, the browser-gate annotation now **deduplicates** the FAIL lines the log prints twice,
+reports the **count**, and drops the verbose per-case tail (`ci.yml`, `ae372bf4`): the corpus line alone was ~3.8 kB
+of a 4096-byte budget, so the other failing checks were invisible — measured on a synthetic 14-check log, **0 of 13
+named before, 14 of 14 after** (4023 → 1537 bytes). That is the rule §10.15 established for annotations, applied to
+the corpus: **an annotation that names one thing hides the other twelve.**
+
+**The transferable lesson.** A single number cannot tell you _what you measured_. The corpus compared two branches
+that looked like the same thing — "the live render" and "the offline render" — and were not: one was half a second
+warm, the other was cold. Every verdict it produced inherited that, including the four this report called a product
+finding and pointed at a product file. The second lesson is about the report itself: this report stated an invariant-3
+finding, named a suspect, and was wrong — and the only reason that is recoverable is that the claim carried its
+evidence (a null in dB, a `live↔live` value, a control), so the next measurement could **falsify** it instead of
+merely disagreeing with it.
 
 ---
 
@@ -2240,5 +2359,7 @@ docs/audits/2026-10-27-hidden-creative-power/
 
 _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave and after the browser check
 (§10.7), the four-instance drift story (§10.10–§10.11), the live↔offline handoff and its refutations
-(§10.12–§10.14). Every claim is labelled Observed / Verified / Inferred / Hypothesized / Not verified, and every
-measurement in §10.2 was reproduced from the repository at the cited commit._
+(§10.12–§10.14), and again on 2026-10-29 with the CI-hygiene readings (§10.16) — including the correction of this
+report's own "four product findings" claim (§10.14 → §10.16.5). Every claim is labelled Observed / Verified /
+Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the
+cited commit._
