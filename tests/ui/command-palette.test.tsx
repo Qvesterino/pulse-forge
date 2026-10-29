@@ -248,10 +248,11 @@ describe("PaletteOverlay", () => {
       Array.from(document.querySelectorAll(".palette-item")).find((el) => el.className.includes("selected"))!
         .textContent ?? "";
     // The full shortcut registry backs the palette — first entry is Play/Pause,
-    // second is Stop (table order).
+    // second is Stop (table order). CF-06 renamed the stop label when stop
+    // moved off Escape onto Shift+Space.
     expect(selectedClass()).toContain("Play / Pause");
     fireEvent.keyDown(input, { key: "ArrowDown" });
-    expect(selectedClass()).toContain("Stop (clears help/selection first)");
+    expect(selectedClass()).toContain("Stop — return to start");
     fireEvent.keyDown(input, { key: "ArrowUp" });
     expect(selectedClass()).toContain("Play / Pause");
   });

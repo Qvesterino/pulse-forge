@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cachedEvidence, clearEvidenceCache, evidenceCacheKey } from "../src/mcp/evidence-cache";
+import { cachedEvidence, clearEvidenceCache, evidenceCacheKey, type EvidenceSource } from "../src/mcp/evidence-cache";
 import { mcpRenderSummary } from "../src/mcp/render-summary";
 import { addArrangementClip } from "../src/commands/commands";
 import { testDoc } from "./fixtures/doc";
@@ -90,7 +90,8 @@ describe("evidence cache unit contract", () => {
     const doc = testDoc();
     const a = makeStore({ doc });
     const b = makeStore({ doc });
-    const read = (store: object, level: number) => cachedEvidence(store, "family", { k: 1 }, async () => ({ level }));
+    const read = (store: EvidenceSource, level: number) =>
+      cachedEvidence(store, "family", { k: 1 }, async () => ({ level }));
     const fromA = await read(a.store, 0.25);
     const fromB = await read(b.store, 0.75);
     expect(fromA.data.level).toBe(0.25);
@@ -173,7 +174,6 @@ describe("render summary through the cache (E10 loop contract)", () => {
       const doc = docWithClips();
       const revisionRef = { current: 7 };
       const services = makeServices(doc, revisionRef);
-      const barUnit = 1920;
       mocks.render.mockImplementation(
         async () =>
           new Promise((resolve) =>
@@ -181,11 +181,9 @@ describe("render summary through the cache (E10 loop contract)", () => {
           ),
       );
 
-      const started = Date.now();
       const first = await mcpRenderSummary(services, { scope: "master" });
       const second = await mcpRenderSummary(services, { scope: "master" });
       const third = await mcpRenderSummary(services, { scope: "master" });
-      const elapsed = Date.now() - started;
 
       expect(mocks.render).toHaveBeenCalledTimes(1); // 3-step loop, ONE render
       expect(first.cache).toBe("miss");

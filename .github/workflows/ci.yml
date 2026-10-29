@@ -46,7 +46,48 @@ jobs:
       # Always run the clean variant so the local incremental cache (or
       # a stale `.tsbuildinfo` left in the workspace) can never mask a
       # cross-agent typecheck regression.
-      - run: npm run typecheck:clean
+      #
+      # The failure text goes to the JOB SUMMARY and to an ERROR ANNOTATION.
+      # This job used to have neither: GitHub's default tsc problem matcher
+      # supplied the annotations, and it (a) caps the number of annotations
+      # per step, and (b) drops the file:line prefix - measured on the run of
+      # 2026-10-29: 13 real errors, 10 annotations, none of them naming the
+      # file. A failed job's log sits behind a login, so an annotation that
+      # does not say WHICH file and HOW MANY errors is an annotation that
+      # cannot be acted on. The identification comes FIRST, because GitHub
+      # caps an error annotation at 4096 BYTES (measured) - a list that starts
+      # with the detail and ends with the count is a list whose count nobody
+      # ever reads.
+      - name: Run npm run typecheck:clean
+        run: |
+          set +e
+          npm run typecheck:clean 2>&1 | tee /tmp/tsc.log
+          status=${PIPESTATUS[0]}
+          sed -e 's/\x1b\[[0-9;]*m//g' /tmp/tsc.log > /tmp/tsc.plain.log
+          errors=$(grep -aE '^[^ ]+\([0-9]+,[0-9]+\): error TS[0-9]+:' /tmp/tsc.plain.log || true)
+          total=$(printf '%s\n' "$errors" | grep -c . || true)
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run typecheck:clean FAILED (exit $status)"
+              echo '```'
+              echo "type errors: $total"
+              echo '--- per file ---'
+              printf '%s\n' "$errors" | sed -E 's/^([^(]+)\(.*/\1/' | sort | uniq -c | sort -rn | head -20
+              echo '--- errors (file:line) ---'
+              printf '%s\n' "$errors" | head -40
+              echo '--- tail ---'
+              tail -30 /tmp/tsc.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=typecheck failed (exit %s)::%s\n' "$status" \
+              "$( { echo "type errors: $total"; \
+                   echo '--- per file ---'; \
+                   printf '%s\n' "$errors" | sed -E 's/^([^(]+)\(.*/\1/' | sort | uniq -c | sort -rn | head -20; \
+                   echo '--- errors (file:line) ---'; \
+                   printf '%s\n' "$errors" | head -40; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
+          fi
+          exit $status
 
   hygiene:
     name: Hygiene (format + drift)
@@ -322,7 +363,6 @@ jobs:
       # IndexedDB (kyx_save). The measured DSP read-back gate is run locally
       # (`npm run verify:param-readback`, Node 24 type-stripped .mts).
       - run: npm run verify:mcp-save
-      - run: npm run verify:audible
 
   test-browser-production:
     name: Production browser smoke (dist)

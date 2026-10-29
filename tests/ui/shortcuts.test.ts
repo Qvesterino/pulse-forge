@@ -48,10 +48,15 @@ describe("shortcut bindings", () => {
     expect(matchShortcut(key("9", { altKey: true }))).toBe("panelMaster");
   });
 
-  it("Escape resolves to stop — selection clearing runs earlier in the app handler", () => {
-    // Regression: "stop" and "clearSelection" were both bound to Escape;
-    // the later entry overwrote the former, so Esc never stopped transport.
-    expect(matchShortcut(key("Escape"))).toBe("stop");
+  it("Escape is NOT the transport stop — Shift+Space is the explicit stop chord (CF-06)", () => {
+    // CF-06: Escape is the universal "back out" key. A musician dismissing an
+    // overlay with Escape must not lose playback AND the playhead position
+    // (stop() rewinds unconditionally), so stop moved to Shift+Space and
+    // Escape is no longer bound to any transport action.
+    expect(matchShortcut(key("Escape"))).toBeNull();
+    expect(matchShortcut(key(" ", { shiftKey: true }))).toBe("stop");
+    // Space alone still pauses in place — stop must not swallow it.
+    expect(matchShortcut(key(" "))).toBe("playPause");
   });
 
   it("Ctrl+D resolves to contextual duplicate selection", () => {

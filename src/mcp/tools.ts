@@ -334,6 +334,20 @@ const OUTPUT_LOUDNESS: McpOutputSchema = {
   },
 };
 /** kyx_render_summary - per-strip offline render evidence. */
+const OUTPUT_ANALYZE_AUDIO: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    status: { type: "string", enum: ["analyzed", "partial"] },
+    provenance: { type: "object" },
+    algorithm: { type: "object" },
+    confidence: { type: ["number", "null"] },
+    mixHealth: { type: "object" },
+    labels: { type: "array", items: { type: "object" } },
+    partialReason: { type: "string" },
+  },
+  required: ["status", "provenance", "algorithm", "confidence"],
+};
 const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
   type: "object",
   additionalProperties: true,
@@ -3151,6 +3165,45 @@ export const MCP_TOOLS: McpToolDef[] = [
     outputSchema: OUTPUT_PUBLISH,
   },
   {
+    name: "kyx_analyze",
+    description:
+      "Perception over the E-1 envelope (E-6): analyze ONE track's AUDIO — " +
+      "either a mix-health digest (peak/LUFS/crest/band shares/flags from " +
+      "the strip's own render, master bypassed) or on-device audio LABELS " +
+      "(AudioSet tagger, top-5 with confidence; model must be fetched). " +
+      "Read-only; provenance (project revision, window, algorithm) travels " +
+      "with every result; results are BOUNDED digests, never raw arrays. " +
+      "Unavailable model = status partial with a reason — never invented " +
+      "labels.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        trackId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact track id to analyze (from kyx_state subject:tracks)",
+        },
+        featureSet: {
+          type: "string",
+          enum: ["mix-health", "audio-labels"],
+          description:
+            "mix-health = mixing numbers from the strip's own render; " +
+            "audio-labels = on-device AudioSet tagging (top-5, confidence)",
+        },
+        fromBar: { type: "integer", minimum: 0, maximum: 8192, description: "Window start bar (default 0)" },
+        toBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8192,
+          description: "Window end bar (default fromBar + 8; max span 16 bars)",
+        },
+      },
+      required: ["trackId", "featureSet"],
+    },
+    outputSchema: OUTPUT_ANALYZE_AUDIO,
+  },
+  {
     name: "kyx_render_summary",
     description:
       "THE AGENT'S EARS — offline-render the current project and report per-strip " +
@@ -4147,6 +4200,19 @@ export interface McpToolContext {
     },
     signal?: AbortSignal,
   ) => Promise<import("./render-summary").RenderSummaryData>;
+  /** E-6 (kyx_analyze): parametrized perception over the E-1 envelope —
+   * mix-health digest or audio-labels (on-device tagger) for ONE track.
+   * Absent → honest refusal (headless transports — rendering needs a
+   * browser context). */
+  analyzeAudio?: (
+    request: {
+      trackId: string;
+      featureSet: "mix-health" | "audio-labels";
+      fromBar?: number;
+      toBar?: number;
+    },
+    signal?: AbortSignal,
+  ) => Promise<import("./analyze-audio").AnalyzeAudioResult>;
   /** Two-phase audible verification: capture a bounded render, then compare
    * after the edit. Populated by the live window (needs OfflineAudioContext). */
   verifyEdit?: (request: AudibleVerificationRequest, signal?: AbortSignal) => Promise<AudibleVerificationResult>;
@@ -8219,6 +8285,40 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           "EXECUTION_FAILED",
           `song build failed: ${error instanceof Error ? error.message : String(error)}`,
         );
+      }
+    }
+    case "kyx_analyze": {
+      // E-6: parametrized perception over the E-1 envelope. Read-only.
+      // Rendering needs a browser context — headless transports refuse
+      // honestly, exactly like kyx_render_summary.
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      if (ctx.analyzeAudio == null) {
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "audio analysis is not available over this MCP transport (no render context bound) — use kyx_render_summary for mix numbers without tagging",
+        );
+      }
+      if (typeof record.trackId !== "string" || record.trackId.trim() === "" || record.trackId.length > 128) {
+        return mcpError("INVALID_ARGUMENTS", "trackId must be a non-empty string of at most 128 characters");
+      }
+      if (record.featureSet !== "mix-health" && record.featureSet !== "audio-labels") {
+        return mcpError("INVALID_ARGUMENTS", 'featureSet must be "mix-health" or "audio-labels"');
+      }
+      try {
+        const result = await ctx.analyzeAudio(
+          {
+            trackId: record.trackId.trim(),
+            featureSet: record.featureSet,
+            ...(record.fromBar !== undefined ? { fromBar: Number(record.fromBar) } : {}),
+            ...(record.toBar !== undefined ? { toBar: Number(record.toBar) } : {}),
+          },
+          undefined,
+        );
+        const { formatAnalyzeAudio } = await import("./analyze-audio");
+        const text = formatAnalyzeAudio(result);
+        return { text, mutated: false, data: result };
+      } catch (error) {
+        return mcpError("EXECUTION_FAILED", error instanceof Error ? error.message : String(error));
       }
     }
     case "kyx_render_summary": {

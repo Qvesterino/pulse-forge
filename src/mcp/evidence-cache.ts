@@ -1,5 +1,4 @@
-import type { Services } from "../services";
-import { storeRevision } from "./revision";
+import { storeRevision, type RevisionSource } from "./revision";
 
 /**
  * E10 (MUG-10) — the revision-keyed evidence cache.
@@ -44,6 +43,19 @@ import { storeRevision } from "./revision";
 
 export type EvidenceCacheMode = "hit" | "miss" | "disabled";
 
+/**
+ * The minimum a store must expose to take part in the revision-keyed cache:
+ * a document (for the project id) and an optional revision (the invalidation
+ * contract).
+ *
+ * Narrower than `ProjectStore | YDocStore` on purpose. The cache only READS
+ * the store — it never mutates it — so a minimal structural double is a valid
+ * participant. Typing the parameter as the whole store union forced the unit
+ * tests to either fake 70+ unrelated members or cast the mismatch away, and a
+ * cast is exactly how a real contract break hides from the compiler.
+ */
+export type EvidenceSource = RevisionSource;
+
 interface CacheEntry {
   promise: Promise<unknown>;
 }
@@ -54,7 +66,7 @@ const caches = new WeakMap<object, Map<string, CacheEntry>>();
 
 /** Canonical request identity for a cache key (stable key order by construction). */
 export function evidenceCacheKey(
-  store: Services["store"],
+  store: EvidenceSource,
   family: string,
   identity: Record<string, unknown>,
 ): string | null {
@@ -71,7 +83,7 @@ export function evidenceCacheKey(
  * compute ran directly and nothing was stored).
  */
 export async function cachedEvidence<T>(
-  store: Services["store"],
+  store: EvidenceSource,
   family: string,
   identity: Record<string, unknown>,
   compute: () => Promise<T>,
@@ -113,6 +125,6 @@ export async function cachedEvidence<T>(
 }
 
 /** Test/diagnostic hook: drop every cached envelope for one store. */
-export function clearEvidenceCache(store: Services["store"]): void {
+export function clearEvidenceCache(store: EvidenceSource): void {
   caches.delete(store);
 }

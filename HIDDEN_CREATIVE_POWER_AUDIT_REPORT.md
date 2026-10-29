@@ -1684,6 +1684,100 @@ was not the cause; it kept the timeout with a comment saying plainly that it is 
 reds. That is the same discipline this report applies to its own findings, and it is recorded here because a
 corrected hypothesis is part of the evidence, not a footnote.
 
+### 10.15 The type was the defect — and two kinds of red are not the same kind of red
+
+The CI run on `14b83d42` reported **Typecheck (clean) = failure**, with three jobs red downstream of it
+(Production build, Production browser smoke, Browser audio checks). The first attribution — mine, made from the
+working tree — was that the errors belonged to somebody's uncommitted work. **That attribution was wrong, and the
+measurement is what said so.** The errors live in `tests/mcp-evidence-cache.test.ts`, a file committed in
+`f5832eec` — an earlier wave, not a working tree. They were therefore a property of `main`.
+
+**What the compiler was actually saying.** The local typecheck reported **twelve** errors, all of them one
+assignment complaint (CI reported the same family: 10 annotations):
+
+```text
+tests/mcp-evidence-cache.test.ts(58,40): error TS2345: Argument of type
+'{ getRevision?: (() => number) | undefined; getDoc: () => ProjectDocument; }'
+is not assignable to parameter of type 'ProjectStore | YDocStore'.
+```
+
+The module behind those call sites is `src/mcp/evidence-cache.ts`. It reads exactly two things from its store:
+the document (`getDoc().id`, for the cache key) and the optional revision (`getRevision()`, for the
+invalidation contract). Its parameter was typed `Services["store"]` — the whole `ProjectStore | YDocStore`
+union, 70+ members it never touches. The unit test passed a minimal structural double, which is the correct
+way to test a per-store `WeakMap` cache, and the compiler rejected it.
+
+**The honest reading: the test was right and the type was wrong.** There are exactly two ways to silence that
+error, and both are lies. Fake 70+ unrelated members in the test, or write `as unknown as ProjectStore` and
+throw the mismatch away. The first pretends the module needs a whole store; the second pretends the mismatch
+does not exist. A cast is how a structural fact stops reaching the compiler, and this report's whole argument is
+that a gate must not certify something it did not measure.
+
+**The fix, and the rule the fix obeyed.** The contract is now what is actually read — `src/mcp/revision.ts:23`:
+
+```ts
+export interface RevisionSource {
+  getDoc: () => ProjectDocument;
+  getRevision?: () => number;
+}
+```
+
+`getDoc` is **required on purpose**, and the first attempt at this fix failed because of it. An interface whose
+members are all optional is a _weak type_, and TypeScript then rejects any argument that shares no property
+with it. The first version declared only `getRevision?`, and **fifteen** call sites came back with
+
+```text
+Type 'YDocStore' has no properties in common with type 'RevisionSource'.
+```
+
+That is not noise. `YDocStore` has no revision counter **by design** (ADR 0065 — a store without a revision is a
+legal state, not a bug), and a contract whose only member is optional makes that legal state unspellable. So the
+contract requires the document every store has (`src/store/ProjectStore.ts:292`,
+`src/collab/YDocStore.ts:375` — both `getDoc = (): ProjectDocument => …`) and treats the revision as the optional
+half it is. The recorded error is part of the evidence: it is why the contract has this shape.
+
+**A second species of red, in the same CI run.** Two unit specs were red for a completely different reason:
+`tests/ui/shortcuts.test.ts` asserted `matchShortcut(Escape) === "stop"`, and `tests/ui/command-palette.test.tsx`
+asserted the palette row read `Stop (clears help/selection first)`. Both described the world **before CF-06**,
+which deliberately moved stop off Escape onto Shift+Space and renamed the label (`src/ui/shortcuts.ts:127`,
+`f55bd1ff`). Those specs were not wrong when they were written; they were **superseded by a shipped decision**.
+They were updated to the shipped contract, and the updated spec now asserts the contract _positively_ — Escape
+matches nothing, Shift+Space is stop, plain Space still pauses in place (`tests/ui/shortcuts.test.ts:51`) —
+instead of matching a label string.
+
+**The difference between the two species, stated plainly.** A type error and a stale expectation are not the same
+defect. The type error means the **contract disagrees with the code**; the fix belongs to the contract. The stale
+expectation means an **expectation disagrees with a decision already shipped**; the fix belongs to the
+expectation. Silencing the first with a cast hides a structural fact; silencing the second by rewriting the
+string hides only a timestamp. They do not belong under one "tests are red" label, and they were not filed
+there.
+
+**Falsification, because a green test that was already green proves nothing.** With the two spec files reverted
+to their pristine `HEAD` versions and nothing else changed, exactly those two tests fail, with exactly the
+reported errors:
+
+```text
+expected null to be 'stop'
+expected 'Stop — return to startShift + SpaceTR…' to contain 'Stop (clears help/selection first)'
+```
+
+With the fix in place, measured on a **clean detached worktree** at `2c89e12a` carrying only this patch:
+`tsc --noEmit --incremental false` → **exit 0**; **234 tests across 6 suites green** (`mcp-evidence-cache` 9,
+`mcp-core` 32, `mcp-tools` 156, `mcp-headless-acceptance` 8, `shortcuts` 9, `command-palette` 20); Prettier
+clean; live spec count unchanged at **1330**, so no payload re-pin was owed.
+
+**What this section does NOT claim.** The three downstream CI jobs that failed with the typecheck — Production
+build, Production browser smoke, Browser audio checks — were **not** re-measured here; only the typecheck was.
+They failed as consequences of a broken build, but "would now be green" is not a measurement and is not
+claimed. §10.14's question — whether the CI runner can measure the null corpus at all — is untouched by this
+fix, and the harness hole the parallel session identified (`:777`, where the realtime-nondeterministic escape
+and the correlation floor cancel each other) is **still open**.
+
+**The transferable lesson.** A gate that is red on `main` is a claim about `main`, and the cheapest way to learn
+whose claim it is, is to measure it on a clean checkout of the commit rather than on the working tree the
+complaint was made from. Twice in this audit the working tree and the commit disagreed — here, and at the
+payload re-pin in §10.9 — and both times the commit was the truth.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
