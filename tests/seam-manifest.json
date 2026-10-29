@@ -174,6 +174,15 @@
       "negativeSpec": "NEGATIVE: a saved clip id that no longer exists selects nothing"
     },
     {
+      "id": "audio-clip-transform-discovery",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx clip-actions affordance + window events ← commandPalette extras ← App hasSelectedAudioClip",
+      "note": "CF-12: Time & pitch and Spectral Lab were right-click-only. The selected audio clip now exposes TIME&PITCH and SPECTRAL buttons in the arrangement toolbar, the palette lists both (disabled with a reason while no audio clip is selected) and dispatches the same open events, and the Help gestures name all three routes. The dialogs are the EXISTING ones — no second implementation.",
+      "spec": "tests/ui/ArrangementPanel.test.tsx",
+      "seamEvent": "pf-open-time-pitch",
+      "negativeSpec": "NEGATIVE: without a selected audio clip the affordance is absent and the event opens nothing"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

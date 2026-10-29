@@ -87,3 +87,48 @@ describe("command palette exposure", () => {
     }
   });
 });
+
+describe("command palette — audio-clip transforms (CF-12)", () => {
+  const baseDeps = {
+    runShortcut: () => {},
+    snapshotNow: () => {},
+    openGallery: () => {},
+    toggleHistoryPanel: () => {},
+    toggleDiagnostics: () => {},
+  };
+
+  it("lists Time & pitch and Spectral edit, disabled while no audio clip is selected", () => {
+    const actions = buildPaletteActions({ ...baseDeps, hasSelectedAudioClip: () => false });
+    const timePitch = actions.find((action) => action.id === "extra:time-pitch");
+    const spectral = actions.find((action) => action.id === "extra:spectral");
+    expect(timePitch, "the Time & pitch palette entry must exist").toBeTruthy();
+    expect(spectral, "the Spectral palette entry must exist").toBeTruthy();
+    expect(timePitch!.unavailableReason).toBe("Select an audio clip first");
+    expect(spectral!.unavailableReason).toBe("Select an audio clip first");
+
+    const enabled = buildPaletteActions({ ...baseDeps, hasSelectedAudioClip: () => true });
+    expect(enabled.find((action) => action.id === "extra:time-pitch")!.unavailableReason).toBeUndefined();
+    expect(enabled.find((action) => action.id === "extra:spectral")!.unavailableReason).toBeUndefined();
+  });
+
+  it("NEGATIVE: running the entries without the handlers is a safe no-op", () => {
+    const actions = buildPaletteActions(baseDeps);
+    expect(() => actions.find((action) => action.id === "extra:time-pitch")!.run()).not.toThrow();
+    expect(() => actions.find((action) => action.id === "extra:spectral")!.run()).not.toThrow();
+  });
+
+  it("running the entries dispatches the open events the panel listens for", () => {
+    const seen: string[] = [];
+    window.addEventListener("pf-open-time-pitch", () => seen.push("pf-open-time-pitch"));
+    window.addEventListener("pf-open-spectral", () => seen.push("pf-open-spectral"));
+    const actions = buildPaletteActions({
+      ...baseDeps,
+      hasSelectedAudioClip: () => true,
+      openTimePitchOnSelected: () => window.dispatchEvent(new CustomEvent("pf-open-time-pitch")),
+      openSpectralOnSelected: () => window.dispatchEvent(new CustomEvent("pf-open-spectral")),
+    });
+    actions.find((action) => action.id === "extra:time-pitch")!.run();
+    actions.find((action) => action.id === "extra:spectral")!.run();
+    expect(seen).toEqual(["pf-open-time-pitch", "pf-open-spectral"]);
+  });
+});

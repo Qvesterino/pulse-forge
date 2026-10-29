@@ -47,6 +47,12 @@ export interface PaletteDeps {
   openGallery: () => void;
   toggleHistoryPanel: () => void;
   toggleDiagnostics: () => void;
+  /** CF-12: does an AUDIO clip hold the selection? (Audio clicks feed the shared store.) */
+  hasSelectedAudioClip?: () => boolean;
+  /** CF-12: open the Time & pitch dialog for the selected audio clip. */
+  openTimePitchOnSelected?: () => void;
+  /** CF-12: open the spectral editor for the selected audio clip. */
+  openSpectralOnSelected?: () => void;
   dawProfile?: ProjectTransferSourceDaw | null;
   /**
    * The live project state the curated command registry needs. A getter, not a
@@ -137,6 +143,26 @@ export function buildPaletteActions(deps: PaletteDeps): PaletteAction[] {
       group: "Panels",
       keywords: "diagnostics debug engine status",
       run: deps.toggleDiagnostics,
+    },
+    // CF-12: the audio-clip transforms were right-click-only — the palette is
+    // the discoverable route. Both open on the panel's SELECTED audio clip.
+    {
+      id: "extra:time-pitch",
+      title: "Time & pitch for the selected audio clip",
+      group: "Clips",
+      keywords: "time pitch stretch tempo fit semitones warp speed audio clip",
+      unavailableReason:
+        deps.hasSelectedAudioClip && !deps.hasSelectedAudioClip() ? "Select an audio clip first" : undefined,
+      run: () => deps.openTimePitchOnSelected?.(),
+    },
+    {
+      id: "extra:spectral",
+      title: "Spectral edit for the selected audio clip",
+      group: "Clips",
+      keywords: "spectral lab surgery frequency region attenuate boost audio clip rx",
+      unavailableReason:
+        deps.hasSelectedAudioClip && !deps.hasSelectedAudioClip() ? "Select an audio clip first" : undefined,
+      run: () => deps.openSpectralOnSelected?.(),
     },
   ];
 

@@ -760,6 +760,22 @@ export function ArrangementPanel() {
   });
   const selectedAudioClipIdRef = useRef<string | null>(null);
   selectedAudioClipIdRef.current = selectedAudioClipId;
+  // CF-12: the palette (App overlay) opens these on the SELECTED audio clip —
+  // the same dialogs the right-click menu uses, no second implementation.
+  useEffect(() => {
+    const openTimePitch = () => {
+      if (selectedAudioClipIdRef.current) setStretchClipId(selectedAudioClipIdRef.current);
+    };
+    const openSpectral = () => {
+      if (selectedAudioClipIdRef.current) setSpectralEditClipId(selectedAudioClipIdRef.current);
+    };
+    window.addEventListener("pf-open-time-pitch", openTimePitch);
+    window.addEventListener("pf-open-spectral", openSpectral);
+    return () => {
+      window.removeEventListener("pf-open-time-pitch", openTimePitch);
+      window.removeEventListener("pf-open-spectral", openSpectral);
+    };
+  }, []);
   // CF-11: persist the view state per project (debounced) so the ARR tab can
   // close and the view comes back as it was left. Lives AFTER every field it
   // saves — the mirror refs above and zoomRef are the newest-value source.
@@ -4967,6 +4983,32 @@ export function ArrangementPanel() {
                     />
                   </label>
                 )}
+                {(() => {
+                  const selectedAudioClip = selectedAudioClipId
+                    ? audioClips.find((clip) => clip.id === selectedAudioClipId)
+                    : null;
+                  if (!selectedAudioClip) return null;
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        title="Time & pitch for this clip — stretch rate, independent pitch and tempo fit (the same dialog the right-click menu opens)"
+                        onClick={() => setStretchClipId(selectedAudioClip.id)}
+                      >
+                        TIME&PITCH
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        title="RX-style spectral surgery on this clip — select a time×frequency region and attenuate or boost it"
+                        onClick={() => setSpectralEditClipId(selectedAudioClip.id)}
+                      >
+                        SPECTRAL
+                      </button>
+                    </>
+                  );
+                })()}
                 <button
                   type="button"
                   className="btn btn-small"

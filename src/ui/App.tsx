@@ -1826,6 +1826,15 @@ export function App({
       openGallery: () => window.open("/gallery", "_blank", "noopener"),
       toggleHistoryPanel: () => setHistoryOpen((v) => !v),
       toggleDiagnostics: () => setDiagnosticsOpen((v) => !v),
+      // CF-12: the audio-clip transforms open from the palette onto the
+      // panel's selected audio clip — audio clicks feed the shared store
+      // ("SHARED-SELECTION PARITY"), so the store answers the enabled check.
+      hasSelectedAudioClip: () => {
+        const live = services.store.getDoc();
+        return (live.arrangement.audioClips ?? []).some((clip) => selectionStore.getState().clipIds.includes(clip.id));
+      },
+      openTimePitchOnSelected: () => window.dispatchEvent(new CustomEvent("pf-open-time-pitch")),
+      openSpectralOnSelected: () => window.dispatchEvent(new CustomEvent("pf-open-spectral")),
       dawProfile: doc.transferOrigin?.sourceDaw ?? null,
       // The curated command registry reads the LIVE project state: the
       // document, the selection (the document does not carry it) and the

@@ -729,3 +729,57 @@ describe("ArrangementPanel — view state survives the tab (CF-11)", () => {
     expect(saved.scrollLeft).toBe(500);
   });
 });
+
+describe("ArrangementPanel — audio-clip transforms leave the right-click menu (CF-12)", () => {
+  function docWithAudioClip() {
+    const doc = createProjectFromTemplate("house");
+    return addAudioClip(doc, doc.tracks[0]!.id, "audio.cf12", 0, 4).execute(doc);
+  }
+
+  afterEach(() => {
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith("pf:arr-view:")) window.localStorage.removeItem(key);
+    }
+  });
+
+  function renderWithSelectedAudioClip() {
+    const doc = docWithAudioClip();
+    const clipId = (doc.arrangement.audioClips ?? [])[0]!.id;
+    window.localStorage.setItem(`pf:arr-view:${doc.id}`, JSON.stringify({ selectedAudioClipId: clipId }));
+    const services = mockServices(doc);
+    vi.spyOn(services.bank, "get").mockReturnValue({
+      duration: 2,
+      sampleRate: 48_000,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array(96_000),
+    } as unknown as AudioBuffer);
+    return renderWithContext(<ArrangementPanel />, { services });
+  }
+
+  it("the selected audio clip exposes TIME&PITCH and SPECTRAL; TIME&PITCH opens the dialog", async () => {
+    renderWithSelectedAudioClip();
+    expect(screen.getByRole("button", { name: "TIME&PITCH" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SPECTRAL" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "TIME&PITCH" }));
+    expect(await screen.findByRole("dialog", { name: "Audio clip time and pitch" })).toBeInTheDocument();
+  });
+
+  it("the palette route (window event) opens the same dialog on the selected clip", async () => {
+    renderWithSelectedAudioClip();
+    expect(screen.queryByRole("dialog", { name: "Audio clip time and pitch" })).toBeNull();
+    act(() => {
+      window.dispatchEvent(new CustomEvent("pf-open-time-pitch"));
+    });
+    expect(await screen.findByRole("dialog", { name: "Audio clip time and pitch" })).toBeInTheDocument();
+  });
+
+  it("NEGATIVE: without a selected audio clip the affordance is absent and the event opens nothing", async () => {
+    renderWithContext(<ArrangementPanel />, { services: mockServices() });
+    expect(screen.queryByRole("button", { name: "TIME&PITCH" })).toBeNull();
+    act(() => {
+      window.dispatchEvent(new CustomEvent("pf-open-time-pitch"));
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(screen.queryByRole("dialog", { name: "Audio clip time and pitch" })).toBeNull();
+  });
+});

@@ -61,6 +61,16 @@ export const GESTURES: GestureEntry[] = [
     action: "Double-click waveform",
     detail: "Drop a warp pin at that tick (drag pins to bend time)",
   },
+  {
+    area: "Arrangement",
+    action: "Time & pitch",
+    detail: "Right-click an audio clip → Time & pitch… — or select the clip and use TIME&PITCH in the toolbar / Ctrl+K",
+  },
+  {
+    area: "Arrangement",
+    action: "Spectral edit",
+    detail: "Right-click an audio clip → Spectral Lab — or select the clip and use SPECTRAL in the toolbar / Ctrl+K",
+  },
   // ── Values & dice ────────────────────────────────────────────────────────
   {
     area: "Values & dice",
