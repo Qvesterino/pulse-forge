@@ -3,6 +3,28 @@ name: CI
 on:
   push:
     branches: [main]
+    # A push that touches NOTHING but documentation cannot change the code the
+    # heavy gates measure, so it does not get the heavy gates. Measured
+    # 2026-10-29: the heavy workflow's verdict lags HEAD by roughly one run
+    # (20 ubuntu slots, ~7 heavy jobs per run, ~12 pushes an hour), and the
+    # pushes that were eating those slots were markdown commits to the audit
+    # report - each one queued a full heavy suite for a tree whose code had
+    # not changed a byte, and the report session could not get a verdict for
+    # a commit at all ("completed/cancelled", last full verdict 12 commits
+    # earlier).
+    #
+    # The fast workflow (ci-fast.yml) still runs for those pushes, and it is
+    # the one that owns the docs-dependent gate: the drift check compares
+    # docs/CURRENT-STATE.md and the MCP mirrors against the live code, so a
+    # documentation change is still verified - it is just verified against the
+    # cheap gates.
+    #
+    # pull_request is deliberately NOT filtered: a pull request always gets
+    # the full set of check names, so a repository that requires them as
+    # status checks never waits for a check that was never going to run.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   pull_request:
   workflow_dispatch:
 
