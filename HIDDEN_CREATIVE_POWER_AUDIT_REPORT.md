@@ -1058,27 +1058,28 @@ Every row below is from that clean tree. The test count moved from **121** to **
 session's CF-05 Tab-traversal fix added three assertions — the count is a measurement, and it is reported as
 measured.
 
-| check                                                                            | result                                                                                  |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                            |
-| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                          |
-| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                         |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                      |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                      |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                      |
-| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                      |
-| `tests/ui/App.test.tsx`                                                          | ✅                                                                                      |
-| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                      |
-| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                      |
-| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                         |
-| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                           |
-| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                      |
-| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                   |
-| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)         |
-| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11)          |
-| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7) |
-| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, 95 seams (§10.11)                                               |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                    |
+| check                                                                            | result                                                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                    |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                  |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                 |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                              |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                              |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                              |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                              |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                                              |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                              |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                              |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                 |
+| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                   |
+| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                              |
+| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                           |
+| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                 |
+| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11)                  |
+| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)         |
+| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **98** seams (committed payload `docs/status.json`; §10.11 measured 95) |
+| the committed payload's `spec-counts` claim                                      | ✅ **1334 claimed, 1334 measured** — `state: pass`, drift-checked (`docs/status.json`)          |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                            |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -1650,7 +1651,13 @@ flips.** The verdict is now a property of the measurement, not of the run's luck
 > withdrawn** (§10.16.5): the divergence was the harness's **capture lead** — a warm live branch compared against a cold
 > offline one — so invariant 3 was never violated and the suspect was wrong. This section is kept as the record of what
 > was believed, and every instance of the withdrawn claim is now **marked in place**, so no reader can meet it in the
-> present tense. What survives of it — the runner's platform-specific realtime divergence — is characterised in §10.16.6.
+> present tense.
+>
+> **A second supersession, added 2026-10-29 — the section's TITLE is wrong too.** "The CI runner is not a measurement
+> environment for this corpus" no longer holds: the runner's verdict reads `environment=measurable`, its calibration is
+> **−334.4 dB on both axes**, and the runner's corpus number is exactly reproducible on a **second, unrelated Linux
+> machine** (§10.16.6). What survives of this section is not "the runner cannot measure" but "**Linux and Windows
+> disagree**" — which is a **product** question, and the smallest invariant-3 candidate this audit has ever held.
 
 The paragraph above measures the corpus on a desktop. The parallel session then measured it on the CI runner —
 and that measurement is the more consequential one, because it shows the **runner** is the problem, not the
@@ -1680,7 +1687,9 @@ environment line therefore reads `environment=measurable (calibration fx:bitcrus
 **by construction** says nothing about whether an oscillator's offline render repeats bit-identically on another
 platform.
 
-**What the 17 CI-only instrument failures actually are.** The corpus reports **failed = 21/67** on the runner: the
+**What the 17 CI-only instrument failures actually are.** The corpus reports **failed = 21/67** on the runner _(that
+annotation; the corpus has since moved — 18/67 after the capture-lead fix `ae372bf4`, and **17/77** at `b2a02569` —
+§10.16.6)_: the
 same four effect findings as on the desktop (`fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal`, all
 with `realtimeNondeterministic = false` and `live↔live` at about −332 dB) **plus 17 instrument cases that PASS on
 the desktop**. For those 17 the offline control is **exact** and the realtime branch **reproduces itself** — yet it
@@ -1696,6 +1705,12 @@ still is not a measurement environment for this corpus. But not because its arit
 runner's **realtime path diverges from its own offline path** in a way the desktop does not, for a class of cases
 that is green on every desktop. A calibration case proves the environment can render bit-identically twice; it does
 not prove the realtime and offline paths agree with each other.
+
+**[SUPERSEDED 2026-10-29 — §10.16.6.]** The paragraph above has the right shape with the wrong subject. The runner
+**does** measure this corpus: `environment=measurable`, calibration **−334.4 dB on both axes**, and the same numbers
+reproduced on a **second, unrelated Linux machine**. What diverges is not the runner but **Linux itself** — so "the
+runner is not a measurement environment" becomes "**Linux and Windows render the same instrument differently**", and
+that is a product question, not an environment question.
 
 **The desktop, by contrast, is reproducible.** Windows and Linux produced **bit-identical** values for the four
 effects. So the two statements point in opposite directions:
@@ -1741,7 +1756,7 @@ while the live branch's capture starts `CAPTURE_START_LEAD_SEC` (**0.5 s**) into
 processed half a second of history — a free-running modulation phase, a filter's memory, a comb's drift, a pitch
 tracker's buffer. The two branches were therefore compared at the same **nominal** time while their internal state
 differed by a whole capture lead. The divergence the corpus measured was **the lead, not the engine**: with the
-offline render given the same lead (`ae372bf4` — `renderOffline` at `:344-353`), three of the four become
+offline render given the same lead (`ae372bf4` — `renderOffline` at `:321` and `:328`), three of the four become
 **bit-identical** and the fourth falls to −72.7 dB, below the corpus's own acceptance floor. **Invariant 3 was never
 violated**, the suspect named above was **not** the cause, and the reading of this section's numbers as "four real
 findings" is **withdrawn**. §10.16.5 has the measurement, the mechanism, and what this does to the rest of this
@@ -1919,7 +1934,7 @@ falsification, and the corrected attribution — lives in this section rather th
 build, Production browser smoke, Browser audio checks — were **not** re-measured here; only the typecheck was.
 They failed as consequences of a broken build, but "would now be green" is not a measurement and is not
 claimed. §10.14's question — whether the CI runner can measure the null corpus at all — was **not** settled by
-this fix, and the harness hole the parallel session identified (`:777`, where the realtime-nondeterministic escape
+this fix, and the harness hole the parallel session identified (`:777` in the tree at the time — the rule now lives at `:1525`, where the realtime-nondeterministic escape
 and the correlation floor cancel each other) was still open **when this section was written**. Both have moved on
 since, in the parallel session's lane: the hole is closed and the corpus now measures its own calibration case,
 so the verdict says whether the environment can measure at all (`ee899de7`, `0b41bd0a`, and §10.14 above).
@@ -2182,10 +2197,13 @@ around it:
 `passed=67/67`** — the red list is empty at that corpus size, and the difference is that no product changed
 (§10.16.5). **The red list is NOT empty at the corpus's later size of 77** — the idle-machine re-measurement reports
 `failed=1/77` plus eight cases the machine could not judge (§10.16.5); the one case that is red is read in full in §10.16.6,
-because its numbers do not resemble the runner's.
+because its numbers do not resemble the runner's. **Update (2026-10-29):** the desktop's reds move with the machine's state —
+the parallel session's later local run reports the corpus **green at 77/77** — while the runner sits at **17/77 red** with one
+case unjudgeable. **The split that matters is therefore not desktop-vs-runner but Windows-vs-Linux** (§10.16.6).
 
 **This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
-runner the same corpus reports **21/67**; on a measurable desktop it reports **4/67**, with the calibration clean on
+runner the same corpus reported **21/67** _(that annotation; the corpus has since moved to **18/67** at `ae372bf4` and
+**17/77** at `b2a02569` — §10.16.6)_; on a measurable desktop it reported **4/67**, with the calibration clean on
 **both** axes. The environment line is the durable part of this measurement: it says **in the verdict itself**
 (`environment=measurable` plus the two calibration numbers) whether the machine could measure, instead of leaving a
 reader to infer it from a red count. That is the difference between a corpus whose red list a reader must interpret
@@ -2221,7 +2239,7 @@ tracker's buffer. The offline branch started **cold** (`leadSec = 0`). Both bran
 same lead and compares from where the capture starts:
 
 ```ts
-// src/testing/live-offline-parity.ts:306 and :313 (the ae372bf4 fix; current HEAD)
+// src/testing/live-offline-parity.ts:321 and :328 (the ae372bf4 fix; current HEAD)
 script(engine, (offset) => CAPTURE_LEAD_FRAMES / sampleRate + leadSec + eventPrerollSec + offset);
 // …
 return buffer.getChannelData(0).subarray(CAPTURE_LEAD_FRAMES); // the lead is history, not signal
@@ -2238,7 +2256,7 @@ return buffer.getChannelData(0).subarray(CAPTURE_LEAD_FRAMES); // the lead is hi
 | reverb        | −5.3 dB        | **−323.4 dB** (bit-identical; excluded from the corpus) |
 | eq (control)  | −64.1 dB       | **−325.1 dB** (control, still green)                    |
 
-With the corpus's acceptance floor at `PARITY_NULL_FLOOR_DB = −40` (`:82`), every one of the **after** values is
+With the corpus's acceptance floor at `PARITY_NULL_FLOOR_DB = −40` (`:99`), every one of the **after** values is
 **below** the floor — so the corpus has no reason to report any of them. §10.14's "four product findings" were four
 measurements of the harness's own artifact.
 
@@ -2270,17 +2288,17 @@ well, so the section cannot be read out of context as a live finding.
 
 **The corpus knew.** This is the part worth keeping. The exclusions list in the very same file already said, in
 words: _"Free-running LFO / phase state: the live instance is mid-modulation when the capture starts; the offline
-instance starts from phase zero"_ (`:157-160`); svFilter's reason is _"the realtime instance is mid-glide at
+instance starts from phase zero"_ (`:187-188`); svFilter's reason is _"the realtime instance is mid-glide at
 capture"_; vinyl's is _"the vinyl instance is mid-modulation at capture"_. The harness **documented its own bias and
 then charged that bias to the product** — it excluded the cases it could not explain and measured the ones it could,
 wrongly. A corpus that names the artifact it cannot control is halfway to measuring it; the step it did not take was
 to **make the two branches comparable** instead of **excluding the incomparable ones**.
 
 **The exclusion list is wider than the count that was reported — and the count is now fixed.** The code's own
-comment (`:66`) and the parallel session's message both said "the nine `PARITY_FX_EXCLUSIONS`". The effect map at
-`:157-240` holds **19** entries, and **twelve** of them state the lead's reason in their own words: phaser,
+comment (`:66` in the tree at the time — the map has since been rewritten) and the parallel session's message both said "the nine `PARITY_FX_EXCLUSIONS`". The effect map at
+`:173-214` holds **19** entries, and **twelve** of them state the lead's reason in their own words: phaser,
 flanger, chorus, tremolo, autowah, ringMod, pitchShift, vinyl, reverb, svFilter, kaskada, wowFlutter. The rest are
-a different class: seven "bar-scale transport state" cases. The instrument map (`:247-253`) adds `wavetable`
+a different class: seven "bar-scale transport state" cases. The instrument map (`:221-227`) adds `wavetable`
 ("free-running table scan phase") — a scan position that has advanced by the lead, i.e. a candidate **thirteenth**,
 but that is **Hypothesized, not measured**; `granular`'s per-voice RNG ordering is a different class again. So the
 blind spot the fix opens is at least **twelve** cases wide, not nine — and each of them has to be re-measured before
@@ -2348,7 +2366,7 @@ read-position modulator; device-clock jitter accumulates over the tail" — yet 
 materialise.
 
 **Two instruments that came out of the correction.** First, the corpus now prints a **time-resolved divergence
-profile** — 12 slices plus the onset (`divergenceProfile`, `:1033`; `profileText`, `:1071`) — because a single null
+profile** — 12 slices plus the onset (`divergenceProfile`, `:1050`; `profileText`, `:1177`) — because a single null
 number cannot tell a startup transient from an accumulating state divergence from a discrete jump; it says **when**
 the branches part. Second, the browser-gate annotation now **deduplicates** the FAIL lines the log prints twice,
 reports the **count**, and drops the verbose per-case tail (`ci.yml`, `ae372bf4`): the corpus line alone was ~3.8 kB
@@ -2364,32 +2382,71 @@ finding, named a suspect, and was wrong — and the only reason that is recovera
 evidence (a null in dB, a `live↔live` value, a control), so the next measurement could **falsify** it instead of
 merely disagreeing with it.
 
-#### 10.16.6 What the runner's 18 instrument failures are — and what the correlation actually measures
+#### 10.16.6 The corpus at 77 on the runner: 17 reds — and they are not one defect
 
-The parallel session read the CI annotation of the browser-audio job (run `ae372bf4`) and found something §10.16.5
-had not yet seen from the runner: **the capture-lead fix killed the FX reds in CI** — `failed=18/67`, and **every
-one of the 18 is an `instrument:*`, not a single FX**. The four "product findings" of §10.14 are gone from the
-runner too. What remains splits cleanly in two:
+**The current verdict, read from the CI run itself** (`b2a02569`, the browser-audio job's failure annotation — fetched
+directly, not relayed):
 
-| group                     | count | live↔live                            | live↔offline   | corr   | profile                                   |
-| ------------------------- | ----- | ------------------------------------ | -------------- | ------ | ----------------------------------------- |
-| systematic difference     | 14    | **−321…−336 dB** (same as `control`) | **−24…−34 dB** | 0.9997 | flat ≈ **−31.8 dB** from the second slice |
-| non-reproducible realtime | 4     | **−77…−80 dB**                       | —              | —      | `analog`, `texture`, `strings`, `reese`   |
+> live↔offline null test: same engine + events on both contexts — **failed=17/77** —
+> `environment=measurable` (calibration `fx:bitcrusher` control=−334.4 dB, live↔live=−334.4 dB, both ≤ −200 dB) —
+> failing cases: `instrument:analog`, `808`, `texture`, `keys`, `organ`, `strings`, `bell`, `clav`, `acid`, `brass`,
+> `fm`, `pluck`, `flute`, `logdrum`, `drumsynth`, `ladic`, `struna` —
+> `not measurable=1` (the realtime branch did not reproduce itself): `instrument:reese`
 
-The first group is the interesting one, because **both branches are bit-deterministic** — the live branch reproduces
-itself to −321…−336 dB, exactly like the offline determinism control — and yet the two branches disagree by a flat
-≈ −31.8 dB. That is not noise. §10.14 attributed these to "the platform realtime divergence", and that label was an
-**unmeasured guess**: the honest statement is _a systematic difference between two deterministic branches, present on
-the runner and absent on the desktop_.
+Every one of the 17 is an `instrument:*` — **not a single FX**. The four "product findings" of §10.14 are gone from the
+runner as well as from the desktop (§10.16.5), and the FX corpus is green on both platforms.
+
+**What all 17 share is a rule, not a label.** The annotation's per-case rows carry a column the corpus only started
+printing recently: `live2`, the **second** live capture measured against the same offline reference. In every row the
+annotation details it **equals the first** (`live2=−32.9` beside `null=−32.9` for `808`; `live2=−31.7` beside
+`null=−31.7` for `organ`), and in every row `liveRepeat` (live↔live) is **below the −40 dB floor** while `control` (the
+same document rendered twice offline) is **clean**. So both live captures are dirty against the offline reference and they
+agree with each other: the realtime branch reproduces itself and still renders differently. That is the one shape the new
+rule keeps red, and it is attributable to the processing path — and since all 17 are red under that rule, all 17 must have
+that shape.
+
+**But they are not one defect — and the `frac=` column is what says so.** The corpus now prints a fractional-shift
+scan: the null is re-measured with the capture moved by a fraction of a sample. A null that **collapses** under that move
+is the same signal at a different **position**; a null that does not move is a difference in the **waveform**. Of the
+eight cases the annotation details:
+
+| case                 | null     | corr   | live↔live | live2    | control   | rms        | peak       | spec   | frac (shift → null)   | reading                       |
+| -------------------- | -------- | ------ | --------- | -------- | --------- | ---------- | ---------- | ------ | --------------------- | ----------------------------- |
+| `instrument:808`     | −32.9 dB | 0.9997 | −92.8 dB  | −32.9 dB | −89.5 dB  | **1.000×** | **1.000×** | 1.0000 | 0.2500 → −34.5 dB     | not a position                |
+| `instrument:texture` | −28.9 dB | 0.9994 | −86.1 dB  | −28.9 dB | −304.9 dB | **1.000×** | 1.004×     | 1.0000 | 0.2500 → −30.3 dB     | not a position                |
+| `instrument:analog`  | −13.7 dB | 0.9789 | −76.4 dB  | −13.7 dB | −80.0 dB  | **1.000×** | 0.965×     | 0.9999 | 0.2500 → −15.0 dB     | not a position, level moved   |
+| `instrument:organ`   | −31.7 dB | 0.9997 | −323.5 dB | −31.7 dB | −323.6 dB | 0.999×     | 0.999×     | 1.0000 | **0.3125 → −38.3 dB** | partly a position             |
+| `instrument:strings` | −26.9 dB | 0.9990 | −324.5 dB | −26.9 dB | −324.5 dB | **1.000×** | 1.013×     | 1.0000 | **0.3125 → −59.1 dB** | **a position**                |
+| `instrument:clav`    | −22.5 dB | 0.9972 | −78.4 dB  | −22.5 dB | −77.8 dB  | **1.000×** | 1.006×     | 1.0000 | **0.3125 → −42.5 dB** | largely a position            |
+| `instrument:bell`    | −24.5 dB | 0.9982 | −321.8 dB | −24.5 dB | −321.8 dB | **1.000×** | 0.992×     | 1.0000 | 0.0625 → −24.6 dB     | not a position                |
+| `instrument:keys`    | −16.6 dB | 0.9909 | −277.8 dB | −16.6 dB | −278.5 dB | **0.929×** | **1.045×** | 1.0000 | **0.0000 → −16.6 dB** | **neither** — and level moved |
+
+**Three signatures, not one:**
+
+- **a position** — `strings` (the null collapses from −26.9 to **−59.1 dB** under a 0.3125-sample shift), `clav`
+  (−42.5 dB), partly `organ` (−38.3 dB). The residual is the same signal at a different sub-sample position.
+- **a waveform difference at identical level** — `808`, `texture`, `bell`: `rms` is **1.000×**, `spec` is **1.0000**,
+  and a fractional shift moves the null by 1.3…1.6 dB. Not a level change, not a moved signal.
+- **something else entirely** — `keys`: `rms` **0.929×**, `peak` **1.045×**, and a profile that is not flat at all
+  (`[0.0, −17.9, −14.2, −16.4, −25.4, −26.7, −13.4, −7.7, −19.7, **+7.6**, −26.7, −18.2]` — one window is **positive**,
+  i.e. the two branches differ by more than the reference's own energy there). That is the shape of an **event in the
+  wrong window**, not of a filter state.
+
+**A measurement lesson the corpus paid for in a CI run, not in the product.** Two FX cases (`fx:pitchShift`,
+`fx:bassHarmonic`) were red on one run because the fractional-shift diagnostic cost ~21 million `Math.sin()` calls per
+case and loaded the runner's realtime budget (heartbeat 215 ms against an expected 186 ms). The fix is in the source
+(`:1111-1124`): the interpolator weights depend on the fraction only, so they are computed **once per parameter**
+instead of once per tap per sample, and the scan runs **only for the cases that failed**. **A diagnostic that runs on
+every case can kill the measurement it is attached to.**
 
 **And the flat profile does not say what kind — but the correlation excludes one reading, and it cannot choose between
 two others.** The parallel session read the flat ≈ −31.8 dB profile as "a constant gain of ~2.8 % (20·log10(1/0.028))".
 **Their own correlation number excludes that reading**, once the metric's definition is read rather than its name:
 
-- `compare()` (`src/testing/live-offline-parity.ts:682-696`) computes a **subtraction null** —
+- `compare()` (`src/testing/live-offline-parity.ts:697-711`) computes a **subtraction null** —
   `10·log10(Σ(reference − capture)² / Σreference²)`. So −31.8 dB means the residual energy is **6.6·10⁻⁴** of the
   reference energy.
-- `correlationAt()` (`:699-714`) is **not** the Pearson coefficient its docstring claims: it computes
+- `correlationAt()` (`:714-729`) is **not** the Pearson coefficient its docstring claims: it computes
   `dot / √(Σa²·Σb²)` **without subtracting the means** — an uncentred cosine similarity.
 - For a **pure gain** `b = g·a`, that expression is **exactly 1.0000** for any `g` (a scalar multiple does not change
   the angle). The measured **0.9997 excludes a pure gain**.
@@ -2403,20 +2460,25 @@ uncentred cosine is `1 − k/2` to second order, and `1/√(1+k)` is that same e
 additive constant from a moved signal.** Only the level can, and the two sizes of the corpus diverge there: at this null
 size an additive constant leaves the **rms** ratio at ≈ 1.000× (√(1+6.6·10⁻⁴)), so the rms ratio is blind — but it shifts
 the **peak** by `d = rms·√k` — 0.5–1.5 % for any ordinary rms/peak — while a moved signal leaves the peak where it is.
-**The rms and peak ratios (`0559d65b` prints `rms=`, `peak=`, `spec=`) are therefore the discriminator, and a 2.8 % gain
-would show ≈ 0.972× on both. Not yet read from the CI annotation — the next run has it.**
+**The reading the correlation could not give is now in the annotation itself — and it splits the set.** The corpus prints
+`rms=` (the raw level ratio), `peak=`, `spec=` (the magnitude-spectrum cosine) and `frac=` (the fractional-shift scan) per
+case, and the `b2a02569` annotation carries all four for eight of the seventeen:
 
-**One case already carries the reading — measured by the parallel session, outside this tree.** Their WSL reproduction of the
-same signature (`instrument:organ`: `liveNull=−31.7 dB`, `corr=0.9997`, `liveRepeat=−323.5 dB`,
-`control=−323.6 dB`, flat profile ≈ −31.8 dB, `offset=0`) reports `livePeak=0.1863` against `refPeak=0.1865` — a peak
-ratio of **0.999**. An additive constant at that null size would shift the peak by `0.0257·rms/peak`, i.e. **0.5–1.5 %**
-for any ordinary rms/peak, against a measured **0.1 %**. Their fractional-shift scan finds a minimum at **0.3125 samples**,
-improving the null from −31.7 dB to **−38.2 dB** — so there is a **sub-sample shift** in the residual, where a pure constant
-would have cancelled under that scan and left only the interpolator's own error. Both readings point at a **shift**, not a
-constant: the additive reading this section carried is not merely unsupported, it is **contradicted** for the one case that
-has been measured. **Provenance:** the parallel session's WSL measurement, taken on the tree that now carries the
-fractional-shift scan (`8b3b47cd`). The **measurement** is not in the repository — these are their numbers, not this report's,
-and this report does not claim to have reproduced them.
+- **The additive reading is excluded for the cases that are not a position.** For `808`, `texture` and `bell`, `rms` is
+  **1.000×** and `spec` is **1.0000** — level and magnitude spectrum identical — and a fractional shift moves the null by
+  1.3…1.6 dB. An additive constant big enough for a −32.9 dB null leaves the rms ratio at √(1+6.6·10⁻⁴) = **1.000×**, so
+  the rms reading cannot see it; but it moves the **peak** by `d = rms·√k`, and the measured peaks are **1.000×, 1.004×,
+  0.992×**. The parallel session measured the **mean difference as zero** on their WSL Linux, so there is no DC component
+  either. What is left for these three is a **waveform difference at identical level and identical spectrum** — and its
+  shape is not named yet.
+- **For `strings` and `clav` the residual IS a position**: the fractional scan drops the null from −26.9 to **−59.1 dB**
+  and from −22.5 to **−42.5 dB**.
+- **For `keys` neither holds**: the level itself moved (`rms` **0.929×**, `peak` **1.045×**) and one profile window is
+  **positive**.
+
+**And the parallel session's own generalisation is too broad.** Their measurement — `frac=0.25` improved `808` only from
+−32.9 to −34.5 dB — is right for `808` and **wrong as a statement about the set**: the same column collapses the null by
+32 dB for `strings`. A single case cannot characterise seventeen, and the annotation's own rows say so.
 
 **Two corrections this section makes to the report's own earlier text.** First, §10.14's Refutation 1 says
 "`correlationAt` is a true Pearson coefficient" — it is **not**: the implementation does not center, and the source's
@@ -2426,70 +2488,102 @@ against a metric whose name was wrong, and it would have been equally blind had 
 consequence matters for readers: a **true** Pearson is invariant to an additive offset, and
 this metric is not. So `corr = 0.9997` must not be read as "the same signal" — it says "the same signal plus a small
 **perturbation**", and this section's own earlier wording ("plus a small constant") named one of the two candidates it
-cannot separate from the other. That is exactly the distinction the runner's 14 cases turn on, and it is invisible unless
+cannot separate from the other. That is exactly the distinction the runner's 17 cases turn on, and it is invisible unless
 the metric's definition is read instead of its name.
 
-**What stays open, and it is not a small thing.** Which branch carries the perturbation, whether it is a constant or a
-shift, and why the runner has it while the desktop does not, is **not resolved** — and until it is, the corpus may well
-be _right_ to be red there. §10.14's proposal to make the null corpus non-blocking in CI was built on the "platform noise"
-reading; if the difference is a constant or a shift in one branch's output path, that proposal would hide a real
-live↔offline difference — the
+**What stays open, and it is not a small thing.** Which branch carries the perturbation, what shape it has, and why Linux
+has it while Windows does not, is **not resolved** — and until it is, the corpus may well be _right_ to be red there.
+§10.14's proposal to make the null corpus non-blocking in CI was built on the "platform noise" reading; if the difference
+is real on one platform, that proposal would hide a real live↔offline difference — the
 exact thing invariant 3 exists to catch. **That decision must not be taken on the strength of a label.**
 
-**And the desktop's own last red is a different measurement entirely — a TIMING difference, not a level one.** The idle
-re-measurement (`docs/audits/2026-10-29-browser-audit/browser-audit-remeasure.log:445`) reports **`failed=1/77`**, and the one
-failing case is `instrument:ladic` — LADIČ, the 6-operator FM flagship (`src/instruments/registry.ts:6925`, ADR 0055). Its row
-says:
+**And the desktop's reds move with the machine's state — while the runner's do not.** The tracked idle re-measurement
+(`docs/audits/2026-10-29-browser-audit/browser-audit-remeasure.log:445`, commit `5bb0af20`) reports **`failed=1/77`**
+plus eight cases the machine could not judge; the parallel session's later local run reports the corpus **green at
+77/77**. On the runner the same corpus is **17/77 red** with one case unjudgeable. So the desktop's reds are a property
+of that machine at that moment, and the runner's are not — and the one case whose row was readable in full on the desktop,
+`instrument:ladic`, is **also on the runner's red list**, which makes it the most interesting one of the seventeen.
 
-| reading                  | value               | what it settles                                                                          |
-| ------------------------ | ------------------- | ---------------------------------------------------------------------------------------- |
-| `rms`                    | **1.000×**          | the **level** is identical                                                               |
-| `livePeak` / `refPeak`   | **0.1185 / 0.1185** | the peak is identical, to the last digit                                                 |
-| `spectrum`               | **0.9999**          | the magnitude spectrum is identical (offline control: 1.0000)                            |
-| `null`                   | −9.8 dB             | …but the **waveform** is not — against a floor of −40 dB (`:84`)                         |
-| `offset`                 | **−336 samples**    | the best alignment needs 336 samples — **7.62 ms** at 44 100 Hz (`:50`)                  |
-| `repeatOffset`           | **0 samples**       | the live branch reproduces **itself** at zero offset                                     |
-| `segHead` / `segTail`    | −4.4 / −15.3 dB     | the difference is concentrated at the **head** of the window                             |
-| `profile`                | 0.0 → −18.1 dB      | nothing shared in the first window, saturating afterwards                                |
-| `corr`                   | 0.9471              | high but not unity — the corpus's own marker for "the same path, a moved sample" (`:91`) |
-| `control` / `liveRepeat` | −319.2 / −319.2 dB  | the offline render is deterministic and the live branch reproduces itself                |
+**LADIČ is a whole-sample position difference, and that is a third signature again.** LADIČ is the 6-operator FM flagship
+(`src/instruments/registry.ts:6925`, ADR 0055). Its desktop row says:
 
-The level readings are **position-independent** — `stats()` (`:1287-1296`) measures the raw buffers, before any alignment. And at
+| reading                  | value               | what it settles                                                                           |
+| ------------------------ | ------------------- | ----------------------------------------------------------------------------------------- |
+| `rms`                    | **1.000×**          | the **level** is identical                                                                |
+| `livePeak` / `refPeak`   | **0.1185 / 0.1185** | the peak is identical, to the last digit                                                  |
+| `spectrum`               | **0.9999**          | the magnitude spectrum is identical (offline control: 1.0000)                             |
+| `null`                   | −9.8 dB             | …but the **waveform** is not — against a floor of −40 dB (`:99`)                          |
+| `offset`                 | **−336 samples**    | the best alignment needs 336 samples — **7.62 ms** at 44 100 Hz (`:65`)                   |
+| `repeatOffset`           | **0 samples**       | the live branch reproduces **itself** at zero offset                                      |
+| `segHead` / `segTail`    | −4.4 / −15.3 dB     | the difference is concentrated at the **head** of the window                              |
+| `profile`                | 0.0 → −18.1 dB      | nothing shared in the first window, saturating afterwards                                 |
+| `corr`                   | 0.9471              | high but not unity — the corpus's own marker for "the same path, a moved sample" (`:106`) |
+| `control` / `liveRepeat` | −319.2 / −319.2 dB  | the offline render is deterministic and the live branch reproduces itself                 |
+
+The level readings are **position-independent** — `stats()` (`:1385-1394`) measures the raw buffers, before any alignment. And at
 this null size the level reading is **decisive**: an additive constant big enough to produce a −9.8 dB null would raise the rms
 ratio to √(1 + 10^(−0.98)) = **1.051×**. The measured ratio is **1.000×**. So the additive explanation is excluded by arithmetic
-rather than by interpretation — a different situation from the runner's 14, where the same measurement at −31.8 dB would read
+rather than by interpretation — a different situation from the runner's cases, where the same measurement at −31.8 dB would read
 √(1 + 6.6·10⁻⁴) = **1.000×**, _indistinguishable from LADIČ's_ at three decimals. **The rms ratio is blind at the runner's null
 size and decisive at LADIČ's; the peak ratio is decisive at both.** An additive constant shifts the peak by `d = rms·√k` —
-0.5–1.5 % at the runner's null size, where a moved signal leaves the peak where it is. So when the runner's `rms=`
-and `peak=` arrive, the **rms** will read "1.000×" and mean nothing, and the **peak** will decide the question the
+0.5–1.5 % at the runner's null size, where a moved signal leaves the peak where it is. The runner's `rms=` and `peak=` have now
+arrived (§10.16.6 above): the rms reads "1.000×" and means nothing there, and the peak is what decides the question the
 correlation could not.
 
 **Inferred:** LADIČ is the same sound, at the same level, with the same spectrum, **not at the same sample position** — and the
 difference sits at the head of the window. The corpus's own docstrings name exactly these two shapes: `divergenceProfile`
-(`:985-991`) calls a profile "already dirty in the FIRST window" a **startup transient**; `segmentNulls` (`:937-943`) draws the
+(`:1044-1048`) calls a profile "already dirty in the FIRST window" a **startup transient**; `segmentNulls` (`:952-957`) draws the
 line this case falls on: "a difference confined to the head is a startup transient" against "a difference spread over the whole
-window" — a processing-path divergence. LADIČ's difference **is confined to the head** (−4.4 dB head against −15.3 dB tail); the
-runner's fourteen are spread across the whole window (flat ≈ −31.8 dB). The profile says the same thing from the other side:
-LADIČ's branches **converge** after the first window (0.0 → −18.1 dB, saturating), the runner's **stay apart** at a constant level.
+window" — a processing-path divergence. LADIČ's difference **is confined to the head** (−4.4 dB head against −15.3 dB tail); most
+of the runner's cases are spread across the whole window (flat profiles ≈ −22…−36 dB; `keys` is the exception). The profile says
+the same thing from the other side: LADIČ's branches **converge** after the first window (0.0 → −18.1 dB, saturating), the
+runner's **stay apart**.
 
-**Not verified:** what produces the 7.6 ms. The corpus now carries a fractional-shift scan — a diagnostic that separates a
-sub-sample position from a different processing path, and prints `frac=` in the corpus summary (`:1030-1035`, `:1474`;
-committed in `8b3b47cd`) — but the idle log **predates it**, so that reading does not exist for this case yet. The
-alignment of −336 samples is **inside** the 512-sample tolerance (`:98-103`), so the quantum-retry path (`:724-743`) never fired
+**Not verified:** what produces the 7.6 ms. The corpus carries a fractional-shift scan — a diagnostic that separates a
+sub-sample position from a different processing path, and prints `frac=` in the corpus summary (`:1087-1092`, `:1632`;
+committed in `8b3b47cd`) — but the idle log **predates it**, and LADIČ is not among the eight cases the `b2a02569` annotation
+details, so that reading still does not exist for this case. The
+alignment of −336 samples is **inside** the 512-sample tolerance (`:113-118`), so the quantum-retry path (`:739-758`) never fired
 for this case — and 336 samples is **2.625 render quanta** of 128 frames, not a whole one. One more reading the verdict depends on
-is **not in the log**: the escape hatch `phaseInsensitiveParityAgrees` (`:632-648`) reads the **windowed** rms ratio, which the
+is **not in the log**: the escape hatch `phaseInsensitiveParityAgrees` (`:647`) reads the **windowed** rms ratio, which the
 failing branch of the detail line does not print — it prints the raw one as `rms=` and the windowed one as `RMS=`, and this row
 carries only `rms=1.000×`. A reader cannot tell the two apart from the annotation.
 
-**Why this belongs in a section about the runner.** The runner's 18 and the desktop's 1 are **not the same measurement**: the
-runner measured **67** cases and the desktop **77** — ten were added in between — and the two reds differ by an order of magnitude
-in the null (−9.8 dB vs ≈ −31.8 dB) and in the correlation (0.9471 vs 0.9997), with different profile shapes (head-localised vs
-flat). So the desktop's single red does not explain the runner's eighteen, and the runner's eighteen do not describe the desktop's
-one. §10.14's proposal to make the null corpus non-blocking in CI was built on the reading that these failures are "platform
-noise"; **that reading is now wrong twice over** — the runner's failures are a systematic, deterministic, whole-window difference,
-and the desktop's failure is a real, reproducible, level-identical difference between what a user hears live and what an export
-writes. **Two different defects do not get one shared remedy**, and a rule that excuses the runner's fourteen would silently
-excuse the desktop's one.
+**And the scoping that matters most: it is Linux, not the runner.** §10.14 called these failures "platform realtime behaviour
+on that runner"; this report's earlier text called them "present on the runner and absent on the desktop". Both labels blame the
+**machine**, and both are wrong in the same way. The parallel session's WSL Linux reproduces **identical numbers** for the same
+cases — `instrument:808` live↔offline **−32.9 dB** with control **−89.5 dB**, `instrument:analog` **−13.7 dB** — and the
+runner reports −32.9 / −89.5 / −13.7. **Two different Linux machines, identical numbers.** So this is not a loaded or a broken
+runner: it is a deterministic **Linux** divergence, while the desktop (Windows) reports the corpus green at 77/77.
+
+**That makes it the smallest invariant-3 candidate this audit has ever held** — invariant 3 holds on Windows and does not hold on
+Linux, for 17 instruments, reproducibly, with the offline branch proven exact on both platforms and the realtime branch proven to
+reproduce itself. It stays a **candidate**, not a verdict: the mechanism is not identified, and §10.16.6's own three signatures
+say the seventeen are not one defect.
+
+**Where the engine should hop — the precedent, and the anchor.** `docs/CURRENT-STATE.md` records the fix for the FX side: the
+**offline** chain is built at the **render origin**, so its ramps are still in flight when the first event lands, and the fix was to
+make the offline write happen immediately ("smooth"). The instrument registry has no equivalent: the state is still built at
+**construction** — `src/instruments/registry.ts:2015`, `const now = ctx.currentTime` in the texture factory. The capture-lead fix
+(`ae372bf4`) aligned the **history the worklets had processed**; it did not align the **age of the Web Audio node construction**,
+which differs between a live context that has been running and an offline context that starts at zero — and differs again by
+platform in how the capture start is quantised. **Hypothesized, not measured** — but it is the one place where the evidence and the
+precedent point at the same line of code.
+
+**And the gate itself changed, because the verdict was depending on which capture was taken.** `b2a02569` replaced the old
+exception with `realtimeBranchOwnsTheNull` (`:1525`). There are two ways a realtime branch fails to reproduce itself, and the
+old rule only saw one: (a) its two captures disagree with each other, and (b) **one capture matches the offline reference and the
+other does not**. Case (b) made the verdict depend on which capture happened to be taken: measured on one machine, the same
+instrument case read live↔offline **−323.6 dB** on one run and **−31.7 dB** on the next, on the same code, and the rule reported the
+run where the odd capture came first as an engine divergence — although the engine had produced two different answers itself. Now a
+branch that does not repeat is **"don't measure"**, and it is **named**; red remains only for what is reproducible — both captures
+dirty against offline and consistent with each other. The seventeen stay red under the new rule, and now they are red **on
+purpose** rather than by an accident of ordering.
+
+**Two different defects do not get one shared remedy**, and the decision §10.14 proposed — make the null corpus non-blocking in CI
+— must not be taken on the strength of a label. It now rests on a different question: not "is this noise?" but "is a live↔offline
+difference that reproduces on Linux and not on Windows a product defect?" That is a **product decision**, and this audit's conclusion
+is that the corpus is right to be red until somebody answers it.
 
 #### 10.16.7 Five red specs, five different defects — and one gate that measured the wrong thing
 
@@ -2689,3 +2783,8 @@ _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave
 report's own "four product findings" claim (§10.14 → §10.16.5). Every claim is labelled Observed / Verified /
 Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the
 cited commit._
+
+_Line numbers into `src/testing/live-offline-parity.ts` are anchored to the committed tree at **`a33f7ede`** ("the
+annotation's rule must describe the rule the gate applies"). That file is being rewritten by the parallel session
+several times a day, so those citations are only exact at that commit; where a claim points at code that has since
+changed, the text says so ("in the tree at the time")._
