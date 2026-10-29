@@ -2260,11 +2260,22 @@ exclusions comment said nine; the map holds nineteen"), with the same twelve nam
 lead-class and transport-class. The one item that correction did not take is `wavetable`: the instrument map was not
 re-counted, so the candidate thirteenth is still open.
 
-**The twelve are being re-measured, and that is where the next corpus size comes from.** The parallel session has
-started re-measuring every phase exclusion with the fixed harness. If they come back green, their exclusions are
-obsolete and the corpus grows from **67 to 79 cases** (67 + 12) — which is also the first test of whether the corpus
-can measure the classes it previously refused to measure. **That measurement was in flight when this section was
-written: a projection, not a result.**
+**The twelve are being re-measured — and the projection was wrong by two, in the direction that matters.** This
+section wrote that a green re-measurement would take the corpus from **67 to 79** cases (67 + 12). The measured
+result is **77** (67 + 10): ten of the twelve phase exclusions are lifted and the corpus measures them now, but
+**`phaser` and `vinyl` stay excluded** — and for a measured reason, not an excuse. Their realtime branch **does not
+reproduce itself** (live↔live **−77.0 dB** and **−80.4 dB**), so a per-sample null has nothing reliable to compare
+against: the two channels disagree with themselves before the engine is involved at all. Their reasons were
+reformulated from the measurement. That is the correct outcome — a corpus that cannot measure a case must not
+measure it — and it is also the reason the projection was wrong: "twelve phase exclusions" was a count of
+_reasons_, not of _liftable exclusions_.
+
+**The two that stay, and the one that was never in scope.** The remaining exclusions are the seven "bar-scale
+transport state" cases (`beatMangler`, `stepGate`, `stutter`, `pump`, `reverseSwell`, `tapeStop`, `granularFreeze`)
+and, in the instrument map, `granular` ("per-voice seeded grain RNG across live/offline start order") and
+`wavetable` ("free-running table scan phase"). The last one is the candidate thirteenth this section named: a scan
+position that has advanced by the lead is the lead's shape, so it may be measurable too — but it was not re-measured
+and stays **Hypothesized, not measured**.
 
 **The reverb exclusion is demonstrably inaccurate now.** It was excluded with the reason "free-running 0.5 Hz
 read-position modulator; device-clock jitter accumulates over the tail" — yet with the lead fixed, reverb measures
@@ -2287,6 +2298,45 @@ finding and pointed at a product file. The second lesson is about the report its
 finding, named a suspect, and was wrong — and the only reason that is recoverable is that the claim carried its
 evidence (a null in dB, a `live↔live` value, a control), so the next measurement could **falsify** it instead of
 merely disagreeing with it.
+
+#### 10.16.6 Five red specs, five different defects — and one gate that measured the wrong thing
+
+The parallel session measured the full vitest run on HEAD and handed over five red specs. All five are fixed
+(`54b4143f`), and each had a **different** cause — the §10.16.3 rule one level deeper: **a red spec is a question,
+not a verdict.**
+
+| spec                         | cause                                                                                                                                                                                                            | fix                                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `mcp-refusal-taxonomy`       | `kyx_analyze` returned `{ text, mutated: false, data }` with **no disposition** — a result that changed no document and says nothing is an untyped refusal (audit F-05): the agent cannot tell it from a success | it declares `stage: "runtime"`, the disposition its sibling `kyx_render_summary` declares                                 |
+| `mcp-receipt-census`         | a new tool must be **classified before it can be trusted**; `kyx_analyze` and `kyx_verify_edit` had no census entry                                                                                              | `kyx_analyze` is a READ member, `kyx_verify_edit` an EXTERNAL one (it renders the same window twice and compares the PCM) |
+| `mcp-onboarding`             | `kyx_analyze` was in **no agent-facing text** — the ROT GUARD working as designed                                                                                                                                | the playbook had 13 characters of headroom (7987 of 8000), so the manual was tightened instead of the limit raised        |
+| `audit-observation-contract` | **a measurement defect, not a gap** — see below                                                                                                                                                                  | the instrument now counts the receipt attachment                                                                          |
+| `arrangement-dom-census`     | the per-clip DOM budget was **one element** stale — CF-10's record-bar toggle: ONE button, rendered once, so the per-clip cost did not move at all                                                               | the budget is re-pinned to the measured 53 260 with the reason in the header                                              |
+
+**The fourth one is the one worth keeping.** The observation instrument scans the **source** for a literal
+`outputSchema`. But `src/mcp/tools.ts` attaches the receipt envelope to a set of tools in a loop over
+`RECEIPT_SCHEMAS` — AFTER the literal catalog, the same way it augments every input schema with
+`requestId`/`agentId`/`dryRun`. So fourteen tools looked schema-less to a scanner while the **shipped** surface
+declares them. Measured on that tree:
+
+| where                                                                        | tools with an outputSchema |
+| ---------------------------------------------------------------------------- | -------------------------- |
+| the source literal (what the instrument read)                                | **29 of 44**               |
+| the runtime catalog (`MCP_TOOLS` after the attachment loop)                  | **43 of 44**               |
+| the generated mirror (`desktop/mcp-tool-defs.cjs`, which imports the module) | **43 of 44**               |
+
+The instrument already knew about the OTHER runtime augmentation — it has an `AUGMENTED` list for
+`requestId`/`agentId`/`dryRun` — so this was the same class of fact, simply unrecorded. The gate's own docstring
+says it measures _"the tools that ship WITHOUT an outputSchema"_, and an agent's shipped surface is the catalog, not
+the literal. Fixed: the instrument now counts the receipt attachment, the ratchet's baseline collapses from fourteen
+entries to the **one real gap** (`kyx_separate`), and the baseline gets **safer** — a receipt tool that LOSES its
+schema now shows up as a grown gap, where the old list would have named it as known and stayed silent.
+
+**The family is the same one this section has been about.** The capture lead (§10.16.5) was a harness that compared
+two things that looked alike and were not; this is a gate that measured the **source** while claiming to measure the
+**surface**. Both produced a number, and both numbers were wrong in the same direction — they made the project look
+worse than it is, and they hid a real regression in the place it mattered. The transferable rule: **before trusting a
+gate's count, ask what it read** — and then read the same thing the gate read, from the other end.
 
 ---
 
