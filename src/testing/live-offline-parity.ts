@@ -158,6 +158,40 @@ export const PARITY_CALIBRATION_MAX_CONTROL_DB = -200;
  */
 export const PARITY_CALIBRATION_MAX_REPEAT_DB = -200;
 
+/**
+ * The line that says whether THIS ENVIRONMENT can measure the corpus at all.
+ *
+ * The calibration case is deterministic by construction, so its two numbers -
+ * the offline determinism control and the realtime reproducibility - are the
+ * environment's own health check. Every other case is judged against a null
+ * floor, but that floor only means something if the arithmetic underneath it
+ * is exact: a runner whose calibration sits at -12 dB cannot attribute a
+ * divergence to the engine, whatever the case says.
+ *
+ * Exported and pure so a unit test can lock its SHAPE: this line is what a
+ * reader of a CI annotation uses to decide whether the rest of the line's
+ * numbers are about the engine or about the machine.
+ */
+export function parityEnvironmentLine(
+  calibration: Pick<ParityMeasurement, "controlNullDb" | "liveRepeatNullDb"> | undefined,
+): string {
+  if (calibration === undefined) {
+    return `environment=unknown (calibration fx:${PARITY_CALIBRATION_CASE} was not measured)`;
+  }
+  const controlDb = calibration.controlNullDb;
+  const repeatDb = calibration.liveRepeatNullDb;
+  const measurable =
+    Number.isFinite(controlDb) &&
+    controlDb <= PARITY_CALIBRATION_MAX_CONTROL_DB &&
+    Number.isFinite(repeatDb) &&
+    repeatDb <= PARITY_CALIBRATION_MAX_REPEAT_DB;
+  return `environment=${measurable ? "measurable" : "NOT measurable"} (calibration fx:${PARITY_CALIBRATION_CASE} control=${
+    Number.isFinite(controlDb) ? controlDb.toFixed(1) : "n/a"
+  } dB needs ≤ ${PARITY_CALIBRATION_MAX_CONTROL_DB} dB, live↔live=${
+    Number.isFinite(repeatDb) ? repeatDb.toFixed(1) : "n/a"
+  } dB needs ≤ ${PARITY_CALIBRATION_MAX_REPEAT_DB} dB)`;
+}
+
 export interface ParityCheckResult {
   name: string;
   ok: boolean;
@@ -1636,21 +1670,7 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   // control ≈ -325 dB), and a runner whose arithmetic is that far from exact
   // cannot attribute a divergence to the engine.
   const calibration = measurements.get(`fx:${PARITY_CALIBRATION_CASE}`);
-  const calibrationControlDb = calibration?.controlNullDb ?? Number.NaN;
-  const calibrationRepeatDb = calibration?.liveRepeatNullDb ?? Number.NaN;
-  const calibrationMeasurable =
-    Number.isFinite(calibrationControlDb) &&
-    calibrationControlDb <= PARITY_CALIBRATION_MAX_CONTROL_DB &&
-    Number.isFinite(calibrationRepeatDb) &&
-    calibrationRepeatDb <= PARITY_CALIBRATION_MAX_REPEAT_DB;
-  const environment =
-    calibration === undefined
-      ? `environment=unknown (calibration fx:${PARITY_CALIBRATION_CASE} was not measured)`
-      : `environment=${calibrationMeasurable ? "measurable" : "NOT measurable"} (calibration fx:${PARITY_CALIBRATION_CASE} control=${
-          Number.isFinite(calibrationControlDb) ? calibrationControlDb.toFixed(1) : "n/a"
-        } dB needs ≤ ${PARITY_CALIBRATION_MAX_CONTROL_DB} dB, live↔live=${
-          Number.isFinite(calibrationRepeatDb) ? calibrationRepeatDb.toFixed(1) : "n/a"
-        } dB needs ≤ ${PARITY_CALIBRATION_MAX_REPEAT_DB} dB)`;
+  const environment = parityEnvironmentLine(calibration);
   // The cases the corpus could NOT judge: their realtime branch did not
   // reproduce itself, so their divergence is not attributable to the engine.
   // Naming them keeps a green verdict honest about what it did not measure.

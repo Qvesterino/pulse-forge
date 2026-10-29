@@ -11,6 +11,7 @@ import {
   phaseInsensitiveParityAgrees,
   parityFxCorpus,
   parityInstrumentCorpus,
+  parityEnvironmentLine,
   parityObligationCheck,
   parityObligations,
   realtimeBranchOwnsTheNull,
@@ -211,6 +212,48 @@ function toneSpectrum(frequency: number) {
   const samples = tone(frequency);
   return comparePhaseInsensitiveParity(samples, samples, 0, 44100);
 }
+
+/**
+ * The environment line: the one sentence that says whether the numbers next to
+ * it are about the engine or about the machine.
+ *
+ * It is the reader's first question about a CI annotation ("can this runner
+ * measure the corpus at all?"), and it had no unit test - its SHAPE was
+ * verified from the source only, while the number it prints on a runner was
+ * unverified. Measured 2026-10-29: the browser gate prints
+ * "environment=measurable (calibration fx:bitcrusher control=-334.4 dB needs
+ * ≤ -200 dB, live↔live=-334.4 dB needs ≤ -200 dB)" on the desktop AND on the
+ * CI runner, bit-identically.
+ */
+describe("the environment line", () => {
+  it("says measurable when both calibration axes are clean", () => {
+    expect(parityEnvironmentLine({ controlNullDb: -334.4, liveRepeatNullDb: -334.4 })).toBe(
+      "environment=measurable (calibration fx:bitcrusher control=-334.4 dB needs ≤ -200 dB, live↔live=-334.4 dB needs ≤ -200 dB)",
+    );
+  });
+
+  it("says NOT measurable when the OFFLINE axis is dirty", () => {
+    const line = parityEnvironmentLine({ controlNullDb: -12, liveRepeatNullDb: -334.4 });
+    expect(line).toContain("environment=NOT measurable");
+    expect(line).toContain("control=-12.0 dB");
+  });
+
+  it("says NOT measurable when the REALTIME axis is dirty", () => {
+    const line = parityEnvironmentLine({ controlNullDb: -334.4, liveRepeatNullDb: -77 });
+    expect(line).toContain("environment=NOT measurable");
+    expect(line).toContain("live↔live=-77.0 dB");
+  });
+
+  it("says unknown when the calibration case was not measured at all", () => {
+    expect(parityEnvironmentLine(undefined)).toBe("environment=unknown (calibration fx:bitcrusher was not measured)");
+  });
+
+  it("prints n/a rather than NaN when an axis has no number", () => {
+    const line = parityEnvironmentLine({ controlNullDb: Number.NaN, liveRepeatNullDb: -334.4 });
+    expect(line).toContain("control=n/a");
+    expect(line).not.toContain("NaN");
+  });
+});
 
 /**
  * Who owns a case's null - the engine or the measurement.
