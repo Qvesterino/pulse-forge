@@ -1010,6 +1010,84 @@ export function divergenceProfile(
 }
 
 /**
+ * DIAGNOSTIC (not a gate criterion): the null between the two branches as a
+ * function of a FRACTIONAL shift.
+ *
+ * The integer alignment can only move the capture in whole samples, so a
+ * difference of a fraction of a sample survives it as a flat null with a high
+ * correlation - and a flat null cannot tell a timing difference from a
+ * processing difference. Scanning the fractional shift finds the minimum: if
+ * the null collapses at a non-zero fraction, the two branches carry the SAME
+ * signal at a different SUB-SAMPLE position, which is a timing difference
+ * (a latency or a fractional delay), not a difference in the processing.
+ *
+ * The interpolation is linear, so the minimum it can reach is bounded by the
+ * interpolator's own error - a fractional shift of a band-limited signal
+ * cannot be undone exactly this way. That bound is why this is a DIAGNOSTIC
+ * and not a criterion: it says WHICH KIND of divergence it is, not whether
+ * the case passes.
+ */
+export function fractionalShiftScan(
+  reference: Float32Array,
+  capture: Float32Array,
+  offset: number,
+  steps = 16,
+): { fraction: number; nullDb: number; nullAtZeroDb: number } {
+  // A windowed-sinc interpolator, not a linear one. Linear interpolation of
+  // a bright signal at 44.1 kHz has an error of its own - for a harmonic at
+  // 8 kHz it is around -28 dB - which would FLOOR the measured null above the
+  // acceptance floor and hide the very thing the scan is looking for. A
+  // Blackman-Harris window over 32 taps has sidelobes around -92 dB, so the
+  // null it measures is the signal's, not the interpolator's.
+  const TAPS = 16;
+  const window = (k: number): number => {
+    const n = (k + TAPS) / (2 * TAPS);
+    return (
+      0.35875 -
+      0.48829 * Math.cos(2 * Math.PI * n) +
+      0.14128 * Math.cos(4 * Math.PI * n) -
+      0.01168 * Math.cos(6 * Math.PI * n)
+    );
+  };
+  const at = (pos: number): number => {
+    const center = Math.floor(pos);
+    const frac = pos - center;
+    let sum = 0;
+    let norm = 0;
+    for (let k = -TAPS; k <= TAPS; k++) {
+      const idx = center + k;
+      if (idx < 0 || idx >= capture.length) continue;
+      const x = k - frac;
+      const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+      const w = window(k);
+      sum += capture[idx]! * sinc * w;
+      norm += sinc * w;
+    }
+    return norm > 1e-9 ? sum / norm : 0;
+  };
+  const nullAt = (fraction: number): number => {
+    let diff = 0;
+    let ref = 0;
+    const n = Math.min(reference.length, capture.length);
+    for (let i = 0; i < n; i++) {
+      const b = at(i + offset + fraction);
+      const d = reference[i]! - b;
+      diff += d * d;
+      ref += reference[i]! * reference[i]!;
+    }
+    return 10 * Math.log10((diff + 1e-30) / (ref + 1e-30));
+  };
+  let best = { fraction: 0, nullDb: nullAt(0) };
+  const nullAtZeroDb = best.nullDb;
+  for (let s = 1; s < steps; s++) {
+    const fraction = s / steps;
+    const nullDb = nullAt(fraction);
+    if (nullDb < best.nullDb) best = { fraction, nullDb };
+  }
+  return { fraction: best.fraction, nullDb: best.nullDb, nullAtZeroDb };
+}
+
+/**
  * The moment the divergence becomes audible, in seconds from the start of the
  * compared window: the centre of the FIRST profile window whose null is worse
  * than the floor. `sliceSec` is the duration of one profile window. NaN when
@@ -1063,6 +1141,14 @@ export interface ParityMeasurement {
    * crosses it.
    */
   divergenceOnsetSec: number;
+  /**
+   * DIAGNOSTIC (not a gate criterion): the fractional shift (in samples) at
+   * which the null between the two branches is lowest, and that lowest null.
+   * A non-zero fraction with a much lower null means the branches carry the
+   * same signal at a different SUB-SAMPLE position - a timing difference.
+   */
+  fractionalShift: number;
+  fractionalNullDb: number;
   /** Null of offline vs a second offline render (determinism control). */
   controlNullDb: number;
   livePeak: number;
@@ -1122,6 +1208,8 @@ export async function measureParityCase(
     segmentNullDb: { head: Number.NaN, tail: Number.NaN },
     divergenceProfile: [],
     divergenceOnsetSec: Number.NaN,
+    fractionalShift: 0,
+    fractionalNullDb: Number.NaN,
     controlNullDb: Number.NaN,
     liveRepeatNullDb: Number.NaN,
     liveRepeatAlignOffset: 0,
@@ -1209,6 +1297,7 @@ export async function measureParityCase(
   const ref = stats(reference);
   const liveStats = stats(live.left);
   const profile = divergenceProfile(reference, live.left, liveMatch.alignOffset, live.sampleRate);
+  const fractional = fractionalShiftScan(reference, live.left, liveMatch.alignOffset);
   const phaseInsensitive = comparePhaseInsensitiveParity(reference, live.left, liveMatch.alignOffset, live.sampleRate);
   const phaseInsensitiveControl = control
     ? comparePhaseInsensitiveParity(reference, control, controlMatch.alignOffset, live.sampleRate)
@@ -1222,6 +1311,8 @@ export async function measureParityCase(
     segmentNullDb: segmentNulls(reference, live.left, liveMatch.alignOffset, live.sampleRate, 0.15),
     divergenceProfile: profile.profile,
     divergenceOnsetSec: divergenceOnsetSec(profile.profile, profile.sliceSec),
+    fractionalShift: fractional.fraction,
+    fractionalNullDb: fractional.nullDb,
     controlNullDb: controlMatch.nullDb,
     livePeak: liveStats.peak,
     refPeak: ref.peak,
@@ -1380,7 +1471,9 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     )}dB,control=${db(m.controlNullDb)}dB,rms=${ratio(m.liveRms, m.refRms)}×,peak=${ratio(
       m.livePeak,
       m.refPeak,
-    )}×,spec=${m.phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"},${profileText(m)})`;
+    )}×,spec=${m.phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"},frac=${m.fractionalShift.toFixed(
+      4,
+    )}/${db(m.fractionalNullDb)}dB,${profileText(m)})`;
   });
   // The environment's own health check, read off the calibration case: a
   // deterministic effect rendered twice offline is bit-identical (measured

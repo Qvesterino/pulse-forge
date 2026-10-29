@@ -147,6 +147,7 @@ try {
         `segHead=${fmt(r.segmentNullDb?.head)}dB segTail=${fmt(r.segmentNullDb?.tail)}dB`,
         `profile=[${(r.divergenceProfile ?? []).map((v) => fmt(v)).join(",")}]`,
         `onset=${Number.isFinite(r.divergenceOnsetSec) ? `${r.divergenceOnsetSec.toFixed(3)}s` : "n/a"}`,
+        `frac=${Number.isFinite(r.fractionalShift) ? `${r.fractionalShift.toFixed(4)}/${fmt(r.fractionalNullDb)}dB` : "n/a"}`,
         `livePeak=${num(r.livePeak)} refPeak=${num(r.refPeak)}`,
         `frames live=${r.liveFrames}/ref=${r.refFrames}`,
       ].join("  "),
