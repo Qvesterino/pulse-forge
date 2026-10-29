@@ -255,6 +255,11 @@
       }
     },
     {
+      "name": "kyx_analyze",
+      "risk": "runtime",
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false }
+    },
+    {
       "name": "kyx_render_summary",
       "risk": "runtime",
       "annotations": {

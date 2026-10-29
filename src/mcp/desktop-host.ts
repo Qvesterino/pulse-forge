@@ -8,6 +8,7 @@ import { decodeAudioData } from "../services/audio-decode";
 import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
+import { mcpAnalyzeAudio } from "./analyze-audio";
 import { mcpRenderAudioPreview } from "./audio-preview";
 import { loadUserSampleMono } from "./sample-mono";
 import { separateStemsForAgent } from "./stem-separate";
@@ -173,6 +174,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
     renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
+    // kyx_analyze (E-6): parametrized perception over the E-1 envelope.
+    analyzeAudio: (request, signal) => mcpAnalyzeAudio(services, request, signal),
     verifyEdit: (request, signal) => runAudibleVerification(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).

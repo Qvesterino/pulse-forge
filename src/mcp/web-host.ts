@@ -4,6 +4,7 @@ import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { mcpRenderAudioPreview } from "../mcp/audio-preview";
 import { mcpRenderSummary } from "../mcp/render-summary";
+import { mcpAnalyzeAudio } from "../mcp/analyze-audio";
 import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { decodeAudioData } from "../services/audio-decode";
@@ -173,6 +174,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
     renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
+    analyzeAudio: (request, signal) => mcpAnalyzeAudio(services, request, signal),
     verifyEdit: (request, signal) => runAudibleVerification(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).

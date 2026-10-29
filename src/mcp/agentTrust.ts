@@ -61,6 +61,7 @@ export const TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   kyx_audio_preview: "runtime",
   kyx_publish_gallery: "runtime",
   kyx_render_summary: "runtime",
+  kyx_analyze: "runtime",
   kyx_diagnose_mix: "runtime",
   kyx_blind_ab: "runtime",
   // ── destructive (contain removals) ───────────────────────────────────────
@@ -234,6 +235,7 @@ export const LONG_RUNNING_AGENT_TOOLS: ReadonlySet<string> = new Set([
   "kyx_import_sfz",
   "kyx_batch",
   "kyx_render_summary",
+  "kyx_analyze",
   "kyx_verify_edit",
   "kyx_diagnose_mix",
   "kyx_arrange",

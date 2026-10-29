@@ -4766,6 +4766,7 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       loudnessMeasure: has(ctx.measureLoudness),
       loudnessApply: has(ctx.applyLoudness),
       renderSummary: has(ctx.renderSummary),
+      analyzeAudio: has(ctx.analyzeAudio),
       audibleVerify: has(ctx.verifyEdit),
       diagnoseMix: has(ctx.diagnoseMix),
       mixPreview: has(ctx.mixPreview),

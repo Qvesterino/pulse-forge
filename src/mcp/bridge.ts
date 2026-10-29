@@ -68,6 +68,7 @@ export interface McpBridgeDeps {
   applyLoudness?: NonNullable<McpToolContext["applyLoudness"]>;
   shareToGallery?: NonNullable<McpToolContext["shareToGallery"]>;
   renderSummary?: NonNullable<McpToolContext["renderSummary"]>;
+  analyzeAudio?: NonNullable<McpToolContext["analyzeAudio"]>;
   verifyEdit?: NonNullable<McpToolContext["verifyEdit"]>;
   diagnoseMix?: NonNullable<McpToolContext["diagnoseMix"]>;
   mixPreview?: NonNullable<McpToolContext["mixPreview"]>;
@@ -185,6 +186,7 @@ export class McpBridge {
         applyLoudness: this.deps.applyLoudness,
         shareToGallery: this.deps.shareToGallery,
         renderSummary: this.deps.renderSummary,
+        analyzeAudio: this.deps.analyzeAudio,
         verifyEdit: this.deps.verifyEdit,
         diagnoseMix: this.deps.diagnoseMix,
         mixPreview: this.deps.mixPreview,

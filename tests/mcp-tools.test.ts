@@ -206,6 +206,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_loudness",
       "kyx_import_sfz",
       "kyx_publish_gallery",
+      "kyx_analyze",
       "kyx_render_summary",
       "kyx_verify_edit",
       "kyx_diagnose_mix",
