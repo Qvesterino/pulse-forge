@@ -1,0 +1,215 @@
+name: CI (fast gates)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The FAST gates live in their own workflow so that every push gets a verdict
+# about the TREE within minutes, instead of queueing behind the heavy gates.
+#
+# Measured 2026-10-29 (not estimated): the ubuntu runner pool of a Free plan
+# allows 20 concurrent jobs, and the heavy workflow needs 7 of them - so only
+# ~2 heavy workflows can run at a time, while this repo receives ~12 pushes an
+# hour (the unit-tests job alone needs 22-29 min on a runner). The
+# consequence was measured on the run list: 8 of the last 12 runs ended
+# "cancelled" WITHOUT a verdict, and the verdict that did arrive belonged to a
+# superseded commit. The HEAD of the release branch had no state, and the
+# typecheck job could not even START until a heavy job released a slot.
+#
+# Splitting by COST fixes the part that can be fixed:
+#   - these three gates answer "is the tree broken?" in ~5 minutes, and they
+#     now have the runner pool to themselves: a push never waits behind a
+#     browser run for a typecheck verdict;
+#   - the heavy gates keep their own group in ci.yml, where cancelling a
+#     30-minute verdict would cost more than re-running it.
+#
+# cancel-in-progress stays FALSE on both groups: GitHub keeps only the LATEST
+# pending run per group, so the queue never grows without bound, and a run
+# that has already started still reports. A per-SHA group would give every
+# push a verdict but unboundedly INCREASE the latency of the HEAD - the HEAD
+# would sit behind every older push, which is the opposite of what a release
+# branch needs.
+concurrency:
+  group: ci-fast-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  typecheck:
+    name: Typecheck (clean)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24 in EVERY job (measured 2026-10-29). The Audiotool NEXUS
+          # SDK's node entry uses Promise.withResolvers, which is Node >= 22:
+          # on Node 20 every test that calls createOfflineDocument() died with
+          # "TypeError: Promise.withResolvers is not a function" - 8 reds in
+          # one file, and no other symptom to explain them. GitHub also
+          # deprecates Node 20 on its runners. package.json declares the
+          # same floor in "engines", so a developer on Node 20 hears about it
+          # at install time instead of in a test failure.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Always run the clean variant so the local incremental cache (or
+      # a stale `.tsbuildinfo` left in the workspace) can never mask a
+      # cross-agent typecheck regression.
+      #
+      # The failure text goes to the JOB SUMMARY and to an ERROR ANNOTATION.
+      # This job used to have neither: GitHub's default tsc problem matcher
+      # supplied the annotations, and it (a) caps the number of annotations
+      # per step, and (b) drops the file:line prefix - measured on the run of
+      # 2026-10-29: 13 real errors, 10 annotations, none of them naming the
+      # file. A failed job's log sits behind a login, so an annotation that
+      # does not say WHICH file and HOW MANY errors is an annotation that
+      # cannot be acted on. The identification comes FIRST, because GitHub
+      # caps an error annotation at 4096 BYTES (measured) - a list that starts
+      # with the detail and ends with the count is a list whose count nobody
+      # ever reads.
+      - name: Run npm run typecheck:clean
+        run: |
+          set +e
+          npm run typecheck:clean 2>&1 | tee /tmp/tsc.log
+          status=${PIPESTATUS[0]}
+          sed -e 's/\x1b\[[0-9;]*m//g' /tmp/tsc.log > /tmp/tsc.plain.log
+          errors=$(grep -aE '^[^ ]+\([0-9]+,[0-9]+\): error TS[0-9]+:' /tmp/tsc.plain.log || true)
+          total=$(printf '%s\n' "$errors" | grep -c . || true)
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run typecheck:clean FAILED (exit $status)"
+              echo '```'
+              echo "type errors: $total"
+              echo '--- per file ---'
+              printf '%s\n' "$errors" | sed -E 's/^([^(]+)\(.*/\1/' | sort | uniq -c | sort -rn | head -20
+              echo '--- errors (file:line) ---'
+              printf '%s\n' "$errors" | head -40
+              echo '--- tail ---'
+              tail -30 /tmp/tsc.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=typecheck failed (exit %s)::%s\n' "$status" \
+              "$( { echo "type errors: $total"; \
+                   echo '--- per file ---'; \
+                   printf '%s\n' "$errors" | sed -E 's/^([^(]+)\(.*/\1/' | sort | uniq -c | sort -rn | head -20; \
+                   echo '--- errors (file:line) ---'; \
+                   printf '%s\n' "$errors" | head -40; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
+          fi
+          exit $status
+
+  hygiene:
+    name: Hygiene (format + drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Every MAINTAINED source tree must be prettier-clean. The scope lives in
+      # package.json ("format:check") and is deliberately not just src+tests:
+      # the two-directory scope left scripts/, docs/, prompts/ and the desktop
+      # shell unchecked, so 190+ files drifted without anyone noticing.
+      #
+      # The output also goes into the JOB SUMMARY and an ERROR ANNOTATION — a
+      # failed job's log sits behind a login, and both of those can be read
+      # without an account.
+      - name: Run npm run format:check
+        run: |
+          set +e
+          npm run format:check 2>&1 | tee /tmp/format.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # The offending files are the identification, so they come FIRST.
+            files=$(grep -aE '^\[(warn|error)\] ' /tmp/format.log | head -40)
+            count=$(printf '%s\n' "$files" | grep -c . || true)
+            {
+              echo "### npm run format:check FAILED (exit $status)"
+              echo '```'
+              echo "files not prettier-clean: $count"
+              printf '%s\n' "$files"
+              echo '--- tail ---'
+              tail -30 /tmp/format.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=npm run format:check failed (exit %s)::%s\n' "$status" \
+              "$( { echo "files not prettier-clean: $count"; \
+                   printf '%s\n' "$files"; \
+                   echo '--- tail ---'; \
+                   tail -20 /tmp/format.log; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
+          fi
+          exit $status
+      # Every DERIVABLE artifact must match its generator: the MCP tool
+      # mirrors, the domain goldens, and the counts in docs/CURRENT-STATE.md.
+      # Drift here means "the feature landed, the artifact is stale" — the bug
+      # class this repo keeps shipping, and the one no unit test can see.
+      #
+      # Its findings go into the JOB SUMMARY for the same reason as the
+      # format check: the drift report names the artifact and the generator
+      # that disagree, and it must be readable without an account.
+      - name: Run npm run drift:check
+        run: |
+          set +e
+          npm run drift:check 2>&1 | tee /tmp/drift.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "### npm run drift:check (exit $status)"
+            echo '```'
+            tail -40 /tmp/drift.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # The drift step had a job summary but NO error annotation, so the
+          # annotations API reported only "Process completed with exit code 1"
+          # for a gate whose whole purpose is to name the artifact that
+          # disagrees with its generator (measured 2026-10-29: the Hygiene job
+          # went red and said nothing about WHICH artifact was stale).
+          # GitHub caps an error annotation at 4096 BYTES (measured), so the
+          # mismatches come first and the tail only fills what is left.
+          if [ "$status" -ne 0 ]; then
+            # The drift script's own report format (scripts/drift-check.ts):
+            # "✗ DRIFT [section] path: detail", plus "! FLAKY [...]" and
+            # "~ SKIPPED [...]". A spec-count claim mismatch shows up as a
+            # vitest assertion ("expected '...' to be '...'"), so both shapes
+            # are captured.
+            stale=$(grep -aE 'DRIFT \[' /tmp/drift.log | head -20)
+            flaky=$(grep -aE 'FLAKY \[' /tmp/drift.log | head -10)
+            claims=$(grep -aE 'expected .* to be ' /tmp/drift.log | head -10)
+            count=$(printf '%s\n' "$stale" | grep -c . || true)
+            printf '::error title=drift check failed (exit %s)::%s\n' "$status" \
+              "$( { echo "stale artifacts: $count"; \
+                   printf '%s\n' "$stale"; \
+                   printf '%s\n' "$flaky"; \
+                   printf '%s\n' "$claims"; \
+                   echo '--- tail ---'; \
+                   tail -20 /tmp/drift.log; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
+          fi
+          exit $status
+
+      # Fast, side-effect-free mirror check. `drift:check` also regenerates
+      # the mirrors as part of its artifact sweep; this step fails on the
+      # first stale mirror instead of waiting for the whole drift run, and it
+      # never writes the working tree.
+      - name: Verify MCP mirrors
+        run: npm run verify:mcp-mirrors
+
+  audit-prod:
+    name: Production dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Prod-only gate (release roadmap Fáza 3): runtime dependencies must
+      # stay vulnerability-free. Dev-dependency advisories (e.g. the esbuild
+      # dev-server one nested under vitest 2) are consciously deferred — see
+      # RELEASE_ROADMAP.md 2.5.
+      - run: npm audit --omit=dev --audit-level=high
