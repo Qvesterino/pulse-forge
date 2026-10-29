@@ -147,6 +147,24 @@
       "negativeSpec": "NEGATIVE: the RETURN TO START toggle off leaves the playhead alone"
     },
     {
+      "id": "record-flow-calibration",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx record toolbar — calibration status chip + CALIBRATE → LatencyCalibrationWizard (lazy)",
+      "note": "CF-08: the offset a take is placed with was previously invisible in the record flow (the only wizard mount lived in the MIDI panel). The toolbar now discloses the armed input's state live through the shared per-device controller — NOT CALIBRATED, or CALIBRATED ±N ms, the same number compensateRecordingStartBar applies — and CALIBRATE opens the same wizard, loaded on demand so the boot closure does not pay for it.",
+      "spec": "tests/ui/timeline-rec.test.tsx",
+      "seamEvent": "CALIBRATED +42 ms",
+      "negativeSpec": "NEGATIVE: the toolbar says NOT CALIBRATED before a measurement exists"
+    },
+    {
+      "id": "follow-playhead",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx ArrPlayheadLine follow effect → followScrollLeft → scrollLeft; FOLLOW toggle in ArrangementViewControls",
+      "note": "CF-09: opt-in follow mode page-jumps the view so a moving playhead stays visible — 1/8-bar cadence through the existing playhead leaf, no new subscriptions, jumps only when the playhead leaves the comfortable window (pure followScrollLeft table pinned). A USER scroll suspends follow (persisted off); the app's own writes (follow jump, FIT, zoom re-anchor) mask themselves with the programmatic-scroll flag and never do.",
+      "spec": "tests/ui/ArrangementPanel.test.tsx",
+      "seamEvent": "followScrollLeft",
+      "negativeSpec": "NEGATIVE: a user scroll suspends follow — the app's own jumps never do"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

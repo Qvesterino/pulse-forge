@@ -25,6 +25,7 @@ import {
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject, ticksPerBarFor } from "../../src/project-model/schema";
+import { recordingAlignment } from "../../src/audio-engine/recordingAlignment";
 import {
   addAudioClip,
   addAudioTakeClip,
@@ -1383,3 +1384,31 @@ function createDocWithTracks() {
   const doc = mockServices().store.doc;
   return doc;
 }
+
+describe("CF-08 — the record flow owns latency calibration", () => {
+  afterEach(() => {
+    recordingAlignment.reset();
+  });
+
+  it("NEGATIVE: the toolbar says NOT CALIBRATED before a measurement exists — the measured offset then reads live", async () => {
+    recordingAlignment.reset();
+    const doc = createDocWithTracks();
+    const services = mockServices(doc);
+    renderWithContext(<ArrangementPanel />, { services });
+
+    // No measurement yet: the toolbar says so instead of staying silent.
+    expect(screen.getByText("NOT CALIBRATED")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "CALIBRATE" }));
+    expect(await screen.findByRole("dialog", { name: "Latency calibration" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close latency calibration" }));
+
+    // A measurement (from the wizard or a past session) reads live through the
+    // shared per-device controller — the SAME offset takes are placed with.
+    act(() => recordingAlignment.setOffsetMs(42));
+    expect(screen.getByText("CALIBRATED +42 ms")).toBeInTheDocument();
+    act(() => recordingAlignment.setOffsetMs(-7));
+    expect(screen.getByText("CALIBRATED -7 ms")).toBeInTheDocument();
+    act(() => recordingAlignment.reset());
+    expect(screen.getByText("NOT CALIBRATED")).toBeInTheDocument();
+  });
+});

@@ -6,6 +6,41 @@ import { getActivePattern } from "../project-model/types";
 import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 
+/**
+ * CF-09 — the scroll target that keeps a moving playhead visible, or null
+ * when no jump is needed. Page-jump hysteresis, not continuous tracking: the
+ * playhead is left alone while it sits inside the comfortable window (15 %
+ * … 75 % of the viewport) and, once it leaves, the view jumps so it sits at
+ * 20 % from the left. Small frequent scrolls are exactly what makes
+ * follow-playhead unusable; rare page jumps are what makes it work.
+ */
+export function followScrollLeft(input: {
+  playheadX: number;
+  scrollLeft: number;
+  viewportWidth: number;
+}): number | null {
+  const width = Number.isFinite(input.viewportWidth) ? input.viewportWidth : 0;
+  if (width <= 0) return null;
+  const left = input.scrollLeft;
+  const windowStart = left + width * 0.15;
+  const windowEnd = left + width * 0.75;
+  if (input.playheadX >= windowStart && input.playheadX <= windowEnd) return null;
+  return Math.max(0, input.playheadX - width * 0.2);
+}
+
+/**
+ * Programmatic scrolls (follow, FIT, zoom re-anchor) must not read as the
+ * USER scrolling — a user scroll pauses follow-playhead, an automatic one
+ * must not. Marked around every self-written scrollLeft.
+ */
+let programmaticScrollUntil = 0;
+export function markScrollAsProgrammatic(): void {
+  programmaticScrollUntil = Date.now() + 60;
+}
+export function isUserScroll(): boolean {
+  return Date.now() >= programmaticScrollUntil;
+}
+
 export function transportPosition(
   transport: Transport,
   doc: ProjectDocument,

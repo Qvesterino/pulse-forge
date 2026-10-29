@@ -14,13 +14,26 @@ export interface ArrangementViewControlsProps {
   onToggleRulerMode: () => void;
   showIntensity: boolean;
   onToggleIntensity: () => void;
+  /** CF-09: page-jump the view so a moving playhead stays visible. */
+  followPlayhead?: boolean;
+  onToggleFollowPlayhead?: () => void;
   onZoomOut: () => void;
   onFit: () => void;
   onZoomIn: () => void;
 }
 
 export function ArrangementViewControls(props: ArrangementViewControlsProps): ReactElement {
-  const { rulerMode, onToggleRulerMode, showIntensity, onToggleIntensity, onZoomOut, onFit, onZoomIn } = props;
+  const {
+    rulerMode,
+    onToggleRulerMode,
+    showIntensity,
+    onToggleIntensity,
+    followPlayhead,
+    onToggleFollowPlayhead,
+    onZoomOut,
+    onFit,
+    onZoomIn,
+  } = props;
   return (
     <>
       <button
@@ -39,6 +52,17 @@ export function ArrangementViewControls(props: ArrangementViewControlsProps): Re
       >
         INT
       </button>
+      {onToggleFollowPlayhead !== undefined && (
+        <button
+          type="button"
+          className={`btn btn-small${followPlayhead ? " active-solo" : ""}`}
+          aria-pressed={followPlayhead}
+          title="Follow playhead: while playing, the view page-jumps so the playhead stays visible. Scrolling yourself turns it off (the automatic jumps never do)."
+          onClick={onToggleFollowPlayhead}
+        >
+          FOLLOW
+        </button>
+      )}
       <span className="arr-zoom-group" role="group" aria-label="Arrangement zoom">
         <button type="button" className="btn btn-small" aria-label="Zoom out" onClick={onZoomOut}>
           −

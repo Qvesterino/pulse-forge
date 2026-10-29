@@ -112,12 +112,16 @@ describe("arrangement DOM census gate (D: scale)", () => {
     expect(total, "the unmeasured fallback exploded for a 1000-bar project").toBeLessThanOrEqual(1200);
   });
 
-  it("per-clip DOM cost stays within budget (520 clips ≤ 53 260 elements)", () => {
+  it("per-clip DOM cost stays within budget (520 clips ≤ 53 280 elements)", () => {
     const bars = Array.from({ length: 520 }, (_, index) => index * 4);
     const utils = renderPanel(docWithClips(bars));
     const clipEls = utils.container.querySelectorAll(".arr-clip").length;
     const total = utils.container.querySelectorAll("*").length;
     expect(clipEls, "not every clip rendered — the cost measurement would be vacuous").toBe(520);
-    expect(total, "per-clip DOM cost grew past its measured ~102.4 elements").toBeLessThanOrEqual(53_260);
+    // Budget raised 53 260 → 53 280 (creative-flow audit CF-08/CF-09, measured):
+    // the shell gained exactly THREE FIXED elements — the record toolbar's
+    // calibration status chip and CALIBRATE button, and the FOLLOW view
+    // control. Per-clip cost is unchanged (~102.4 elements/clip).
+    expect(total, "per-clip DOM cost grew past its measured ~102.4 elements").toBeLessThanOrEqual(53_280);
   });
 });

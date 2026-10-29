@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   useArrangement,
@@ -16,6 +16,11 @@ import {
 import { ScenesPanel } from "./arrangement/ScenesPanel";
 import { ArrangementViewControls } from "./arrangement/ArrangementViewControls";
 import { MidiClipLanes } from "./arrangement/MidiClipLanes";
+// CF-08: the record toolbar owns a CALIBRATE entry — the wizard is loaded on
+// demand so the boot-path closure does not pay for a ~20-second dialog.
+const LatencyCalibrationWizardLazy = lazy(() =>
+  import("./LatencyCalibrationWizard").then((m) => ({ default: m.LatencyCalibrationWizard })),
+);
 import { requestMidiClipEditorNavigation } from "./arrangement/midiClipEditorNavigation";
 import {
   VIEWPORT_COMMIT_QUANTUM_PX,
@@ -152,7 +157,7 @@ import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
 import { recordedTakeSampleId, userSampleId } from "../persistence/UserSampleRepository";
 import { RECORDING_OWNER_ID, type RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { materializePcmTake } from "../audio-engine/pcmRecording";
-import { recordingAlignment } from "../audio-engine/recordingAlignment";
+import { recordingAlignment, recordingAlignmentStorageKey } from "../audio-engine/recordingAlignment";
 import {
   listRecordingInputDevices,
   loadRecordingInputDeviceId,
@@ -195,7 +200,7 @@ import {
   measurePhraseOnset,
   passAlignShifts,
 } from "../audio-engine/vocal-alignment";
-import { useCurrentItemId, usePlayheadBar } from "./playhead";
+import { followScrollLeft, isUserScroll, markScrollAsProgrammatic, useCurrentItemId, usePlayheadBar } from "./playhead";
 import { useLongPress } from "./useLongPress";
 import type { Transport } from "../transport/Transport";
 import { useSceneRuntimeState } from "./SceneLauncher";
@@ -578,6 +583,35 @@ export function ArrangementPanel() {
   // Arrangement zoom: px per bar = BASE_BAR_WIDTH * zoom. Ctrl+wheel zooms
   // around the cursor, −/+ step, FIT squeezes the whole song into the view.
   const [zoom, setZoom] = useState(1);
+  // CF-09: opt-in follow-playhead — page-jumps keep a moving playhead visible;
+  // a user scroll suspends it (the automatic jumps never do). View-layer
+  // preference, same policy as snap: localStorage, never the document.
+  const [followPlayhead, setFollowPlayhead] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("pf:arr-follow") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleFollowPlayhead = useCallback(() => {
+    setFollowPlayhead((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("pf:arr-follow", next ? "1" : "0");
+      } catch {
+        /* private mode — session-only preference */
+      }
+      return next;
+    });
+  }, []);
+  const suspendFollowPlayhead = useCallback(() => {
+    setFollowPlayhead(false);
+    try {
+      window.localStorage.setItem("pf:arr-follow", "0");
+    } catch {
+      /* private mode — session-only preference */
+    }
+  }, []);
   const barWidth = BASE_BAR_WIDTH * zoom;
   const scrollRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef(1);
@@ -783,7 +817,26 @@ export function ArrangementPanel() {
       return true;
     }
   });
+  // CF-08: the record flow surfaces the alignment state and owns a CALIBRATE
+  // entry — the offset a take is placed with was previously invisible here
+  // and the only wizard mount lived in the MIDI panel.
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [recordingInputDeviceId, setRecordingInputDeviceId] = useState(loadRecordingInputDeviceId);
+  const alignmentOffsetMs = useSyncExternalStore(
+    recordingAlignment.subscribe,
+    recordingAlignment.getSnapshot,
+    recordingAlignment.getSnapshot,
+  );
+  const inputCalibrated = useMemo(() => {
+    // Offset 0 is ambiguous (measured 0 vs never measured) — the stored slot
+    // is the truth; reading it here re-runs whenever the offset or device
+    // changes, which is exactly when the answer can flip.
+    try {
+      return localStorage.getItem(recordingAlignmentStorageKey(recordingInputDeviceId)) !== null;
+    } catch {
+      return false;
+    }
+  }, [alignmentOffsetMs, recordingInputDeviceId]);
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
   const independentInputTrackIds = [armedTrackId, ...independentInputRoutes.map((route) => route.trackId)];
@@ -1023,6 +1076,7 @@ export function ArrangementPanel() {
     if (!el || !anchor) return;
     el.scrollLeft = Math.max(0, (anchor.tick / barUnit) * (BASE_BAR_WIDTH * zoom) - anchor.cursorX);
     zoomAnchorRef.current = null;
+    markScrollAsProgrammatic();
   }, [zoom]);
 
   // Re-measure the window on mount and after every zoom. Declared AFTER the
@@ -4644,6 +4698,27 @@ export function ArrangementPanel() {
               >
                 {returnToTakeStart ? "RETURN TO START ON" : "RETURN TO START OFF"}
               </button>
+              <span
+                className={`btn btn-small${inputCalibrated ? " active-solo" : ""}`}
+                role="status"
+                title={
+                  inputCalibrated
+                    ? `This input is calibrated: takes are shifted ${alignmentOffsetMs >= 0 ? "+" : ""}${alignmentOffsetMs} ms at placement to compensate the measured audio round trip. Re-calibrate if you change your interface or microphone position.`
+                    : "This input has no measured latency offset — takes are placed exactly where REC started, which can land them one round trip late. CALIBRATE measures your setup in ~20 s."
+                }
+              >
+                {inputCalibrated
+                  ? `CALIBRATED ${alignmentOffsetMs >= 0 ? "+" : ""}${alignmentOffsetMs} ms`
+                  : "NOT CALIBRATED"}
+              </span>
+              <button
+                type="button"
+                className="btn btn-small"
+                title="Measure this input's audio round trip and store the offset per device — takes are then placed on the phrase you actually performed, not one round trip late."
+                onClick={() => setCalibrationOpen(true)}
+              >
+                CALIBRATE
+              </button>
               <label className="arr-arm-gain" aria-label="Audio input gain">
                 <span
                   className="arr-arm-gain-value"
@@ -4790,11 +4865,16 @@ export function ArrangementPanel() {
                   onToggleRulerMode={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
                   showIntensity={showIntensity}
                   onToggleIntensity={() => setShowIntensity((value) => !value)}
+                  followPlayhead={followPlayhead}
+                  onToggleFollowPlayhead={toggleFollowPlayhead}
                   onZoomOut={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
                   onFit={() => {
                     const viewport = scrollRef.current?.clientWidth ?? 800;
                     setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
-                    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+                    if (scrollRef.current) {
+                      markScrollAsProgrammatic();
+                      scrollRef.current.scrollLeft = 0;
+                    }
                   }}
                   onZoomIn={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
                 />
@@ -5352,7 +5432,17 @@ export function ArrangementPanel() {
               </div>
             );
           })()}
-        <div className="arr-lane-scroll" ref={scrollRef} onScroll={measureViewport}>
+        <div
+          className="arr-lane-scroll"
+          ref={scrollRef}
+          onScroll={() => {
+            measureViewport();
+            // CF-09: a scroll the app did not write is the user taking over —
+            // follow suspends rather than fighting them (the automatic jumps
+            // mask themselves with the programmatic flag).
+            if (followPlayhead && isUserScroll()) suspendFollowPlayhead();
+          }}
+        >
           <div
             className="arr-ruler"
             style={{ width: totalBars * barWidth }}
@@ -5480,6 +5570,7 @@ export function ArrangementPanel() {
               barWidth={barWidth}
               className="arr-playhead"
               barUnitTicks={barUnit}
+              followEnabled={followPlayhead}
             />
           </div>
           <div
@@ -6468,6 +6559,12 @@ export function ArrangementPanel() {
               UNDO
             </button>
           </div>
+        )}
+
+        {calibrationOpen && (
+          <Suspense fallback={null}>
+            <LatencyCalibrationWizardLazy open onClose={() => setCalibrationOpen(false)} />
+          </Suspense>
         )}
 
         {transitionBoundary && (
@@ -7515,15 +7612,39 @@ function ArrPlayheadLine({
   barWidth,
   className,
   barUnitTicks,
+  followEnabled,
 }: {
   transport: Transport;
   barWidth: number;
   className: string;
   /** The document's bar length in ticks (ADR 0056). */
   barUnitTicks: number;
+  /** CF-09: page-jump the view so a moving playhead stays visible. */
+  followEnabled?: boolean;
 }) {
+  const lineRef = useRef<HTMLDivElement | null>(null);
   const playheadBar = usePlayheadBar(transport, barUnitTicks);
-  return <div className={className} style={{ left: playheadBar * barWidth }} />;
+  useEffect(() => {
+    if (!followEnabled) return;
+    // Find the scroller from the line itself — the leaf renders in BOTH
+    // arrangement surfaces and must never thread a ref from the shell. A
+    // user scroll suspends follow in the shell's onScroll; the writes here
+    // are masked as programmatic for one event-loop turn.
+    let container: HTMLElement | null = lineRef.current;
+    while (container && !container.classList.contains("arr-lane-scroll")) {
+      container = container.parentElement;
+    }
+    if (!container) return;
+    const target = followScrollLeft({
+      playheadX: playheadBar * barWidth,
+      scrollLeft: container.scrollLeft,
+      viewportWidth: container.clientWidth,
+    });
+    if (target === null || target === container.scrollLeft) return;
+    markScrollAsProgrammatic();
+    container.scrollLeft = target;
+  }, [playheadBar, barWidth, followEnabled]);
+  return <div ref={lineRef} className={className} style={{ left: playheadBar * barWidth }} />;
 }
 
 function IntensityLane({

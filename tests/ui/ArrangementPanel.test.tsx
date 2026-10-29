@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import { SelectionContext } from "../../src/ui/context";
@@ -6,6 +6,7 @@ import { renderWithContext, mockServices } from "../helpers";
 import { SelectionStore } from "../../src/store/SelectionStore";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { followScrollLeft, markScrollAsProgrammatic } from "../../src/ui/playhead";
 import { addAudioClip, setBpm } from "../../src/commands/commands";
 import type { ProjectDocument } from "../../src/project-model/types";
 
@@ -575,5 +576,62 @@ describe("ArrangementPanel — explicit audio record target", () => {
     renderWithContext(<ArrangementPanel />);
     const button = screen.getByRole("button", { name: "Record audio input onto the armed track" });
     expect(button).toHaveTextContent("AUDIO REC");
+  });
+});
+
+describe("ArrangementPanel — follow playhead (CF-09)", () => {
+  afterEach(() => {
+    try {
+      window.localStorage.removeItem("pf:arr-follow");
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("FOLLOW defaults off, toggles on and persists the preference", () => {
+    renderWithContext(<ArrangementPanel />);
+    const follow = screen.getByRole("button", { name: "FOLLOW" });
+    expect(follow).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(follow);
+    expect(screen.getByRole("button", { name: "FOLLOW" })).toHaveAttribute("aria-pressed", "true");
+    expect(window.localStorage.getItem("pf:arr-follow")).toBe("1");
+  });
+
+  it("NEGATIVE: a user scroll suspends follow — the app's own jumps never do", async () => {
+    const { container } = renderWithContext(<ArrangementPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "FOLLOW" }));
+    const scroller = container.querySelector(".arr-lane-scroll") as HTMLElement;
+    expect(scroller).not.toBeNull();
+
+    // The app's own page-jump writes are masked for one event-loop turn.
+    markScrollAsProgrammatic();
+    fireEvent.scroll(scroller);
+    expect(screen.getByRole("button", { name: "FOLLOW" })).toHaveAttribute("aria-pressed", "true");
+
+    // Past the mask window, an unmasked scroll is the USER taking over.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 70)));
+    fireEvent.scroll(scroller);
+    expect(screen.getByRole("button", { name: "FOLLOW" })).toHaveAttribute("aria-pressed", "false");
+    expect(window.localStorage.getItem("pf:arr-follow")).toBe("0");
+  });
+
+  it("followScrollLeft page-jumps only outside the comfortable window", () => {
+    const viewport = 1000;
+    // scrollLeft 900 → the comfortable window is [1050, 1650]: leave it alone.
+    expect(followScrollLeft({ playheadX: 1100, scrollLeft: 900, viewportWidth: viewport })).toBeNull();
+    expect(followScrollLeft({ playheadX: 1650, scrollLeft: 900, viewportWidth: viewport })).toBeNull();
+    // Left of the window → jump so it sits at 20% from the left.
+    expect(followScrollLeft({ playheadX: 250, scrollLeft: 900, viewportWidth: viewport })).toBe(50);
+    // Right of the window → jump so it sits at 20% from the left.
+    expect(followScrollLeft({ playheadX: 1700, scrollLeft: 900, viewportWidth: viewport })).toBe(1500);
+    // scrollLeft 0 → window [150, 750].
+    expect(followScrollLeft({ playheadX: 150, scrollLeft: 0, viewportWidth: viewport })).toBeNull();
+    expect(followScrollLeft({ playheadX: 750, scrollLeft: 0, viewportWidth: viewport })).toBeNull();
+    expect(followScrollLeft({ playheadX: 100, scrollLeft: 0, viewportWidth: viewport })).toBe(0);
+    expect(followScrollLeft({ playheadX: 800, scrollLeft: 0, viewportWidth: viewport })).toBe(600);
+    // Never negative.
+    expect(followScrollLeft({ playheadX: 50, scrollLeft: 0, viewportWidth: viewport })).toBe(0);
+    // A zero-width viewport measures nothing and jumps nowhere.
+    expect(followScrollLeft({ playheadX: 100, scrollLeft: 0, viewportWidth: 0 })).toBeNull();
   });
 });
