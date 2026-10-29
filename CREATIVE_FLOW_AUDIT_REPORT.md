@@ -135,10 +135,11 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Fix:** a per-project view-state module (`src/ui/arrangementViewState.ts`) — zoom, horizontal position and BOTH panel-local clip foci persist under `pf:arr-view:<docId>` (localStorage, snap's view-layer policy, never the document). Defensively re-validated payload (malformed JSON degrades to "no saved view"; wrong-typed fields dropped), a debounced writer fed by zoom/selection changes and the lane scroll, a synchronous unmount flush, and clip ids validated against the document on restore so a deleted clip selects nothing. Cross-project leakage is impossible by the key; CF-09's follow state already had its own key.
 - **Verification:** module round-trip + malformed/junk payload degradation; panel-level restore (seeded `zoom: 1.4` + `selectedClipId` → the SECS field is present and the lanes are 1.4× wider on remount) with a cross-project negative (doc B mounts clean); the deleted-clip negative; zoom/scroll persistence through the debounced writer. ArrangementPanel 39/39, census/boot-path green, seam `arrangement-view-state` (101 seams). Provenance note: a peer commit (`06c4d173`, "jedeme dal") absorbed the mid-flight wiring with a TDZ ordering bug; the completion commit (`e6276191`) moves the block below the fields it saves, fixes the round-trip expectation, and pins the seam — the tree is green as of `e6276191`. Still open from this finding: the dock's focus-drop-to-body half (CF-22).
 
-### CF-12 | Medium | Confirmed | Status: TIER B (F-10, still open)
+### CF-12 | Medium | Confirmed | Status: **FIXED — commit `f9dbb25a`** (F-10 closes with it)
 
-- **Finding:** **Time & pitch (and Spectral Lab) exist only in the audio right-click menu** (`ArrangementPanel.tsx:6768`, `:2163-2165`) — not in the palette, not in Help gestures, not on any selected-clip affordance. The capability is one undoable command once found (`updateAudioClip`, `:7038-7044`); discovery is the entire cost.
-- **Proposed:** a "Time & pitch…" action on the selected-audio-clip strip/inspector + a palette entry + a Help gesture line. Reuse the existing dialog and command; no new state.
+- **Finding:** **Time & pitch (and Spectral Lab) existed only in the audio right-click menu** — not in the palette, not in Help gestures, not on any selected-clip affordance. The capability was one undoable command once found (`updateAudioClip`); discovery was the entire cost.
+- **Fix:** three routes lead to the SAME dialogs — the selected audio clip exposes **TIME&PITCH** and **SPECTRAL** buttons in the arrangement toolbar's clip actions; the command palette lists both entries (**disabled with "Select an audio clip first"** while none is selected — audio clicks feed the shared selection store, which is what answers the check); and the Help gestures name all three routes. The panel listens for the palette's open events and targets its selected audio clip — no second implementation of either dialog, no new state.
+- **Verification:** affordance presence + the dialog opens from BOTH the toolbar button and the palette window event; negatives (no selection → no affordance, no dialog; palette rows carry the reason); palette run dispatches the events. 95/95 across the six affected suites (ArrangementPanel, palette exposure, App, HelpOverlay, a11y, boot-path), seam `audio-clip-transform-discovery` (102 seams).
 
 ### CF-13 | Medium | Confirmed | Status: TIER B (F-07, still open)
 
@@ -182,7 +183,7 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 | F-07  | Project browser search             | **OPEN** → CF-13                                                                                                                            |
 | F-08  | Mixer M/S accessible names         | **FIXED by this audit** → CF-03                                                                                                             |
 | F-09  | Clip handle hit areas              | **PARTIAL by others** — touch enlarged (`pointer: coarse`, fade 22², gain 44×14, warp pins 28 px hitbox); desktop sizes unchanged (8/12 px) |
-| F-10  | Time & pitch hidden in right-click | **OPEN** → CF-12                                                                                                                            |
+| F-10  | Time & pitch hidden in right-click | **FIXED by this audit** → CF-12 (`f9dbb25a`)                                                                                                |
 | F-11  | Mixed Slovak/English               | **OPEN** (not re-litigated here; prior audit's recommendation stands)                                                                       |
 | F-12  | Undo-history agent provenance      | **PARTIAL** — label prefix only (`attribution.ts:33-39`)                                                                                    |
 | F-13  | Follow-playhead                    | **FIXED by this audit** → CF-09 (`28e68a71`)                                                                                                |
@@ -216,7 +217,7 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | **FIXED (default-on toggle, `197f89c8`)**          |
 | CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | **FIXED (opt-in page-jump follow, `28e68a71`)**    |
 | CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                          |
-| CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | TIER B                                             |
+| CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | **FIX NOW (shipped — `f9dbb25a`)**                 |
 | CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | **FIX NOW (shipped — `28e68a71`)**                 |
 | CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | TIER B                                             |
 | CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | **FIXED (per-project view state, `e6276191`)**     |
@@ -275,7 +276,7 @@ _(Formerly deferred here: CF-05 — approved and shipped as `892dcc61`; see §4.
 ## 10. 30/60/90-day optimization roadmap
 
 **30 days — disclosure and parking (small, mostly additive).**
-CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`; CF-10's take-start parking shipped early — commit `197f89c8`.) Exit: each has a seam entry with a negative.
+CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-22 dock focus restore. (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`; CF-10's take-start parking shipped early — commit `197f89c8`.) Exit: each has a seam entry with a negative.
 
 **60 days — the listening loops.**
 CF-19 MixPreview staleness guard; CF-13 project search. (CF-08 + CF-09 shipped early — `28e68a71`, census budget measured; CF-11 view-state persistence shipped early — `e6276191`.) The CF-05 Playwright journey (staged in `keyboard-guards.spec.ts`) joins the regular suite once the shared dev server is healthy — that run is also the first real-browser measurement this audit's blocked e2e pass was waiting for.
