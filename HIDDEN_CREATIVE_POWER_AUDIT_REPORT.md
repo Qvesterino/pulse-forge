@@ -1553,9 +1553,9 @@ table above. The corrections are recorded here because the report's own standard
 reported, not quietly dropped.
 
 **Refutation 1 — "corr = 1.0000 means the live and offline render are the same signal" is mathematically
-invalid.** `correlationAt` (`src/testing/live-offline-parity.ts:671-687`) **is not a true Pearson coefficient** — the
+invalid.** `correlationAt` (`src/testing/live-offline-parity.ts:699-714`) **is not a true Pearson coefficient** — the
 implementation does not subtract the means, so it is an uncentred cosine similarity, and its own docstring is wrong
-about its own metric (§10.16.7). For a small error `corr ≈ 1 − e²/2` where `e = 10^(null/20)`: the correlation is
+about its own metric (§10.16.6). For a small error `corr ≈ 1 − e²/2` where `e = 10^(null/20)`: the correlation is
 **quadratic** in the error, not linear. Independently recomputed here against the parallel session's five corpus
 cases:
 
@@ -2158,7 +2158,8 @@ around it:
 **The same gate, run again after the lead fix (`ae372bf4`), reports 439 of 439 checks passed and the corpus
 `passed=67/67`** — the red list is empty at that corpus size, and the difference is that no product changed
 (§10.16.5). **The red list is NOT empty at the corpus's later size of 77** — the idle-machine re-measurement reports
-`failed=1/77` plus eight cases the machine could not judge (§10.16.5).
+`failed=1/77` plus eight cases the machine could not judge (§10.16.5); the one case that is red is read in full in §10.16.6,
+because its numbers do not resemble the runner's.
 
 **This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
 runner the same corpus reports **21/67**; on a measurable desktop it reports **4/67**, with the calibration clean on
@@ -2339,7 +2340,7 @@ finding, named a suspect, and was wrong — and the only reason that is recovera
 evidence (a null in dB, a `live↔live` value, a control), so the next measurement could **falsify** it instead of
 merely disagreeing with it.
 
-#### 10.16.7 What the runner's 18 instrument failures are — and what the correlation actually measures
+#### 10.16.6 What the runner's 18 instrument failures are — and what the correlation actually measures
 
 The parallel session read the CI annotation of the browser-audio job (run `ae372bf4`) and found something §10.16.5
 had not yet seen from the runner: **the capture-lead fix killed the FX reds in CI** — `failed=18/67`, and **every
@@ -2364,7 +2365,7 @@ read as.** The parallel session read the flat ≈ −31.8 dB profile as "a const
 - `compare()` (`src/testing/live-offline-parity.ts:682-696`) computes a **subtraction null** —
   `10·log10(Σ(reference − capture)² / Σreference²)`. So −31.8 dB means the residual energy is **6.6·10⁻⁴** of the
   reference energy.
-- `correlationAt()` (`:698-715`) is **not** the Pearson coefficient its docstring claims: it computes
+- `correlationAt()` (`:699-714`) is **not** the Pearson coefficient its docstring claims: it computes
   `dot / √(Σa²·Σb²)` **without subtracting the means** — an uncentred cosine similarity.
 - For a **pure gain** `b = g·a`, that expression is **exactly 1.0000** for any `g` (a scalar multiple does not change
   the angle). The measured **0.9997 excludes a pure gain**.
@@ -2392,7 +2393,60 @@ proposal to make the null corpus non-blocking in CI was built on the "platform n
 an additive constant in one branch's output path, that proposal would hide a real live↔offline difference — the
 exact thing invariant 3 exists to catch. **That decision must not be taken on the strength of a label.**
 
-#### 10.16.6 Five red specs, five different defects — and one gate that measured the wrong thing
+**And the desktop's own last red is a different measurement entirely — a TIMING difference, not a level one.** The idle
+re-measurement (`docs/audits/2026-10-29-browser-audit/browser-audit-remeasure.log:445`) reports **`failed=1/77`**, and the one
+failing case is `instrument:ladic` — LADIČ, the 6-operator FM flagship (`src/instruments/registry.ts:6925`, ADR 0055). Its row
+says:
+
+| reading                  | value               | what it settles                                                                          |
+| ------------------------ | ------------------- | ---------------------------------------------------------------------------------------- |
+| `rms`                    | **1.000×**          | the **level** is identical                                                               |
+| `livePeak` / `refPeak`   | **0.1185 / 0.1185** | the peak is identical, to the last digit                                                 |
+| `spectrum`               | **0.9999**          | the magnitude spectrum is identical (offline control: 1.0000)                            |
+| `null`                   | −9.8 dB             | …but the **waveform** is not — against a floor of −40 dB (`:84`)                         |
+| `offset`                 | **−336 samples**    | the best alignment needs 336 samples — **7.62 ms** at 44 100 Hz (`:50`)                  |
+| `repeatOffset`           | **0 samples**       | the live branch reproduces **itself** at zero offset                                     |
+| `segHead` / `segTail`    | −4.4 / −15.3 dB     | the difference is concentrated at the **head** of the window                             |
+| `profile`                | 0.0 → −18.1 dB      | nothing shared in the first window, saturating afterwards                                |
+| `corr`                   | 0.9471              | high but not unity — the corpus's own marker for "the same path, a moved sample" (`:91`) |
+| `control` / `liveRepeat` | −319.2 / −319.2 dB  | the offline render is deterministic and the live branch reproduces itself                |
+
+The level readings are **position-independent** — `stats()` (`:1199-1208`) measures the raw buffers, before any alignment. And at
+this null size the level reading is **decisive**: an additive constant big enough to produce a −9.8 dB null would raise the rms
+ratio to √(1 + 10^(−0.98)) = **1.051×**. The measured ratio is **1.000×**. So the additive explanation is excluded by arithmetic
+rather than by interpretation — a different situation from the runner's 14, where the same measurement at −31.8 dB would read
+√(1 + 6.6·10⁻⁴) = **1.000×**, _indistinguishable from LADIČ's_ at three decimals. **The discriminating power of a level reading
+depends on the size of the null.** When the runner's `rms=` and `peak=` arrive in the next annotation they will read "1.000×" and
+will look exactly like the desktop's case; they will not be the same defect.
+
+**Inferred:** LADIČ is the same sound, at the same level, with the same spectrum, **not at the same sample position** — and the
+difference sits at the head of the window. The corpus's own docstrings name exactly these two shapes: `divergenceProfile`
+(`:985-991`) calls a profile "already dirty in the FIRST window" a **startup transient**; `segmentNulls` (`:937-943`) draws the
+line this case falls on: "a difference confined to the head is a startup transient" against "a difference spread over the whole
+window" — a processing-path divergence. LADIČ's difference **is confined to the head** (−4.4 dB head against −15.3 dB tail); the
+runner's fourteen are spread across the whole window (flat ≈ −31.8 dB). The profile says the same thing from the other side:
+LADIČ's branches **converge** after the first window (0.0 → −18.1 dB, saturating), the runner's **stay apart** at a constant level.
+
+**Not verified:** what produces the 7.6 ms. The parallel session's working tree adds a fractional-shift scan — a diagnostic that
+separates a sub-sample position from a different processing path, and prints `frac=` in the corpus summary — but **neither is in
+`HEAD`**, and neither is in the idle log, so that reading does not exist yet. The alignment of −336 samples is **inside** the
+512-sample tolerance (`:98-103`), so the quantum-retry path (`:724-743`) never fired for this case — and 336 samples is **2.625
+render quanta** of 128 frames, not a whole one. One more reading the verdict depends on is **not in the log**: the escape hatch
+`phaseInsensitiveParityAgrees` (`:632-648`) reads the **windowed** rms ratio, which the failing branch of the detail line does not
+print — it prints the raw one as `rms=` and the windowed one as `RMS=`, and this row carries only `rms=1.000×`. A reader cannot
+tell the two apart from the annotation.
+
+**Why this belongs in a section about the runner.** The runner's 18 and the desktop's 1 are **not the same measurement**: the
+runner measured **67** cases and the desktop **77** — ten were added in between — and the two reds differ by an order of magnitude
+in the null (−9.8 dB vs ≈ −31.8 dB) and in the correlation (0.9471 vs 0.9997), with different profile shapes (head-localised vs
+flat). So the desktop's single red does not explain the runner's eighteen, and the runner's eighteen do not describe the desktop's
+one. §10.14's proposal to make the null corpus non-blocking in CI was built on the reading that these failures are "platform
+noise"; **that reading is now wrong twice over** — the runner's failures are a systematic, deterministic, whole-window difference,
+and the desktop's failure is a real, reproducible, level-identical difference between what a user hears live and what an export
+writes. **Two different defects do not get one shared remedy**, and a rule that excuses the runner's fourteen would silently
+excuse the desktop's one.
+
+#### 10.16.7 Five red specs, five different defects — and one gate that measured the wrong thing
 
 The parallel session measured the full vitest run on HEAD and handed over five red specs. All five are fixed
 (`54b4143f`), and each had a **different** cause — the §10.16.3 rule one level deeper: **a red spec is a question,
