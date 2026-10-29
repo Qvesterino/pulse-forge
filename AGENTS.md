@@ -271,6 +271,21 @@ are mandatory:
    `git rm --cached <theirs>` + `git commit --amend --no-edit`: their file
    stays on disk, unstaged, for their own commit.
 
+   **The reverse happens too, and here the author field cannot help you.**
+   Measured 2026-10-29: a peer session's `git add .` carried six modified
+   paths — including a whole fix that belonged to another session — into its
+   own commit `51bd0251` ("ranny commit"). The content survived intact; the
+   commit message said nothing about it. And **every session in this repo
+   commits under the same git author identity**, so `git log` cannot separate
+   the two sessions at all: a commit here is **not** evidence of who wrote it.
+   Only the diff and the working-tree state can tell. Two consequences:
+   - before pushing, diff YOUR paths against the commit you are about to make
+     and check the message describes them;
+   - when your work is carried by someone else's commit, **record the
+     provenance in a file you own** (the audit report kept a "Provenance of
+     this fix" paragraph for exactly this reason) — the commit message is not
+     a durable place for it.
+
 Isolated READ-ONLY verification runs are still fine — see
 `docs/MULTI-AGENT-GUARDRAILS.md` rule 5 (`git worktree add` at a commit, for a
 clean baseline). That is a detached checkout for measuring, not a branch for
