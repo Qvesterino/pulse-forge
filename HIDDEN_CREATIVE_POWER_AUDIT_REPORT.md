@@ -1601,7 +1601,7 @@ under the 0.99 threshold. A corpus whose verdict moves run-to-run on the same co
 
 #### The structural observation that does survive
 
-The harness derives its exemption from a **property**, not a name list (`live-offline-parity.ts:1113-1118`) —
+The harness derives its exemption from a **property**, not a name list (`live-offline-parity.ts:1333-1338`) —
 the offline control must be clean and the live branch must be nondeterministic against itself. That is the right
 shape. But it names only two classes, and the corpus's own error message says what is missing: _"the
 phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion"_ (`:786`). The
@@ -2198,7 +2198,7 @@ tracker's buffer. The offline branch started **cold** (`leadSec = 0`). Both bran
 same lead and compares from where the capture starts:
 
 ```ts
-// src/testing/live-offline-parity.ts:344-353 (ae372bf4)
+// src/testing/live-offline-parity.ts:306 and :313 (the ae372bf4 fix; current HEAD)
 script(engine, (offset) => CAPTURE_LEAD_FRAMES / sampleRate + leadSec + eventPrerollSec + offset);
 // …
 return buffer.getChannelData(0).subarray(CAPTURE_LEAD_FRAMES); // the lead is history, not signal
@@ -2390,8 +2390,9 @@ for any ordinary rms/peak, against a measured **0.1 %**. Their fractional-shift 
 improving the null from −31.7 dB to **−38.2 dB** — so there is a **sub-sample shift** in the residual, where a pure constant
 would have cancelled under that scan and left only the interpolator's own error. Both readings point at a **shift**, not a
 constant: the additive reading this section carried is not merely unsupported, it is **contradicted** for the one case that
-has been measured. **Provenance:** the parallel session's working tree, not committed at the time of writing — these are their
-measurements, not this report's, and this report does not claim to have reproduced them.
+has been measured. **Provenance:** the parallel session's WSL measurement, taken on the tree that now carries the
+fractional-shift scan (`8b3b47cd`). The **measurement** is not in the repository — these are their numbers, not this report's,
+and this report does not claim to have reproduced them.
 
 **Two corrections this section makes to the report's own earlier text.** First, §10.14's Refutation 1 says
 "`correlationAt` is a true Pearson coefficient" — it is **not**: the implementation does not center, and the source's
@@ -2429,7 +2430,7 @@ says:
 | `corr`                   | 0.9471              | high but not unity — the corpus's own marker for "the same path, a moved sample" (`:91`) |
 | `control` / `liveRepeat` | −319.2 / −319.2 dB  | the offline render is deterministic and the live branch reproduces itself                |
 
-The level readings are **position-independent** — `stats()` (`:1199-1208`) measures the raw buffers, before any alignment. And at
+The level readings are **position-independent** — `stats()` (`:1287-1296`) measures the raw buffers, before any alignment. And at
 this null size the level reading is **decisive**: an additive constant big enough to produce a −9.8 dB null would raise the rms
 ratio to √(1 + 10^(−0.98)) = **1.051×**. The measured ratio is **1.000×**. So the additive explanation is excluded by arithmetic
 rather than by interpretation — a different situation from the runner's 14, where the same measurement at −31.8 dB would read
@@ -2447,14 +2448,14 @@ window" — a processing-path divergence. LADIČ's difference **is confined to t
 runner's fourteen are spread across the whole window (flat ≈ −31.8 dB). The profile says the same thing from the other side:
 LADIČ's branches **converge** after the first window (0.0 → −18.1 dB, saturating), the runner's **stay apart** at a constant level.
 
-**Not verified:** what produces the 7.6 ms. The parallel session's working tree adds a fractional-shift scan — a diagnostic that
-separates a sub-sample position from a different processing path, and prints `frac=` in the corpus summary — but **neither is in
-`HEAD`**, and neither is in the idle log, so that reading does not exist yet. The alignment of −336 samples is **inside** the
-512-sample tolerance (`:98-103`), so the quantum-retry path (`:724-743`) never fired for this case — and 336 samples is **2.625
-render quanta** of 128 frames, not a whole one. One more reading the verdict depends on is **not in the log**: the escape hatch
-`phaseInsensitiveParityAgrees` (`:632-648`) reads the **windowed** rms ratio, which the failing branch of the detail line does not
-print — it prints the raw one as `rms=` and the windowed one as `RMS=`, and this row carries only `rms=1.000×`. A reader cannot
-tell the two apart from the annotation.
+**Not verified:** what produces the 7.6 ms. The corpus now carries a fractional-shift scan — a diagnostic that separates a
+sub-sample position from a different processing path, and prints `frac=` in the corpus summary (`:1030-1035`, `:1474`;
+committed in `8b3b47cd`) — but the idle log **predates it**, so that reading does not exist for this case yet. The
+alignment of −336 samples is **inside** the 512-sample tolerance (`:98-103`), so the quantum-retry path (`:724-743`) never fired
+for this case — and 336 samples is **2.625 render quanta** of 128 frames, not a whole one. One more reading the verdict depends on
+is **not in the log**: the escape hatch `phaseInsensitiveParityAgrees` (`:632-648`) reads the **windowed** rms ratio, which the
+failing branch of the detail line does not print — it prints the raw one as `rms=` and the windowed one as `RMS=`, and this row
+carries only `rms=1.000×`. A reader cannot tell the two apart from the annotation.
 
 **Why this belongs in a section about the runner.** The runner's 18 and the desktop's 1 are **not the same measurement**: the
 runner measured **67** cases and the desktop **77** — ten were added in between — and the two reds differ by an order of magnitude
