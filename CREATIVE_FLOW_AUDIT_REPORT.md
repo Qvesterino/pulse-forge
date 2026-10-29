@@ -141,10 +141,11 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Fix:** three routes lead to the SAME dialogs — the selected audio clip exposes **TIME&PITCH** and **SPECTRAL** buttons in the arrangement toolbar's clip actions; the command palette lists both entries (**disabled with "Select an audio clip first"** while none is selected — audio clicks feed the shared selection store, which is what answers the check); and the Help gestures name all three routes. The panel listens for the palette's open events and targets its selected audio clip — no second implementation of either dialog, no new state.
 - **Verification:** affordance presence + the dialog opens from BOTH the toolbar button and the palette window event; negatives (no selection → no affordance, no dialog; palette rows carry the reason); palette run dispatches the events. 95/95 across the six affected suites (ArrangementPanel, palette exposure, App, HelpOverlay, a11y, boot-path), seam `audio-clip-transform-discovery` (102 seams).
 
-### CF-13 | Medium | Confirmed | Status: TIER B (F-07, still open)
+### CF-13 | Medium | Confirmed | Status: **FIXED — commit `029838bc`** (F-07 closes with it)
 
-- **Finding:** **the project browser has no search/filter/sort.** The only inputs are import/rename fields; ordering is hard-coded `updatedAt` desc at module scope (`ProjectBrowser.tsx:84, 823-905`). Long-lived libraries degrade every session.
-- **Proposed:** local name/tag/BPM filter + sort toggle, recency default, no repository change.
+- **Finding:** **the project browser had no search/filter/sort.** The only inputs were import/rename fields; ordering was hard-coded `updatedAt` desc. Long-lived libraries degraded every session.
+- **Fix:** the PROJECTS section gained a **search input** (name, BPM or source DAW — case-insensitive) and a **SORT toggle** (recency default, name on click). Incompatible-version rows filter and sort identically — they are the user's work and stay findable. A no-match query shows a truthful empty state, Escape clears the search, and the row actions keep working scoped to the rendered rows. No repository change; recency stays the default view.
+- **Verification:** spec drives the real browser over a mocked repo — recency default order, name/BPM/DAW queries each match the right row, the sort toggle flips the order and back, the no-match negative shows the empty state and clearing restores every row. Suite 20/20 (both ProjectBrowser suites), seam `project-browser-search` (103 seams), typecheck clean.
 
 ### CF-14 | Medium-High (trust) | Confirmed | Status: DESIGN REVIEW (F-05, unchanged at HEAD)
 
@@ -180,7 +181,7 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 | F-04  | Unlabeled global REC               | **PARTIAL** — title/aria say MIDI, the visible button is still an unlabeled ⏺ (`TopBar.tsx:680-711`)                                        |
 | F-05  | MCP destructive one-click          | **UNCHANGED** → this audit's CF-14                                                                                                          |
 | F-06  | Palette coverage                   | **PARTIAL** — track actions indexed; save-copy and time-pitch absent (`commandPalette.ts:54-106`)                                           |
-| F-07  | Project browser search             | **OPEN** → CF-13                                                                                                                            |
+| F-07  | Project browser search             | **FIXED by this audit** → CF-13 (029838bc)                                                                                                  |
 | F-08  | Mixer M/S accessible names         | **FIXED by this audit** → CF-03                                                                                                             |
 | F-09  | Clip handle hit areas              | **PARTIAL by others** — touch enlarged (`pointer: coarse`, fade 22², gain 44×14, warp pins 28 px hitbox); desktop sizes unchanged (8/12 px) |
 | F-10  | Time & pitch hidden in right-click | **FIXED by this audit** → CF-12 (`f9dbb25a`)                                                                                                |
@@ -219,7 +220,7 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                          |
 | CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | **FIX NOW (shipped — `f9dbb25a`)**                 |
 | CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | **FIX NOW (shipped — `28e68a71`)**                 |
-| CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | TIER B                                             |
+| CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | **FIX NOW (shipped — 029838bc)**                   |
 | CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | **FIXED (per-project view state, `e6276191`)**     |
 | CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                             |
 | CF-22                | 2      | 3    | 5    | 4        | 5      | 19    | TIER A                                             |
