@@ -2156,7 +2156,9 @@ around it:
 | the four red cases | `fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal` — the same four §10.14 named, and **historical**: they were the capture lead, not findings (§10.16.5) |
 
 **The same gate, run again after the lead fix (`ae372bf4`), reports 439 of 439 checks passed and the corpus
-`passed=67/67`** — the red list is empty, and the difference is that no product changed (§10.16.5).
+`passed=67/67`** — the red list is empty at that corpus size, and the difference is that no product changed
+(§10.16.5). **The red list is NOT empty at the corpus's later size of 77** — the idle-machine re-measurement reports
+`failed=1/77` plus eight cases the machine could not judge (§10.16.5).
 
 **This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
 runner the same corpus reports **21/67**; on a measurable desktop it reports **4/67**, with the calibration clean on
@@ -2271,6 +2273,19 @@ against: the two channels disagree with themselves before the engine is involved
 reformulated from the measurement. That is the correct outcome — a corpus that cannot measure a case must not
 measure it — and it is also the reason the projection was wrong: "twelve phase exclusions" was a count of
 _reasons_, not of _liftable exclusions_.
+
+**And the corpus at 77 is NOT green — it is 1/77 red, and eight cases the machine could not judge.** The parallel
+session's re-measurement on an **idle** machine
+(`docs/audits/2026-10-29-browser-audit/browser-audit-remeasure.log`) reports `failed=1/77` — one instrument case
+(`instrument:ladic`, the LADIČ worklet) — and, more interesting, **`not measurable=8`**: eight cases whose realtime
+branch did not reproduce itself _on that machine_. The calibration agrees with the reading: `control = −334.4 dB`
+(the offline branch is exact) while `live↔live = −207.8 dB` — the realtime branch reproducible only to −207.8 dB
+there, against −334.4 dB in the earlier run.
+
+**So the corpus's "not measurable" count is a property of the MACHINE, not of the product** — eight on the idle
+desktop, four on the CI runner — and the verdict says so in the verdict itself. That is the §10.16.2 environment line
+doing exactly its job: how many cases the machine could not judge moved with the machine's state, and the line named
+that instead of letting the red count absorb it.
 
 **The two that stay, and the one that was never in scope.** The remaining exclusions are the seven "bar-scale
 transport state" cases (`beatMangler`, `stepGate`, `stutter`, `pump`, `reverseSwell`, `tapeStop`, `granularFreeze`)
