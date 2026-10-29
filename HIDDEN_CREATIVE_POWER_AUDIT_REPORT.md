@@ -1652,61 +1652,86 @@ is the same offline render twice, and `liveRepeat` is the same realtime case twi
 - `fx:morphdynamics`: `liveRepeat` −331.0 → **−75.9 dB** between runs;
 - `instrument:analog`: `liveRepeat` −77.6 → **−323.6 dB**, and `control` −78.5 → **−75.8 dB**.
 
-**The offline branch is not reproducible on that runner.** The corpus's determinism control fails there, which
-means the red list it produces carries **no information about the engine** — it is a measurement of the
-machine's load.
+**This section's first conclusion was tested, and it did not hold as stated.** The claim this section opened with
+was that the runner's offline branch is not reproducible, so its red list measures the machine's load rather than the
+engine. The calibration case **disproves that generalisation**: the offline branch **is** exact on the runner — the
+calibration control measures **−334.4 dB in CI, bit-identical, and identical to the desktop's −334.4 dB** — and the
+environment line therefore reads `environment=measurable (calibration fx:bitcrusher control=-334.4 dB, needs
+≤ -200 dB)`. The failure was mine, and it was a specific one: I generalised **one instrument case**
+(`instrument:analog control −78.5 → −75.8 dB`) to the whole environment. A calibration case that is deterministic
+**by construction** says nothing about whether an oscillator's offline render repeats bit-identically on another
+platform.
+
+**What the 17 CI-only instrument failures actually are.** The corpus reports **failed = 21/67** on the runner: the
+same four effect findings as on the desktop (`fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal`, all
+with `realtimeNondeterministic = false` and `live↔live` at about −332 dB) **plus 17 instrument cases that PASS on
+the desktop**. For those 17 the offline control is **exact** and the realtime branch **reproduces itself** — yet it
+still differs from the offline render. That is **platform realtime behaviour on that runner, not the product's
+verdict**. The `instrument:analog` control that moves 3 dB between runs is a second, independent symptom of the
+same platform difference.
+
+**So the section's conclusion survives — with a different mechanism than the one it was written with.** The runner
+still is not a measurement environment for this corpus. But not because its arithmetic is inexact: it is because the
+runner's **realtime path diverges from its own offline path** in a way the desktop does not, for a class of cases
+that is green on every desktop. A calibration case proves the environment can render bit-identically twice; it does
+not prove the realtime and offline paths agree with each other.
 
 **The desktop, by contrast, is reproducible.** Windows and Linux produced **bit-identical** values for the four
-effects. So the two statements are both true and they point in opposite directions:
+effects. So the two statements point in opposite directions:
 
-- on a valid environment, the live↔offline divergence for those cases is **real** — an engine divergence, and
-  an invariant-3 question;
-- on the CI runner, the corpus's verdict is **noise** for the cases that flap between runs — it moves the
-  _membership_ of the red set rather than any one case's value.
+- on a valid environment, the live↔offline divergence for those cases is **real** — an engine divergence, and an
+  invariant-3 question;
+- on the CI runner, the corpus's verdict mixes **two different things**: the four real findings, and a
+  platform-specific realtime divergence that is green on every desktop. The membership of the red set moves between
+  runs for the second reason, not the first.
 
-**A narrowing that was itself withdrawn — and the sharper statement that replaces both.** The sentence above
-originally read "noise, **including** the five cases this report had called stable". The parallel session then
-reported that **ozvena, morphdynamics, bassHarmonic and portal reproduce bit-identically in two local runs _and_ in
-CI**, and this report narrowed the claim accordingly (`319027fe`). That narrowing was this report's error, made on
-the strength of a statement the parallel session has since **withdrawn in writing**: the "in CI" half was wrong,
-`bassHarmonic` did drop out, and the four are stable **locally** — proven by their own `live↔live` and `control`
-values, not by the CI runs. Both halves of the exchange are recorded because a corrected hypothesis is part of the
-evidence, and because the intermediate statement is now retracted rather than merely superseded.
+**A narrowing that was itself withdrawn — and the statement that replaces both.** The bullet above originally read
+"noise, **including** the five cases this report had called stable". The parallel session then reported that
+**ozvena, morphdynamics, bassHarmonic and portal reproduce bit-identically in two local runs _and_ in CI**, and
+this report narrowed the claim accordingly (`319027fe`). That narrowing was this report's error, made on the strength
+of a statement the parallel session has since **withdrawn in writing**: the "in CI" half was wrong, `bassHarmonic`
+did drop out, and the four are stable **locally** — proven by their own `live↔live` and `control` values, not by the
+CI runs. The corrected form is the one that survives: the four are bit-identical **locally** (`live↔live` ≈ −332 dB,
+`control` ≈ −332 dB, two machines) and they reproduce in CI as the same four with the same numbers — but "stable in
+CI" was never a claim the CI runs could support, because the corpus as a whole is not reproducible there.
 
-**The statement that survives is sharper than either version.** On a **valid environment** the four divergences are
-real, stable and reproducible — ozvena **−39.2 dB**, morphdynamics **−29.7 dB**, bassHarmonic **−27.2 dB**, portal
-**−7.1 dB** — with `live↔live` at −322…−324 dB (the same processing path on both sides) and the offline `control`
-at −321.9…−323.9 dB (the same document rendered twice is bit-identical). That is an **invariant-3 product
-finding**: the export does not sound like the live branch, and it does so for a reason rather than by accident.
-The parallel session located the suspect — the **offline parameter regime in `src/effects/registry.ts`** — and
-deliberately left the four red.
-
-On the **CI runner** the corpus carries **no information**: its own `control` moves 3 dB between runs
-(`instrument:analog` −78.5 → −75.8 dB), so the same document rendered twice is _not_ bit-identical there. That is
-the precondition of the whole corpus, not a detail of one case.
-
-**The two statements no longer contradict each other — they answer different questions.** The desktop says _what the
-engine does_; the runner says _what the machine was doing_. What the runner cannot do is answer the first.
+**The four divergences, on a valid environment, are a product finding.** ozvena **−39.2 dB**, morphdynamics
+**−29.7 dB**, bassHarmonic **−27.2 dB**, portal **−7.1 dB**, with `live↔live` at −322…−324 dB (the same processing
+path on both sides) and the offline `control` at −321.9…−323.9 dB (the same document rendered twice is
+bit-identical). That is an **invariant-3 product finding**: the export does not sound like the live branch, and it
+does so for a reason rather than by accident. The parallel session located the suspect — the **offline parameter
+regime in `src/effects/registry.ts`** — and deliberately left the four red.
 
 **A gate whose verdict moves between runs on the same commit is not a gate.** The agreed direction is to make
 the null corpus a **non-blocking report** in CI — visible, but not deciding — until the phase anchor is fixed:
 the offline branch has to receive the same phase anchoring as the live one (`motionPhase`, `hallEngine
-lfoPhase`, the per-partial PLL). On a desktop the corpus is reproducible; in CI it currently is not.
+lfoPhase`, the per-partial PLL). **That anchor is the desktop's four findings, and it is a product fix.** The CI
+runner's own flapping has a **different** cause — the platform realtime divergence of the 17 instrument cases
+above — and the anchor will not fix it; the environment verdict and the second calibration axis are what make
+that difference visible instead of hiding it behind a red count.
 
-**One addition this session proposes, from the corpus's own material — now implemented and measured.** The corpus
-already contains a calibration case — `bitcrusher`, a deterministic effect whose controls measure **≈ −325 dB**
-(bit-identical live↔live and offline↔offline). That case can serve as a **health check on the measurement
-environment itself**: if the calibration case's own `control` or `liveRepeat` is not clean, the environment cannot
-measure this corpus, and the corpus's verdict should be reported as **invalid environment** rather than as a number
-of red cases. The proposal is now in the harness (`ee899de7`, `0b41bd0a`): the corpus measures its own calibration
-case and reports **`environment=measurable` / `environment=NOT measurable`** with the control value in the verdict.
-The threshold was **measured, not guessed** — the calibration control is **−325.2 dB** on a valid environment and
-the other cases' controls sit at −321.9…−323.9 dB, while a loaded runner measures the same control at about
-−78 dB; the floor at **≤ −200 dB** separates the two populations by more than **120 dB** of margin. The blocking
-policy was deliberately left unchanged (`ok` is still `failures.length === 0`), because "does the corpus block CI"
-is the owner's decision — but the verdict now makes that decision possible **from evidence instead of from a
-guess**. The same question was asked of the product's own auditions in **HCP-03-16**, where a check reported a
-verdict without asking whether it had anything to judge.
+**One addition this session proposes, from the corpus's own material — now implemented and measured, on two axes.**
+The corpus already contains a calibration case — `bitcrusher`, a deterministic effect whose controls are
+bit-identical. That case can serve as a **health check on the measurement environment itself**: if the calibration
+case's own `control` or `liveRepeat` is not clean, the environment cannot measure this corpus, and the corpus's
+verdict should be reported as **invalid environment** rather than as a number of red cases. The proposal is in the
+harness (`ee899de7`, `0b41bd0a`): the corpus measures its own calibration case and reports
+**`environment=measurable` / `environment=NOT measurable`** with the measured values in the verdict.
+
+**Both axes are certified, and the threshold was measured rather than guessed.** The first implementation checked
+only the offline `control`; the second axis — the calibration case's own `live↔live` — was added because it is
+exactly the probe for the 17 CI-only instrument failures. The floors are **≤ −200 dB on both axes**. Measured on
+two desktops: `control` **−334.4 dB**, `live↔live` **−231.3 dB** on one machine and **−325.2 dB** on the other, so
+even the tightest measurement keeps **more than 30 dB** of margin. (An earlier measurement of this session read
+**−325.2 dB** for the calibration _control_; the harness changed between the two measurements, which is why the
+figures differ.)
+
+**A verdict must never hide findings.** The failing-case list stays in the message **regardless** of the
+environment verdict, so `NOT measurable` can never conceal the four real findings. A verdict that hides findings is
+worse than a noisy one. The blocking policy was deliberately left unchanged (`ok` is still
+`failures.length === 0`), because "does the corpus block CI" is the owner's decision — but the verdict now makes
+that decision possible **from evidence instead of from a guess**. The same question was asked of the product's own
+auditions in **HCP-03-16**, where a check reported a verdict without asking whether it had anything to judge.
 
 **A second, smaller story from the same CI run — and a second self-correction.** The eight red tests in
 `tests/integrations/audiotool-nexus.test.ts` were not a timeout, as the parallel session first measured and
