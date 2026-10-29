@@ -1620,6 +1620,70 @@ handed to the parallel session that owns the corpus, together with the two corre
 not change the harness: the acceptance policy is a product decision, and the corpus is not this audit's to
 close.
 
+### 10.14 The CI runner is not a measurement environment for this corpus
+
+The paragraph above measures the corpus on a desktop. The parallel session then measured it on the CI runner —
+and that measurement is the more consequential one, because it shows the **runner** is the problem, not the
+corpus.
+
+**Three CI runs, the same code** (the harness has not changed since `6dd5b76e`):
+
+| run  | red | membership change                                                                                 |
+| ---- | --- | ------------------------------------------------------------------------------------------------- |
+| #452 | 22  | —                                                                                                 |
+| #453 | 21  | `instrument:bell` fell out                                                                        |
+| #455 | 20  | `fx:bassHarmonic` fell out (it had measured −27.2 dB twice in a row) — `instrument:struna` joined |
+
+**The branch consistency is not consistent either.** The corpus's own controls must be deterministic — `control`
+is the same offline render twice, and `liveRepeat` is the same realtime case twice. On the CI runner:
+
+- `fx:morphdynamics`: `liveRepeat` −331.0 → **−75.9 dB** between runs;
+- `instrument:analog`: `liveRepeat` −77.6 → **−323.6 dB**, and `control` −78.5 → **−75.8 dB**.
+
+**The offline branch is not reproducible on that runner.** The corpus's determinism control fails there, which
+means the red list it produces carries **no information about the engine** — it is a measurement of the
+machine's load.
+
+**The desktop, by contrast, is reproducible.** Windows and Linux produced **bit-identical** values for the four
+effects. So the two statements are both true and they point in opposite directions:
+
+- on a valid environment, the live↔offline divergence for those cases is **real** — an engine divergence, and
+  an invariant-3 question;
+- on the CI runner, the corpus's verdict is **noise**, including the five cases this report had called stable.
+  `fx:bassHarmonic` fell out of the set after measuring −27.2 dB twice.
+
+**A gate whose verdict moves between runs on the same commit is not a gate.** The agreed direction is to make
+the null corpus a **non-blocking report** in CI — visible, but not deciding — until the phase anchor is fixed:
+the offline branch has to receive the same phase anchoring as the live one (`motionPhase`, `hallEngine
+lfoPhase`, the per-partial PLL). On a desktop the corpus is reproducible; in CI it currently is not.
+
+**One addition this session proposes, from the corpus's own material.** The corpus already contains a
+calibration case — `bitcrusher`, a deterministic effect whose controls measure **≈ −325 dB** (bit-identical
+live↔live and offline↔offline). That case can serve as a **health check on the measurement environment
+itself**: if the calibration case's own `control` or `liveRepeat` is not clean, the environment cannot measure
+this corpus, and the corpus's verdict should be reported as **invalid environment** rather than as a number of
+red cases. Today the corpus has no such precondition — it reports 22 red cases without ever asking whether
+the runner is capable of measuring it, and those 22 change every run. The same question was asked of the
+product's own auditions in **HCP-03-16**, where a check reported a verdict without asking whether it had
+anything to judge.
+
+**A second, smaller story from the same CI run — and a second self-correction.** The eight red tests in
+`tests/integrations/audiotool-nexus.test.ts` were not a timeout, as the parallel session first measured and
+then refuted: they were **`TypeError: Promise.withResolvers is not a function`** — the Audiotool NEXUS SDK uses
+an API that exists only on **Node ≥ 22**, while CI ran on **Node 20**. Every test that called
+`createOfflineDocument()` therefore died before doing anything, and the 26 tests in the same file that did not
+call it passed. Fixed by moving all eleven jobs to Node 24 and by declaring `"engines": { "node": ">=22" }` so
+the dev machine learns it at install time rather than in a test (`4bb8e193`). **KYX's own code uses no Node 22+
+API — only the dependency does.**
+
+Two things are worth keeping from that episode. First, **the shape of the red set located the cause**: all
+failures in one file, and only the tests that called one function, is a signature that points at a missing API
+rather than at a slow build. Second, the parallel session **corrected its own hypothesis** — it had measured a
+776 ms WASM compile and a 5-second budget, concluded the two were in conflict, and then found that the timeout
+was not the cause; it kept the timeout with a comment saying plainly that it is **not** the cause of those eight
+reds. That is the same discipline this report applies to its own findings, and it is recorded here because a
+corrected hypothesis is part of the evidence, not a footnote.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
@@ -1774,6 +1838,6 @@ docs/audits/2026-10-27-hidden-creative-power/
 ```
 
 _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave and after the browser check
-(§10.7), the four-instance drift story (§10.10–§10.11) and the live↔offline handoff (§10.12–§10.13). Every
-claim is labelled Observed / Verified / Inferred / Hypothesized / Not verified, and every measurement in §10.2 was
-reproduced from the repository at the cited commit._
+(§10.7), the four-instance drift story (§10.10–§10.11), the live↔offline handoff and its refutations
+(§10.12–§10.14). Every claim is labelled Observed / Verified / Inferred / Hypothesized / Not verified, and every
+measurement in §10.2 was reproduced from the repository at the cited commit._
