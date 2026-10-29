@@ -25,6 +25,21 @@
  * (-40 dB relative to the reference) AND alignment within a few samples;
  * the actual measured dB is reported so regressions are visible long before
  * they become audible.
+ *
+ * WHO OWNS A CASE'S NULL — the acceptance rule, stated here once:
+ *
+ * The offline reference is compared against BOTH realtime captures. A case
+ * passes when the waveform null is clean, or when the realtime branch does
+ * not reproduce ITSELF — its two captures disagree with each other, or one
+ * of them matches the offline reference and the other does not — while the
+ * offline determinism control stays clean. Then the divergence is the device
+ * clock, not the engine, and the case is reported as "not measurable" rather
+ * than as a failure.
+ *
+ * A case stays RED when both captures differ from the offline reference AND
+ * agree with each other: then the realtime branch is reproducible and the
+ * engine really renders differently live than offline. That is the shape a
+ * real live↔offline divergence has, and the corpus keeps it red.
  */
 
 import { EFFECT_ORDER, defaultParamsOf } from "../effects/registry";
@@ -1677,7 +1692,7 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
             .map(labelOf)
             .join(
               ", ",
-            )} — ${excusedLine} — rule: a case passes when the waveform null is clean, or when the REALTIME branch is itself nondeterministic (live↔live within 3 dB of live↔offline with a clean offline control) — i.e. the divergence is the device clock, not the engine — case detail: ${compactCases.join(
+            )} — ${excusedLine} — rule: a case passes when the waveform null is clean, or when the REALTIME branch does not reproduce itself (its two captures disagree with each other, or one matches the offline reference and the other does not) with a clean offline control — i.e. the divergence is the device clock, not the engine; a case stays RED when both captures differ from the offline reference AND agree with each other, because then the branch is reproducible and the engine really renders differently live than offline — case detail: ${compactCases.join(
             " ",
           )} — details for the first ${Math.min(8, failures.length)}: ${failures.slice(0, 8).join(" | ")}`,
   };
