@@ -2277,6 +2277,29 @@ and, in the instrument map, `granular` ("per-voice seeded grain RNG across live/
 position that has advanced by the lead is the lead's shape, so it may be measurable too — but it was not re-measured
 and stays **Hypothesized, not measured**.
 
+**The corpus now measures 77 cases, and the ten lifted ones measure at the offline determinism level.** The
+parallel session's `e1cfe92b` re-measured every phase exclusion with the aligned branches (2026-10-29, floor
+−40 dB): flanger −323.6 dB · chorus −324.6 · tremolo −319.9 · autowah −310.6 · ringMod −322.1 · pitchShift
+−323.0 · reverb −323.4 · svFilter −325.1 · kaskada −316.7 · wowFlutter −325.1 — every one far below the floor, and
+**live↔offline EQUALS live↔live**, so the realtime branch reproduces itself exactly. The ten exclusions are withdrawn
+because their reasons described the harness's bias.
+
+**And the two that stay now rest on a measured reason rather than a theory.** `phaser` and `vinyl` are excluded
+because their realtime branch **does not reproduce itself**: live↔live **−77.0 dB** and **−80.4 dB**, the same order
+as their live↔offline nulls (−168.6 dB and −87.3 dB), so the residual is the branch's own jitter — and a per-sample
+null cannot judge a branch that does not reproduce itself. Their reasons were rewritten to say that, instead of
+blaming a modulation phase that is no longer the cause. One detail is worth a second look when they are re-measured:
+`phaser`'s live↔offline is **deeper** than its live↔live, which is what a **device-clock-following read position**
+would produce — two live captures drift apart by the clock, while the offline render's clock is deterministic.
+**Hypothesized, not measured.**
+
+**And the corpus's membership is guarded — by a different gate than the one that does not.** The drift gate does not
+pin the corpus's case count, and it should not: the count is free to grow. But the membership cannot move silently.
+`tests/parity-obligation.test.ts` asserts **corpus ∪ exclusions === the full registry** (no drift by construction),
+that every exclusion carries a specific non-empty reason, and that the corpus is registry-derived and non-empty. A
+case cannot leave the corpus without either being measured or carrying a stated reason — a **stronger** contract than
+a pinned number would be, because a pinned number would also forbid the corpus from growing.
+
 **The reverb exclusion is demonstrably inaccurate now.** It was excluded with the reason "free-running 0.5 Hz
 read-position modulator; device-clock jitter accumulates over the tail" — yet with the lead fixed, reverb measures
 **−323.4 dB, bit-identical**, and its live↔live was −323 dB in one run: the jitter the exclusion predicted did not
