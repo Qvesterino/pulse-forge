@@ -1989,11 +1989,29 @@ spread adds a "loaded" case; the max is now over five samples instead of three),
 red on a loaded machine. And because a degraded run must not hide a real regression behind a machine-load
 excuse, the numbers have to travel with the verdict — a silent "informational run" is a verdict nobody can act on.
 
-**What this section does NOT claim.** The change is **verified in code** and, per the commit message, by
-`tsc --noEmit --incremental false` (exit 0) and Prettier. It has **not** been observed at runtime: the browser
-gate has not been run end-to-end since the change, and **no spec covers the calibration** (nothing in `tests/`
-matches `calibSpread`, `perf environment` or `machine loaded`). The _shape_ of the environment line is verified
-from the source; the _number_ it prints on a real runner is **Not verified**.
+**What was NOT verified when this section was written — and what has since been observed.** At the time of writing
+the change was **verified in code** and, per the commit message, by `tsc --noEmit --incremental false` (exit 0) and
+Prettier — but **not observed at runtime**: the browser gate had not been run end-to-end since the change, and **no
+spec covers the calibration** (nothing in `tests/` matches `calibSpread`, `perf environment` or `machine loaded`).
+The parallel session then ran the full browser gate locally on this machine, and the line is now **observed**:
+
+```text
+PASS perf environment: this machine's timing is measurable — calib=15.0ms (floor 18ms) spread=1.1× (max 2×) —
+environment=measurable, the budget checks below are gated
+```
+
+That closes the last open cell, and it confirms both halves of the design at once: the check **passed** (it explains
+the gate, it never fails it) and it **reported** the numbers it used — 15.0 ms against an 18 ms floor, a 1.1×
+spread against a 2× limit — so a reader can tell "the machine was busy" from "the code is slow" without opening a
+log. Provenance: the run is the parallel session's local browser gate (log `tmp-browser-gate2.log`, 2026-10-29
+~07:05Z), and the calibration lives in `src/browser-checks.ts`, which that session did not touch — so these numbers
+are a runtime observation of the **committed** gate.
+
+**What the observation does NOT establish.** The numbers are **this machine's**: `calib=15.0 ms` describes this
+desktop's CPU under this load, and it is not a threshold. What the observation establishes is the **shape** of the
+verdict and the property that the environment check cannot turn a green gate red. On a loaded runner the same code
+prints `environment=NOT measurable` and the budget checks below it become informational — which is the intended
+behaviour, and the reason the numbers have to travel with the message.
 
 #### 10.16.3 A red job whose product code never ran — and three reds that were three different things
 
@@ -2039,6 +2057,33 @@ step conclusions for runs #470, #475, #476 and #479, and the per-job durations (
 against Prettier's own output to decide the formatting state of two files at that commit; and the source of
 `src/browser-checks.ts:4728-4745` for the perf gate. The 20-concurrent-jobs figure is GitHub's **documented**
 limit, not a measurement on this machine.
+
+#### 10.16.4 The verdict the CI runner cannot give — and the desktop that can
+
+The same local browser-gate run produced the second environment line this audit has been asking for, and the gate
+around it:
+
+| what               | measured                                                                                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the whole gate     | **438 of 439 checks passed**                                                                                                                                         |
+| the one red        | the live↔offline null corpus — **failed=4/67**, `environment=measurable`, calibration control **−334.4 dB**, calibration live↔live **−334.4 dB**, `not measurable=0` |
+| the four red cases | `fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal` — the same four §10.14 named                                                                         |
+
+**This is the number §10.14 was waiting for.** On the CI runner the same corpus reports **21/67**, because the
+runner's realtime path diverges from its own offline path for 17 instrument cases that are green on every desktop.
+On a measurable desktop it reports **4/67** — and the four are exactly the product findings §10.14 named, with the
+calibration clean on **both** axes. So the corpus's verdict splits cleanly into _four real findings_ and _seventeen
+platform artefacts_, and the discriminator is now printed **in the verdict itself** (`environment=measurable` plus
+the two calibration numbers) instead of being inferred from a red count. That is the difference between a corpus
+whose red list a reader must interpret and a corpus whose red list states what it could measure.
+
+**Provenance, stated precisely.** This run was made by the parallel session on its working tree, which carried
+uncommitted changes to the parity harness. Those changes are **diagnostic** — message text, segment-null ranges,
+`profileText()` in the failure lines — and they leave the corpus's **membership and acceptance rule** alone; the
+failing list in the log is the same four cases. The perf calibration comes from `src/browser-checks.ts`
+(`d1a93517`), which that session did not touch, so the perf numbers measure the **committed** code while the corpus
+number measures a tree that is **not** HEAD. The corpus's `4/67` should therefore be re-measured on a clean
+checkout of `de355323` before it is quoted as HEAD's number — **Not verified on HEAD.**
 
 ---
 
