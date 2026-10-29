@@ -121,10 +121,11 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Finding:** **no follow-playhead.** The playhead line is a positioned leaf (`ArrangementPanel.tsx:7438-7456`) driven by `usePlayheadBar`; the only `scrollLeft` writes are zoom re-anchor (`:1011`) and FIT (`:4743`). During a long play the playhead exits the viewport and the user hand-scrolls to find it — for a mixing/auditing journey this is the recurring interruption.
 - **Proposed:** opt-in follow mode with hysteresis (page-jumps, paused when the user scrolls), built on the existing 1/8-bar playhead subscription; persist per view in the layout store, not the document. Not a drive-by fix: scroll interaction with zoom anchoring needs the DOM census gate (`tests/ui/arrangement-dom-census.test.tsx`) watching it.
 
-### CF-10 | Medium-High | Confirmed | Status: TIER B
+### CF-10 | Medium-High | Confirmed | Status: **FIXED — commit `197f89c8`**
 
-- **Finding:** **after a take, the playhead is not parked.** `stopRec` performs placement, compensation and toasts but no seek (`ArrangementPanel.tsx:1628-1846`). The take group stays selected, so take-group retry is one click — but SINGLE-TAKE retry records "at the playhead" (`:4676`), which has rolled on. The performer must remember to rewind between every single-take pass.
-- **Proposed:** after a single-take stop, offer (or default to) returning the playhead to the take's start bar; punch mode's post-roll semantics stay as documented. This is a deliberate-behavior change → needs a small design note, but it is the highest-frequency interruption in the record journey.
+- **Finding:** **after a take, the playhead is not parked.** `stopRec` performed placement, compensation and toasts but no seek. Take-group passes already anchor to the group start (a seek the panel itself makes when the next pass starts) and loop passes ride the loop locators — the SINGLE take was the one flow with no anchor, and its retry recorded "at the playhead", which had rolled on. The highest-frequency interruption in the record journey.
+- **Fix:** after the placement lands, `stopRec` parks the playhead at the take's latency-compensated start bar and the placement notice discloses it ("Playhead returned to the take start."). The decision is a pure table (`takeStartReturnTick`): punch keeps its documented post-roll, loop and take-group captures return null (their anchoring contracts own the playhead), and a failed placement never claims a parked playhead. A **RETURN TO START toggle** sits next to DRY SOFT MON — default on, persisted per browser (`pf:rec-return-to-start`) — so the roll-on behavior stays one click away.
+- **Verification:** specs drive the REAL `stopRec` through the fake recorder — the parked seek is the last seek and equals the take's start bar (clip placed at bar 5, notice shown); the OFF toggle leaves the playhead alone while the take still places; the decision table pins every null branch plus fractional/negative clamps. Suite 37/37, ArrangementPanel + recording-audit 38/38, seam gate 98 seams, typecheck clean. (Harness note: the mock transport's frozen clock cannot express positions, so the fixture owns the recorded `session.startBar` — the honest recorded reality — and the assertion reads the seek + the placed clip.)
 
 ### CF-11 | Medium | Confirmed | Status: TIER B
 
@@ -209,7 +210,7 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-04                | 3      | 4    | 5    | 5        | 5      | 22    | **FIX NOW (shipped)**                              |
 | CF-05                | 5      | 5    | 5    | 3        | 2      | 20    | **FIXED after owner approval (commit `892dcc61`)** |
 | CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | **FIX NOW (shipped — disclosure, not friction)**   |
-| CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | PROTOTYPE (record loop)                            |
+| CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | **FIXED (default-on toggle, `197f89c8`)**          |
 | CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | PROTOTYPE (follow-playhead)                        |
 | CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                          |
 | CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | TIER B                                             |
@@ -271,7 +272,7 @@ _(Formerly deferred here: CF-05 — approved and shipped as `892dcc61`; see §4.
 ## 10. 30/60/90-day optimization roadmap
 
 **30 days — disclosure and parking (small, mostly additive).**
-CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-10 take-start parking (behind a documented default); CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`.) Exit: each has a seam entry with a negative.
+CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-22 dock focus restore; CF-12 Time & pitch affordance + palette entry. (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`; CF-10's take-start parking shipped early — commit `197f89c8`.) Exit: each has a seam entry with a negative.
 
 **60 days — the listening loops.**
 CF-09 follow-playhead prototype (hysteresis, census gate watching); CF-08 calibration surfaced from the record toolbar; CF-19 MixPreview staleness guard; CF-13 project search; CF-11 zoom/focus persistence via the layout store. The CF-05 Playwright journey (staged in `keyboard-guards.spec.ts`) joins the regular suite once the shared dev server is healthy — that run is also the first real-browser measurement this audit's blocked e2e pass was waiting for.
