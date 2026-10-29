@@ -792,7 +792,7 @@ async function nullTestCase(
     const phaseInsensitive = m.phaseInsensitive;
     return `${label}: null ${m.liveNullDb.toFixed(1)} dB ${profileText(m)} corr=${m.correlation.toFixed(
       4,
-    )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
+    )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB live2=${Number.isFinite(m.live2NullDb) ? m.live2NullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
       3,
     )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} RMS=${phaseInsensitive?.rmsRatio.toFixed(3) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} offlineRMS=${m.phaseInsensitiveControl?.rmsRatio.toFixed(3) ?? "n/a"} offlineWindows=${m.phaseInsensitiveControl?.windows ?? 0} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} liveRepeatWindows=${m.phaseInsensitiveRepeat?.windows ?? 0} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB (needs clean live↔offline and live↔live waveform comparisons, or deterministic offline control plus ≥${minimumSpectralCosine} spectral cosine and RMS ${PARITY_SPECTRAL_RMS_RATIO_MIN}–${PARITY_SPECTRAL_RMS_RATIO_MAX} across live/offline, offline repeat, and live repeat)`;
   }
@@ -824,7 +824,7 @@ async function nullTestCase(
     const phaseInsensitive = m.phaseInsensitive;
     return `${label}: null ${m.liveNullDb.toFixed(1)} dB ${profileText(m)} corr=${m.correlation.toFixed(
       4,
-    )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
+    )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB live2=${Number.isFinite(m.live2NullDb) ? m.live2NullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
       3,
     )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} segHead=${m.segmentNullDb.head.toFixed(1)} dB segTail=${m.segmentNullDb.tail.toFixed(1)} dB livePeak=${m.livePeak.toFixed(4)} refPeak=${m.refPeak.toFixed(4)} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB realtimeNondeterministic=${m.realtimeNondeterministic} (needs ≤ ${
       PARITY_NULL_FLOOR_DB
@@ -960,6 +960,48 @@ function nullOverRange(
   return 10 * Math.log10((diff + 1e-30) / (ref + 1e-30));
 }
 
+/**
+ * DIAGNOSTIC (not a gate criterion): the SHAPE of the aligned difference
+ * between the two branches.
+ *
+ * A null on its own says how big the difference is; these three numbers say
+ * what KIND it is:
+ *
+ * - a difference whose MEAN dominates its peak is a DC offset;
+ * - a difference whose peak dominates its mean and is spread over the whole
+ *   window is a waveform difference (a phase, a filter state, another branch);
+ * - a difference that lives in one narrow place is a single event.
+ *
+ * The instrument corpus produced a null that was FLAT at the same value in
+ * every run, with a correlation of 0.9997 and identical peaks - a difference
+ * of constant relative size that is nearly orthogonal to the signal. Those
+ * three numbers say which of the shapes above it is.
+ */
+export function differenceStats(
+  reference: Float32Array,
+  capture: Float32Array,
+  offset: number,
+): { peak: number; mean: number; rms: number } {
+  const total = Math.min(reference.length, capture.length - Math.max(0, -offset));
+  let peak = 0;
+  let sum = 0;
+  let energy = 0;
+  let counted = 0;
+  for (let i = 0; i < total; i++) {
+    const j = i + offset;
+    if (j < 0 || j >= capture.length) continue;
+    const d = reference[i]! - capture[j]!;
+    const a = Math.abs(d);
+    if (a > peak) peak = a;
+    sum += d;
+    energy += d * d;
+    counted++;
+  }
+  if (counted === 0) return { peak: 0, mean: 0, rms: 0 };
+  const mean = sum / counted;
+  return { peak, mean, rms: Math.sqrt(energy / counted) };
+}
+
 export function segmentNulls(
   reference: Float32Array,
   capture: Float32Array,
@@ -1040,37 +1082,48 @@ export function fractionalShiftScan(
   // Blackman-Harris window over 32 taps has sidelobes around -92 dB, so the
   // null it measures is the signal's, not the interpolator's.
   const TAPS = 16;
-  const window = (k: number): number => {
+  // The window depends on the TAP only, so it is computed once for the whole
+  // scan instead of once per tap per sample.
+  const windowValues = new Float64Array(2 * TAPS + 1);
+  for (let k = -TAPS; k <= TAPS; k++) {
     const n = (k + TAPS) / (2 * TAPS);
-    return (
+    windowValues[k + TAPS] =
       0.35875 -
       0.48829 * Math.cos(2 * Math.PI * n) +
       0.14128 * Math.cos(4 * Math.PI * n) -
-      0.01168 * Math.cos(6 * Math.PI * n)
-    );
-  };
-  const at = (pos: number): number => {
-    const center = Math.floor(pos);
-    const frac = pos - center;
-    let sum = 0;
+      0.01168 * Math.cos(6 * Math.PI * n);
+  }
+  // The interpolation WEIGHTS depend on the fractional shift only - the
+  // offset is a whole number of samples - so they are computed once per step
+  // and reused for every sample of that step. Recomputing them per sample
+  // cost ~21 million sin() calls per case, which is enough to load a CI
+  // runner and disturb the very measurements the corpus takes.
+  const weightsFor = (fraction: number): { weights: Float64Array; norm: number } => {
+    const weights = new Float64Array(2 * TAPS + 1);
     let norm = 0;
     for (let k = -TAPS; k <= TAPS; k++) {
-      const idx = center + k;
-      if (idx < 0 || idx >= capture.length) continue;
-      const x = k - frac;
+      const x = k - fraction;
       const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
-      const w = window(k);
-      sum += capture[idx]! * sinc * w;
-      norm += sinc * w;
+      const value = sinc * windowValues[k + TAPS]!;
+      weights[k + TAPS] = value;
+      norm += value;
     }
-    return norm > 1e-9 ? sum / norm : 0;
+    return { weights, norm };
   };
   const nullAt = (fraction: number): number => {
+    const { weights, norm } = weightsFor(fraction);
     let diff = 0;
     let ref = 0;
     const n = Math.min(reference.length, capture.length);
     for (let i = 0; i < n; i++) {
-      const b = at(i + offset + fraction);
+      const center = i + offset;
+      let sum = 0;
+      for (let k = -TAPS; k <= TAPS; k++) {
+        const idx = center + k;
+        if (idx < 0 || idx >= capture.length) continue;
+        sum += capture[idx]! * weights[k + TAPS]!;
+      }
+      const b = norm > 1e-9 ? sum / norm : 0;
       const d = reference[i]! - b;
       diff += d * d;
       ref += reference[i]! * reference[i]!;
@@ -1166,6 +1219,26 @@ export interface ParityMeasurement {
   /** Best sample offset aligning the repeated realtime capture to the first. */
   liveRepeatAlignOffset: number;
   /**
+   * Null of the SECOND realtime capture against the offline reference.
+   *
+   * The live↔live comparison says whether the realtime branch reproduces
+   * itself; this says whether the SECOND capture would have reached the same
+   * verdict as the first. The two answers are not the same: a branch can
+   * capture #1 that matches the offline reference and capture #2 that does not
+   * (the branch produced two different answers), and then the case's verdict
+   * depends on which capture happened to be taken - which is how a case that
+   * is green on one run is red on the next.
+   */
+  live2NullDb: number;
+  /**
+   * DIAGNOSTIC: the shape of the aligned difference between the live capture
+   * and the offline reference. A DC offset and a waveform difference produce
+   * the same null, so the null alone cannot tell them apart.
+   */
+  difference: { peak: number; mean: number; rms: number };
+  /** The same three numbers for the difference between the two live captures. */
+  liveRepeatDifference: { peak: number; mean: number; rms: number };
+  /**
    * Pearson correlation of the aligned live capture against the offline
    * reference — the PERCEPTUAL verdict that stays meaningful when the
    * realtime branch is not bit-reproducible (device clock + free-running
@@ -1174,11 +1247,12 @@ export interface ParityMeasurement {
    */
   correlation: number;
   /**
-   * True when the realtime branch is the source of the null: the second live
-   * capture of the SAME script disagrees at least as much as the offline
-   * reference does, while the offline determinism control stays clean. That
-   * combination is a device-clock / non-reproducing-realtime-DSP artefact, not
-   * a live↔offline engine divergence.
+   * True when the realtime branch is the source of the null: the branch does
+   * not reproduce ITSELF - its two captures disagree with each other, or one
+   * matches the offline reference and the other does not - while the offline
+   * determinism control stays clean. That combination is a device-clock /
+   * non-reproducing-realtime-DSP artefact, not a live↔offline engine
+   * divergence. See `realtimeBranchOwnsTheNull` for the exact rule.
    */
   realtimeNondeterministic: boolean;
   /** Magnitude-spectrum comparison for phase-unlocked realtime oscillators. */
@@ -1213,6 +1287,9 @@ export async function measureParityCase(
     controlNullDb: Number.NaN,
     liveRepeatNullDb: Number.NaN,
     liveRepeatAlignOffset: 0,
+    live2NullDb: Number.NaN,
+    difference: { peak: 0, mean: 0, rms: 0 },
+    liveRepeatDifference: { peak: 0, mean: 0, rms: 0 },
     correlation: Number.NaN,
     realtimeNondeterministic: false,
     phaseInsensitive: null,
@@ -1284,6 +1361,12 @@ export async function measureParityCase(
   const liveRepeatMatch = live2
     ? compareWithQuantumRetry(live.left, live2.left, live.sampleRate)
     : { alignOffset: 0, nullDb: Number.NaN, quantumShift: false };
+  // The second realtime capture against the OFFLINE reference: the verdict
+  // depends on which capture happened to be taken, and this is the number
+  // that says so.
+  const live2Match = live2
+    ? compareWithQuantumRetry(reference, live2.left, live.sampleRate)
+    : { alignOffset: 0, nullDb: Number.NaN, quantumShift: false };
   const stats = (data: Float32Array) => {
     let peak = 0;
     let energy = 0;
@@ -1297,7 +1380,15 @@ export async function measureParityCase(
   const ref = stats(reference);
   const liveStats = stats(live.left);
   const profile = divergenceProfile(reference, live.left, liveMatch.alignOffset, live.sampleRate);
-  const fractional = fractionalShiftScan(reference, live.left, liveMatch.alignOffset);
+  // The fractional scan is a DIAGNOSTIC for the cases that diverge, and it is
+  // the most expensive measurement in the corpus - so it runs only where it
+  // can say something. A clean case has no divergence to characterise, and a
+  // runner that spends its budget on 77 clean cases has less of it left for
+  // the captures that follow.
+  const caseIsDirty = liveMatch.nullDb > PARITY_NULL_FLOOR_DB || live2Match.nullDb > PARITY_NULL_FLOOR_DB;
+  const fractional = caseIsDirty
+    ? fractionalShiftScan(reference, live.left, liveMatch.alignOffset)
+    : { fraction: Number.NaN, nullDb: Number.NaN, nullAtZeroDb: Number.NaN };
   const phaseInsensitive = comparePhaseInsensitiveParity(reference, live.left, liveMatch.alignOffset, live.sampleRate);
   const phaseInsensitiveControl = control
     ? comparePhaseInsensitiveParity(reference, control, controlMatch.alignOffset, live.sampleRate)
@@ -1325,17 +1416,21 @@ export async function measureParityCase(
     leadSec,
     liveRepeatNullDb: liveRepeatMatch.nullDb,
     liveRepeatAlignOffset: liveRepeatMatch.alignOffset,
+    live2NullDb: live2Match.nullDb,
+    difference: differenceStats(reference, live.left, liveMatch.alignOffset),
+    liveRepeatDifference: differenceStats(live.left, live2.left, liveRepeatMatch.alignOffset),
     correlation: liveMatch.correlation,
-    // The realtime branch owns the null when two live runs of the SAME script
-    // disagree at least as much as the offline reference does, while the
-    // offline determinism control is clean. Guard against a missing/failed
-    // second capture (NaN) so the verdict stays conservative.
-    realtimeNondeterministic:
-      liveMatch.nullDb > PARITY_NULL_FLOOR_DB &&
-      Number.isFinite(liveRepeatMatch.nullDb) &&
-      Number.isFinite(controlMatch.nullDb) &&
-      controlMatch.nullDb <= PARITY_NULL_FLOOR_DB &&
-      liveRepeatMatch.nullDb >= liveMatch.nullDb - 3,
+    // The realtime branch owns the null when it does not reproduce itself.
+    // The rule lives in `realtimeBranchOwnsTheNull` so a unit test can lock
+    // it: it is the difference between "the engine renders differently live
+    // than offline" and "the machine measured twice and got two different
+    // answers".
+    realtimeNondeterministic: realtimeBranchOwnsTheNull({
+      liveNullDb: liveMatch.nullDb,
+      live2NullDb: live2Match.nullDb,
+      liveRepeatNullDb: liveRepeatMatch.nullDb,
+      controlNullDb: controlMatch.nullDb,
+    }),
     phaseInsensitive,
     phaseInsensitiveControl,
     phaseInsensitiveRepeat,
@@ -1385,6 +1480,51 @@ export async function __runParityCaseForProbe(
 }
 
 /**
+ * The rule that says whether the REALTIME branch owns the null - that is,
+ * whether a case's divergence says anything about the processing path at all.
+ *
+ * The realtime branch owns the null when it does not reproduce ITSELF. There
+ * are two ways it can fail to do that, and the old rule only saw one:
+ *
+ *   a) its two captures disagree with each other (live↔live dirty);
+ *   b) one capture matches the offline reference and the other does not.
+ *
+ * Case (b) is what made the corpus's verdict depend on WHICH capture
+ * happened to be taken. Measured 2026-10-29 on one machine, the same
+ * instrument case measured live↔offline at -323.6 dB on one run and at
+ * -31.7 dB on the next, on the same code: the second capture was the odd one
+ * out, and the rule reported the run where the odd capture came first as an
+ * ENGINE divergence - even though the engine had produced two different
+ * answers itself.
+ *
+ * The one shape that stays attributable to the engine: BOTH captures are dirty
+ * against the offline reference but they agree with EACH OTHER (live↔live
+ * clean). Then the realtime branch is reproducible and it really renders
+ * differently live than offline - which is what the CI runner's instrument
+ * cases show, and they stay red.
+ *
+ * The offline determinism control has to be clean: while the OFFLINE branch
+ * does not reproduce itself, no difference can be attributed to anything.
+ * A missing or failed capture (NaN) keeps the verdict conservative.
+ */
+export function realtimeBranchOwnsTheNull(input: {
+  liveNullDb: number;
+  live2NullDb: number;
+  liveRepeatNullDb: number;
+  controlNullDb: number;
+}): boolean {
+  const { liveNullDb, live2NullDb, liveRepeatNullDb, controlNullDb } = input;
+  if (!Number.isFinite(liveNullDb) || !Number.isFinite(live2NullDb)) return false;
+  if (!Number.isFinite(liveRepeatNullDb) || !Number.isFinite(controlNullDb)) return false;
+  if (controlNullDb > PARITY_NULL_FLOOR_DB) return false;
+  const live1Dirty = liveNullDb > PARITY_NULL_FLOOR_DB;
+  const live2Dirty = live2NullDb > PARITY_NULL_FLOOR_DB;
+  if (!live1Dirty && !live2Dirty) return false;
+  const bothDirtyAndAgree = live1Dirty && live2Dirty && liveRepeatNullDb <= PARITY_NULL_FLOOR_DB;
+  return !bothDirtyAndAgree;
+}
+
+/**
  * Run the real-audio null test over the FX + instrument corpora. Registry-
  * derived, so every new registry member is automatically exercised unless it
  * carries an explicit exclusion (see parityObligations).
@@ -1406,9 +1546,12 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     // The same condition nullTestCase uses to excuse a case: the realtime
     // branch did not reproduce itself, so this case's divergence says nothing
     // about the processing path.
-    if (m.realtimeNondeterministic && (!Number.isFinite(m.liveNullDb) || m.liveNullDb > PARITY_NULL_FLOOR_DB)) {
-      excused.push(label);
-    }
+    //
+    // A case that PASSED on its first capture is named here too when its
+    // second capture disagrees: the verdict was green by luck, and a green
+    // verdict that hides a non-reproducing branch is a blind spot the reader
+    // cannot see.
+    if (m.realtimeNondeterministic) excused.push(label);
   };
 
   for (const type of parityFxCorpus()) {
@@ -1468,12 +1611,10 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     const ratio = (a: number, b: number) => (Math.abs(b) > 1e-12 ? (a / b).toFixed(3) : "n/a");
     return `${label}(null=${db(m.liveNullDb)}dB,corr=${m.correlation.toFixed(4)},liveRepeat=${db(
       m.liveRepeatNullDb,
-    )}dB,control=${db(m.controlNullDb)}dB,rms=${ratio(m.liveRms, m.refRms)}×,peak=${ratio(
+    )}dB,live2=${db(m.live2NullDb)}dB,control=${db(m.controlNullDb)}dB,rms=${ratio(m.liveRms, m.refRms)}×,peak=${ratio(
       m.livePeak,
       m.refPeak,
-    )}×,spec=${m.phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"},frac=${m.fractionalShift.toFixed(
-      4,
-    )}/${db(m.fractionalNullDb)}dB,${profileText(m)})`;
+    )}×,spec=${m.phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"},frac=${Number.isFinite(m.fractionalShift) ? `${m.fractionalShift.toFixed(4)}/${db(m.fractionalNullDb)}dB` : "n/a"},${profileText(m)})`;
   });
   // The environment's own health check, read off the calibration case: a
   // deterministic effect rendered twice offline is bit-identical (measured

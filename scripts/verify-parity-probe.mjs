@@ -141,13 +141,16 @@ try {
         `liveNull=${fmt(r.liveNullDb)}dB`,
         `corr=${fmt4(r.correlation)}`,
         `liveRepeat=${fmt(r.liveRepeatNullDb)}dB`,
+        `live2=${fmt(r.live2NullDb)}dB`,
         `control=${fmt(r.controlNullDb)}dB`,
         `rt-nondet=${r.realtimeNondeterministic}`,
         `offset=${r.alignOffset}`,
+        `repeatOffset=${r.liveRepeatAlignOffset}`,
         `segHead=${fmt(r.segmentNullDb?.head)}dB segTail=${fmt(r.segmentNullDb?.tail)}dB`,
         `profile=[${(r.divergenceProfile ?? []).map((v) => fmt(v)).join(",")}]`,
         `onset=${Number.isFinite(r.divergenceOnsetSec) ? `${r.divergenceOnsetSec.toFixed(3)}s` : "n/a"}`,
         `frac=${Number.isFinite(r.fractionalShift) ? `${r.fractionalShift.toFixed(4)}/${fmt(r.fractionalNullDb)}dB` : "n/a"}`,
+        `diff=${diffText(r.difference)} repeatDiff=${diffText(r.liveRepeatDifference)}`,
         `livePeak=${num(r.livePeak)} refPeak=${num(r.refPeak)}`,
         `frames live=${r.liveFrames}/ref=${r.refFrames}`,
       ].join("  "),
@@ -170,4 +173,9 @@ function num(v) {
 }
 function fmt4(v) {
   return typeof v === "number" && Number.isFinite(v) ? v.toFixed(4) : "n/a";
+}
+
+function diffText(d) {
+  if (!d) return "n/a";
+  return `p=${num(d.peak)}/m=${num(d.mean)}/r=${num(d.rms)}`;
 }

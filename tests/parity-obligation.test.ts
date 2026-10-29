@@ -13,6 +13,7 @@ import {
   parityInstrumentCorpus,
   parityObligationCheck,
   parityObligations,
+  realtimeBranchOwnsTheNull,
 } from "../src/testing/live-offline-parity";
 import { EFFECT_ORDER } from "../src/effects/registry";
 import {
@@ -210,3 +211,82 @@ function toneSpectrum(frequency: number) {
   const samples = tone(frequency);
   return comparePhaseInsensitiveParity(samples, samples, 0, 44100);
 }
+
+/**
+ * Who owns a case's null - the engine or the measurement.
+ *
+ * The rule decides whether a red case is a real live↔offline divergence or a
+ * machine that measured twice and got two different answers. It used to see
+ * only half of the flakiness, so the SAME case was green on one run and red
+ * on the next (measured 2026-10-29: live↔offline at -323.6 dB on one run and
+ * -31.7 dB on the next, same machine, same code).
+ */
+describe("the realtime branch owns the null when it does not reproduce itself", () => {
+  it("leaves a case alone when both captures and the offline reference agree", () => {
+    expect(
+      realtimeBranchOwnsTheNull({
+        liveNullDb: -323.6,
+        live2NullDb: -323.6,
+        liveRepeatNullDb: -323.6,
+        controlNullDb: -323.6,
+      }),
+    ).toBe(false);
+  });
+
+  it("excuses a case whose second capture is the odd one out", () => {
+    // The shape that flipped the verdict between runs: capture #1 matches the
+    // offline reference, capture #2 does not, and the two captures disagree
+    // with each other. The engine produced two different answers, so neither
+    // difference is attributable to the processing path.
+    expect(
+      realtimeBranchOwnsTheNull({
+        liveNullDb: -323.6,
+        live2NullDb: -31.7,
+        liveRepeatNullDb: -31.7,
+        controlNullDb: -323.6,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps a reproducible divergence red", () => {
+    // Both captures differ from the offline reference AND agree with each
+    // other: the realtime branch is reproducible and it really renders
+    // differently live than offline. This is the shape the CI runner's
+    // instrument cases have, and they have to stay red.
+    expect(
+      realtimeBranchOwnsTheNull({
+        liveNullDb: -28.9,
+        live2NullDb: -28.9,
+        liveRepeatNullDb: -304.9,
+        controlNullDb: -304.9,
+      }),
+    ).toBe(false);
+  });
+
+  it("never excuses while the OFFLINE branch does not reproduce itself", () => {
+    // The offline control has to sit BELOW the acceptance floor. A control at
+    // -89.5 dB (measured on the 808 case) is still clean by that standard -
+    // the two offline renders do not have to be bit-identical, they have to
+    // agree to the floor. A control ABOVE the floor is a render that does not
+    // reproduce itself, and then no difference can be attributed to anything.
+    expect(
+      realtimeBranchOwnsTheNull({
+        liveNullDb: -31.7,
+        live2NullDb: -31.7,
+        liveRepeatNullDb: -31.7,
+        controlNullDb: -12,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the verdict conservative when a capture is missing", () => {
+    expect(
+      realtimeBranchOwnsTheNull({
+        liveNullDb: -31.7,
+        live2NullDb: Number.NaN,
+        liveRepeatNullDb: -31.7,
+        controlNullDb: -323.6,
+      }),
+    ).toBe(false);
+  });
+});
