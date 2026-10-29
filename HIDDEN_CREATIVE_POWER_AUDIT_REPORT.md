@@ -1620,6 +1620,18 @@ handed to the parallel session that owns the corpus, together with the two corre
 not change the harness: the acceptance policy is a product decision, and the corpus is not this audit's to
 close.
 
+**The hole that was handed over is now closed, and the closing argument is worth recording.** The escape in
+`nullTestCase` demanded `realtimeNondeterministic && correlation ≥ 0.99`, but the noise that makes the realtime
+branch nondeterministic is exactly what destroys the correlation (measured: `pluck` `liveRepeat` −4.6 dB at
+correlation **0.8063**) — so the escape was **unreachable for the class it was built for**, and every case it was
+written for was reported as a red engine divergence. The correlation was only ever a **proxy** for "same
+processing path"; the `live↔live` comparison answers that question directly. The fix removes the correlation term
+(`ee899de7`). Its discriminating property was measured on the four cases both sessions called stable — reverb
+corr 0.8558, morphdynamics 0.9998, bassHarmonic 0.9998, portal 0.7802, **all with `rt-nondet = false`** and
+`live↔live` at −322…−324 dB — so a genuinely different processing path (which is _deterministic_, and therefore
+has a clean `live↔live`) is still not excused: **the fix keeps every one of them red and removes only the coin
+flips.** The verdict is now a property of the measurement, not of the run's luck.
+
 ### 10.14 The CI runner is not a measurement environment for this corpus
 
 The paragraph above measures the corpus on a desktop. The parallel session then measured it on the CI runner —
@@ -1652,30 +1664,49 @@ effects. So the two statements are both true and they point in opposite directio
 - on the CI runner, the corpus's verdict is **noise** for the cases that flap between runs — it moves the
   _membership_ of the red set rather than any one case's value.
 
-**A narrowing, measured by the parallel session.** The sentence above originally read "noise, **including** the five
-cases this report had called stable", and that was too strong. The parallel session measured that **ozvena,
-morphdynamics, bassHarmonic and portal reproduce bit-identically in two local runs _and_ in CI** — which makes
-them the stable product finding rather than runner noise: an export that does not sound like the live branch is a
-real invariant-3 divergence, reproducible on both machines. `fx:bassHarmonic` fell out of one run's _set_ after
-measuring −27.2 dB twice, which is a fact about that run's membership, not about the case's value. The claim
-that survives is therefore narrower: **the runner's noise affects the flapping cases and the membership of the
-red set, not these four.** (Measured by the parallel session, under a harness that has since changed twice —
-`ee899de7` and `0b41bd0a`; this report did not re-measure it.)
+**A narrowing that was itself withdrawn — and the sharper statement that replaces both.** The sentence above
+originally read "noise, **including** the five cases this report had called stable". The parallel session then
+reported that **ozvena, morphdynamics, bassHarmonic and portal reproduce bit-identically in two local runs _and_ in
+CI**, and this report narrowed the claim accordingly (`319027fe`). That narrowing was this report's error, made on
+the strength of a statement the parallel session has since **withdrawn in writing**: the "in CI" half was wrong,
+`bassHarmonic` did drop out, and the four are stable **locally** — proven by their own `live↔live` and `control`
+values, not by the CI runs. Both halves of the exchange are recorded because a corrected hypothesis is part of the
+evidence, and because the intermediate statement is now retracted rather than merely superseded.
+
+**The statement that survives is sharper than either version.** On a **valid environment** the four divergences are
+real, stable and reproducible — ozvena **−39.2 dB**, morphdynamics **−29.7 dB**, bassHarmonic **−27.2 dB**, portal
+**−7.1 dB** — with `live↔live` at −322…−324 dB (the same processing path on both sides) and the offline `control`
+at −321.9…−323.9 dB (the same document rendered twice is bit-identical). That is an **invariant-3 product
+finding**: the export does not sound like the live branch, and it does so for a reason rather than by accident.
+The parallel session located the suspect — the **offline parameter regime in `src/effects/registry.ts`** — and
+deliberately left the four red.
+
+On the **CI runner** the corpus carries **no information**: its own `control` moves 3 dB between runs
+(`instrument:analog` −78.5 → −75.8 dB), so the same document rendered twice is _not_ bit-identical there. That is
+the precondition of the whole corpus, not a detail of one case.
+
+**The two statements no longer contradict each other — they answer different questions.** The desktop says _what the
+engine does_; the runner says _what the machine was doing_. What the runner cannot do is answer the first.
 
 **A gate whose verdict moves between runs on the same commit is not a gate.** The agreed direction is to make
 the null corpus a **non-blocking report** in CI — visible, but not deciding — until the phase anchor is fixed:
 the offline branch has to receive the same phase anchoring as the live one (`motionPhase`, `hallEngine
 lfoPhase`, the per-partial PLL). On a desktop the corpus is reproducible; in CI it currently is not.
 
-**One addition this session proposes, from the corpus's own material.** The corpus already contains a
-calibration case — `bitcrusher`, a deterministic effect whose controls measure **≈ −325 dB** (bit-identical
-live↔live and offline↔offline). That case can serve as a **health check on the measurement environment
-itself**: if the calibration case's own `control` or `liveRepeat` is not clean, the environment cannot measure
-this corpus, and the corpus's verdict should be reported as **invalid environment** rather than as a number of
-red cases. Today the corpus has no such precondition — it reports 22 red cases without ever asking whether
-the runner is capable of measuring it, and those 22 change every run. The same question was asked of the
-product's own auditions in **HCP-03-16**, where a check reported a verdict without asking whether it had
-anything to judge.
+**One addition this session proposes, from the corpus's own material — now implemented and measured.** The corpus
+already contains a calibration case — `bitcrusher`, a deterministic effect whose controls measure **≈ −325 dB**
+(bit-identical live↔live and offline↔offline). That case can serve as a **health check on the measurement
+environment itself**: if the calibration case's own `control` or `liveRepeat` is not clean, the environment cannot
+measure this corpus, and the corpus's verdict should be reported as **invalid environment** rather than as a number
+of red cases. The proposal is now in the harness (`ee899de7`, `0b41bd0a`): the corpus measures its own calibration
+case and reports **`environment=measurable` / `environment=NOT measurable`** with the control value in the verdict.
+The threshold was **measured, not guessed** — the calibration control is **−325.2 dB** on a valid environment and
+the other cases' controls sit at −321.9…−323.9 dB, while a loaded runner measures the same control at about
+−78 dB; the floor at **≤ −200 dB** separates the two populations by more than **120 dB** of margin. The blocking
+policy was deliberately left unchanged (`ok` is still `failures.length === 0`), because "does the corpus block CI"
+is the owner's decision — but the verdict now makes that decision possible **from evidence instead of from a
+guess**. The same question was asked of the product's own auditions in **HCP-03-16**, where a check reported a
+verdict without asking whether it had anything to judge.
 
 **A second, smaller story from the same CI run — and a second self-correction.** The eight red tests in
 `tests/integrations/audiotool-nexus.test.ts` were not a timeout, as the parallel session first measured and
@@ -1802,9 +1833,11 @@ falsification, and the corrected attribution — lives in this section rather th
 **What this section does NOT claim.** The three downstream CI jobs that failed with the typecheck — Production
 build, Production browser smoke, Browser audio checks — were **not** re-measured here; only the typecheck was.
 They failed as consequences of a broken build, but "would now be green" is not a measurement and is not
-claimed. §10.14's question — whether the CI runner can measure the null corpus at all — is untouched by this
-fix, and the harness hole the parallel session identified (`:777`, where the realtime-nondeterministic escape
-and the correlation floor cancel each other) is **still open**.
+claimed. §10.14's question — whether the CI runner can measure the null corpus at all — was **not** settled by
+this fix, and the harness hole the parallel session identified (`:777`, where the realtime-nondeterministic escape
+and the correlation floor cancel each other) was still open **when this section was written**. Both have moved on
+since, in the parallel session's lane: the hole is closed and the corpus now measures its own calibration case,
+so the verdict says whether the environment can measure at all (`ee899de7`, `0b41bd0a`, and §10.14 above).
 
 **The transferable lesson.** A gate that is red on `main` is a claim about `main`, and the cheapest way to learn
 whose claim it is, is to measure it on a clean checkout of the commit rather than on the working tree the
