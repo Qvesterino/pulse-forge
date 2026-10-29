@@ -104,7 +104,10 @@ export async function mcpAnalyzeAudio(
   services: Services,
   request: AnalyzeAudioRequest,
   signal?: AbortSignal,
-  deps?: { render?: StripRenderer; classify?: (mono16k: Float32Array) => Promise<Array<{ label: string; score: number }> | null> },
+  deps?: {
+    render?: StripRenderer;
+    classify?: (mono16k: Float32Array) => Promise<Array<{ label: string; score: number }> | null>;
+  },
 ): Promise<AnalyzeAudioResult> {
   const doc = services.store.getDoc();
   const track = doc.tracks.find((t) => t.id === request.trackId);
@@ -126,11 +129,15 @@ export async function mcpAnalyzeAudio(
   throwIfAborted(signal);
 
   const projectRevision = storeRevision(services.store);
-  const resolved = resolveAnalysisWindow(doc, {
-    ...(projectRevision === null ? {} : { revision: projectRevision }),
-    scope: { kind: "track", id: request.trackId },
-    window,
-  }, 44100);
+  const resolved = resolveAnalysisWindow(
+    doc,
+    {
+      ...(projectRevision === null ? {} : { revision: projectRevision }),
+      scope: { kind: "track", id: request.trackId },
+      window,
+    },
+    44100,
+  );
 
   const provenance = {
     projectId: doc.id,
