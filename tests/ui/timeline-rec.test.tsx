@@ -21,6 +21,7 @@ import {
   resolveRecordedAudioDestinations,
   recordingStartBar,
   secondsPerBar,
+  takeStartReturnTick,
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject, ticksPerBarFor } from "../../src/project-model/schema";
@@ -1225,6 +1226,157 @@ describe("arrangement REC wiring", () => {
       }
     },
   );
+});
+
+describe("CF-10 — a single take parks the playhead at its start", () => {
+  const BAR = BAR_TICKS;
+  function takeFixture(doc: ReturnType<typeof createDocWithTracks>, startBar: number) {
+    const sampleRate = 48_000;
+    // The fixture OWNS the recorded reality: session.startBar is what a real
+    // capture would report (the mock harness's frozen clock cannot express
+    // transport positions). stopRec parks the playhead from THIS number.
+    return {
+      session: {
+        id: "recording.cf10",
+        projectId: doc.id,
+        trackId: doc.tracks[0].id,
+        startBar,
+      },
+      buffer: {
+        duration: 1,
+        sampleRate,
+        numberOfChannels: 1,
+        getChannelData: () => new Float32Array(sampleRate),
+      } as unknown as AudioBuffer,
+      silence: { peak: 0.5, rms: 0.2, silent: false },
+    };
+  }
+
+  function fakeRecorderClass(doc: ReturnType<typeof createDocWithTracks>, startBar: number) {
+    return class {
+      elapsedSeconds = 1;
+      onError = null;
+      setMonitoring() {}
+      async start(_getMetadata: () => unknown) {}
+      async stop() {
+        return takeFixture(doc, startBar);
+      }
+      cancel() {}
+    };
+  }
+
+  afterEach(() => {
+    try {
+      window.localStorage.removeItem("pf:rec-return-to-start");
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("after STOP the playhead parks at the take's start bar, and the notice says so", async () => {
+    const doc = createDocWithTracks();
+    recorderMock.implementation = fakeRecorderClass(doc, 5);
+    try {
+      const services = { ...mockServices(doc), store: new ProjectStore(doc) } as unknown as Services;
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
+      const seekSpy = vi.spyOn(services.transport, "seek");
+      renderWithContext(<ArrangementPanel />, { services });
+
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
+      fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
+
+      // The parked playhead IS the last seek, and it is the take's start.
+      expect(await screen.findByText(/Playhead returned to the take start/)).toBeInTheDocument();
+      expect(seekSpy.mock.calls.at(-1)?.[0]).toBe(5 * BAR);
+      const clips = services.store.getDoc().arrangement.audioClips ?? [];
+      expect(clips).toHaveLength(1);
+      expect(clips[0].startBar).toBe(5);
+    } finally {
+      recorderMock.implementation = null;
+    }
+  });
+
+  it("NEGATIVE: the RETURN TO START toggle off leaves the playhead alone", async () => {
+    const doc = createDocWithTracks();
+    recorderMock.implementation = fakeRecorderClass(doc, 5);
+    try {
+      const services = { ...mockServices(doc), store: new ProjectStore(doc) } as unknown as Services;
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
+      const seekSpy = vi.spyOn(services.transport, "seek");
+      renderWithContext(<ArrangementPanel />, { services });
+
+      fireEvent.click(screen.getByRole("button", { name: /RETURN TO START ON/ }));
+      expect(screen.getByRole("button", { name: /RETURN TO START OFF/ })).toHaveAttribute("aria-pressed", "false");
+
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
+      fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
+
+      expect(screen.queryByText(/Playhead returned to the take start/)).toBeNull();
+      expect(seekSpy.mock.calls.some(([tick]) => tick === 5 * BAR)).toBe(false);
+      // The take still placed — wait for the recorder to return to idle (the
+      // placement is async; the OFF path shows no completion notice to await).
+      await screen.findByRole("button", { name: "Record audio input onto the armed track" });
+      expect((services.store.getDoc().arrangement.audioClips ?? []).length).toBe(1);
+    } finally {
+      recorderMock.implementation = null;
+    }
+  });
+
+  it("CF-10 decision table: only an enabled single take returns a tick", () => {
+    const input = { startBar: 4, barUnitTicks: BAR_TICKS };
+    expect(
+      takeStartReturnTick({ ...input, enabled: true, punchCapture: false, loopCapture: false, hasTakeGroup: false }),
+    ).toBe(4 * BAR_TICKS);
+    expect(
+      takeStartReturnTick({ ...input, enabled: false, punchCapture: false, loopCapture: false, hasTakeGroup: false }),
+    ).toBeNull();
+    expect(
+      takeStartReturnTick({ ...input, enabled: true, punchCapture: true, loopCapture: false, hasTakeGroup: false }),
+    ).toBeNull();
+    expect(
+      takeStartReturnTick({ ...input, enabled: true, punchCapture: false, loopCapture: true, hasTakeGroup: false }),
+    ).toBeNull();
+    expect(
+      takeStartReturnTick({ ...input, enabled: true, punchCapture: false, loopCapture: false, hasTakeGroup: true }),
+    ).toBeNull();
+    // Fractional and negative starts clamp to a musical tick on or after bar 0.
+    expect(
+      takeStartReturnTick({
+        ...input,
+        startBar: 2.5,
+        enabled: true,
+        punchCapture: false,
+        loopCapture: false,
+        hasTakeGroup: false,
+      }),
+    ).toBe(Math.round(2.5 * BAR_TICKS));
+    expect(
+      takeStartReturnTick({
+        ...input,
+        startBar: -3,
+        enabled: true,
+        punchCapture: false,
+        loopCapture: false,
+        hasTakeGroup: false,
+      }),
+    ).toBe(0);
+    expect(
+      takeStartReturnTick({
+        ...input,
+        startBar: Number.NaN,
+        enabled: true,
+        punchCapture: false,
+        loopCapture: false,
+        hasTakeGroup: false,
+      }),
+    ).toBe(0);
+  });
 });
 
 function createDocWithTracks() {

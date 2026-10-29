@@ -186,6 +186,7 @@ import {
   resolveRecordedAudioDestinations,
   recordedPunchWindow,
   recordingStartBar,
+  takeStartReturnTick,
 } from "./timelineRec";
 import {
   MANUAL_ALIGN_SEARCH_SEC,
@@ -771,6 +772,17 @@ export function ArrangementPanel() {
   const [recState, setRecState] = useState<"idle" | "starting" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [micMonitoring, setMicMonitoring] = useState(false);
+  // CF-10: after a single take stops, park the playhead at the take's start.
+  // Default ON (auditioning and the next pass begin at the top of the take
+  // instead of wherever the transport rolled); punch, loop and take-group
+  // captures keep their own anchoring contracts regardless of this toggle.
+  const [returnToTakeStart, setReturnToTakeStart] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("pf:rec-return-to-start") !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [recordingInputDeviceId, setRecordingInputDeviceId] = useState(loadRecordingInputDeviceId);
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
@@ -1744,15 +1756,16 @@ export function ArrangementPanel() {
           : singleAlignShift > 0
             ? [singleAlignShift]
             : [];
+        // CF-10: the recovery disclosure is composed AFTER the placement
+        // lands — a take that failed to place must not claim a parked
+        // playhead. The parking decision itself is pure (takeStartReturnTick).
+        let playheadParked = false;
+        let noticeText: string | null = null;
         if (appliedShifts.length > 0) {
           const average = appliedShifts.reduce((sum, shift) => sum + shift, 0) / appliedShifts.length;
-          setRecNotice(
-            take.session.loopCapture
-              ? `${appliedShifts.length} take pass(es) aligned onto their entry (${formatShiftMs(average)} average).`
-              : `Take placed — the phrase was aligned onto its entry (${formatShiftMs(average)}).`,
-          );
-        } else {
-          setRecNotice(null);
+          noticeText = take.session.loopCapture
+            ? `${appliedShifts.length} take pass(es) aligned onto their entry (${formatShiftMs(average)} average).`
+            : `Take placed — the phrase was aligned onto its entry (${formatShiftMs(average)}).`;
         }
         const patch = {
           fadeIn: 0.005,
@@ -1789,6 +1802,28 @@ export function ArrangementPanel() {
             addRecordedAudioClips(currentDoc, routing.destinations, bufferId, startBar, lengthBars, patch),
           );
         }
+        // CF-10: a single take parks the playhead at its own start — the
+        // performer hears the section from the top and the next pass records
+        // where the last one began, instead of wherever the transport rolled.
+        // Placement succeeded by this line (a throw above routed to the catch
+        // without parking). Punch/loop/take-group captures return null: their
+        // anchoring contracts own the playhead.
+        const returnTick = takeStartReturnTick({
+          enabled: returnToTakeStart,
+          punchCapture: Boolean(take.session.punchCapture),
+          loopCapture: Boolean(take.session.loopCapture),
+          hasTakeGroup: Boolean(take.session.takeGroupId),
+          startBar,
+          barUnitTicks: ticksPerBar(currentDoc),
+        });
+        if (returnTick != null) {
+          services.transport.seek(returnTick);
+          playheadParked = true;
+        }
+        if (playheadParked) {
+          noticeText = `${noticeText ? `${noticeText} ` : ""}Playhead returned to the take start.`;
+        }
+        setRecNotice(noticeText);
         const takeWarnings = [
           // Audit R-1: the frame count was the only gate, so a take that
           // captured nothing at all (muted input, a device that delivered
@@ -4591,6 +4626,23 @@ export function ArrangementPanel() {
                 }}
               >
                 {micMonitoring ? "DRY SOFT MON ON" : "DRY SOFT MON OFF"}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-small${returnToTakeStart ? " active-solo" : ""}`}
+                aria-pressed={returnToTakeStart}
+                title="After stopping a take, the playhead returns to where the take began — auditioning and the next pass start at the top instead of wherever the transport rolled. Punch keeps its post-roll; loop and take-group passes anchor themselves. Turn off to leave the playhead where it rolls."
+                onClick={() => {
+                  const next = !returnToTakeStart;
+                  setReturnToTakeStart(next);
+                  try {
+                    window.localStorage.setItem("pf:rec-return-to-start", next ? "1" : "0");
+                  } catch {
+                    /* private mode — session-only preference */
+                  }
+                }}
+              >
+                {returnToTakeStart ? "RETURN TO START ON" : "RETURN TO START OFF"}
               </button>
               <label className="arr-arm-gain" aria-label="Audio input gain">
                 <span

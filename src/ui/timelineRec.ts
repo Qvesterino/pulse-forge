@@ -72,6 +72,29 @@ export function recordingStartBar(positionTicks: number, barUnitTicks: number): 
   return Number.isFinite(positionTicks) ? Math.max(0, positionTicks / barUnitTicks) : 0;
 }
 
+/**
+ * CF-10 — the tick to park the playhead at after a SINGLE take stops: the
+ * take's (latency-compensated) start bar, so auditioning and the next pass
+ * begin at the top of the take instead of wherever the transport rolled.
+ *
+ * Null when the playhead must stay where it is: the toggle is off, or the
+ * capture owns its own anchoring contract — punch keeps its documented
+ * post-roll, loop passes ride the loop locators, and a take-group's next
+ * pass seeks the group anchor when it starts.
+ */
+export function takeStartReturnTick(input: {
+  enabled: boolean;
+  punchCapture: boolean;
+  loopCapture: boolean;
+  hasTakeGroup: boolean;
+  startBar: number;
+  barUnitTicks: number;
+}): number | null {
+  if (!input.enabled || input.punchCapture || input.loopCapture || input.hasTakeGroup) return null;
+  const bar = Number.isFinite(input.startBar) ? Math.max(0, input.startBar) : 0;
+  return Math.max(0, Math.round(bar * input.barUnitTicks));
+}
+
 /** Apply a measured manual mic-input correction; positive values move takes earlier. */
 export function compensateRecordingStartBar(
   startBar: number,

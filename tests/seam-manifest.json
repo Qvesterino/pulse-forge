@@ -138,6 +138,15 @@
       "negativeSpec": "NEGATIVE: arming in overdub (the real record button) produces no disclosure"
     },
     {
+      "id": "take-return-to-start",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx stopRec single-take path → takeStartReturnTick → transport.seek, toggle in the record toolbar",
+      "note": "CF-10: after a SINGLE take stops, the playhead parks at the take's (latency-compensated) start — auditioning and the next pass begin at the top instead of wherever the transport rolled; the placement notice discloses it. Default on, persisted per browser (pf:rec-return-to-start); punch keeps its documented post-roll, loop passes ride the loop locators, take-group passes anchor to the group start — all three return null from the pure decision table (pinned as specs). The wiring spec drives the REAL stopRec through the fake recorder: the parked seek is the last seek and equals the take's start bar.",
+      "spec": "tests/ui/timeline-rec.test.tsx",
+      "seamEvent": "takeStartReturnTick",
+      "negativeSpec": "NEGATIVE: the RETURN TO START toggle off leaves the playhead alone"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
