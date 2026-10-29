@@ -1972,13 +1972,15 @@ so they run only when the whole chain is green — and in the measured window th
 run that reached a verdict had a red upstream job. A release-boundary gate that sits downstream of a frequently
 red gate is a gate that never reports.
 
-**This section proposes; it does not implement.** Splitting a workflow and choosing concurrency groups is a
+**This section proposed the split; it landed as `bac24d7f` (see below).** Splitting a workflow and choosing
+concurrency groups is a
 resource decision as much as a structural one, and it belongs to the owner. What is recorded here is the
 measurement and one correction: the per-SHA instinct is right for the cheap half and wrong for the expensive one,
 because the split has to be by **cost**.
 
-**The split is now in the shared tree — and one group key in it does not survive the measurement.** The working tree
-carries a new `.github/workflows/ci-fast.yml` with three jobs (typecheck, hygiene, audit-prod) and its own group
+**The split has landed — and one group key in it does not survive the measurement.** `bac24d7f` ("ci: split the
+fast gates out, so a push never queues behind a browser run") adds `.github/workflows/ci-fast.yml` with three jobs
+(typecheck, hygiene, audit-prod) and its own group
 `ci-fast-${{ github.ref }}`; `ci.yml` keeps the six heavy jobs, and the `needs:` references to the two moved jobs
 were removed with a comment — correct, because a `needs:` on a job in another workflow is a hard error, not a
 warning. The implementation's own comment rejects a per-SHA group outright: _"A per-SHA group would give every push
@@ -2061,6 +2063,9 @@ PASS perf environment: this machine's timing is measurable — calib=15.0ms (flo
 environment=measurable, the budget checks below are gated
 ```
 
+A second, independent run of the gate (after `ae372bf4`) reports the same shape with a different number —
+`calib=12.3ms (floor 18ms) spread=1.1× (max 2×)` — so the line is stable in form and machine-specific in value.
+
 That closes the last open cell, and it confirms both halves of the design at once: the check **passed** (it explains
 the gate, it never fails it) and it **reported** the numbers it used — 15.0 ms against an 18 ms floor, a 1.1×
 spread against a 2× limit — so a reader can tell "the machine was busy" from "the code is slow" without opening a
@@ -2130,6 +2135,9 @@ around it:
 | the one red        | the live↔offline null corpus — **failed=4/67**, `environment=measurable`, calibration control **−334.4 dB**, calibration live↔live **−334.4 dB**, `not measurable=0`  |
 | the four red cases | `fx:ozvena`, `fx:morphdynamics`, `fx:bassHarmonic`, `fx:portal` — the same four §10.14 named, and **historical**: they were the capture lead, not findings (§10.16.5) |
 
+**The same gate, run again after the lead fix (`ae372bf4`), reports 439 of 439 checks passed and the corpus
+`passed=67/67`** — the red list is empty, and the difference is that no product changed (§10.16.5).
+
 **This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
 runner the same corpus reports **21/67**; on a measurable desktop it reports **4/67**, with the calibration clean on
 **both** axes. The environment line is the durable part of this measurement: it says **in the verdict itself**
@@ -2190,8 +2198,21 @@ measurements of the harness's own artifact.
 
 **I did not re-measure these numbers, and the reason is part of the record.** The parallel session had a full browser
 gate in flight on the same machine, and a second browser run would have contaminated the measurement the numbers
-depend on. They are recorded here as **measured by the parallel session, verified in the source at `ae372bf4`**; the
-full browser gate with the fix was still running when this section was written, so its verdict is **pending**.
+depend on. They are recorded here as **measured by the parallel session, verified in the source at `ae372bf4`**.
+
+**The gate with the fix has since landed, and the corpus is green.** The parallel session's own run of the full
+browser gate after `ae372bf4` reports **439 of 439 checks passed**, and the corpus line reads:
+
+```text
+PASS live↔offline null test: same engine + events on both contexts — passed=67/67 — environment=measurable
+(calibration fx:bitcrusher control=-334.4 dB needs ≤ -200 dB, live↔live=-334.4 dB needs ≤ -200 dB) — not measurable=0
+```
+
+**The red list is empty.** The four cases this report called a product finding are green; the 17 instrument cases
+that failed on the CI runner are green on a measurable environment; and the verdict states in one line both what it
+measured (67 cases) and whether it could measure at all (`environment=measurable`, both calibration axes at
+−334.4 dB, `not measurable=0`). The corpus went from **4/67 red** to **67/67 passed** without a single product
+change — because the thing that was wrong was the harness.
 
 **What this does to §10.14, stated plainly.** §10.14 concluded that the four divergences were "an **invariant-3
 product finding**", that "the export does not sound like the live branch", and that the suspect was the offline
@@ -2208,14 +2229,18 @@ then charged that bias to the product** — it excluded the cases it could not e
 wrongly. A corpus that names the artifact it cannot control is halfway to measuring it; the step it did not take was
 to **make the two branches comparable** instead of **excluding the incomparable ones**.
 
-**The exclusion list is wider than the count that was reported.** The code's own comment (`:66`) and the parallel
-session's message both say "the nine `PARITY_FX_EXCLUSIONS`". The effect map at `:157-240` holds **19** entries, and
-**twelve** of them state the lead's reason in their own words: phaser, flanger, chorus, tremolo, autowah, ringMod,
-pitchShift, vinyl, reverb, svFilter, kaskada, wowFlutter. The instrument map (`:247-253`) adds `wavetable`
+**The exclusion list is wider than the count that was reported — and the count is now fixed.** The code's own
+comment (`:66`) and the parallel session's message both said "the nine `PARITY_FX_EXCLUSIONS`". The effect map at
+`:157-240` holds **19** entries, and **twelve** of them state the lead's reason in their own words: phaser,
+flanger, chorus, tremolo, autowah, ringMod, pitchShift, vinyl, reverb, svFilter, kaskada, wowFlutter. The rest are
+a different class: seven "bar-scale transport state" cases. The instrument map (`:247-253`) adds `wavetable`
 ("free-running table scan phase") — a scan position that has advanced by the lead, i.e. a candidate **thirteenth**,
-but that is **Hypothesized, not measured**. The rest are a different class: seven "bar-scale transport state" cases
-and `granular`'s per-voice RNG ordering. So the blind spot the fix opens is at least **twelve** cases wide, not
-nine — and each of them has to be re-measured before its exclusion can be lifted.
+but that is **Hypothesized, not measured**; `granular`'s per-voice RNG ordering is a different class again. So the
+blind spot the fix opens is at least **twelve** cases wide, not nine — and each of them has to be re-measured before
+its exclusion can be lifted. **The parallel session took the correction and fixed the comment in `38ac7638`** ("the
+exclusions comment said nine; the map holds nineteen"), with the same twelve named and the same split into
+lead-class and transport-class. The one item that correction did not take is `wavetable`: the instrument map was not
+re-counted, so the candidate thirteenth is still open.
 
 **The reverb exclusion is demonstrably inaccurate now.** It was excluded with the reason "free-running 0.5 Hz
 read-position modulator; device-clock jitter accumulates over the tail" — yet with the lead fixed, reverb measures
