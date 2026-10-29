@@ -40,6 +40,25 @@
  * agree with each other: then the realtime branch is reproducible and the
  * engine really renders differently live than offline. That is the shape a
  * real live↔offline divergence has, and the corpus keeps it red.
+ *
+ * WHAT IS STILL OPEN (measured 2026-10-29, the Linux CI runner): 17 of the 27
+ * instrument cases diverge there, at -13 to -33 dB, while the same code is
+ * clean on a Windows desktop and the effect corpus is clean on both. The
+ * signatures are identical to the point of being suspicious: the magnitude
+ * spectra match to four decimals (spec=1.0000), the level matches (rms=1.000x,
+ * peak=1.000x), the difference has no DC (mean 0), and a 32-tap windowed-sinc
+ * scan cannot make it smaller by shifting (frac=0.25 moves -32.9 dB only to
+ * -34.5 dB). Ruled out by measurement, so that nobody re-checks them: a gain
+ * change (peak ratio 0.999), a DC offset (mean 0), a sub-sample shift (the
+ * sinc scan), the capture lead (fixed in ae372bf4 - the effect corpus is
+ * clean on both platforms since), and the synthesis type (bass, reese,
+ * spectral and vocalchop are oscillator-based and PASS, while analog,
+ * strings and keys fail). What is NOT yet separated: whether the cause is
+ * this engine's construction-time state or the platform's realtime-versus-
+ * offline context semantics. The corpus reports the divergence because it is
+ * reproducible and the calibration says the environment can measure it - but
+ * "reproducible" is a property of the measurement, not a verdict about the
+ * product, so the cause stays open until it is separated by an experiment.
  */
 
 import { EFFECT_ORDER, defaultParamsOf } from "../effects/registry";
