@@ -2358,8 +2358,8 @@ itself to −321…−336 dB, exactly like the offline determinism control — a
 **unmeasured guess**: the honest statement is _a systematic difference between two deterministic branches, present on
 the runner and absent on the desktop_.
 
-**And the flat profile does not say what kind — but the correlation does, and it is not the answer the numbers were
-read as.** The parallel session read the flat ≈ −31.8 dB profile as "a constant gain of ~2.8 % (20·log10(1/0.028))".
+**And the flat profile does not say what kind — but the correlation excludes one reading, and it cannot choose between
+two others.** The parallel session read the flat ≈ −31.8 dB profile as "a constant gain of ~2.8 % (20·log10(1/0.028))".
 **Their own correlation number excludes that reading**, once the metric's definition is read rather than its name:
 
 - `compare()` (`src/testing/live-offline-parity.ts:682-696`) computes a **subtraction null** —
@@ -2372,25 +2372,43 @@ read as.** The parallel session read the flat ≈ −31.8 dB profile as "a const
 - For an **additive constant** `b = a + d`, it is `1/√(1 + 10^(null/10))` — and for null = −31.8 dB that is
   **0.99967**, the measured **0.9997** to four digits.
 
-So the residual's dominant component is **additive** (a DC-like constant), not a level scale — the opposite of the
-reading it was given. The corpus's own new summary carries the number that settles it outright: the **rms and peak
-ratios** (`0559d65b` prints `rms=`, `peak=`, `spec=`). An additive constant of this size leaves the level **≈ 1.000×**
-(√(1+6.6·10⁻⁴)) while a 2.8 % gain would show **≈ 0.972×** on both. **Not yet read from the CI annotation — the
-next run has it.**
+**This report's earlier text read that last bullet as a verdict, and that reading is withdrawn.** A small **timing**
+difference predicts the same number to the same precision: for a perturbation of relative energy `k = 10^(null/10)` the
+uncentred cosine is `1 − k/2` to second order, and `1/√(1+k)` is that same expansion. At k = 6.6·10⁻⁴ both are
+**0.999670** — identical to four digits, and identical to the measured **0.9997**. **The correlation cannot tell an
+additive constant from a moved signal.** Only the level can, and the two sizes of the corpus diverge there: at this null
+size an additive constant leaves the **rms** ratio at ≈ 1.000× (√(1+6.6·10⁻⁴)), so the rms ratio is blind — but it shifts
+the **peak** by `d = rms·√k` — 0.5–1.5 % for any ordinary rms/peak — while a moved signal leaves the peak where it is.
+**The rms and peak ratios (`0559d65b` prints `rms=`, `peak=`, `spec=`) are therefore the discriminator, and a 2.8 % gain
+would show ≈ 0.972× on both. Not yet read from the CI annotation — the next run has it.**
+
+**One case already carries the reading — measured by the parallel session, outside this tree.** Their WSL reproduction of the
+same signature (`instrument:organ`: `liveNull=−31.7 dB`, `corr=0.9997`, `liveRepeat=−323.5 dB`,
+`control=−323.6 dB`, flat profile ≈ −31.8 dB, `offset=0`) reports `livePeak=0.1863` against `refPeak=0.1865` — a peak
+ratio of **0.999**. An additive constant at that null size would shift the peak by `0.0257·rms/peak`, i.e. **0.5–1.5 %**
+for any ordinary rms/peak, against a measured **0.1 %**. Their fractional-shift scan finds a minimum at **0.3125 samples**,
+improving the null from −31.7 dB to **−38.2 dB** — so there is a **sub-sample shift** in the residual, where a pure constant
+would have cancelled under that scan and left only the interpolator's own error. Both readings point at a **shift**, not a
+constant: the additive reading this section carried is not merely unsupported, it is **contradicted** for the one case that
+has been measured. **Provenance:** the parallel session's working tree, not committed at the time of writing — these are their
+measurements, not this report's, and this report does not claim to have reproduced them.
 
 **Two corrections this section makes to the report's own earlier text.** First, §10.14's Refutation 1 says
 "`correlationAt` is a true Pearson coefficient" — it is **not**: the implementation does not center, and the source's
-own docstring is wrong about its own metric. The arithmetic in that refutation (corr ≈ 1 − e²/2) is the
-**orthogonal-residual** formula, and the measured table there fits it — but it was fitted against a metric whose name
-was wrong. Second, the consequence matters for readers: a **true** Pearson is invariant to an additive offset, and
-this metric is not. So `corr = 0.9997` must not be read as "the same signal" — it says "the same signal plus a
-small constant". That is exactly the distinction the runner's 14 cases turn on, and it is invisible unless the
-metric's definition is read instead of its name.
+own docstring is wrong about its own metric. The arithmetic in that refutation (corr ≈ 1 − e²/2) is the **same second-order
+expansion** the additive prediction uses, so it fits the measured table without naming a mechanism either — it was fitted
+against a metric whose name was wrong, and it would have been equally blind had the metric's name been right. Second, the
+consequence matters for readers: a **true** Pearson is invariant to an additive offset, and
+this metric is not. So `corr = 0.9997` must not be read as "the same signal" — it says "the same signal plus a small
+**perturbation**", and this section's own earlier wording ("plus a small constant") named one of the two candidates it
+cannot separate from the other. That is exactly the distinction the runner's 14 cases turn on, and it is invisible unless
+the metric's definition is read instead of its name.
 
-**What stays open, and it is not a small thing.** Which branch carries the constant, and why the runner has it while
-the desktop does not, is **not resolved** — and until it is, the corpus may well be _right_ to be red there. §10.14's
-proposal to make the null corpus non-blocking in CI was built on the "platform noise" reading; if the difference is
-an additive constant in one branch's output path, that proposal would hide a real live↔offline difference — the
+**What stays open, and it is not a small thing.** Which branch carries the perturbation, whether it is a constant or a
+shift, and why the runner has it while the desktop does not, is **not resolved** — and until it is, the corpus may well
+be _right_ to be red there. §10.14's proposal to make the null corpus non-blocking in CI was built on the "platform noise"
+reading; if the difference is a constant or a shift in one branch's output path, that proposal would hide a real
+live↔offline difference — the
 exact thing invariant 3 exists to catch. **That decision must not be taken on the strength of a label.**
 
 **And the desktop's own last red is a different measurement entirely — a TIMING difference, not a level one.** The idle
@@ -2415,9 +2433,11 @@ The level readings are **position-independent** — `stats()` (`:1199-1208`) mea
 this null size the level reading is **decisive**: an additive constant big enough to produce a −9.8 dB null would raise the rms
 ratio to √(1 + 10^(−0.98)) = **1.051×**. The measured ratio is **1.000×**. So the additive explanation is excluded by arithmetic
 rather than by interpretation — a different situation from the runner's 14, where the same measurement at −31.8 dB would read
-√(1 + 6.6·10⁻⁴) = **1.000×**, _indistinguishable from LADIČ's_ at three decimals. **The discriminating power of a level reading
-depends on the size of the null.** When the runner's `rms=` and `peak=` arrive in the next annotation they will read "1.000×" and
-will look exactly like the desktop's case; they will not be the same defect.
+√(1 + 6.6·10⁻⁴) = **1.000×**, _indistinguishable from LADIČ's_ at three decimals. **The rms ratio is blind at the runner's null
+size and decisive at LADIČ's; the peak ratio is decisive at both.** An additive constant shifts the peak by `d = rms·√k` —
+0.5–1.5 % at the runner's null size, where a moved signal leaves the peak where it is. So when the runner's `rms=`
+and `peak=` arrive, the **rms** will read "1.000×" and mean nothing, and the **peak** will decide the question the
+correlation could not.
 
 **Inferred:** LADIČ is the same sound, at the same level, with the same spectrum, **not at the same sample position** — and the
 difference sits at the head of the window. The corpus's own docstrings name exactly these two shapes: `divergenceProfile`
