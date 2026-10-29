@@ -1977,6 +1977,41 @@ resource decision as much as a structural one, and it belongs to the owner. What
 measurement and one correction: the per-SHA instinct is right for the cheap half and wrong for the expensive one,
 because the split has to be by **cost**.
 
+**The split is now in the shared tree — and one group key in it does not survive the measurement.** The working tree
+carries a new `.github/workflows/ci-fast.yml` with three jobs (typecheck, hygiene, audit-prod) and its own group
+`ci-fast-${{ github.ref }}`; `ci.yml` keeps the six heavy jobs, and the `needs:` references to the two moved jobs
+were removed with a comment — correct, because a `needs:` on a job in another workflow is a hard error, not a
+warning. The implementation's own comment rejects a per-SHA group outright: _"A per-SHA group would give every push
+a verdict but unboundedly INCREASE the latency of the HEAD - the HEAD would sit behind every older push."_
+
+**That is right for the heavy half and wrong for the fast one, and the difference is measurable.** Simulating
+GitHub's documented group semantics — one running run per group, the oldest **pending** run replaced by a newer
+arrival — on the **measured** arrival sequence above (the 15 push timestamps; service time **2.8 min**, the fast
+half's longest job, measured in run #475):
+
+| group policy (fast half)                           | fast verdicts delivered | dropped | added wait |
+| -------------------------------------------------- | ----------------------- | ------- | ---------- |
+| per-ref, drop-oldest (`ci-fast-${{ github.ref }}`) | **9 of 15**             | **6**   | 0          |
+| per-SHA (`ci-fast-${{ github.sha }}`)              | **15 of 15**            | 0       | **0**      |
+
+The model earns its keep on the half that _was_ measured: run with the measured **18.9 min** service time it drops
+**11 of 15**, against the **10 of 15** the run list actually recorded — within one run of reality, which is why it
+can be trusted for the half nobody has measured yet. (The simulation is of GitHub's documented group semantics on a
+measured arrival sequence; the split itself has not run yet, so this is a **prediction**, not a measurement of the
+split's behaviour.)
+
+**Why the fast half behaves differently: the pushes arrive in clusters.** The inter-arrival gaps of the measured
+sequence are 0.3, 0.4, 1.0, 1.2, 2.1, 2.9, 3.9, 4.3, 4.5, 4.8, 6.5, 10.0, 24.4 min — mean 4.9, but the pushes come
+in **bursts of three to five within two to five minutes**, against a fast workflow whose wall clock is 2.8 min. A
+drop-oldest group punishes exactly that pattern: every push inside a burst replaces the one queued before it. With
+per-SHA groups the same sequence delivers every verdict with **no added wait at all**, because the runner pool
+absorbs the bursts — even on a conservative model of three concurrent fast runs against an arrival every 4.9 min.
+
+**And the cost of the difference is not symmetric.** A heavy verdict that never arrives costs a superseded commit
+nothing — only HEAD's slow verdict gates a release. A **fast** verdict that never arrives is a tree that nobody
+knows is broken until the heavy workflow reports, minutes later. That asymmetry is the whole reason the split
+exists, and it is the reason the fast group's key is the one detail worth getting right.
+
 #### 10.16.2 The perf gate's machine test — the environment must explain the gate, never fail it
 
 The browser gate's perf and realtime budgets decided "machine loaded" from a **single snapshot**: the **max of
