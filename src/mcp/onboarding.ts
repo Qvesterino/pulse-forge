@@ -93,7 +93,7 @@ WORKFLOW: ARRANGEMENT PASS
   {op: add/resize/reorder} -> kyx_clips {op: move/duplicate} ->
   kyx_markers {op: add}.
 
-TOOL INDEX (all 42 — grouped by job)
+TOOL INDEX (all 43 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_context (read-only
                evidence packet for a bar/tick range) · kyx_meter · kyx_catalog
                (effects/instruments; subject:instrument returns full knob specs)
@@ -111,7 +111,7 @@ TOOL INDEX (all 42 — grouped by job)
   finish:      kyx_mix · kyx_mix_idea (text→mix) · kyx_master (ZENIT ops) · kyx_separate
                (source→stems) · kyx_audio_preview (listenable
                WAV) · kyx_loudness (BS.1770) · kyx_render_summary
-               (per-strip LUFS/peak/crest) · kyx_diagnose_mix (findings +
+               (per-strip LUFS/peak/crest) · kyx_verify_edit · kyx_diagnose_mix (findings +
                fixes) · kyx_export · kyx_save (persist receipt) · kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)

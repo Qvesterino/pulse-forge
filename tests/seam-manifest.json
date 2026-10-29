@@ -862,6 +862,15 @@
       "seamEvent": "fireEvent.click(screen.getByRole(\"button\", { name: \"🔒 MAZANIE\" }))",
       "negativeSpec": "does not enable delete authority before confirmation",
       "note": "Experience-friction F-05 (2026-10-28): turning delete authority ON is two-step (scope-named inline confirm, focus defaults to CANCEL), turning it OFF is immediate; the TopBar badge reads the same store so the persisted flag is visible from every panel."
+    },
+    {
+      "id": "audible-verification-loop",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/audible-verification.ts → runAudibleVerification (kyx_verify_edit)",
+      "spec": "tests/mcp-audible-verification.test.ts",
+      "seamEvent": "executeMcpTool(ctx, \"kyx_verify_edit\"",
+      "negativeSpec": "refuses compare without a token before touching the renderer",
+      "note": "Audible-verification follow-up (2026-10-28): capture renders a bounded 2–4 bar scope BEFORE the edit and returns a token; compare renders the SAME scope through the export renderer and returns LUFS/RMS/peak deltas, a null-test residual, coarse band deltas and an honest changed/unchanged/inconclusive verdict. A compare without a token is refused before any render; two silent renders are inconclusive, never 'verified unchanged'. The TopBar badge shows the last comparison only at its document revision."
     }
   ]
 }

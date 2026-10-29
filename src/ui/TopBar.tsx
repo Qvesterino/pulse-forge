@@ -6,6 +6,8 @@ import {
   useCanRedo,
   useCanUndo,
   useLastSavedAt,
+  useAudibleVerification,
+  useDocRevision,
   useMcpAllowDestructive,
   useMcpAllowMutations,
   useRecoveryStatus,
@@ -30,12 +32,34 @@ import { ThemePanel } from "./ThemePanel";
 import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
 import { saveProjectAsCopy } from "../mcp/save-now";
+import type { AudibleVerificationNotice } from "../analysis/audible-verification-store";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatBandCenter(hz: number): string {
+  return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`;
+}
+
+function audibleBadgeLabel(notice: AudibleVerificationNotice): string {
+  if (!notice.verified) return "AUDIBLE ?";
+  if (!notice.audibleChanged) return "AUDIBLE = unchanged";
+  const parts: string[] = [];
+  if (notice.lufsDelta != null && Math.abs(notice.lufsDelta) >= 0.1) {
+    parts.push(`${notice.lufsDelta > 0 ? "+" : ""}${notice.lufsDelta.toFixed(1)} LU`);
+  }
+  if (notice.dominantBand != null && Math.abs(notice.dominantBand.deltaDb) >= 0.5) {
+    parts.push(
+      `${notice.dominantBand.deltaDb > 0 ? "+" : ""}${notice.dominantBand.deltaDb.toFixed(1)} dB @ ${formatBandCenter(
+        notice.dominantBand.centerHz,
+      )}`,
+    );
+  }
+  return `AUDIBLE ✓ ${parts.join(" · ") || "changed"}`;
 }
 
 function hasTransportReachedContent(transport: Services["transport"]): boolean {
@@ -120,6 +144,8 @@ export function TopBar({
   const audioArmedNames = sessionRecording.armedTrackNames;
   const audioRecordingLive = sessionRecording.recState === "recording" || sessionRecording.recState === "starting";
   const agentAuthority = mcpDeleteAuthority ? "delete" : mcpEditConsent ? "edit" : "off";
+  const audibleNotice = useAudibleVerification();
+  const docRevision = useDocRevision();
   const position = useTransportPosition(services.transport, doc);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [loopEnabled, setLoopEnabled] = useState(services.transport.loopEnabled);
@@ -1020,6 +1046,26 @@ export function TopBar({
               {agentAuthority === "delete" ? "AGENT DELETE ON" : "AGENT EDIT ON"}
             </span>
           )}
+          {audibleNotice != null &&
+            audibleNotice.docId === doc.id &&
+            (audibleNotice.revision == null || docRevision == null || audibleNotice.revision === docRevision) && (
+              <span
+                className={`audible-verification-badge${audibleNotice.audibleChanged ? " changed" : " unchanged"}`}
+                role="status"
+                aria-live="polite"
+                title={`${audibleNotice.scopeLabel} — ${
+                  audibleNotice.verified
+                    ? audibleNotice.audibleChanged
+                      ? "the rendered audio changed"
+                      : "the rendered audio is unchanged"
+                    : "the comparison was inconclusive"
+                }; null residual ${audibleNotice.nullResidualDb ?? "n/a"} dB; revision ${
+                  audibleNotice.revision ?? "unknown"
+                }.`}
+              >
+                {audibleBadgeLabel(audibleNotice)}
+              </span>
+            )}
           {visibleToolActions.map((action) => (
             <button
               key={action.id}

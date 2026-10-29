@@ -33,6 +33,7 @@ const LONG_RUNNING_MCP_TOOLS = new Set([
   "kyx_diagnose_mix",
   "kyx_arrange",
   "kyx_song",
+  "kyx_verify_edit",
 ]);
 const DEFAULT_BRIDGE_PORT = 8787;
 

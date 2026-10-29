@@ -10,6 +10,7 @@ import { decodeAudioData } from "../services/audio-decode";
 import { loadUserSampleMono } from "./sample-mono";
 import { separateStemsForAgent } from "./stem-separate";
 import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "./save-now";
+import { runAudibleVerification } from "./audible-verification";
 // Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
 // enabled flag while mounting); the heavy bridge module re-exports it and
 // imports it for local use.
@@ -172,6 +173,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
     renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
+    verifyEdit: (request, signal) => runAudibleVerification(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
     diagnoseMix: (request, signal) =>

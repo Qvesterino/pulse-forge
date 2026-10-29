@@ -52,6 +52,13 @@ The app enforces the classes, not the agent's goodwill:
    scaler and the hint flag; dynamics report their gain-reduction stages; a
    bypassed or degraded insert honestly says "no telemetry" instead of zeros.
    That is the closed loop: apply → read → decide.
+   For an AUDIBLE claim, capture BEFORE the edit and compare after:
+   `kyx_verify_edit {"op":"capture","trackId":"...","startBar":1,"bars":2}`
+   returns a token; after the edit call
+   `kyx_verify_edit {"op":"compare","token":"..."}` and read `verified`,
+   `audibleChanged`, `verdict`, the LUFS/RMS/null deltas and the strongest
+   band. A document value moving is not proof the sound moved; only the
+   comparison is. If it says `unchanged` or `inconclusive`, say that.
 6. **Persist before you finish.** `mutated: true` means the DOCUMENT changed;
    it does not mean the project was saved. Call `kyx_save` and require
    `stage: "persisted"` (and `ok: true`) before ending a session that must

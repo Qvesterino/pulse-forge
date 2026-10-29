@@ -1511,6 +1511,26 @@ button.brief-chip:hover {
   border: 1px solid #f87171;
   background: rgba(248, 113, 113, 0.16);
 }
+.audible-verification-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.audible-verification-badge.changed {
+  color: #bbf7d0;
+  border: 1px solid #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+}
+.audible-verification-badge.unchanged {
+  color: #cbd5e1;
+  border: 1px solid #64748b;
+  background: rgba(100, 116, 139, 0.14);
+}
 .intent-mcp-token-input {
   width: 110px;
   font-size: 10px;

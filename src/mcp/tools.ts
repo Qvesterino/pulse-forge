@@ -60,6 +60,7 @@ import { clarifyMessage } from "../intent/clarify-messages";
 import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { summarizeDocumentChange } from "./intent-readback";
+import type { AudibleVerificationRequest, AudibleVerificationResult } from "./audible-verification";
 import { verifiedMutation } from "./verified-mutation";
 import { guardStaleWrites, describePath, readPath, WriteConflictError } from "./write-conflict";
 import { decidePermission, readAutonomyPolicy, readDeclaredRevision } from "./permissionLattice";
@@ -1733,6 +1734,17 @@ const OUTPUT_MASTER = receiptSchema({
   profileId: { type: "string" },
   applied: { type: "boolean" },
 });
+const OUTPUT_VERIFY_EDIT = receiptSchema({
+  token: { type: "string" },
+  op: { type: "string", enum: ["capture", "compare"] },
+  scope: { type: ["object", "null"], additionalProperties: true },
+  before: { type: ["object", "null"], additionalProperties: true },
+  after: { type: ["object", "null"], additionalProperties: true },
+  comparison: { type: ["object", "null"], additionalProperties: true },
+  verified: { type: ["boolean", "null"] },
+  audibleChanged: { type: ["boolean", "null"] },
+  verdict: { type: ["string", "null"] },
+});
 const OUTPUT_EXPORT = receiptSchema({
   format: { type: "string" },
   durationSeconds: { type: ["number", "null"] },
@@ -1783,6 +1795,7 @@ const RECEIPT_SCHEMAS: Readonly<Record<string, McpOutputSchema>> = {
   kyx_checkpoint: OUTPUT_CHECKPOINT,
   kyx_song: OUTPUT_SONG,
   kyx_unsuno: OUTPUT_UNSUNO,
+  kyx_verify_edit: OUTPUT_VERIFY_EDIT,
 };
 const RECEIPT_TOOLS: ReadonlySet<string> = new Set(Object.keys(RECEIPT_SCHEMAS));
 
@@ -3195,6 +3208,52 @@ export const MCP_TOOLS: McpToolDef[] = [
     outputSchema: OUTPUT_RENDER_SUMMARY,
   },
   {
+    name: "kyx_verify_edit",
+    description:
+      "AUDIBLE VERIFICATION — did the sound really change? Two-phase by design. " +
+      'op:"capture" renders a bounded 2–4 bar window of a track (or the master) ' +
+      "before you edit and returns a token + metrics + content hash. After the " +
+      'edit, op:"compare" with that token renders the SAME window through the ' +
+      "export renderer (same engine/DSP) and returns LUFS/RMS/peak deltas, a " +
+      "null-test residual, coarse low/mid/high band deltas and a verdict " +
+      "(changed / unchanged / inconclusive). It compares PCM, so it also catches " +
+      "an effect that moved a document value but not the sound. Requires a live " +
+      "window with OfflineAudioContext; headless contexts refuse honestly. " +
+      "Capture BEFORE the edit — a compare without a token is refused.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["capture", "compare"],
+          description: "capture the baseline before the edit; compare after it",
+        },
+        trackId: {
+          type: "string",
+          description: "Stable track id to isolate (omit for the full master mix)",
+        },
+        startBar: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based first bar of the bounded window (capture)",
+        },
+        bars: {
+          type: "integer",
+          minimum: 2,
+          maximum: 4,
+          description: "Window length in bars (capture; default 2, capped at 4)",
+        },
+        token: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Capture token — required for compare",
+        },
+      },
+      required: ["op"],
+    },
+  },
+  {
     name: "kyx_diagnose_mix",
     description:
       "THE AGENT'S EARS v2 — a MIX DIAGNOSIS, not just numbers: offline-renders " +
@@ -4088,6 +4147,9 @@ export interface McpToolContext {
     },
     signal?: AbortSignal,
   ) => Promise<import("./render-summary").RenderSummaryData>;
+  /** Two-phase audible verification: capture a bounded render, then compare
+   * after the edit. Populated by the live window (needs OfflineAudioContext). */
+  verifyEdit?: (request: AudibleVerificationRequest, signal?: AbortSignal) => Promise<AudibleVerificationResult>;
 
   /**
    * THE AGENT'S EARS v2 (kyx_diagnose_mix): offline-render master + strips,
@@ -4638,6 +4700,7 @@ export function capabilitySnapshot(ctx: McpToolContext): Record<string, unknown>
       loudnessMeasure: has(ctx.measureLoudness),
       loudnessApply: has(ctx.applyLoudness),
       renderSummary: has(ctx.renderSummary),
+      audibleVerify: has(ctx.verifyEdit),
       diagnoseMix: has(ctx.diagnoseMix),
       mixPreview: has(ctx.mixPreview),
       gallery: has(ctx.shareToGallery),
@@ -4804,6 +4867,7 @@ const NO_DRYRUN_TOOLS: ReadonlySet<string> = new Set([
   "kyx_export",
   "kyx_publish_gallery",
   "kyx_audio_preview",
+  "kyx_verify_edit",
 ]);
 
 /** Tools whose successful result is a runtime/session fact rather than a
@@ -8269,6 +8333,77 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return mcpError(
           "EXECUTION_FAILED",
           `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    case "kyx_verify_edit": {
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      if (ctx.verifyEdit == null) {
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "audible verification is not available over this MCP transport (no OfflineAudioContext render context bound)",
+        );
+      }
+      const op = record.op === "compare" ? "compare" : record.op === "capture" ? "capture" : null;
+      if (op == null) return mcpError("INVALID_ARGUMENTS", 'op must be "capture" or "compare"');
+      if (op === "compare" && (typeof record.token !== "string" || record.token.trim() === "")) {
+        return mcpError("INVALID_ARGUMENTS", "compare needs the token returned by capture");
+      }
+      if (op === "capture") {
+        if (!Number.isSafeInteger(record.startBar) || (record.startBar as number) < 1) {
+          return mcpError("INVALID_ARGUMENTS", "capture needs a 1-based integer startBar");
+        }
+        if (
+          record.bars !== undefined &&
+          (!Number.isSafeInteger(record.bars) || (record.bars as number) < 2 || (record.bars as number) > 4)
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "bars must be between 2 and 4");
+        }
+      }
+      try {
+        const result = await ctx.verifyEdit(
+          {
+            op,
+            ...(typeof record.trackId === "string" && record.trackId.trim() !== ""
+              ? { trackId: record.trackId.trim() }
+              : {}),
+            ...(op === "capture" ? { startBar: record.startBar as number, bars: (record.bars as number) ?? 2 } : {}),
+            ...(op === "compare" ? { token: (record.token as string).trim() } : {}),
+          },
+          ctx.signal,
+        );
+        const comparison = result.comparison;
+        const scopeLabel = result.scope.kind === "master" ? "master mix" : `track "${result.scope.trackName}"`;
+        const windowLabel = `bars ${result.scope.startBar}–${result.scope.startBar + result.scope.bars - 1}`;
+        const text =
+          op === "capture"
+            ? `captured audible baseline ${result.token} — ${scopeLabel}, ${windowLabel}; ${result.before.lufs ?? "unmeasured"} LUFS, hash ${result.before.contentHash}`
+            : `audible check: ${(comparison?.verdict ?? "inconclusive").toUpperCase()} — ${scopeLabel}, ${windowLabel}; LUFS ${
+                comparison?.deltas.lufs ?? "n/a"
+              }, RMS ${comparison?.deltas.rmsDb ?? "n/a"} dB, residual ${
+                comparison?.deltas.nullResidualDb ?? "n/a"
+              } dB${
+                comparison?.bands.dominant
+                  ? `, strongest band ${comparison.bands.dominant.deltaDb} dB @ ${comparison.bands.dominant.centerHz} Hz`
+                  : ""
+              }. token ${result.token}`;
+        return {
+          text,
+          mutated: false,
+          stage: "rendered",
+          data: {
+            ...result,
+            verified: comparison?.verified ?? null,
+            audibleChanged: comparison?.audibleChanged ?? null,
+            verdict: comparison?.verdict ?? null,
+          },
+        };
+      } catch (error) {
+        rethrowIfMcpAborted(error, ctx);
+        const message = error instanceof Error ? error.message : String(error);
+        return mcpError(
+          message.includes("verification token") ? "INVALID_ARGUMENTS" : "EXECUTION_FAILED",
+          `audible verification failed: ${message}`,
         );
       }
     }

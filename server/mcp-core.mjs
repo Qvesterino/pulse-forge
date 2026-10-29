@@ -119,6 +119,7 @@ const LONG_RUNNING_MCP_TOOLS = new Set([
   "kyx_diagnose_mix",
   "kyx_arrange",
   "kyx_song",
+  "kyx_verify_edit",
 ]);
 
 export function isValidToken(token, expected) {
@@ -5037,6 +5038,121 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["scope", "strips", "referenceLufs"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+  },
+  {
+    name: "kyx_verify_edit",
+    description:
+      'AUDIBLE VERIFICATION — did the sound really change? Two-phase by design. op:"capture" renders a bounded 2–4 bar window of a track (or the master) before you edit and returns a token + metrics + content hash. After the edit, op:"compare" with that token renders the SAME window through the export renderer (same engine/DSP) and returns LUFS/RMS/peak deltas, a null-test residual, coarse low/mid/high band deltas and a verdict (changed / unchanged / inconclusive). It compares PCM, so it also catches an effect that moved a document value but not the sound. Requires a live window with OfflineAudioContext; headless contexts refuse honestly. Capture BEFORE the edit — a compare without a token is refused.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["capture", "compare"],
+          description: "capture the baseline before the edit; compare after it",
+        },
+        trackId: {
+          type: "string",
+          description: "Stable track id to isolate (omit for the full master mix)",
+        },
+        startBar: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based first bar of the bounded window (capture)",
+        },
+        bars: {
+          type: "integer",
+          minimum: 2,
+          maximum: 4,
+          description: "Window length in bars (capture; default 2, capped at 4)",
+        },
+        token: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Capture token — required for compare",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        agentId: {
+          type: "string",
+          maxLength: 32,
+          description:
+            "Optional per-call agent identity (lowercase letters, digits, dashes). The relay token is the real gate — this makes the audit log, history-label attribution and foreign-work undo consent LEGIBLE when several agents share one transport. Declared by the caller, so treat it as a label, not an auth boundary.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+      required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+        },
+        stage: {
+          type: "string",
+          enum: ["read", "runtime", "applied", "persisted", "rendered", "delivered", "dry-run", "replayed", "noop"],
+        },
+        changed: {
+          type: "boolean",
+        },
+        readback: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 32,
+        },
+        token: {
+          type: "string",
+        },
+        op: {
+          type: "string",
+          enum: ["capture", "compare"],
+        },
+        scope: {
+          type: ["object", "null"],
+          additionalProperties: true,
+        },
+        before: {
+          type: ["object", "null"],
+          additionalProperties: true,
+        },
+        after: {
+          type: ["object", "null"],
+          additionalProperties: true,
+        },
+        comparison: {
+          type: ["object", "null"],
+          additionalProperties: true,
+        },
+        verified: {
+          type: ["boolean", "null"],
+        },
+        audibleChanged: {
+          type: ["boolean", "null"],
+        },
+        verdict: {
+          type: ["string", "null"],
+        },
+      },
+      required: ["status", "stage"],
     },
     annotations: {
       readOnlyHint: false,

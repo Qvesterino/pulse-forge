@@ -12,6 +12,7 @@ import { mcpRenderAudioPreview } from "./audio-preview";
 import { loadUserSampleMono } from "./sample-mono";
 import { separateStemsForAgent } from "./stem-separate";
 import { flushServicesSave, listSavedProjects, saveProjectAsCopy } from "./save-now";
+import { runAudibleVerification } from "./audible-verification";
 import type { Services } from "../services";
 
 /**
@@ -172,6 +173,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
     renderSummary: (request, signal) => mcpRenderSummary(services, request, signal),
+    verifyEdit: (request, signal) => runAudibleVerification(services, request, signal),
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
     diagnoseMix: (request, signal) =>

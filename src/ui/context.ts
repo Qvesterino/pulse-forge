@@ -16,6 +16,11 @@ import {
 import { SelectionStore } from "../store/SelectionStore";
 import { mcpAllowDestructive, mcpAllowMutations, subscribeMcpFlags } from "../mcp/flags";
 import {
+  getAudibleVerification,
+  subscribeAudibleVerification,
+  type AudibleVerificationNotice,
+} from "../analysis/audible-verification-store";
+import {
   getSessionRecordingState,
   subscribeSessionRecordingState,
   type SessionRecordingState,
@@ -277,4 +282,19 @@ export function useMcpAllowMutations(): boolean {
 /** Reactive audio-recording surface published by the arrangement REC strip. */
 export function useSessionRecordingState(): SessionRecordingState {
   return useSyncExternalStore(subscribeSessionRecordingState, getSessionRecordingState, getSessionRecordingState);
+}
+
+/** Last audible-verification comparison (null until a compare runs). */
+export function useAudibleVerification(): AudibleVerificationNotice | null {
+  return useSyncExternalStore(subscribeAudibleVerification, getAudibleVerification, getAudibleVerification);
+}
+
+/** Current document revision (null when the store cannot report one). */
+export function useDocRevision(): number | null {
+  const { store } = useServices();
+  return useSyncExternalStore(
+    store.subscribe,
+    () => ("getRevision" in store && typeof store.getRevision === "function" ? store.getRevision() : null),
+    () => null,
+  );
 }

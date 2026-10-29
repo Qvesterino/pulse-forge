@@ -264,6 +264,15 @@
       }
     },
     {
+      "name": "kyx_verify_edit",
+      "risk": "runtime",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      }
+    },
+    {
       "name": "kyx_diagnose_mix",
       "risk": "runtime",
       "annotations": {

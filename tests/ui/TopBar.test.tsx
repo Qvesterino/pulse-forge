@@ -10,6 +10,7 @@ import { BAR_TICKS, type ProjectDocument } from "../../src/project-model/types";
 import { addMidiClip } from "../../src/commands/commands";
 import { setMcpAllowDestructive, setMcpAllowMutations } from "../../src/mcp/flags";
 import { IDLE_SESSION_STATE, publishSessionRecordingState } from "../../src/ui/sessionStateSurface";
+import { clearAudibleVerification, publishAudibleVerification } from "../../src/analysis/audible-verification-store";
 
 function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
   return {
@@ -521,6 +522,7 @@ describe("TopBar — explicit record target + agent authority badge", () => {
     setMcpAllowDestructive(false);
     setMcpAllowMutations(false);
     publishSessionRecordingState(IDLE_SESSION_STATE);
+    clearAudibleVerification();
   });
 
   it("labels the transport record button as MIDI", () => {
@@ -566,6 +568,54 @@ describe("TopBar — explicit record target + agent authority badge", () => {
     expect(screen.queryByText(/AGENT .* ON/)).not.toBeInTheDocument();
   });
 });
+
+describe("TopBar — audible verification badge", () => {
+  afterEach(() => clearAudibleVerification());
+
+  it("shows the measured delta from the last comparison and hides it after an edit revision moves", () => {
+    const services = mockServices();
+    const docId = services.store.getDoc().id;
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    act(() => {
+      publishAudibleVerification({
+        docId,
+        revision: null,
+        scopeLabel: 'track "Lead"',
+        audibleChanged: true,
+        verified: true,
+        lufsDelta: -1.8,
+        nullResidualDb: -14.2,
+        dominantBand: { band: "high", centerHz: 2400, deltaDb: -1.8 },
+        at: Date.now(),
+      });
+    });
+    const badge = screen.getByText(/AUDIBLE ✓/);
+    expect(badge).toHaveTextContent("-1.8 LU");
+    expect(badge).toHaveTextContent("-1.8 dB @ 2.4 kHz");
+    expect(badge).toHaveAttribute("title", expect.stringContaining('track "Lead"'));
+  });
+
+  it("says unchanged instead of pretending a change when the PCM is identical", () => {
+    const services = mockServices();
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    act(() => {
+      publishAudibleVerification({
+        docId: services.store.getDoc().id,
+        revision: null,
+        scopeLabel: "master mix",
+        audibleChanged: false,
+        verified: true,
+        lufsDelta: 0,
+        nullResidualDb: -120,
+        dominantBand: null,
+        at: Date.now(),
+      });
+    });
+    expect(screen.getByText("AUDIBLE = unchanged")).toBeInTheDocument();
+  });
+});
+
 describe("TopBar — REPLACE clear disclosure (CF-07)", () => {
   it("discloses the recovery at the moment the pattern recorder reports a replace clear", () => {
     const services = mockServices();

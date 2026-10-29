@@ -189,7 +189,7 @@ describe("H5 — agent work persists through a real repository", () => {
 });
 
 describe("H6 — the host advertises the full surface honestly", () => {
-  it("all 39 tools dispatch headlessly (unknown-tool path is the only dead end)", async () => {
+  it("all 43 tools dispatch headlessly (unknown-tool path is the only dead end)", async () => {
     const host = boot();
     for (const def of MCP_TOOLS) {
       const skip = new Set([
