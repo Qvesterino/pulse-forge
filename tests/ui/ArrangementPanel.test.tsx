@@ -7,6 +7,7 @@ import { SelectionStore } from "../../src/store/SelectionStore";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { followScrollLeft, markScrollAsProgrammatic } from "../../src/ui/playhead";
+import { loadArrangementViewState, saveArrangementViewState } from "../../src/ui/arrangementViewState";
 import { addAudioClip, setBpm } from "../../src/commands/commands";
 import type { ProjectDocument } from "../../src/project-model/types";
 
@@ -633,5 +634,98 @@ describe("ArrangementPanel — follow playhead (CF-09)", () => {
     expect(followScrollLeft({ playheadX: 50, scrollLeft: 0, viewportWidth: viewport })).toBe(0);
     // A zero-width viewport measures nothing and jumps nowhere.
     expect(followScrollLeft({ playheadX: 100, scrollLeft: 0, viewportWidth: 0 })).toBeNull();
+  });
+});
+
+describe("ArrangementPanel — view state survives the tab (CF-11)", () => {
+  function docWithClip(id: string) {
+    const doc = createProjectFromTemplate("house");
+    return {
+      ...doc,
+      id,
+      arrangement: {
+        ...doc.arrangement,
+        clips: [{ id: "clip-1", sceneId: doc.scenes[0]!.id, startBar: 0, lengthBars: 4 }],
+      },
+    };
+  }
+
+  afterEach(() => {
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith("pf:arr-view:")) window.localStorage.removeItem(key);
+    }
+  });
+
+  it("module: round-trips valid fields and degrades malformed payloads to no saved view", () => {
+    saveArrangementViewState("doc-x", {
+      zoom: 1.4,
+      scrollLeft: 500,
+      selectedClipId: "clip-1",
+      selectedAudioClipId: null,
+    });
+    expect(loadArrangementViewState("doc-x")).toEqual({
+      zoom: 1.4,
+      scrollLeft: 500,
+      selectedClipId: "clip-1",
+      selectedAudioClipId: null,
+    });
+    window.localStorage.setItem("pf:arr-view:doc-broken", "{not json");
+    expect(loadArrangementViewState("doc-broken")).toEqual({});
+    window.localStorage.setItem(
+      "pf:arr-view:doc-junk",
+      JSON.stringify({ zoom: "big", scrollLeft: -5, selectedClipId: 7, selectedAudioClipId: "audio-1" }),
+    );
+    expect(loadArrangementViewState("doc-junk")).toEqual({ selectedAudioClipId: "audio-1" });
+    expect(loadArrangementViewState("doc-never-saved")).toEqual({});
+  });
+
+  it("restores zoom and clip focus on remount, and nothing leaks across projects", () => {
+    const docA = docWithClip("view-doc-a");
+    const docB = docWithClip("view-doc-b");
+    expect(docB.id).not.toBe(docA.id);
+    window.localStorage.setItem(
+      `pf:arr-view:${docA.id}`,
+      JSON.stringify({ zoom: 1.4, scrollLeft: 0, selectedClipId: "clip-1" }),
+    );
+
+    // Doc B mounts clean: default zoom, no clip focus.
+    const viewB = renderWithContext(<ArrangementPanel />, { services: mockServices(docB) });
+    expect(screen.queryByRole("spinbutton", { name: "Clip length in seconds" })).toBeNull();
+    const widthB = (viewB.container.querySelector(".arr-chord-lane") as HTMLElement).style.width;
+    viewB.unmount();
+
+    // Doc A restores BOTH: the zoom (wider lanes) and the clip focus (SECS).
+    const viewA = renderWithContext(<ArrangementPanel />, { services: mockServices(docA) });
+    expect(screen.getByRole("spinbutton", { name: "Clip length in seconds" })).toBeInTheDocument();
+    const widthA = (viewA.container.querySelector(".arr-chord-lane") as HTMLElement).style.width;
+    const parse = (value: string) => Number.parseFloat(value);
+    expect(parse(widthA)).toBeCloseTo(parse(widthB) * 1.4, 6);
+    viewA.unmount();
+  });
+
+  it("NEGATIVE: a saved clip id that no longer exists selects nothing", () => {
+    const doc = docWithClip("view-doc-gone");
+    doc.arrangement = { ...doc.arrangement, clips: [] };
+    window.localStorage.setItem(
+      `pf:arr-view:${doc.id}`,
+      JSON.stringify({ zoom: 1, scrollLeft: 0, selectedClipId: "clip-1" }),
+    );
+    renderWithContext(<ArrangementPanel />, { services: mockServices(doc) });
+    expect(screen.queryByRole("spinbutton", { name: "Clip length in seconds" })).toBeNull();
+  });
+
+  it("persists zoom changes and scroll position for the project (debounced)", async () => {
+    const doc = docWithClip("view-doc-persist");
+    const { container } = renderWithContext(<ArrangementPanel />, { services: mockServices(doc) });
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const scroller = container.querySelector(".arr-lane-scroll") as HTMLElement;
+    scroller.scrollLeft = 500;
+    fireEvent.scroll(scroller);
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 320)));
+    const saved = JSON.parse(window.localStorage.getItem(`pf:arr-view:${doc.id}`) ?? "{}");
+    expect(saved.zoom).toBeCloseTo(1.4, 6);
+    expect(saved.scrollLeft).toBe(500);
   });
 });

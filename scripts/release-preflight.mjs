@@ -15,6 +15,7 @@ import { createReadStream, existsSync, readdirSync, readFileSync, statSync } fro
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { SEMANTIC_PACK } from "../src/ai/packs/registry.ts";
+import { findLegacyPublicBrandLabel } from "./release-brand-rule.mjs";
 
 const root = process.cwd();
 const dist = join(root, "dist");
@@ -245,7 +246,9 @@ if (!existsSync(assetsDir)) {
 }
 
 // Compatibility parsing lives in source/import code, but old product/family
-// labels must never appear in shipped user-facing copy.
+// labels must never appear in shipped user-facing copy. The rule itself
+// (and the line between a label and an identifier) lives in
+// scripts/release-brand-rule.mjs, shared with tests/release-brand-rule.test.ts.
 const shippedTextFiles = [
   join(dist, "index.html"),
   join(dist, "manifest.webmanifest"),
@@ -258,8 +261,11 @@ const shippedTextFiles = [
 for (const path of shippedTextFiles) {
   try {
     const text = readFileSync(path, "utf8");
-    if (/pulse\s+forge/i.test(text) || /\bpulseforge\b/i.test(text) || /\bvocalforge\b/i.test(text)) {
-      fail(`legacy public brand label found in shipped artifact: ${path.replace(`${root}${path.sep}`, "")}`);
+    const legacy = findLegacyPublicBrandLabel(text);
+    if (legacy) {
+      fail(
+        `legacy public brand label found in shipped artifact: ${path.replace(`${root}${path.sep}`, "")} (${legacy})`,
+      );
     }
   } catch {
     fail(`could not scan shipped artifact for legacy branding: ${path}`);

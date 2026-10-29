@@ -158,6 +158,7 @@ import { recordedTakeSampleId, userSampleId } from "../persistence/UserSampleRep
 import { RECORDING_OWNER_ID, type RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { materializePcmTake } from "../audio-engine/pcmRecording";
 import { recordingAlignment, recordingAlignmentStorageKey } from "../audio-engine/recordingAlignment";
+import { loadArrangementViewState, saveArrangementViewState } from "./arrangementViewState";
 import {
   listRecordingInputDevices,
   loadRecordingInputDeviceId,
@@ -577,12 +578,25 @@ export function ArrangementPanel() {
   );
   const capture = useArrangementCapture();
   const [selectedSceneId, setSelectedSceneId] = useState(scenes[0]?.id ?? "");
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  // CF-11: the single-clip focus is panel-local (it drives take lanes, warp
+  // pins and the context menu) and used to die with the tab. It now restores
+  // per project — validated against the document, so a clip that no longer
+  // exists selects nothing.
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(() => {
+    const saved = loadArrangementViewState(doc.id).selectedClipId;
+    return saved && doc.arrangement.clips.some((clip) => clip.id === saved) ? saved : null;
+  });
+  const selectedClipIdRef = useRef<string | null>(null);
+  selectedClipIdRef.current = selectedClipId;
   const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
   const [showIntensity, setShowIntensity] = useState(true);
   // Arrangement zoom: px per bar = BASE_BAR_WIDTH * zoom. Ctrl+wheel zooms
   // around the cursor, −/+ step, FIT squeezes the whole song into the view.
-  const [zoom, setZoom] = useState(1);
+  // CF-11: restored per project — the zoom used to die with the ARR tab.
+  const [zoom, setZoom] = useState(() => {
+    const saved = loadArrangementViewState(doc.id).zoom;
+    return saved === undefined ? 1 : Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, saved));
+  });
   // CF-09: opt-in follow-playhead — page-jumps keep a moving playhead visible;
   // a user scroll suspends it (the automatic jumps never do). View-layer
   // preference, same policy as snap: localStorage, never the document.
@@ -617,6 +631,46 @@ export function ArrangementPanel() {
   const zoomRef = useRef(1);
   const zoomAnchorRef = useRef<{ tick: number; cursorX: number } | null>(null);
   zoomRef.current = zoom;
+  // CF-11: persist the view state per project (debounced) so the ARR tab can
+  // close and the view comes back as it was left.
+  const viewSaveTimerRef = useRef<number | null>(null);
+  const scheduleViewPersist = useCallback(() => {
+    if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+    viewSaveTimerRef.current = window.setTimeout(() => {
+      viewSaveTimerRef.current = null;
+      saveArrangementViewState(doc.id, {
+        zoom: zoomRef.current,
+        scrollLeft: scrollRef.current?.scrollLeft ?? 0,
+        selectedClipId: selectedClipIdRef.current,
+        selectedAudioClipId: selectedAudioClipIdRef.current,
+      });
+    }, 250);
+  }, [doc.id]);
+  useEffect(() => {
+    scheduleViewPersist();
+  }, [zoom, selectedClipId, selectedAudioClipId, scheduleViewPersist]);
+  // Restore the saved horizontal position once the lanes exist, per document.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const saved = loadArrangementViewState(doc.id).scrollLeft;
+    if (el && saved) {
+      el.scrollLeft = saved;
+      markScrollAsProgrammatic();
+    }
+    // Flush synchronously when the panel unmounts (the debounced write would
+    // never fire) — the refs carry the newest values.
+    const docId = doc.id;
+    return () => {
+      if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+      saveArrangementViewState(docId, {
+        zoom: zoomRef.current,
+        scrollLeft: scrollRef.current?.scrollLeft ?? 0,
+        selectedClipId: selectedClipIdRef.current,
+        selectedAudioClipId: selectedAudioClipIdRef.current,
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- per-document restore/flush
+  }, [doc.id]);
   /**
    * The document's bar length in ticks, in a REF.
    *
@@ -740,7 +794,12 @@ export function ArrangementPanel() {
   const selectionStore = useSelectionStore();
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
   const runtime = useSceneRuntimeState();
-  const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
+  const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(() => {
+    const saved = loadArrangementViewState(doc.id).selectedAudioClipId;
+    return saved && (doc.arrangement.audioClips ?? []).some((clip) => clip.id === saved) ? saved : null;
+  });
+  const selectedAudioClipIdRef = useRef<string | null>(null);
+  selectedAudioClipIdRef.current = selectedAudioClipId;
   const [showAudioTakeLanes, setShowAudioTakeLanes] = useState(false);
   const [compCrossfadeTicks, setCompCrossfadeTicks] = useState(120);
   const [audioTakeLaneRange, setAudioTakeLaneRange] = useState<AudioTakeLaneRange | null>(null);
@@ -5437,6 +5496,8 @@ export function ArrangementPanel() {
           ref={scrollRef}
           onScroll={() => {
             measureViewport();
+            // CF-11: the horizontal position is part of the saved view state.
+            scheduleViewPersist();
             // CF-09: a scroll the app did not write is the user taking over —
             // follow suspends rather than fighting them (the automatic jumps
             // mask themselves with the programmatic flag).
