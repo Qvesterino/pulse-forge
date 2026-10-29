@@ -1553,9 +1553,11 @@ table above. The corrections are recorded here because the report's own standard
 reported, not quietly dropped.
 
 **Refutation 1 — "corr = 1.0000 means the live and offline render are the same signal" is mathematically
-invalid.** `correlationAt` (`src/testing/live-offline-parity.ts:671-687`) is a true Pearson coefficient, so for
-a small error `corr ≈ 1 − e²/2` where `e = 10^(null/20)`: the correlation is **quadratic** in the error, not
-linear. Independently recomputed here against the parallel session's five corpus cases:
+invalid.** `correlationAt` (`src/testing/live-offline-parity.ts:671-687`) **is not a true Pearson coefficient** — the
+implementation does not subtract the means, so it is an uncentred cosine similarity, and its own docstring is wrong
+about its own metric (§10.16.7). For a small error `corr ≈ 1 − e²/2` where `e = 10^(null/20)`: the correlation is
+**quadratic** in the error, not linear. Independently recomputed here against the parallel session's five corpus
+cases:
 
 | corpus case         | null     | corr predicted | corr measured |
 | ------------------- | -------- | -------------- | ------------- |
@@ -2321,6 +2323,59 @@ finding and pointed at a product file. The second lesson is about the report its
 finding, named a suspect, and was wrong — and the only reason that is recoverable is that the claim carried its
 evidence (a null in dB, a `live↔live` value, a control), so the next measurement could **falsify** it instead of
 merely disagreeing with it.
+
+#### 10.16.7 What the runner's 18 instrument failures are — and what the correlation actually measures
+
+The parallel session read the CI annotation of the browser-audio job (run `ae372bf4`) and found something §10.16.5
+had not yet seen from the runner: **the capture-lead fix killed the FX reds in CI** — `failed=18/67`, and **every
+one of the 18 is an `instrument:*`, not a single FX**. The four "product findings" of §10.14 are gone from the
+runner too. What remains splits cleanly in two:
+
+| group                     | count | live↔live                            | live↔offline   | corr   | profile                                   |
+| ------------------------- | ----- | ------------------------------------ | -------------- | ------ | ----------------------------------------- |
+| systematic difference     | 14    | **−321…−336 dB** (same as `control`) | **−24…−34 dB** | 0.9997 | flat ≈ **−31.8 dB** from the second slice |
+| non-reproducible realtime | 4     | **−77…−80 dB**                       | —              | —      | `analog`, `texture`, `strings`, `reese`   |
+
+The first group is the interesting one, because **both branches are bit-deterministic** — the live branch reproduces
+itself to −321…−336 dB, exactly like the offline determinism control — and yet the two branches disagree by a flat
+≈ −31.8 dB. That is not noise. §10.14 attributed these to "the platform realtime divergence", and that label was an
+**unmeasured guess**: the honest statement is _a systematic difference between two deterministic branches, present on
+the runner and absent on the desktop_.
+
+**And the flat profile does not say what kind — but the correlation does, and it is not the answer the numbers were
+read as.** The parallel session read the flat ≈ −31.8 dB profile as "a constant gain of ~2.8 % (20·log10(1/0.028))".
+**Their own correlation number excludes that reading**, once the metric's definition is read rather than its name:
+
+- `compare()` (`src/testing/live-offline-parity.ts:682-696`) computes a **subtraction null** —
+  `10·log10(Σ(reference − capture)² / Σreference²)`. So −31.8 dB means the residual energy is **6.6·10⁻⁴** of the
+  reference energy.
+- `correlationAt()` (`:698-715`) is **not** the Pearson coefficient its docstring claims: it computes
+  `dot / √(Σa²·Σb²)` **without subtracting the means** — an uncentred cosine similarity.
+- For a **pure gain** `b = g·a`, that expression is **exactly 1.0000** for any `g` (a scalar multiple does not change
+  the angle). The measured **0.9997 excludes a pure gain**.
+- For an **additive constant** `b = a + d`, it is `1/√(1 + 10^(null/10))` — and for null = −31.8 dB that is
+  **0.99967**, the measured **0.9997** to four digits.
+
+So the residual's dominant component is **additive** (a DC-like constant), not a level scale — the opposite of the
+reading it was given. The corpus's own new summary carries the number that settles it outright: the **rms and peak
+ratios** (`0559d65b` prints `rms=`, `peak=`, `spec=`). An additive constant of this size leaves the level **≈ 1.000×**
+(√(1+6.6·10⁻⁴)) while a 2.8 % gain would show **≈ 0.972×** on both. **Not yet read from the CI annotation — the
+next run has it.**
+
+**Two corrections this section makes to the report's own earlier text.** First, §10.14's Refutation 1 says
+"`correlationAt` is a true Pearson coefficient" — it is **not**: the implementation does not center, and the source's
+own docstring is wrong about its own metric. The arithmetic in that refutation (corr ≈ 1 − e²/2) is the
+**orthogonal-residual** formula, and the measured table there fits it — but it was fitted against a metric whose name
+was wrong. Second, the consequence matters for readers: a **true** Pearson is invariant to an additive offset, and
+this metric is not. So `corr = 0.9997` must not be read as "the same signal" — it says "the same signal plus a
+small constant". That is exactly the distinction the runner's 14 cases turn on, and it is invisible unless the
+metric's definition is read instead of its name.
+
+**What stays open, and it is not a small thing.** Which branch carries the constant, and why the runner has it while
+the desktop does not, is **not resolved** — and until it is, the corpus may well be _right_ to be red there. §10.14's
+proposal to make the null corpus non-blocking in CI was built on the "platform noise" reading; if the difference is
+an additive constant in one branch's output path, that proposal would hide a real live↔offline difference — the
+exact thing invariant 3 exists to catch. **That decision must not be taken on the strength of a label.**
 
 #### 10.16.6 Five red specs, five different defects — and one gate that measured the wrong thing
 
