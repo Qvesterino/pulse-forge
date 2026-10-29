@@ -59,29 +59,27 @@ function measure(): ObservationReport {
 /**
  * The tools that ship WITHOUT an outputSchema.
  *
- * Measured at the audited commit c8729057 (13 of 39) plus `kyx_separate`,
- * a tool a parallel session is adding — it is in flight, it declares no
- * outputSchema, and the two existing taxonomy guards have already caught
- * it unclassified. It is listed here so this ratchet stays green in a
- * shared tree; a tool that does not exist yet in a given checkout is not
- * treated as stale (see the "not stale" case below).
+ * ONE tool, measured: `kyx_separate` declares no outputSchema — not in the
+ * literal catalog and not in the receipt envelope, so an agent has no
+ * declared shape to code against.
+ *
+ * The list was fourteen entries long until 2026-10-29, and thirteen of them
+ * were phantom gaps. `src/mcp/tools.ts` attaches the receipt envelope to
+ * those tools in a loop over RECEIPT_SCHEMAS — AFTER the literal catalog, the
+ * same way it augments every input schema with requestId/agentId/dryRun — so
+ * a source scanner that only reads the literal saw no schema on them.
+ * But the SHIPPED surface declares them: the generated mirrors import the
+ * module, so the schemas are in the catalog the desktop app serves.
+ * Measured on that tree: 43 of 44 tools declare an outputSchema at runtime
+ * and in `desktop/mcp-tool-defs.cjs`, while the instrument reported 29 of 44.
+ *
+ * The instrument now counts the receipt attachment (so it measures the
+ * surface, not the source), and this baseline is what it measures: one real
+ * gap. That is also why the list is safe to keep small — a receipt tool that
+ * LOSES its schema now shows up as a grown gap, where the old baseline would
+ * have listed it as known and stayed silent.
  */
-const KNOWN_TOOLS_WITHOUT_OUTPUT_SCHEMA = [
-  "kyx_automation",
-  "kyx_checkpoint",
-  "kyx_clips",
-  "kyx_export",
-  "kyx_fx",
-  "kyx_generate",
-  "kyx_intent",
-  "kyx_master",
-  "kyx_pattern",
-  "kyx_separate",
-  "kyx_song",
-  "kyx_state",
-  "kyx_tracks",
-  "kyx_unsuno",
-];
+const KNOWN_TOOLS_WITHOUT_OUTPUT_SCHEMA = ["kyx_separate"];
 
 /**
  * The behaviour-changing inputs the MCP layer reads but NO tool schema

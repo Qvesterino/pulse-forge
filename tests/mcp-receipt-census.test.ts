@@ -244,6 +244,25 @@ function census(): CensusEntry[] {
       args: () => ({ op: "createSet", name: "Census Set" }),
       kind: "document",
     },
+    {
+      // E-6 (kyx_analyze): perception over the E-1 envelope. Read-only by
+      // contract — it renders the track's audio and reports a digest, so the
+      // document is never the witness. On a headless transport it refuses
+      // honestly, and a refusal still moves nothing.
+      tool: "kyx_analyze",
+      args: (doc) => ({ trackId: instrumentTrack(doc).id, featureSet: "mix-health" }),
+      kind: "read",
+    },
+    {
+      // The audible-verification loop: it renders the SAME window twice and
+      // compares the PCM. The document is not the witness either — a document
+      // value can move without the sound changing, and only the render sees
+      // that. Headless contexts refuse, and a refusal moves nothing.
+      tool: "kyx_verify_edit",
+      args: () => ({ op: "capture", startBar: 1, bars: 2 }),
+      kind: "external",
+      why: "renders a window and compares PCM — the document is not the witness",
+    },
   ];
 }
 

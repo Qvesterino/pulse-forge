@@ -35,6 +35,13 @@ import type { Services } from "../../src/services";
  * harness: 520 packed clips → 53 259 elements (~102.4 per clip), of which
  * 43 680 are the picture's own marks.
  *
+ * ONE ELEMENT MORE, NOT ONE PER CLIP (2026-10-29). CF-10 added the record
+ * bar's "playhead returns to the take start" toggle — ONE button, rendered
+ * once, so the scene grew by one element in total and the PER-CLIP cost did
+ * not move at all (~102.4 per clip). The budget is re-pinned to the measured
+ * 53 260: the tripwire still holds, because the next per-clip element (52 260
+ * + 520) is still far above it and any per-clip growth still fails here.
+ *
  * The budget is re-pinned to the MEASURED number, not to a round guess, and it
  * stays a tripwire: one element more per clip fails here, so the picture
  * cannot grow without someone re-pinning it on purpose and reviewing the
@@ -105,12 +112,12 @@ describe("arrangement DOM census gate (D: scale)", () => {
     expect(total, "the unmeasured fallback exploded for a 1000-bar project").toBeLessThanOrEqual(1200);
   });
 
-  it("per-clip DOM cost stays within budget (520 clips ≤ 53 259 elements)", () => {
+  it("per-clip DOM cost stays within budget (520 clips ≤ 53 260 elements)", () => {
     const bars = Array.from({ length: 520 }, (_, index) => index * 4);
     const utils = renderPanel(docWithClips(bars));
     const clipEls = utils.container.querySelectorAll(".arr-clip").length;
     const total = utils.container.querySelectorAll("*").length;
     expect(clipEls, "not every clip rendered — the cost measurement would be vacuous").toBe(520);
-    expect(total, "per-clip DOM cost grew past its measured ~102.4 elements").toBeLessThanOrEqual(53_259);
+    expect(total, "per-clip DOM cost grew past its measured ~102.4 elements").toBeLessThanOrEqual(53_260);
   });
 });

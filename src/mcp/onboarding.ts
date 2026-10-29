@@ -109,10 +109,9 @@ TOOL INDEX (all 43 — grouped by job)
   perform:     kyx_transport (incl. action:launchScene) · kyx_checkpoint ·
                kyx_performance (Live Sets + macros; prepare only)
   finish:      kyx_mix · kyx_mix_idea (text→mix) · kyx_master (ZENIT ops) · kyx_separate
-               (source→stems) · kyx_audio_preview (listenable
-               WAV) · kyx_loudness (BS.1770) · kyx_render_summary
+               (source→stems) · kyx_audio_preview (listenable WAV) · kyx_loudness (BS.1770) · kyx_render_summary
                (per-strip LUFS/peak/crest) · kyx_verify_edit · kyx_diagnose_mix (findings +
-               fixes) · kyx_export · kyx_save (persist receipt) · kyx_publish_gallery (agent badge)
+               fixes) · kyx_analyze · kyx_export · kyx_save (persist receipt) · kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)
   transcribe:  kyx_unsuno {action: transcribe, sourceId}; restyle · regen · similarity
@@ -201,6 +200,10 @@ MARKERS / AUTOMATION / TRANSPORT / UNDO:
 GENERATION (refused over kyx_intent — use kyx_generate):
   genre words: house, techno, trap, ambient, drill, phonk, jersey, dnb,
   ukg, amapiano, postrock, drone, chiptune, eurodance, latin
+PERCEPTION (refused over kyx_intent — use kyx_analyze):
+  mix-health digest of one track (peak/LUFS/crest/band shares/flags) or audio
+  labels (AudioSet top-5 with confidence) — kyx_analyze needs the exact track
+  id from kyx_state subject:tracks
 PLUGINS (desktop): "aké clapy mám?" / "what claps do I have" -> CLAP scan
 
 Rule of thumb: if a phrase carries a NUMBER + TARGET (steps, bars, dB,

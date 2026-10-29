@@ -8317,7 +8317,13 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         );
         const { formatAnalyzeAudio } = await import("./analyze-audio");
         const text = formatAnalyzeAudio(result);
-        return { text, mutated: false, data: result };
+        // The disposition is declared, not guessed: this is a READ of the
+        // track's rendered audio, the same disposition its sibling
+        // kyx_render_summary declares (stage "runtime" - the runtime produced
+        // the evidence, the document did not move). A result that changed no
+        // document and says NOTHING is an untyped refusal (audit F-05): the
+        // agent cannot tell it from a success.
+        return { text, mutated: false, stage: "runtime", data: result };
       } catch (error) {
         return mcpError("EXECUTION_FAILED", error instanceof Error ? error.message : String(error));
       }

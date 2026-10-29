@@ -131,6 +131,25 @@ if (!toolsArray || !ts.isArrayLiteralExpression(toolsArray)) {
   process.exit(2);
 }
 
+// ── the receipt schemas, attached AFTER the literal catalog ─────────────
+// tools.ts attaches the receipt envelope to a set of tools in a loop over
+// RECEIPT_SCHEMAS, the same way it augments every input schema with
+// requestId/agentId/dryRun. A source scanner that does not know about that
+// loop reports those tools as "without an output schema" - but the SHIPPED
+// surface declares them: the generated mirrors import the module, so the
+// receipt schemas are in the catalog the desktop app serves. Measured on this
+// tree, 43 of 44 tools declare an outputSchema at runtime and in the mirror
+// while this scanner saw 29. A ratchet has to measure the surface, so the
+// loop's keys count as a declaration.
+const receiptObject = findVar(toolsFile.sf, "RECEIPT_SCHEMAS");
+const receiptSchemas = new Set();
+if (receiptObject && ts.isObjectLiteralExpression(receiptObject)) {
+  for (const p of receiptObject.properties) {
+    if (!ts.isPropertyAssignment(p) || !p.name) continue;
+    receiptSchemas.add(p.name.getText().replace(/^["']|["']$/g, ""));
+  }
+}
+
 const tools = [];
 for (const el of toolsArray.elements) {
   if (!ts.isObjectLiteralExpression(el)) continue;
@@ -145,7 +164,7 @@ for (const el of toolsArray.elements) {
     inputs: declaredProps(inSchema),
     required: requiredProps(inSchema),
     enums: enumValues(inSchema),
-    hasOutputSchema: Boolean(outSchema),
+    hasOutputSchema: Boolean(outSchema) || receiptSchemas.has(name),
     outputProps: declaredProps(outSchema),
   });
 }
