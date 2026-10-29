@@ -193,6 +193,20 @@ The rule: **read CI state when you have a question, not continuously.**
   `hygiene` and `build` jobs write their failing output into the job summary
   and into an **error annotation**, and the annotation is served by the
   check-runs annotations API - one request, no token.
+- **The number of errors in an annotation is not the number of errors.**
+  Measured 2026-10-29: the `typecheck` job carried no annotation of its own,
+  so GitHub's default `tsc` matcher rendered only the first ten errors and
+  dropped `file:line` - CI showed 10 where `tsc --noEmit` locally showed 12.
+  An annotation is a POINTER, not a census: count locally before concluding
+  anything about how many things are broken, and never read a missing
+  `file:line` as a missing error. The `typecheck` job now writes its own
+  annotation.
+- **A cancelled run is not a verdict.** GitHub's concurrency group with
+  `cancel-in-progress: false` keeps a RUNNING job alive but replaces any
+  PENDING one with the latest - so with a push every few minutes, most
+  commits never get a check-runs entry at all. Measured the same day: six
+  consecutive commits whose runs ended `completed/cancelled`. Read
+  `cancelled` as "not measured", never as "failed" and never as "passed".
 - **If the API answers 403, STOP and report it.** Do not retry in a loop: the
   budget resets on the hour, and no CI answer is worth spending another
   agent's budget on.

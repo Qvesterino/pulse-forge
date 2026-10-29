@@ -1649,8 +1649,18 @@ effects. So the two statements are both true and they point in opposite directio
 
 - on a valid environment, the live↔offline divergence for those cases is **real** — an engine divergence, and
   an invariant-3 question;
-- on the CI runner, the corpus's verdict is **noise**, including the five cases this report had called stable.
-  `fx:bassHarmonic` fell out of the set after measuring −27.2 dB twice.
+- on the CI runner, the corpus's verdict is **noise** for the cases that flap between runs — it moves the
+  _membership_ of the red set rather than any one case's value.
+
+**A narrowing, measured by the parallel session.** The sentence above originally read "noise, **including** the five
+cases this report had called stable", and that was too strong. The parallel session measured that **ozvena,
+morphdynamics, bassHarmonic and portal reproduce bit-identically in two local runs _and_ in CI** — which makes
+them the stable product finding rather than runner noise: an export that does not sound like the live branch is a
+real invariant-3 divergence, reproducible on both machines. `fx:bassHarmonic` fell out of one run's _set_ after
+measuring −27.2 dB twice, which is a fact about that run's membership, not about the case's value. The claim
+that survives is therefore narrower: **the runner's noise affects the flapping cases and the membership of the
+red set, not these four.** (Measured by the parallel session, under a harness that has since changed twice —
+`ee899de7` and `0b41bd0a`; this report did not re-measure it.)
 
 **A gate whose verdict moves between runs on the same commit is not a gate.** The agreed direction is to make
 the null corpus a **non-blocking report** in CI — visible, but not deciding — until the phase anchor is fixed:
@@ -1712,6 +1722,13 @@ error, and both are lies. Fake 70+ unrelated members in the test, or write `as u
 throw the mismatch away. The first pretends the module needs a whole store; the second pretends the mismatch
 does not exist. A cast is how a structural fact stops reaching the compiler, and this report's whole argument is
 that a gate must not certify something it did not measure.
+
+**The count in a CI annotation is not the count of the errors.** The typecheck job carried no error annotation of
+its own, so GitHub's default `tsc` matcher rendered only the **first ten** errors, without `file:line` — which is
+why CI showed 10 where the local run showed 12. The parallel session measured the same truncation and put an
+explicit annotation into the typecheck job (its lane, CI observability). The rule that follows: **an annotation is
+a pointer, not a census.** Count the errors locally; never conclude "CI saw fewer errors" from the annotation,
+and never read a missing `file:line` as a missing error.
 
 **The fix, and the rule the fix obeyed.** The contract is now what is actually read — `src/mcp/revision.ts:23`:
 
