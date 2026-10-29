@@ -156,78 +156,37 @@ export interface ParityCheckResult {
  * reason to skip a null test.
  */
 export const PARITY_FX_EXCLUSIONS: ReadonlyMap<EffectType, string> = new Map<EffectType, string>([
-  // Free-running LFO / phase state: the live instance is mid-modulation when
-  // the capture starts; the offline instance starts from phase zero. Their
-  // render determinism is covered by the golden/vector suites.
-  ["phaser", "free-running LFO phase"],
-  ["flanger", "free-running LFO phase"],
-  ["chorus", "free-running LFO phase"],
-  ["tremolo", "free-running LFO phase"],
-  ["autowah", "free-running LFO phase"],
-  // RING MOD: the carrier's phase is seeded by the PROCESSOR's construction —
-  // ringmod-processor.js does `this.phase += phaseInc` per sample starting
-  // from the constructor's `this.phase = 0`. The live branch builds the chain
-  // right before the capture, the offline branch builds it at the render
-  // origin, so the two modulate from a DIFFERENT phase; the gap between
-  // construction and the event is load-dependent, which is why the null VALUE
-  // moves between runs (-0.8 dB in the probe run, +0.7 dB in the gate run,
-  // both measured on 2026-10-23) while the magnitude spectrum and the level do not
-  // (cosine 0.9998, RMS 1.005x). Same sound, different modulation phase.
-  // Offline determinism is exact (control -331.8 dB) and the effect's own
-  // render determinism is asserted bit-identical by the FX-expansion audit
-  // (src/browser-checks.ts: auditFxExpansion), so the processing path is not
-  // in question — only the carrier's start phase, which no per-sample null
-  // can judge.
-  ["ringMod", "free-running carrier phase (the ring modulator starts at the processor's construction)"],
-  // PITCH SHIFT: the same class, one layer down. The granular tap delay
-  // accumulates `this.tapDelay[v] += dRate` per output sample from the
-  // constructor (pitchshift-processor.js), and it only snaps back into
-  // [2H, 4H] at a grain start, so the live instance reads the ring buffer at a
-  // different offset than the cold offline one. Measured 2026-10-23: null
-  // -0.1 dB at corr 0.4570, magnitude spectrum 0.9908, RMS 0.901x, offline
-  // determinism control -334.0 dB.
-  ["pitchShift", "free-running grain tap-delay accumulator (the shifter's read offset differs from the cold render)"],
-  // VINYL: the wow/flutter delay is modulated by free-running LFOs
-  // (vinyl-processor.js: `this.lfoPhase = 0`, `this.flutterPhase = 0`), so the
-  // live instance is mid-modulation when the capture starts and the offline one
-  // starts from phase zero — the same reason phaser/flanger/chorus/tremolo/
-  // autowah carry. Measured 2026-10-23: null +0.5 dB at corr 0.4384,
-  // magnitude spectrum 0.9886, RMS 1.000x, offline determinism control
-  // -321.4 dB. The tail diverges, the head matches.
-  ["vinyl", "free-running wow/flutter LFO phase (the vinyl instance is mid-modulation at capture)"],
-  // Reverb's comb read positions are detuned by a 0.5 Hz free-running
-  // MODULATOR (reverb-processor.js: modPhase -> driftL/driftR). Over a
-  // 1.8 s tail the device-clock jitter of a realtime context and that
-  // modulator both move the read window, so the live capture correlates at
-  // ~0.98 instead of 1.0 — the processing path is identical (offline
-  // determinism control is exact), but the sample-level null is not a
-  // meaningful gate for this effect. Its tail is covered by the decay and
-  // audibility checks in the FX audit.
-  ["reverb", "free-running 0.5 Hz read-position modulator; device-clock jitter accumulates over the tail"],
-  // SV Filter smooths its cutoff coefficient with a one-pole glide
-  // (svfilter-processor.js: cutoffSmoothed) that starts at the first processed
-  // quantum. The realtime instance has already consumed quanta before the
-  // captured event, the offline one starts cold, so the two runs take a
-  // measurably different path through the filter on the first transient —
-  // independent of the device clock. Its own filter-stability suite
-  // (tests/svfilter-drive.test.ts) covers the DSP contract.
-  ["svFilter", "one-pole cutoff glide starts at first processed quantum; realtime instance is mid-glide at capture"],
-  // KASKADA (RIFT delay): the delay READ POSITION is modulated by a free-running
-  // LFO (kaskada-processor.js: lfoPhase advances per sample -> delayPos), so
-  // the echo arrives at a different time in the two branches. Measured
-  // 2026-10-25: the HEAD of the window — the first 150 ms, i.e. the direct
-  // path and the document's parameter values — matches at -66.4 dB (the
-  // parameters and the chain are exact), while the TAIL diverges (-9.1 dB)
-  // because the echo's timing follows the modulation phase. The offline
-  // determinism control is exact (-316.7 dB), so this is the modulation, not
-  // a processing-path difference.
-  ["kaskada", "free-running delay-modulation LFO phase (the echo's timing); the head of the window matches at -66 dB"],
-  // WOW/FLUTTER: the wow/flutter delay is modulated by a free-running LFO too,
-  // so the live instance is mid-modulation when the capture starts and the
-  // offline one starts from phase zero. Measured 2026-10-25: the tail
-  // correlates at ~0 (null +0.5 dB) while the offline determinism control is
-  // exact (-325.2 dB).
-  ["wowFlutter", "free-running LFO phase"],
+  // TEN of the twelve phase/state exclusions were LIFTED on 2026-10-29, and
+  // the reason they existed was the CAPTURE LEAD, not the effect: the live
+  // branch's capture starts CAPTURE_START_LEAD_SEC into the live context, so
+  // every realtime worklet had already processed that much history when the
+  // first event landed, while the offline branch started cold. With the two
+  // branches aligned (ae372bf4), all ten measure at the offline determinism
+  // level - live↔offline EQUALS live↔live, so the realtime branch reproduces
+  // itself exactly:
+  //
+  //   flanger -323.6   chorus -324.6   tremolo -319.9   autowah -310.6
+  //   ringMod -322.1   pitchShift -323.0   reverb -323.4   svFilter -325.1
+  //   kaskada -316.7   wowFlutter -325.1        (dB; the floor is -40 dB)
+  //
+  // The corpus grows from 67 to 77 cases, and the reasons those ten carried
+  // ("the live instance is mid-modulation at capture", "the offline one starts
+  // cold") are withdrawn: they described the HARNESS's bias, not the effect.
+  //
+  // PHASER and VINYL stay excluded, for the one reason that still holds: their
+  // REALTIME branch does not reproduce itself. Measured 2026-10-29, live↔live
+  // is -77.0 dB (phaser) and -80.4 dB (vinyl), while their live↔offline null
+  // is -168.6 dB and -87.3 dB - the same order of magnitude. The residual is
+  // therefore the realtime branch's own jitter, and a per-sample null cannot
+  // judge a branch that does not reproduce itself.
+  [
+    "phaser",
+    "the realtime branch does not reproduce itself (live↔live -77.0 dB); the residual is the branch's own jitter",
+  ],
+  [
+    "vinyl",
+    "the realtime branch does not reproduce itself (live↔live -80.4 dB); the residual is the branch's own jitter",
+  ],
   // Transport-loop anchored with bar-scale state: a sub-bar null window is
   // not meaningful. Renders are covered by the transport-synced FX suites.
   ["beatMangler", "bar-scale transport state"],
