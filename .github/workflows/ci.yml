@@ -56,6 +56,20 @@ on:
 # slots; the heavy verdict for the HEAD therefore lags by roughly one heavy
 # run. That lag is the capacity of the plan, not a queue that can be drained
 # faster.
+#
+# Measured 2026-10-29 (the 40 most recent runs, ~08:00Z): the heavy workflow
+# produced 14 verdicts and LOST 22 runs to cancellation (59%), at a mean wall
+# clock of 12.7 min. Those 22 are the superseded pushes, and that is what this
+# group is FOR: only HEAD's verdict gates a release, so the newest pending run
+# replaces the older ones while the running job finishes and reports. The cost
+# of that choice is paid by superseded commits, which nobody is waiting on.
+#
+# The cheap gates in THIS workflow are not what makes it slow: build, ui-gate,
+# test-browser-production and e2e-smoke all start from build and finish inside
+# the first five minutes of the run, in parallel with the two slow jobs (unit
+# tests 19.4 min, browser audio 9.4 min). What the shared group costs is that
+# a superseded run can lose those cheap verdicts too, when they are still
+# pending when the next push arrives.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: false

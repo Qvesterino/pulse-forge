@@ -49,6 +49,13 @@ on:
 # HEAD's run had been pending for 69.6 min behind a run that had been
 # in_progress for 77 min, and the run in between was cancelled in the exact
 # second the HEAD run was created.
+#
+# Measured AFTER the per-SHA change (2026-10-29, the last 16 fast runs): 15
+# verdicts, 0 cancelled - every push that arrived kept its verdict, and the
+# gates answered "is the tree broken?" in 2.4 min on their own runner pool
+# while the heavy workflow ran for 12-30 min. The simulation over the
+# historical arrival sequence agrees: 15 of 15 delivered for a per-SHA key
+# against 9 of 15 for a per-ref key, with no added wait.
 concurrency:
   group: ci-fast-${{ github.sha }}
   cancel-in-progress: false
