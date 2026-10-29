@@ -1361,14 +1361,26 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   // determinism controls, the divergence profile and the moment the
   // divergence starts) in ~130 characters, so it survives the annotation
   // budget while the verbose detail stays in the job summary.
+  //
+  // It also carries the LEVEL and the MAGNITUDE SPECTRUM, because those two
+  // together say what KIND of divergence it is without any further
+  // measurement: a constant gain difference shows up as an rms and a peak
+  // ratio that differ from 1 while the spectral cosine stays at 1.0, and a
+  // phase or timing difference leaves the level alone. The CI runner's
+  // instrument cases measured a flat ~-31 dB profile, and "flat" cannot tell
+  // those two apart on its own — the level can.
   const compactCases = failures.slice(0, 8).map((failure) => {
     const label = labelOf(failure);
     const m = measurements.get(label);
     if (!m) return label;
     const db = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : "n/a");
+    const ratio = (a: number, b: number) => (Math.abs(b) > 1e-12 ? (a / b).toFixed(3) : "n/a");
     return `${label}(null=${db(m.liveNullDb)}dB,corr=${m.correlation.toFixed(4)},liveRepeat=${db(
       m.liveRepeatNullDb,
-    )}dB,control=${db(m.controlNullDb)}dB,${profileText(m)})`;
+    )}dB,control=${db(m.controlNullDb)}dB,rms=${ratio(m.liveRms, m.refRms)}×,peak=${ratio(
+      m.livePeak,
+      m.refPeak,
+    )}×,spec=${m.phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"},${profileText(m)})`;
   });
   // The environment's own health check, read off the calibration case: a
   // deterministic effect rendered twice offline is bit-identical (measured
