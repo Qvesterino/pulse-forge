@@ -145,6 +145,8 @@ try {
         `rt-nondet=${r.realtimeNondeterministic}`,
         `offset=${r.alignOffset}`,
         `segHead=${fmt(r.segmentNullDb?.head)}dB segTail=${fmt(r.segmentNullDb?.tail)}dB`,
+        `profile=[${(r.divergenceProfile ?? []).map((v) => fmt(v)).join(",")}]`,
+        `onset=${Number.isFinite(r.divergenceOnsetSec) ? `${r.divergenceOnsetSec.toFixed(3)}s` : "n/a"}`,
         `livePeak=${num(r.livePeak)} refPeak=${num(r.refPeak)}`,
         `frames live=${r.liveFrames}/ref=${r.refFrames}`,
       ].join("  "),

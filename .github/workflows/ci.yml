@@ -375,11 +375,21 @@ jobs:
           npm run test:browser 2>&1 | tee /tmp/browser.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            # The browser log prints every failing check TWICE: once bare
+            # ("FAIL ...") and once inside the summary block ("[FAIL] ...").
+            # Both copies went into the annotation, and the corpus check alone
+            # is ~3.8 kB — so the duplicate pair ate the whole 4096-byte budget
+            # and the OTHER failing checks never appeared in the annotation at
+            # all (measured 2026-10-29: 14 failing checks, 1 visible).
+            # Normalise the wrapper, drop the duplicates, and report the COUNT.
+            fails=$(grep -aE 'FAIL' /tmp/browser.log | sed -e 's/^\[FAIL\]/FAIL/' | awk '!seen[$0]++')
+            count=$(printf '%s\n' "$fails" | grep -c . || true)
             {
               echo "### npm run test:browser FAILED (exit $status)"
               echo '```'
-              echo '--- failing checks ---'
-              grep -E 'FAIL' /tmp/browser.log | head -20 || true
+              echo "failing checks: $count"
+              echo '--- failing checks (full detail) ---'
+              printf '%s\n' "$fails" | head -20
               echo '--- tail ---'
               tail -30 /tmp/browser.log
               echo '```'
@@ -388,10 +398,18 @@ jobs:
             # 4032-character message with 3-byte characters arrived as
             # exactly 4096 bytes, and raising the budget changed nothing).
             # So the message has to carry the identifying information FIRST:
-            # the failing-case labels, then the diagnostics. A tail-first
+            # the failing-check names, then the diagnostics. A tail-first
             # message loses the cases at its end.
+            #
+            # The per-case diagnostics are cut from the corpus line at
+            # "details for the first" — the corpus message carries a COMPACT
+            # per-case summary (null, correlation, both determinism controls,
+            # the divergence profile and its onset) before that point, so the
+            # annotation keeps the diagnosis and only loses the verbose
+            # per-case text, which stays in the job summary above.
             printf '::error title=browser audio checks failed (exit %s)::%s\n' "$status" \
-              "$( { grep -E 'FAIL' /tmp/browser.log | head -12; echo '--- tail ---'; tail -20 /tmp/browser.log; } \
+              "$( { echo "failing checks: $count"; \
+                   printf '%s\n' "$fails" | sed -e 's/ — details for the first .*$//' | head -14; } \
                  | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
           fi
           exit $status

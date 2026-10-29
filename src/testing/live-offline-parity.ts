@@ -54,6 +54,29 @@ const CASE_SECONDS = 0.45;
 const CAPTURE_START_LEAD_SEC = 0.5;
 /** AudioWorklet render quantum used to align the requested capture frame. */
 const CAPTURE_QUANTUM_FRAMES = 128;
+/**
+ * The live branch's capture starts CAPTURE_START_LEAD_SEC into the live
+ * context, so every realtime worklet has ALREADY processed that much
+ * history by the time the first event lands: a free-running modulation
+ * phase, a filter's memory, a comb's drift, a pitch tracker's buffer.
+ *
+ * The offline branch used to start COLD (leadSec = 0), so the two branches
+ * were compared at the same nominal time while their worklet state differed
+ * by a whole capture lead. The divergence that produced was the LEAD, not
+ * the engine — which is exactly what the nine PARITY_FX_EXCLUSIONS say
+ * ("the realtime instance is mid-modulation at capture", "the offline one
+ * starts cold").
+ *
+ * The offline render therefore gets the SAME lead: it renders that many
+ * frames of silence before the compared window and the comparison skips
+ * them. Both worklets then reach the first event with the same history, so
+ * what the null test measures is the ENGINE and not the capture lead.
+ *
+ * The lead is quantised to the render quantum, because the live capture's
+ * start frame is quantised too (the capture worklet can only start on a
+ * quantum boundary).
+ */
+const CAPTURE_LEAD_FRAMES = Math.ceil((CAPTURE_START_LEAD_SEC * SR) / CAPTURE_QUANTUM_FRAMES) * CAPTURE_QUANTUM_FRAMES;
 /** Additional scheduling cushion for browser-thread note-event probes. */
 const NOTE_EXPRESSION_EVENT_PREROLL_SEC = 0.12;
 /** Null below this (dB, relative to reference energy) is inaudible. */
@@ -308,7 +331,7 @@ async function renderOffline(
   eventPrerollSec = 0,
   leadSec = 0,
 ): Promise<Float32Array | null> {
-  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec + leadSec) * sampleRate);
+  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec + leadSec) * sampleRate) + CAPTURE_LEAD_FRAMES;
   const ctx = new OfflineAudioContext(2, frames, sampleRate);
   // Same loader contract as the renderer: core + exactly the plugin suites
   // this doc uses.
@@ -318,12 +341,16 @@ async function renderOffline(
   try {
     engine.useContext(ctx);
     engine.setProject(doc);
-    script(engine, (offset) => leadSec + eventPrerollSec + offset);
+    // The event offset carries the capture lead, so the offline worklets
+    // reach the first event with the SAME history the realtime ones have.
+    script(engine, (offset) => CAPTURE_LEAD_FRAMES / sampleRate + leadSec + eventPrerollSec + offset);
     // The export barrier: exact PDC sizing before the (un-abortable) render —
     // the same sequencing the real renderer performs.
     await engine.prepareOfflineRender();
     const buffer = await ctx.startRendering();
-    return buffer.getChannelData(0);
+    // The compared window starts where the live capture starts: the lead is
+    // history, not signal.
+    return buffer.getChannelData(0).subarray(CAPTURE_LEAD_FRAMES);
   } finally {
     engine.detachBank();
     engine.dispose();
@@ -803,7 +830,7 @@ async function nullTestCase(
   if (phaseInsensitiveFallback && !noteExpressionParityAgrees(m, minimumSpectralCosine)) {
     const rmsRatio = m.liveRms / Math.max(1e-12, m.refRms);
     const phaseInsensitive = m.phaseInsensitive;
-    return `${label}: null ${m.liveNullDb.toFixed(1)} dB corr=${m.correlation.toFixed(
+    return `${label}: null ${m.liveNullDb.toFixed(1)} dB ${profileText(m)} corr=${m.correlation.toFixed(
       4,
     )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
       3,
@@ -835,13 +862,13 @@ async function nullTestCase(
     if (!phaseInsensitiveFallback && m.realtimeNondeterministic) return null;
     const rmsRatio = m.liveRms / Math.max(1e-12, m.refRms);
     const phaseInsensitive = m.phaseInsensitive;
-    return `${label}: null ${m.liveNullDb.toFixed(1)} dB corr=${m.correlation.toFixed(
+    return `${label}: null ${m.liveNullDb.toFixed(1)} dB ${profileText(m)} corr=${m.correlation.toFixed(
       4,
     )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
       3,
     )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} segHead=${m.segmentNullDb.head.toFixed(1)} dB segTail=${m.segmentNullDb.tail.toFixed(1)} dB livePeak=${m.livePeak.toFixed(4)} refPeak=${m.refPeak.toFixed(4)} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB realtimeNondeterministic=${m.realtimeNondeterministic} (needs ≤ ${
       PARITY_NULL_FLOOR_DB
-    } dB; the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion — the effect corpus accepts a case only when the waveform null is clean, or when the REALTIME branch is itself nondeterministic (live↔live within 3 dB of live↔offline, offline control clean), i.e. the divergence is the device clock rather than the engine; corr is reported for DIAGNOSIS only (a value near ${PARITY_MIN_CORRELATION} means the same processing path with a moved sample)`;
+    } dB; the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion — corr is reported for DIAGNOSIS only (a value near ${PARITY_MIN_CORRELATION} means the same processing path with a moved sample); the acceptance rule is stated ONCE in the corpus header, not repeated per case, so the identifying part of a CI annotation is not pushed out by its own explanation)`;
   }
   return null;
 }
@@ -954,6 +981,25 @@ export async function auditWorkletReleaseResponseParity(
  * A difference confined to the head is a startup transient; a difference
  * spread over the whole window is a processing-path divergence.
  */
+function nullOverRange(
+  reference: Float32Array,
+  capture: Float32Array,
+  offset: number,
+  from: number,
+  to: number,
+): number {
+  let diff = 0;
+  let ref = 0;
+  for (let i = Math.max(0, from); i < to; i++) {
+    const j = i + offset;
+    if (j < 0 || j >= capture.length) continue;
+    const d = reference[i] - capture[j];
+    diff += d * d;
+    ref += reference[i] * reference[i];
+  }
+  return 10 * Math.log10((diff + 1e-30) / (ref + 1e-30));
+}
+
 export function segmentNulls(
   reference: Float32Array,
   capture: Float32Array,
@@ -961,21 +1007,71 @@ export function segmentNulls(
   sampleRate: number,
   headSeconds: number,
 ): { head: number; tail: number } {
-  const nullOver = (from: number, to: number): number => {
-    let diff = 0;
-    let ref = 0;
-    for (let i = Math.max(0, from); i < to; i++) {
-      const j = i + offset;
-      if (j < 0 || j >= capture.length) continue;
-      const d = reference[i] - capture[j];
-      diff += d * d;
-      ref += reference[i] * reference[i];
-    }
-    return 10 * Math.log10((diff + 1e-30) / (ref + 1e-30));
-  };
   const total = Math.min(reference.length, capture.length - Math.max(0, -offset));
   const head = Math.min(total, Math.max(1, Math.round(headSeconds * sampleRate)));
-  return { head: nullOver(0, head), tail: nullOver(head, total) };
+  return {
+    head: nullOverRange(reference, capture, offset, 0, head),
+    tail: nullOverRange(reference, capture, offset, head, total),
+  };
+}
+
+/**
+ * DIAGNOSTIC (not a gate criterion): the null between the aligned live
+ * capture and the offline reference, split into `windows` equal slices
+ * across the compared span.
+ *
+ * The head/tail split says WHETHER the divergence sits at the start of the
+ * event or after it. The profile says WHERE it starts and how it grows, which
+ * separates the two mechanisms that look identical in a single number:
+ *
+ * - a profile that is already dirty in the FIRST window is a startup
+ *   transient — the chain had not settled when the first event landed;
+ * - a profile that is clean at the front and degrades towards the end is an
+ *   accumulating state divergence — a feedback network or a filter that never
+ *   reaches the same state in the two branches.
+ */
+export function divergenceProfile(
+  reference: Float32Array,
+  capture: Float32Array,
+  offset: number,
+  sampleRate: number,
+  windows = 12,
+): { profile: number[]; sliceSec: number } {
+  const total = Math.min(reference.length, capture.length - Math.max(0, -offset));
+  if (total <= 0 || windows <= 0) return { profile: [], sliceSec: 0 };
+  const slice = Math.max(1, Math.floor(total / windows));
+  const profile: number[] = [];
+  for (let w = 0; w < windows; w++) {
+    const from = w * slice;
+    if (from >= total) break;
+    profile.push(nullOverRange(reference, capture, offset, from, Math.min(total, from + slice)));
+  }
+  return { profile, sliceSec: slice / sampleRate };
+}
+
+/**
+ * The moment the divergence becomes audible, in seconds from the start of the
+ * compared window: the centre of the FIRST profile window whose null is worse
+ * than the floor. `sliceSec` is the duration of one profile window. NaN when
+ * no window crosses the floor.
+ */
+export function divergenceOnsetSec(profile: number[], sliceSec: number): number {
+  for (let i = 0; i < profile.length; i++) {
+    const v = profile[i]!;
+    if (Number.isFinite(v) && v > PARITY_NULL_FLOOR_DB) return (i + 0.5) * sliceSec;
+  }
+  return Number.NaN;
+}
+
+/**
+ * Compact one-line rendering of the divergence profile for a failure detail.
+ * Kept short on purpose: the detail is copied into a CI annotation, and the
+ * FIRST thing a reader needs is WHERE the two branches start to disagree.
+ */
+function profileText(m: ParityMeasurement): string {
+  const cells = m.divergenceProfile.map((v) => (Number.isFinite(v) ? v.toFixed(1) : "n/a")).join(",");
+  const onset = Number.isFinite(m.divergenceOnsetSec) ? `${m.divergenceOnsetSec.toFixed(3)}s` : "n/a";
+  return `profile=[${cells}] onset=${onset}`;
 }
 
 export interface ParityMeasurement {
@@ -995,6 +1091,18 @@ export interface ParityMeasurement {
    * a processing-path divergence, and no amount of settling would explain it.
    */
   segmentNullDb: { head: number; tail: number };
+  /**
+   * DIAGNOSTIC (not a gate criterion): the null between the aligned live
+   * capture and the offline reference, per time slice across the compared
+   * window. See `divergenceProfile` for what the shape means.
+   */
+  divergenceProfile: number[];
+  /**
+   * DIAGNOSTIC (not a gate criterion): seconds from the start of the compared
+   * window where the divergence first crosses the floor. NaN when no slice
+   * crosses it.
+   */
+  divergenceOnsetSec: number;
   /** Null of offline vs a second offline render (determinism control). */
   controlNullDb: number;
   livePeak: number;
@@ -1052,6 +1160,8 @@ export async function measureParityCase(
     alignOffset: 0,
     liveNullDb: Number.NaN,
     segmentNullDb: { head: Number.NaN, tail: Number.NaN },
+    divergenceProfile: [],
+    divergenceOnsetSec: Number.NaN,
     controlNullDb: Number.NaN,
     liveRepeatNullDb: Number.NaN,
     liveRepeatAlignOffset: 0,
@@ -1138,6 +1248,7 @@ export async function measureParityCase(
   };
   const ref = stats(reference);
   const liveStats = stats(live.left);
+  const profile = divergenceProfile(reference, live.left, liveMatch.alignOffset, live.sampleRate);
   const phaseInsensitive = comparePhaseInsensitiveParity(reference, live.left, liveMatch.alignOffset, live.sampleRate);
   const phaseInsensitiveControl = control
     ? comparePhaseInsensitiveParity(reference, control, controlMatch.alignOffset, live.sampleRate)
@@ -1149,6 +1260,8 @@ export async function measureParityCase(
     alignOffset: liveMatch.alignOffset,
     liveNullDb: liveMatch.nullDb,
     segmentNullDb: segmentNulls(reference, live.left, liveMatch.alignOffset, live.sampleRate, 0.15),
+    divergenceProfile: profile.profile,
+    divergenceOnsetSec: divergenceOnsetSec(profile.profile, profile.sliceSec),
     controlNullDb: controlMatch.nullDb,
     livePeak: liveStats.peak,
     refPeak: ref.peak,
@@ -1281,6 +1394,22 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   // ("fx:<type>" / "instrument:<kind>"). A failure that carries no prefix is
   // its own label.
   const labelOf = (failure: string) => failure.split(": ")[0] ?? failure;
+  // The COMPACT per-case summary. The verbose detail that follows it is
+  // ~350 characters per case, so four cases need ~1.4 kB — which does not fit
+  // next to the rest of a CI annotation. The compact form carries the numbers
+  // that identify the case and its shape (null, correlation, the two
+  // determinism controls, the divergence profile and the moment the
+  // divergence starts) in ~130 characters, so it survives the annotation
+  // budget while the verbose detail stays in the job summary.
+  const compactCases = failures.slice(0, 8).map((failure) => {
+    const label = labelOf(failure);
+    const m = measurements.get(label);
+    if (!m) return label;
+    const db = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : "n/a");
+    return `${label}(null=${db(m.liveNullDb)}dB,corr=${m.correlation.toFixed(4)},liveRepeat=${db(
+      m.liveRepeatNullDb,
+    )}dB,control=${db(m.controlNullDb)}dB,${profileText(m)})`;
+  });
   // The environment's own health check, read off the calibration case: a
   // deterministic effect rendered twice offline is bit-identical (measured
   // control ≈ -325 dB), and a runner whose arithmetic is that far from exact
@@ -1328,15 +1457,23 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     // itself. A verdict that lists only its failures hides its own blind
     // spot — and a reader who cannot tell a measurement from a coincidence
     // cannot act on it.
+    //
+    // The ACCEPTANCE RULE is stated once, here, instead of once per failing
+    // case: the per-case detail carried ~480 characters of the same sentence,
+    // so four cases spent ~1.9 kB of a 4096-byte annotation budget on it and
+    // pushed the identifying part of the LAST case out of the annotation.
+    // The rule now sits before the per-case details, so it survives the
+    // truncation and the diagnostics get the space instead.
     message:
       failures.length === 0
         ? `passed=${cases}/${cases} — ${environment} — ${excusedLine}`
         : `failed=${failures.length}/${cases} — ${environment} — failing cases: ${failures
             .map(labelOf)
-            .join(", ")} — ${excusedLine} — details for the first ${Math.min(
-            8,
-            failures.length,
-          )}: ${failures.slice(0, 8).join(" | ")}`,
+            .join(
+              ", ",
+            )} — ${excusedLine} — rule: a case passes when the waveform null is clean, or when the REALTIME branch is itself nondeterministic (live↔live within 3 dB of live↔offline with a clean offline control) — i.e. the divergence is the device clock, not the engine — case detail: ${compactCases.join(
+            " ",
+          )} — details for the first ${Math.min(8, failures.length)}: ${failures.slice(0, 8).join(" | ")}`,
   };
 }
 
