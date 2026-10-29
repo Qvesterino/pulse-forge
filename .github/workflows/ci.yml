@@ -113,14 +113,24 @@ jobs:
           npm run format:check 2>&1 | tee /tmp/format.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            # The offending files are the identification, so they come FIRST.
+            files=$(grep -aE '^\[(warn|error)\] ' /tmp/format.log | head -40)
+            count=$(printf '%s\n' "$files" | grep -c . || true)
             {
               echo "### npm run format:check FAILED (exit $status)"
               echo '```'
-              tail -60 /tmp/format.log
+              echo "files not prettier-clean: $count"
+              printf '%s\n' "$files"
+              echo '--- tail ---'
+              tail -30 /tmp/format.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             printf '::error title=npm run format:check failed (exit %s)::%s\n' "$status" \
-              "$(tail -60 /tmp/format.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
+              "$( { echo "files not prettier-clean: $count"; \
+                   printf '%s\n' "$files"; \
+                   echo '--- tail ---'; \
+                   tail -20 /tmp/format.log; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
           fi
           exit $status
       # Every DERIVABLE artifact must match its generator: the MCP tool
@@ -142,6 +152,25 @@ jobs:
             tail -40 /tmp/drift.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # The drift step had a job summary but NO error annotation, so the
+          # annotations API reported only "Process completed with exit code 1"
+          # for a gate whose whole purpose is to name the artifact that
+          # disagrees with its generator (measured 2026-10-29: the Hygiene job
+          # went red and said nothing about WHICH artifact was stale).
+          # GitHub caps an error annotation at 4096 BYTES (measured), so the
+          # mismatches come first and the tail only fills what is left.
+          if [ "$status" -ne 0 ]; then
+            headers=$(grep -aE '^[[:space:]]*[×x] ' /tmp/drift.log | head -20)
+            count=$(printf '%s\n' "$headers" | grep -c . || true)
+            details=$(grep -aE 'expected .* to be |mismatch' /tmp/drift.log | head -20)
+            printf '::error title=drift check failed (exit %s)::%s\n' "$status" \
+              "$( { echo "drift mismatches: $count"; \
+                   printf '%s\n' "$headers"; \
+                   printf '%s\n' "$details"; \
+                   echo '--- tail ---'; \
+                   tail -20 /tmp/drift.log; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
+          fi
           exit $status
 
       # Fast, side-effect-free mirror check. `drift:check` also regenerates
