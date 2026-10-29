@@ -25,14 +25,32 @@ on:
 #   - the heavy gates keep their own group in ci.yml, where cancelling a
 #     30-minute verdict would cost more than re-running it.
 #
-# cancel-in-progress stays FALSE on both groups: GitHub keeps only the LATEST
-# pending run per group, so the queue never grows without bound, and a run
-# that has already started still reports. A per-SHA group would give every
-# push a verdict but unboundedly INCREASE the latency of the HEAD - the HEAD
-# would sit behind every older push, which is the opposite of what a release
-# branch needs.
+# The FAST gates get a PER-SHA group; the HEAVY gates keep the shared per-ref
+# group. The two halves of that split point in opposite directions, and both
+# directions are measured (2026-10-29, run #475 for the durations, the run list
+# for the arrival rate):
+#
+#   - the fast set is CHEAP (typecheck 1.6 min, hygiene 2.8 min, dependency
+#     audit 0.7 min of wall clock, ~5 job-min in total) and the repository
+#     receives ~13 pushes an hour. A per-SHA group therefore gives EVERY
+#     commit its own verdict with nothing ever cancelled, and the queue
+#     drains: the fast set needs ~67 job-min per hour of arrivals against the
+#     Free plan's 1200.
+#   - the heavy set cannot have that: one run holds ~8 of the 20 concurrent
+#     ubuntu slots, so only ~2-3 heavy runs fit at a time while ~13 arrive an
+#     hour. A per-SHA group there would leave an unbounded backlog - the HEAD
+#     would sit behind every older push - and a cancelled run at least says
+#     "not measured". Only HEAD's heavy verdict gates a release, so the
+#     shared per-ref group (cancel-in-progress: false) is right there: the
+#     running job finishes and reports, and the latest pending run replaces
+#     the superseded ones.
+#
+# Measured proof of where the missing verdict used to land: at 07:06:39Z
+# HEAD's run had been pending for 69.6 min behind a run that had been
+# in_progress for 77 min, and the run in between was cancelled in the exact
+# second the HEAD run was created.
 concurrency:
-  group: ci-fast-${{ github.ref }}
+  group: ci-fast-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
