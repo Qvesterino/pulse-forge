@@ -376,3 +376,84 @@ describe("ProjectBrowser — a session that could not be protected is announced"
     await waitFor(() => expect(screen.queryByText(/could not be protected/)).toBeNull());
   });
 });
+
+describe("ProjectBrowser — search & sort (CF-13)", () => {
+  const metas: SavedProjectMeta[] = [
+    {
+      id: "p-zulu",
+      name: "Zulu",
+      bpm: 145,
+      trackCount: 6,
+      createdAt: "2026-10-01T09:00:00Z",
+      updatedAt: "2026-10-03T10:00:00Z",
+    },
+    {
+      id: "p-alpha",
+      name: "alpha",
+      bpm: 124,
+      trackCount: 8,
+      createdAt: "2026-10-01T09:00:00Z",
+      updatedAt: "2026-10-02T10:00:00Z",
+    },
+    {
+      id: "p-mike",
+      name: "Mike",
+      bpm: 140,
+      trackCount: 5,
+      createdAt: "2026-10-01T09:00:00Z",
+      updatedAt: "2026-10-01T10:00:00Z",
+      transferOrigin: { version: 1, kind: "aligned-audio-midi", sourceDaw: "fl-studio" },
+    },
+  ];
+
+  function coreWithMetas() {
+    const core = makeCore([]);
+    (core.repo.listAll as ReturnType<typeof vi.fn>).mockResolvedValue(metas);
+    (core.repo.listIncompatible as ReturnType<typeof vi.fn>).mockResolvedValue([] as IncompatibleProjectMeta[]);
+    return core;
+  }
+
+  function visibleNames(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll(".pb-row-name")).map((el) => el.textContent ?? "");
+  }
+
+  it("lists by recency by default, filters by name (case-insensitive), BPM and source DAW", async () => {
+    const { container } = render(<ProjectBrowser core={coreWithMetas()} onOpen={vi.fn()} />);
+    await waitFor(() => expect(visibleNames(container)).toEqual(["Zulu", "alpha", "Mike"]));
+
+    const search = screen.getByLabelText("Search saved projects") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "ALPH" } });
+    expect(visibleNames(container)).toEqual(["alpha"]);
+
+    fireEvent.change(search, { target: { value: "140" } });
+    expect(visibleNames(container)).toEqual(["Mike"]);
+
+    fireEvent.change(search, { target: { value: "fl studio" } });
+    expect(visibleNames(container)).toEqual(["Mike"]);
+  });
+
+  it("sorts by name on the SORT toggle and returns to recency", async () => {
+    const { container } = render(<ProjectBrowser core={coreWithMetas()} onOpen={vi.fn()} />);
+    await waitFor(() => expect(visibleNames(container)).toEqual(["Zulu", "alpha", "Mike"]));
+
+    fireEvent.click(screen.getByRole("button", { name: "SORT: RECENT" }));
+    expect(visibleNames(container)).toEqual(["alpha", "Mike", "Zulu"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "SORT: NAME" }));
+    expect(visibleNames(container)).toEqual(["Zulu", "alpha", "Mike"]);
+  });
+
+  it("NEGATIVE: no match shows a truthful empty state; clearing restores every row", async () => {
+    const { container } = render(<ProjectBrowser core={coreWithMetas()} onOpen={vi.fn()} />);
+    await waitFor(() => expect(visibleNames(container)).toHaveLength(3));
+
+    const search = screen.getByLabelText("Search saved projects");
+    fireEvent.change(search, { target: { value: "nothing-matches-this" } });
+    expect(visibleNames(container)).toEqual([]);
+    expect(screen.getByRole("status").textContent).toContain("No project matches");
+
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(visibleNames(container)).toEqual(["Zulu", "alpha", "Mike"]);
+  });
+});

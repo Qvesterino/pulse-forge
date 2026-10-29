@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CoreServices } from "../services";
 import type { IncompatibleProjectMeta, SavedProjectMeta } from "../persistence/ProjectRepository";
 import type { CrashJournalReport } from "../persistence/crashJournal";
@@ -113,6 +113,10 @@ function formatTransferSource(source: NonNullable<SavedProjectMeta["transferOrig
 
 export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (doc: ProjectDocument) => void }) {
   const [projects, setProjects] = useState<SavedProjectMeta[] | null>(null);
+  // CF-13: the saved-projects list is searchable and sortable — a long-lived
+  // library used to be one recency-sorted wall of rows.
+  const [projectFilter, setProjectFilter] = useState("");
+  const [projectSort, setProjectSort] = useState<"recent" | "name">("recent");
   const [incompatibleProjects, setIncompatibleProjects] = useState<IncompatibleProjectMeta[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -497,6 +501,23 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     if (el) el.open = initialOpenRef.current;
   }, []);
   const rows = projects === null ? null : mergeRows(projects, incompatibleProjects);
+  // CF-13: filter by name, BPM or source DAW; sort recency (default) or name.
+  // The incompatible rows filter and sort identically — they are the user's
+  // work and must stay findable.
+  const visibleRows = useMemo(() => {
+    if (rows === null) return null;
+    const needle = projectFilter.trim().toLowerCase();
+    const filtered = needle
+      ? rows.filter((row) => {
+          if (row.meta.name.toLowerCase().includes(needle)) return true;
+          if ("bpm" in row.meta && String(row.meta.bpm).includes(needle)) return true;
+          const origin = "transferOrigin" in row.meta ? row.meta.transferOrigin : undefined;
+          if (origin && formatTransferSource(origin.sourceDaw).toLowerCase().includes(needle)) return true;
+          return false;
+        })
+      : rows;
+    return projectSort === "name" ? [...filtered].sort((a, b) => a.meta.name.localeCompare(b.meta.name)) : filtered;
+  }, [rows, projectFilter, projectSort]);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
   const songStarterMoods = SONG_STARTER_MOODS[songStarterGenre] ?? [];
 
@@ -821,6 +842,43 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
 
         <section className="pb-section">
           <h2 className="pb-title">PROJECTS</h2>
+          {projects !== null && rows !== null && rows.length > 0 && (
+            <div className="pb-search-row">
+              <input
+                type="search"
+                className="pb-search"
+                aria-label="Search saved projects"
+                placeholder="Search — name, BPM, source DAW…"
+                value={projectFilter}
+                onChange={(event) => setProjectFilter(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setProjectFilter("");
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-pressed={projectSort === "name"}
+                title={
+                  projectSort === "recent"
+                    ? "Sorted by last saved, newest first — click to sort by name"
+                    : "Sorted by name — click to sort by last saved"
+                }
+                onClick={() => setProjectSort(projectSort === "recent" ? "name" : "recent")}
+              >
+                {projectSort === "recent" ? "SORT: RECENT" : "SORT: NAME"}
+              </button>
+            </div>
+          )}
+          {projects !== null &&
+            rows !== null &&
+            rows.length > 0 &&
+            visibleRows !== null &&
+            visibleRows.length === 0 && (
+              <p className="pb-empty" role="status">
+                No project matches “{projectFilter.trim()}”.
+              </p>
+            )}
           {actionError && (
             <p className="pb-import-error" role="alert">
               {actionError}
@@ -836,9 +894,9 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           {firstRun && !listError && (
             <p className="pb-empty">No projects yet — everything you create is saved automatically.</p>
           )}
-          {projects !== null && rows !== null && rows.length > 0 && (
+          {projects !== null && rows !== null && rows.length > 0 && visibleRows !== null && visibleRows.length > 0 && (
             <div className="pb-list">
-              {rows.map((row) => {
+              {visibleRows.map((row) => {
                 if (row.kind === "incompatible") {
                   const project = row.meta;
                   const isNewer = project.direction === "newer";

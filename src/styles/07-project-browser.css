@@ -81,6 +81,27 @@
   margin: 0 0 10px;
 }
 
+/* CF-13 — the saved-projects search + sort row. */
+.pb-search-row {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.pb-search {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.pb-search:focus {
+  outline: 1px solid var(--accent);
+}
+
 .pb-first-run {
   margin: 0 0 12px;
   font-size: 12px;

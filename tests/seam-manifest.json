@@ -183,6 +183,15 @@
       "negativeSpec": "NEGATIVE: without a selected audio clip the affordance is absent and the event opens nothing"
     },
     {
+      "id": "project-browser-search",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ProjectBrowser.tsx visibleRows ← search input + SORT toggle over mergeRows",
+      "note": "CF-13: the saved-projects list is searchable (name, BPM, source DAW — case-insensitive) and sortable (recency default, name on the SORT toggle); incompatible rows filter and sort identically. A no-match query shows a truthful empty state, Escape clears the search, and the row actions stay scoped to the rendered rows. No repository change.",
+      "spec": "tests/ui/ProjectBrowser.test.tsx",
+      "seamEvent": "Search saved projects",
+      "negativeSpec": "NEGATIVE: no match shows a truthful empty state; clearing restores every row"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
