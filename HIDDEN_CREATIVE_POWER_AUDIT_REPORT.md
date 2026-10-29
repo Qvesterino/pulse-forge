@@ -1645,6 +1645,13 @@ flips.** The verdict is now a property of the measurement, not of the run's luck
 
 ### 10.14 The CI runner is not a measurement environment for this corpus
 
+> **STATUS 2026-10-29 — this section's central claim was withdrawn the next day.** §10.14 concluded that the four effect
+> divergences were "an **invariant-3 product finding**" and named a suspect in `src/effects/registry.ts`. **Both are
+> withdrawn** (§10.16.5): the divergence was the harness's **capture lead** — a warm live branch compared against a cold
+> offline one — so invariant 3 was never violated and the suspect was wrong. This section is kept as the record of what
+> was believed, and every instance of the withdrawn claim is now **marked in place**, so no reader can meet it in the
+> present tense. What survives of it — the runner's platform-specific realtime divergence — is characterised in §10.16.6.
+
 The paragraph above measures the corpus on a desktop. The parallel session then measured it on the CI runner —
 and that measurement is the more consequential one, because it shows the **runner** is the problem, not the
 corpus.
@@ -1679,7 +1686,10 @@ with `realtimeNondeterministic = false` and `live↔live` at about −332 dB) **
 the desktop**. For those 17 the offline control is **exact** and the realtime branch **reproduces itself** — yet it
 still differs from the offline render. That is **platform realtime behaviour on that runner, not the product's
 verdict**. The `instrument:analog` control that moves 3 dB between runs is a second, independent symptom of the
-same platform difference.
+same platform difference. **Scoping note (added 2026-10-29):** that 3 dB movement is one case in one earlier
+annotation, and the later CI annotation does **not** confirm it — its controls are exact for the 14 systematic
+cases (−336.4, −323.6, −321.8 …). The noise is on the **noisier axis of one case**, not on the corpus as a whole,
+which is what the calibration case already showed (§10.16.6).
 
 **So the section's conclusion survives — with a different mechanism than the one it was written with.** The runner
 still is not a measurement environment for this corpus. But not because its arithmetic is inexact: it is because the
@@ -1691,10 +1701,13 @@ not prove the realtime and offline paths agree with each other.
 effects. So the two statements point in opposite directions:
 
 - on a valid environment, the live↔offline divergence for those cases is **real** — an engine divergence, and an
-  invariant-3 question;
+  invariant-3 question; **[WITHDRAWN 2026-10-29 — §10.16.5: the divergence was the harness's capture lead, not the
+  engine. "Real" and "invariant-3 question" are both withdrawn; invariant 3 was never violated.]**
 - on the CI runner, the corpus's verdict mixes **two different things**: the four real findings, and a
   platform-specific realtime divergence that is green on every desktop. The membership of the red set moves between
-  runs for the second reason, not the first.
+  runs for the second reason, not the first. **[The "four real findings" half of this split is withdrawn too — there
+  were no findings (§10.16.5). What remains is the platform-specific divergence, now characterised as a systematic,
+  deterministic, whole-window difference (§10.16.6).]**
 
 **A narrowing that was itself withdrawn — and the statement that replaces both.** The bullet above originally read
 "noise, **including** the five cases this report had called stable". The parallel session then reported that
@@ -1706,7 +1719,15 @@ CI runs. The corrected form is the one that survives: the four are bit-identical
 `control` ≈ −332 dB, two machines) and they reproduce in CI as the same four with the same numbers — but "stable in
 CI" was never a claim the CI runs could support, because the corpus as a whole is not reproducible there.
 
-**The four divergences, on a valid environment, are a product finding.** ozvena **−39.2 dB**, morphdynamics
+> **WITHDRAWN 2026-10-29 — see §10.16.5.** The paragraph below is what this section concluded on 2026-10-28. It is kept
+> verbatim because it is the reasoning that was falsified, and it is the reasoning a reader meets first. **None of it
+> survives:** the four divergences were the harness's **capture lead**, the "invariant-3 product finding" is withdrawn
+> (invariant 3 was never violated), and the named suspect — the offline parameter regime in
+> `src/effects/registry.ts` — was wrong. The measurement that withdrew it, and the correction of the "phase anchor"
+> proposal that followed it, are both in §10.16.5.
+
+**The four divergences, on a valid environment, are a product finding.** ← **withdrawn, as marked above**
+ozvena **−39.2 dB**, morphdynamics
 **−29.7 dB**, bassHarmonic **−27.2 dB**, portal **−7.1 dB**, with `live↔live` at −322…−324 dB (the same processing
 path on both sides) and the offline `control` at −321.9…−323.9 dB (the same document rendered twice is
 bit-identical). That is an **invariant-3 product finding**: the export does not sound like the live branch, and it
@@ -1755,7 +1776,9 @@ even the tightest measurement keeps **more than 30 dB** of margin. (An earlier m
 figures differ.)
 
 **A verdict must never hide findings.** The failing-case list stays in the message **regardless** of the
-environment verdict, so `NOT measurable` can never conceal the four real findings. A verdict that hides findings is
+environment verdict, so `NOT measurable` can never conceal the four real findings. **[The "four real findings" are
+withdrawn — there were none (§10.16.5); the principle stands, and it is now the reason the failing list is kept even
+when the environment could not judge every case.]** A verdict that hides findings is
 worse than a noisy one. The blocking policy was deliberately left unchanged (`ok` is still
 `failures.length === 0`), because "does the corpus block CI" is the owner's decision — but the verdict now makes
 that decision possible **from evidence instead of from a guess**. The same question was asked of the product's own
@@ -2242,7 +2265,8 @@ product finding**", that "the export does not sound like the live branch", and t
 parameter regime in `src/effects/registry.ts`. **All three are withdrawn.** Invariant 3 was never violated; the
 divergence was the harness comparing two branches that were not in the same state; and the suspect was wrong. §10.14
 stays as the record of what was believed on 2026-10-29, with this section as its correction — the same treatment
-§10.14 gave its own earlier narrowing.
+§10.14 gave its own earlier narrowing. Every instance of the withdrawn claim inside §10.14 is **marked in place** as
+well, so the section cannot be read out of context as a live finding.
 
 **The corpus knew.** This is the part worth keeping. The exclusions list in the very same file already said, in
 words: _"Free-running LFO / phase state: the live instance is mid-modulation when the capture starts; the offline
