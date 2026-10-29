@@ -4787,6 +4787,95 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_analyze",
+    description:
+      "Perception over the E-1 envelope (E-6): analyze ONE track's AUDIO — either a mix-health digest (peak/LUFS/crest/band shares/flags from the strip's own render, master bypassed) or on-device audio LABELS (AudioSet tagger, top-5 with confidence; model must be fetched). Read-only; provenance (project revision, window, algorithm) travels with every result; results are BOUNDED digests, never raw arrays. Unavailable model = status partial with a reason — never invented labels.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        trackId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact track id to analyze (from kyx_state subject:tracks)",
+        },
+        featureSet: {
+          type: "string",
+          enum: ["mix-health", "audio-labels"],
+          description:
+            "mix-health = mixing numbers from the strip's own render; audio-labels = on-device AudioSet tagging (top-5, confidence)",
+        },
+        fromBar: {
+          type: "integer",
+          minimum: 0,
+          maximum: 8192,
+          description: "Window start bar (default 0)",
+        },
+        toBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8192,
+          description: "Window end bar (default fromBar + 8; max span 16 bars)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        agentId: {
+          type: "string",
+          maxLength: 32,
+          description:
+            "Optional per-call agent identity (lowercase letters, digits, dashes). The relay token is the real gate — this makes the audit log, history-label attribution and foreign-work undo consent LEGIBLE when several agents share one transport. Declared by the caller, so treat it as a label, not an auth boundary.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+      required: ["trackId", "featureSet"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["analyzed", "partial"],
+        },
+        provenance: {
+          type: "object",
+        },
+        algorithm: {
+          type: "object",
+        },
+        confidence: {
+          type: ["number", "null"],
+        },
+        mixHealth: {
+          type: "object",
+        },
+        labels: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        partialReason: {
+          type: "string",
+        },
+      },
+      required: ["status", "provenance", "algorithm", "confidence"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+  },
+  {
     name: "kyx_render_summary",
     description:
       "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. RANGE MODE: startTick+endTick WITHOUT trackId (or fromBar+toBar, 1-based inclusive bars) measures the FULL MIX inside that window — the timeline is rendered from 0 and only the measurement is sliced, so tails and earlier notes stay in the numbers. Use it for range-conditional questions (is the drop louder than the chorus? did the fix land in the bridge?). For a focused single-track read, provide trackId, startTick, and endTick together: KYX renders that isolated track pre-master and returns exact window timing, mix-health metrics, and the project revision before/after rendering. Use before/after mix moves so decisions cite numbers, not vibes. Repeat calls at the same document revision are served from a revision-keyed evidence cache (data.cache reports hit/miss/disabled); ANY edit bumps the revision and forces a re-render, so a stale answer is impossible by keying. Slow (N+1 offline renders); render-bound transports only.",
