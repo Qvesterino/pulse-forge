@@ -111,15 +111,17 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Fix (the approved proposal — behavior kept, silence removed):** every trigger funnels through `runReplaceClear()`, which now fires an `onReplaceClear` hook; services turns it into a window event and the TopBar answers on its existing `mode-hint` surface: "REPLACE cleared the pattern — one Ctrl+Z brings it back". The copy is honest at any moment — `ProjectStore.undo` seals the open record frame first, so the single undo takes the whole pass back, clear included, even mid-take. The wipe itself is unchanged; no friction added to the happy path.
 - **Verification:** recorder unit specs (hook fires exactly once per pass — at arm and on a mid-pass mode flip — and never on overdub), TopBar specs (the `role="status"` disclosure renders on the event and NOT when arming through the real record button), seam `pattern-replace-disclosure` (96 seams, gate green), typecheck clean. Real-browser run was skipped this time: the in-app browser guest refused to attach for the whole session — the two-sided jsdom seam carries the proof.
 
-### CF-08 | High (for the recording journey) | Confirmed | Status: TIER B
+### CF-08 | High (for the recording journey) | Confirmed | Status: **FIXED — commit `28e68a71`**
 
-- **Finding:** **latency calibration is unreachable from the record flow.** The wizard's audio phase produces the per-device offset applied to mic takes (`recordingAlignment.ts:225-228`), and per-device storage is excellent (`:40-56`) — but the only mount in `src/ui` is a button inside the MIDI panel (`MidiPanel.tsx:172-174`). Nothing near the record toolbar says "un-calibrated / calibrated (+N ms)".
-- **Proposed:** a "CALIBRATE" affordance (or at least a status readout linking to the wizard) in the arrangement capture toolbar. Reuse the existing wizard; do not duplicate its logic.
+- **Finding:** **latency calibration was unreachable from the record flow.** The wizard's audio phase produces the per-device offset applied to mic takes, and per-device storage is excellent — but the only mount in `src/ui` was a button inside the MIDI panel. Nothing near the record toolbar said "un-calibrated / calibrated (+N ms)".
+- **Fix:** the record toolbar discloses the armed input's state LIVE through the shared per-device controller — `NOT CALIBRATED`, or `CALIBRATED ±N ms` (the same number `compensateRecordingStartBar` applies, so the readout cannot disagree with the placement) — and a **CALIBRATE** button opens the same wizard, lazy-loaded so the boot-path closure does not pay for a ~20-second dialog (the boot-path seam gate stays green).
+- **Verification:** toolbar spec — NOT CALIBRATED before a measurement exists, the wizard opens from the toolbar and closes, and a set offset reads live in both signs through the SAME controller the placement uses; seam `record-flow-calibration` (100 seams, gate green).
 
-### CF-09 | Medium | Confirmed | Status: PROTOTYPE (F-13, still open)
+### CF-09 | Medium | Confirmed | Status: **FIXED — commit `28e68a71`** (F-13 closes with it)
 
-- **Finding:** **no follow-playhead.** The playhead line is a positioned leaf (`ArrangementPanel.tsx:7438-7456`) driven by `usePlayheadBar`; the only `scrollLeft` writes are zoom re-anchor (`:1011`) and FIT (`:4743`). During a long play the playhead exits the viewport and the user hand-scrolls to find it — for a mixing/auditing journey this is the recurring interruption.
-- **Proposed:** opt-in follow mode with hysteresis (page-jumps, paused when the user scrolls), built on the existing 1/8-bar playhead subscription; persist per view in the layout store, not the document. Not a drive-by fix: scroll interaction with zoom anchoring needs the DOM census gate (`tests/ui/arrangement-dom-census.test.tsx`) watching it.
+- **Finding:** **no follow-playhead.** The playhead line is a positioned leaf driven by `usePlayheadBar` (1/8-bar cadence); the only `scrollLeft` writes were zoom re-anchor and FIT. During a long play the playhead exits the viewport and the user hand-scrolls.
+- **Fix:** opt-in **FOLLOW** control in the view cluster, default off, persisted per browser (`pf:arr-follow`, view-layer policy like snap). The jump rides the EXISTING playhead leaf — no new subscriptions, nothing else re-renders — and fires only when the playhead leaves the comfortable window (15–75 % of the viewport), landing it at 20 % from the left: rare page jumps, never continuous tracking. A USER scroll suspends follow (persisted off); the app's own writes — the follow jump itself, FIT, zoom re-anchor — mask themselves with a programmatic-scroll flag and never do.
+- **Verification:** pure `followScrollLeft` decision table (in/out of window both sides, clamps, zero-width viewport), toggle persistence, and the mask negative (a masked scroll leaves follow on; an unmasked one suspends it). The DOM census budget moved 53 260 → 53 280 for the measured +3 FIXED shell elements — per-clip cost unchanged; census, viewport-windowing and boot-path gates green.
 
 ### CF-10 | Medium-High | Confirmed | Status: **FIXED — commit `197f89c8`**
 
@@ -182,7 +184,7 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 | F-10  | Time & pitch hidden in right-click | **OPEN** → CF-12                                                                                                                            |
 | F-11  | Mixed Slovak/English               | **OPEN** (not re-litigated here; prior audit's recommendation stands)                                                                       |
 | F-12  | Undo-history agent provenance      | **PARTIAL** — label prefix only (`attribution.ts:33-39`)                                                                                    |
-| F-13  | Follow-playhead                    | **OPEN** → CF-09                                                                                                                            |
+| F-13  | Follow-playhead                    | **FIXED by this audit** → CF-09 (`28e68a71`)                                                                                                |
 | F-14  | Intent scope preview               | **PARTIAL by others** — passive plan line + destructive checkpoints; no gating, arrange/clips routes blind (`intent-plan.ts:450-468`)       |
 | F-15  | ActivityCenter human-readable rows | **OPEN** → CF-23                                                                                                                            |
 
@@ -211,10 +213,10 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-05                | 5      | 5    | 5    | 3        | 2      | 20    | **FIXED after owner approval (commit `892dcc61`)** |
 | CF-07                | 4      | 3    | 5    | 4        | 4      | 20    | **FIX NOW (shipped — disclosure, not friction)**   |
 | CF-10                | 4      | 4    | 4    | 4        | 3      | 19    | **FIXED (default-on toggle, `197f89c8`)**          |
-| CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | PROTOTYPE (follow-playhead)                        |
+| CF-09                | 4      | 4    | 4    | 3        | 3      | 18    | **FIXED (opt-in page-jump follow, `28e68a71`)**    |
 | CF-19                | 3      | 3    | 4    | 3        | 3      | 16    | PROTOTYPE                                          |
 | CF-12                | 3      | 3    | 5    | 4        | 4      | 19    | TIER B                                             |
-| CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | TIER B                                             |
+| CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | **FIX NOW (shipped — `28e68a71`)**                 |
 | CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | TIER B                                             |
 | CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | TIER B                                             |
 | CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                             |
