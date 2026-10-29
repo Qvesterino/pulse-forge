@@ -455,7 +455,7 @@ export async function auditFxExpansion(bank: SampleBank): Promise<CheckResult> {
  * `informationalOnly` is the same shared-machine guard the render budget uses:
  * when the runner is co-tenanted the numbers are printed, not gated.
  */
-export async function auditRtBudget(bank: SampleBank, informationalOnly = false): Promise<CheckResult> {
+export async function auditRtBudget(bank: SampleBank, informationalOnly = false, calibNote = ""): Promise<CheckResult> {
   const TRACKS = 12;
   const EFFECTS_PER_TRACK = 4;
   const seconds = 2.5;
@@ -522,7 +522,7 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false)
       `blocks=${rt.blocks} xruns=${rt.xruns} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
       `max=${rt.maxGapMs.toFixed(2)}ms (expected≈${expectedGapMs.toFixed(2)}ms, ${jitterRatio.toFixed(2)}×) ` +
       `quantum=${rt.quantumMs.toFixed(3)}ms` +
-      (informationalOnly ? " — machine loaded, informational run" : "");
+      (informationalOnly ? ` — machine loaded${calibNote ? ` (${calibNote})` : ""}, informational run` : "");
     // The gate: the device must not drop quanta, and the heartbeat must
     // arrive near its expected cadence (a graph that misses its deadline
     // makes the heartbeat late or bursty).
@@ -549,7 +549,11 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false)
  * realtime budget it is always gated (a loaded machine slows it, but the
  * ratio still separates structure from noise by a wide margin).
  */
-export async function auditDenseRender(bank: SampleBank, informationalOnly = false): Promise<CheckResult> {
+export async function auditDenseRender(
+  bank: SampleBank,
+  informationalOnly = false,
+  calibNote = "",
+): Promise<CheckResult> {
   const TRACKS = 8;
   const EFFECTS_PER_TRACK = 4;
   const bars = 8;
@@ -616,7 +620,7 @@ export async function auditDenseRender(bank: SampleBank, informationalOnly = fal
         `${ms.toFixed(0)}ms vs ${baselineMs.toFixed(0)}ms single-track baseline for ` +
         `${audioMs.toFixed(0)}ms audio (budget ${budgetMs.toFixed(0)}ms, ` +
         `${(ms / Math.max(1, baselineMs)).toFixed(2)}× baseline)` +
-        (informationalOnly ? " — machine loaded, informational run" : ""),
+        (informationalOnly ? ` — machine loaded${calibNote ? ` (${calibNote})` : ""}, informational run` : ""),
     };
   } catch (error) {
     return {
@@ -4701,14 +4705,44 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       for (let i = 0; i < 5_000_000; i++) acc += Math.sqrt(i);
       return acc;
     };
-    spin(); // warm-up
-    let calibMs = 0;
-    for (let i = 0; i < 3; i++) {
+    const spinMs = () => {
       const t0 = performance.now();
       spin();
-      calibMs = Math.max(calibMs, performance.now() - t0);
-    }
-    const machineLoaded = calibMs > 18; // ~3× the idle cost
+      return performance.now() - t0;
+    };
+    spinMs(); // warm-up
+    // The calibration is the machine's ability to TIME anything. Two things
+    // make that impossible: an absolute cost far above the idle cost (a
+    // co-tenant is eating the CPU), and timings that DISAGREE with each
+    // other (the machine is busy in bursts). The second one is the stronger
+    // and machine-independent signal — a co-tenant that idles for a moment
+    // and then competes for the rest of the window produces exactly that,
+    // and it is what a wall-clock budget cannot survive. Measured on this
+    // repo: the same tree reported "machine loaded" in one run and not in the
+    // next, on a busy dev machine, which is a verdict that flips with the
+    // weather.
+    //
+    // The number is REPORTED, because a gate that silently degrades to
+    // "informational run" hides a real regression behind a machine-load
+    // excuse — and a reader cannot tell the two apart without the number.
+    const spins: number[] = [];
+    for (let i = 0; i < 5; i++) spins.push(spinMs());
+    const calibMs = Math.max(...spins);
+    const calibSpread = calibMs / Math.max(0.001, Math.min(...spins));
+    const machineLoaded = calibMs > 18 || calibSpread > 2;
+    const calibNote = `calib=${calibMs.toFixed(1)}ms (floor 18ms) spread=${calibSpread.toFixed(1)}× (max 2×)`;
+    // The same "environment" line the audio-parity corpus reports: a verdict
+    // that cannot say whether the machine can measure is a verdict nobody can
+    // act on. This check never fails the gate - it explains the gate.
+    check(
+      "perf environment: this machine's timing is measurable",
+      true,
+      `${calibNote} — environment=${machineLoaded ? "NOT measurable" : "measurable"}${
+        machineLoaded
+          ? ", the budget checks below are informational (numbers printed, not gated)"
+          : ", the budget checks below are gated"
+      }`,
+    );
     const budgetTimes: number[] = [];
     let totalAudioMs = 0;
     let totalWallMs = 0;
@@ -4774,7 +4808,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
           `${ms.toFixed(0)}ms for ${audioMs.toFixed(0)}ms audio (budget ${renderBudgetMs.toFixed(0)}ms, ${(
             ms / Math.max(1, audioMs)
           ).toFixed(2)}× realtime)${recovered ? ` — first sample ${first.ms.toFixed(0)}ms, retry recovered` : ""}${
-            machineLoaded ? " — machine loaded, informational run" : ""
+            machineLoaded ? ` — machine loaded (${calibNote}), informational run` : ""
           }`,
         );
       } catch (error) {
@@ -4789,7 +4823,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         machineLoaded || avg < 7000,
         `avg=${avg.toFixed(0)}ms worst=${worst.toFixed(0)}ms over ${budgetTimes.length} templates; aggregate=${(
           totalWallMs / Math.max(1, totalAudioMs)
-        ).toFixed(2)}× realtime${machineLoaded ? " — machine loaded, informational run" : ""}`,
+        ).toFixed(2)}× realtime${machineLoaded ? ` — machine loaded (${calibNote}), informational run` : ""}`,
       );
     }
     // ── AUDIO-THREAD BUDGET: N tracks × M effects under the RT monitor ──
@@ -4799,12 +4833,12 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     // between consecutive quanta (the xrun proxy). Same shared-machine guard
     // as the render budget — on a loaded machine the numbers are reported but
     // not gated, because they would measure co-tenant load, not regressions.
-    record(await auditRtBudget(bank, machineLoaded));
+    record(await auditRtBudget(bank, machineLoaded, calibNote));
     // The offline counterpart of the same N×M matrix: how long does an
     // N-track × M-effect render take? Deterministic (no device clock), so it
     // is always gated; it catches a graph that got structurally more
     // expensive even when the realtime budget still has headroom.
-    record(await auditDenseRender(bank, machineLoaded));
+    record(await auditDenseRender(bank, machineLoaded, calibNote));
   }
 
   try {
