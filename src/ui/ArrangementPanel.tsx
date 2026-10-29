@@ -631,46 +631,6 @@ export function ArrangementPanel() {
   const zoomRef = useRef(1);
   const zoomAnchorRef = useRef<{ tick: number; cursorX: number } | null>(null);
   zoomRef.current = zoom;
-  // CF-11: persist the view state per project (debounced) so the ARR tab can
-  // close and the view comes back as it was left.
-  const viewSaveTimerRef = useRef<number | null>(null);
-  const scheduleViewPersist = useCallback(() => {
-    if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
-    viewSaveTimerRef.current = window.setTimeout(() => {
-      viewSaveTimerRef.current = null;
-      saveArrangementViewState(doc.id, {
-        zoom: zoomRef.current,
-        scrollLeft: scrollRef.current?.scrollLeft ?? 0,
-        selectedClipId: selectedClipIdRef.current,
-        selectedAudioClipId: selectedAudioClipIdRef.current,
-      });
-    }, 250);
-  }, [doc.id]);
-  useEffect(() => {
-    scheduleViewPersist();
-  }, [zoom, selectedClipId, selectedAudioClipId, scheduleViewPersist]);
-  // Restore the saved horizontal position once the lanes exist, per document.
-  useEffect(() => {
-    const el = scrollRef.current;
-    const saved = loadArrangementViewState(doc.id).scrollLeft;
-    if (el && saved) {
-      el.scrollLeft = saved;
-      markScrollAsProgrammatic();
-    }
-    // Flush synchronously when the panel unmounts (the debounced write would
-    // never fire) — the refs carry the newest values.
-    const docId = doc.id;
-    return () => {
-      if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
-      saveArrangementViewState(docId, {
-        zoom: zoomRef.current,
-        scrollLeft: scrollRef.current?.scrollLeft ?? 0,
-        selectedClipId: selectedClipIdRef.current,
-        selectedAudioClipId: selectedAudioClipIdRef.current,
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- per-document restore/flush
-  }, [doc.id]);
   /**
    * The document's bar length in ticks, in a REF.
    *
@@ -800,6 +760,47 @@ export function ArrangementPanel() {
   });
   const selectedAudioClipIdRef = useRef<string | null>(null);
   selectedAudioClipIdRef.current = selectedAudioClipId;
+  // CF-11: persist the view state per project (debounced) so the ARR tab can
+  // close and the view comes back as it was left. Lives AFTER every field it
+  // saves — the mirror refs above and zoomRef are the newest-value source.
+  const viewSaveTimerRef = useRef<number | null>(null);
+  const scheduleViewPersist = useCallback(() => {
+    if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+    viewSaveTimerRef.current = window.setTimeout(() => {
+      viewSaveTimerRef.current = null;
+      saveArrangementViewState(doc.id, {
+        zoom: zoomRef.current,
+        scrollLeft: scrollRef.current?.scrollLeft ?? 0,
+        selectedClipId: selectedClipIdRef.current,
+        selectedAudioClipId: selectedAudioClipIdRef.current,
+      });
+    }, 250);
+  }, [doc.id]);
+  useEffect(() => {
+    scheduleViewPersist();
+  }, [zoom, selectedClipId, selectedAudioClipId, scheduleViewPersist]);
+  // Restore the saved horizontal position once the lanes exist, per document.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const saved = loadArrangementViewState(doc.id).scrollLeft;
+    if (el && saved) {
+      el.scrollLeft = saved;
+      markScrollAsProgrammatic();
+    }
+    // Flush synchronously when the panel unmounts (the debounced write would
+    // never fire) — the refs carry the newest values.
+    const docId = doc.id;
+    return () => {
+      if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+      saveArrangementViewState(docId, {
+        zoom: zoomRef.current,
+        scrollLeft: scrollRef.current?.scrollLeft ?? 0,
+        selectedClipId: selectedClipIdRef.current,
+        selectedAudioClipId: selectedAudioClipIdRef.current,
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- per-document restore/flush
+  }, [doc.id]);
   const [showAudioTakeLanes, setShowAudioTakeLanes] = useState(false);
   const [compCrossfadeTicks, setCompCrossfadeTicks] = useState(120);
   const [audioTakeLaneRange, setAudioTakeLaneRange] = useState<AudioTakeLaneRange | null>(null);

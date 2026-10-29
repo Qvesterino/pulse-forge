@@ -663,11 +663,11 @@ describe("ArrangementPanel — view state survives the tab (CF-11)", () => {
       selectedClipId: "clip-1",
       selectedAudioClipId: null,
     });
+    // A null field is stored by its ABSENCE — the consumer reads `?? null`.
     expect(loadArrangementViewState("doc-x")).toEqual({
       zoom: 1.4,
       scrollLeft: 500,
       selectedClipId: "clip-1",
-      selectedAudioClipId: null,
     });
     window.localStorage.setItem("pf:arr-view:doc-broken", "{not json");
     expect(loadArrangementViewState("doc-broken")).toEqual({});

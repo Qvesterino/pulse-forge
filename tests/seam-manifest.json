@@ -165,6 +165,15 @@
       "negativeSpec": "NEGATIVE: a user scroll suspends follow — the app's own jumps never do"
     },
     {
+      "id": "arrangement-view-state",
+      "status": "COVERED",
+      "entryPoint": "src/ui/arrangementViewState.ts load/save ← ArrangementPanel zoom/scroll/clip-focus state",
+      "note": "CF-11: the arrangement view (zoom, horizontal position, the panel-local clip focus that drives take lanes and warp pins) used to die with the ARR dock tab — the panel unmounts on every re-route. It now persists per PROJECT (pf:arr-view:<docId>, localStorage, snap's view-layer policy) with a defensively re-validated payload, a debounced writer, a synchronous unmount flush, and clip ids validated against the document on restore so a deleted clip selects nothing.",
+      "spec": "tests/ui/ArrangementPanel.test.tsx",
+      "seamEvent": "loadArrangementViewState",
+      "negativeSpec": "NEGATIVE: a saved clip id that no longer exists selects nothing"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
