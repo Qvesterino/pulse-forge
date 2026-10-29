@@ -1999,8 +1999,26 @@ half's longest job, measured in run #475):
 The model earns its keep on the half that _was_ measured: run with the measured **18.9 min** service time it drops
 **11 of 15**, against the **10 of 15** the run list actually recorded — within one run of reality, which is why it
 can be trusted for the half nobody has measured yet. (The simulation is of GitHub's documented group semantics on a
-measured arrival sequence; the split itself has not run yet, so this is a **prediction**, not a measurement of the
-split's behaviour.)
+measured arrival sequence.)
+
+**The split is live, and its first measurement is in** (Actions API, 2026-10-29 ~08:00Z, the 40 most recent runs):
+
+| workflow          | runs | verdicts            | cancelled    | mean wall clock               |
+| ----------------- | ---- | ------------------- | ------------ | ----------------------------- |
+| `CI (fast gates)` | 3    | **3 (all success)** | **0**        | **2.4 min** (1.9 / 2.6 / 2.5) |
+| `CI` (heavy)      | 37   | 14                  | **22 (59%)** | 12.7 min                      |
+
+So the split does what it was built to do: the fast gates answer **"is the tree broken?" in about two and a half
+minutes**, on their own runner pool, while the heavy workflow is still running for 12–30 minutes. A push no longer
+queues behind a browser run for a typecheck verdict, and that is now a measurement rather than an intention.
+
+**And the per-SHA question is not answered by the run list yet.** Three fast runs, no drop — but the three pushes
+that produced them were **2.1 and 4.0 minutes apart**, so no burst ever reached the group. The simulation says the
+drops appear when three to five pushes land inside the fast workflow's wall clock; the measured wall clock of the
+live workflow (**2.4 min**) is slightly _below_ the 2.8 min the simulation assumed, which makes the simulated drop
+count a slight **over**-estimate, not an under-estimate. The next burst of pushes settles it. Until then the honest
+label is **Not verified**: the split works, and whether its fast group still loses verdicts in a burst is a question
+the run list has not answered yet.
 
 **Why the fast half behaves differently: the pushes arrive in clusters.** The inter-arrival gaps of the measured
 sequence are 0.3, 0.4, 1.0, 1.2, 2.1, 2.9, 3.9, 4.3, 4.5, 4.8, 6.5, 10.0, 24.4 min — mean 4.9, but the pushes come
@@ -2241,6 +2259,12 @@ its exclusion can be lifted. **The parallel session took the correction and fixe
 exclusions comment said nine; the map holds nineteen"), with the same twelve named and the same split into
 lead-class and transport-class. The one item that correction did not take is `wavetable`: the instrument map was not
 re-counted, so the candidate thirteenth is still open.
+
+**The twelve are being re-measured, and that is where the next corpus size comes from.** The parallel session has
+started re-measuring every phase exclusion with the fixed harness. If they come back green, their exclusions are
+obsolete and the corpus grows from **67 to 79 cases** (67 + 12) — which is also the first test of whether the corpus
+can measure the classes it previously refused to measure. **That measurement was in flight when this section was
+written: a projection, not a result.**
 
 **The reverb exclusion is demonstrably inaccurate now.** It was excluded with the reason "free-running 0.5 Hz
 read-position modulator; device-clock jitter accumulates over the tail" — yet with the lead fixed, reverb measures
