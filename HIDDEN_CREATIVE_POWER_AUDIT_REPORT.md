@@ -1766,6 +1766,22 @@ With the fix in place, measured on a **clean detached worktree** at `2c89e12a` c
 `mcp-core` 32, `mcp-tools` 156, `mcp-headless-acceptance` 8, `shortcuts` 9, `command-palette` 20); Prettier
 clean; live spec count unchanged at **1330**, so no payload re-pin was owed.
 
+**Provenance of this fix — recorded because the shared worktree decided it, not me.** The change above did not land in
+a commit of its own. The parallel session committed from the shared tree while these paths were modified in it, and
+its `git add .` carried all six files into its commit `51bd0251` ("ranny commit"), together with that session's own
+changes. The **content** is exactly the content measured here — the diff of `51bd0251` for these paths is the patch
+described above, and nothing of the parallel session's work was rewritten to make room for it. The **commit message**
+is the parallel session's, and it says nothing about this fix.
+
+**And a second thing that makes attribution impossible here, which is worth recording once.** Both agent sessions
+commit under the **same git author identity** (`Qvesterino`), so the commit that carries this fix is not merely
+attributed to the wrong session — it is attributed to an author that does not distinguish sessions at all. The
+repository's own guardrails ask each session to "say what is yours in the commit message", which presumes the message
+and the author together identify the author. Here only the message can, and in this case even that was lost. The
+consequence is concrete: **a commit in this repository is not evidence of who wrote it.** Only the working-tree state
+and the diff can tell. That is why the whole account of this fix — the reasoning, the failed first attempt, the
+falsification, and the corrected attribution — lives in this section rather than in a commit message.
+
 **What this section does NOT claim.** The three downstream CI jobs that failed with the typecheck — Production
 build, Production browser smoke, Browser audio checks — were **not** re-measured here; only the typecheck was.
 They failed as consequences of a broken build, but "would now be green" is not a measurement and is not
