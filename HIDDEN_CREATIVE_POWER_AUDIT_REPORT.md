@@ -1786,6 +1786,15 @@ explicit annotation into the typecheck job (its lane, CI observability). The rul
 a pointer, not a census.** Count the errors locally; never conclude "CI saw fewer errors" from the annotation,
 and never read a missing `file:line` as a missing error.
 
+**And the annotation paid for itself within one cycle.** The explicit annotation names the error count, the
+per-file counts and every `file:line`. One cycle after it landed, it located a red on `main` that nothing had
+seen: the `kyx_analyze` wave shipped four unused parameters in a new spec (`channel` in the fake buffer,
+`doc`/`id`/`opts` in the render stub) — four TS6133 errors under `noUnusedLocals`/`noUnusedParameters` — which
+broke Typecheck and, with it, the Production build and the UI gates. Before the annotation, the same failure read
+**"Process completed with exit code 2"**: no file, no line, nothing to act on and no reason to suspect a spec
+file at all. The fix is the repository's own convention — the parameters stay in the signature (the fake still
+reads like the contract it stands in for) and their names carry the underscore prefix (`18f1d517`).
+
 **The fix, and the rule the fix obeyed.** The contract is now what is actually read — `src/mcp/revision.ts:23`:
 
 ```ts

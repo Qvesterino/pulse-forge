@@ -201,6 +201,13 @@ The rule: **read CI state when you have a question, not continuously.**
   anything about how many things are broken, and never read a missing
   `file:line` as a missing error. The `typecheck` job now writes its own
   annotation.
+- **An annotation that does not name the file and the line is decoration.**
+  Measured the same day, one cycle later: the explicit typecheck annotation
+  (error count, per-file counts, every `file:line`) located a red on `main`
+  that had been invisible - four unused parameters in a new spec, TS6133,
+  reading as `Process completed with exit code 2`. Without the file and the
+  line there is nothing to act on; with them the red is located in one request
+  and the job log is never needed.
 - **A cancelled run is not a verdict.** GitHub's concurrency group with
   `cancel-in-progress: false` keeps a RUNNING job alive but replaces any
   PENDING one with the latest - so with a push every few minutes, most
