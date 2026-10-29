@@ -413,7 +413,47 @@ jobs:
       # browser checks above do not model. The vitest webServer config owns
       # server startup (predev builds the worklet bundles first).
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e:smoke
+      # The failure text goes to the JOB SUMMARY and to an ERROR ANNOTATION.
+      # This job had neither: the only thing the annotations API said was
+      # "Process completed with exit code 1", which names neither the spec nor
+      # the assertion. A failed job's log sits behind a login, so an
+      # annotation that cannot say WHICH scenario regressed is an annotation
+      # nobody can act on - measured on the run of 2026-10-29, where the E2E
+      # smoke went red and the annotations API reported exactly this.
+      # The identification comes FIRST, because GitHub caps an error
+      # annotation at 4096 BYTES (measured).
+      - name: Run npm run test:e2e:smoke
+        run: |
+          set +e
+          npm run test:e2e:smoke 2>&1 | tee /tmp/e2e.log
+          status=${PIPESTATUS[0]}
+          sed -e 's/\x1b\[[0-9;]*m//g' /tmp/e2e.log > /tmp/e2e.plain.log
+          if [ "$status" -ne 0 ]; then
+            # The failing scenario names: Playwright prints them as
+            # "  1) [chromium] > spec.ts:12:5 > title" and repeats them in the
+            # summary as "    [chromium] > spec.ts:12:5 > title".
+            specs=$(grep -aE '^[[:space:]]+[0-9]+\) |^[[:space:]]+\[[a-zA-Z]+\] ' /tmp/e2e.plain.log \
+              | sed -e 's/^[[:space:]]*//' -e 's/^[0-9]\+) //' | sort -u | head -20)
+            count=$(printf '%s\n' "$specs" | grep -c . || true)
+            {
+              echo "### npm run test:e2e:smoke FAILED (exit $status)"
+              echo '```'
+              echo "failing scenarios: $count"
+              printf '%s\n' "$specs"
+              echo '--- failure text ---'
+              grep -aE '^[[:space:]]*(Error|AssertionError|Timed out|expect\(|Test timeout of)' /tmp/e2e.plain.log | head -20 || true
+              echo '--- tail ---'
+              tail -30 /tmp/e2e.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=e2e smoke failed (exit %s)::%s\n' "$status" \
+              "$( { echo "failing scenarios: $count"; \
+                   printf '%s\n' "$specs"; \
+                   echo '--- failure text ---'; \
+                   grep -aE '^[[:space:]]*(Error|AssertionError|Timed out|expect\(|Test timeout of)' /tmp/e2e.plain.log | head -20; } \
+                 | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 4096)"
+          fi
+          exit $status
 
   audit-prod:
     name: Production dependency audit
