@@ -3000,6 +3000,48 @@ the shape `auditDenseRender` already has and the shape the realtime gate now has
 average, so it moved with it — **0.29× / 0.53× / 1.02× / 1.18× / 1.18×** across the same five runs — and a criterion that moves
 4× with the machine is not machine-independent either.
 
+**— IN PLACE (2026-10-30, evening, second correction): THIS SESSION'S OWN RECOMMENDATION IS WITHDRAWN, AND THE EXPERIMENT
+THAT REFUTES IT IS IN THE REPO.** This session recommended moving the perf section to its own page/process, so that its verdict
+could not be derived from whatever ran before it. **The parallel session ran exactly that experiment** — the perf block pulled
+out into its own clean page, called separately, in the **same run on the same machine** — and the result refutes the
+recommendation rather than confirming it (`docs/audits/2026-10-29-browser-audit/perf-isolation-experiment.log`, with the
+experiment itself as `perf-isolation-experiment.patch`, commit `9f0f6c1c`):
+
+| perf measurement, same run, same machine | avg         | worst    | aggregate      |
+| ---------------------------------------- | ----------- | -------- | -------------- |
+| **in-page**, after the corpus            | **5137 ms** | 11115 ms | 0.32× realtime |
+| **isolated**, on a clean page            | **6379 ms** | 14769 ms | 0.39× realtime |
+
+**The isolated page was SLOWER.** So the mechanism this report described — _"the verdict moved because the run got heavier"_, in
+the form _"the perf section inherits the weight of what ran before it"_ — **does not hold in that form**, and moving the section
+would not stabilise the gate: it would spend the cold JIT of a fresh page and **narrow** the margin, not widen it.
+
+**And the same artifact refutes the other candidate mechanism too, which is the one this report adopted from the parallel
+session.** The in-page measurement above is **avg 5137 ms — green against the 7000 ms limit — on the current tree, with the
+third offline render per case still in place.** If the extra render had been what made the run heavier, the in-page perf
+section would be red; it is not. **What actually varies is run-to-run noise on one tree**: the parallel session's four runs read
+**5137 / 6025 / 6321 / 6379 ms** against the limit of 7000, and this session's three runs read **16544 / 19032 / 19049 ms** on the
+same tree — the same measure, spread over roughly **3.7×** on one machine.
+
+**So the conclusion that survives is the one this report already reached, for a sharper reason.** The absolute perf budget is a
+**machine-state** measurement, not a code measurement: the tree can be green or red at the same commit, and the tree's own
+relative form (`auditDenseRender`) stayed green in every one of this session's runs (**4.11× / 4.78× / 4.78×** against a **7.5×**
+limit — verified in the committed logs, the measured ratio, not the budget) while the absolute one sat **2.1× over** its budget in
+all three. **The repo already contains the working example of the fix, in the same file family.** The FXEQ morph gate
+(`tests/fxeq-performance-gates.test.ts`, `eb2c3d50`) is a **ratio** measured across **three machines and three load shapes** —
+Windows idle **1.59×**, Linux 16 vCPU **1.58×**, Linux pinned to 1 CPU with three spinners **1.61×**, and Linux pinned to 1 CPU
+with spinners that start **between** the idle and the morph phase **1.66×** — and it holds. Its old **2.4×** budget sat **inside**
+that healthy band, so a healthy run could fail it; the peer moved it to **3.0×**, which still catches the pathology the gate
+exists for (the old per-block `applyAllParams` path measured ~2.4× at half today's schema size and exceeds 4× today). **The FXEQ
+core also changed after the band was calibrated** (`7371bb3f`), so the old band was measured against a different core. **One
+gate in this repo measures a ratio across machines and is stable; the other measures milliseconds on one machine and swings
+3.7×.** That is not a threshold problem — it is the difference between the two forms.
+
+**What this leaves for the owner, stated as a number and as a decision.** The perf budget's own comment still carries the
+2026-09 baseline _"idle M1-class laptop: avg ~2 s"_, which is roughly **3×** below what today's tree measures even on the
+fastest of the six runs recorded above. **That is a number change, and a number change is the owner's call — not this report's
+and not the parallel session's.** The form is settled by the measurements; the value is not.
+
 **And the relative sibling has a defect of its own, in the same class — found by the parallel session and corrected here against
 the code.** `auditDenseRender` (`src/browser-checks.ts:748-834`) does budget the 8×4 matrix **relatively** (`:815-817`), and that
 is the right form — but the two numbers it divides are **not adjacent**, and the order biases the result in the dangerous
@@ -3064,7 +3106,10 @@ about the tree and a **false cause**, and the difference is worth recording rath
   `82f59555`, **2026-10-29 10:31**) reads `passed=77/77` and the same `parity obligation … fx=48+9 instruments=29+2` line as
   every later log, and it was **439/439 green** with `perf avg=4708 ms` and `dense 10697 ms`. **Only the oldest log
   (`browser-audit.log`) has 67** (`failed=4/67`, `fx=38+19`). **The corpus count was therefore already 77 in the run that
-  passed, and it cannot explain a verdict that flipped.**
+  passed, and it cannot explain a verdict that flipped.** (For the record, and since it was asked: the corpus is **derived from the
+  tool and effect registries**, so the 67 → 77 growth came with **new instruments added to the registry** (`9419e8e1`,
+  `c7035193`) — not from anything this session did. The origin was never the point; the point is that the growth was already
+  present in the green run.)
 - **What actually changed between the green run and the red ones is the parallel session's own commit `c0400b33`
   (2026-10-30 01:51)** — "the offline branch renders the realtime branch's MEASURED history". Before it, the second live take's
   history usually **differed** from the first (it was derived from the arming clock), so it got **its own** offline reference:
@@ -3318,6 +3363,27 @@ day from **12.0 ms** (the parallel session's run) to **17.3 ms** in the "quiet" 
 session's running, and ~35 `node.exe` processes (eight Playwright MCP servers, several Vite dev servers, other sessions) were
 resident throughout. **A desktop whose own calibration moves 44 % is not a measuring environment for absolute realtime numbers** —
 and its number says more about the box than about the product.
+
+**— IN PLACE (2026-10-30, evening): the parallel session's clean desktop run CONFIRMS this reading, and the two environments now
+agree.** In the isolation-experiment run (`perf-isolation-experiment.log`, commit `9f0f6c1c`) the desktop's own realtime line
+reads:
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=896 xruns=2 heartbeat avg=198.97ms
+max=244.30ms (expected≈170.67ms, 1.17×) quantum=2.667ms · device floor xruns=0 jitter=1.00×
+(1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=2
+```
+
+**`blocks=896` is 100 % of real time on this desktop** — the same figure as the runner — with the heartbeat at **1.17×** against
+the runner's **1.10×**, and a **clean floor (1.00×) in both**. **So the desktop and the runner measure the same thing**: the
+graph costs about **1.1–1.2×** the empty graph's heartbeat budget on both, and the gate is red on **one or two dropped quanta out
+of 896** in both. The **41–48 % of real time** readings in this session's three runs were **the contaminated ones** — a loaded box,
+not a different product. That is the third time this audit has had to separate _the box_ from _the graph_, and the third time the
+floor is what does it.
+
+**And the owner-facing consequence is now measured on both machines, not one:** the promise fits, at full real time, with roughly
+**1.1–1.2×** of the heartbeat budget used against a **1.5×** limit — and the gate's red is **a handful of dropped quanta**, which
+is the signature of a criterion with no baseline rather than of a graph that does not fit.
 
 **So the boundary, as far as it is measured, is: on a 2-vCPU Linux runner the realtime path holds 48 effect chains at full real
 time, with one dropped quantum of margin; on a loaded desktop the same scenario does not fit, and the desktop's own floor says
