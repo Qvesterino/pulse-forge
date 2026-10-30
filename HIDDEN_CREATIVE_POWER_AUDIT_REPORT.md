@@ -2595,12 +2595,14 @@ is **not in the log**: the escape hatch `phaseInsensitiveParityAgrees` (`:647`) 
 failing branch of the detail line does not print — it prints the raw one as `rms=` and the windowed one as `RMS=`, and this row
 carries only `rms=1.000×`. A reader cannot tell the two apart from the annotation.
 
-**And the scoping that matters most: it is Linux, not the runner.** §10.14 called these failures "platform realtime behaviour
-on that runner"; this report's earlier text called them "present on the runner and absent on the desktop". Both labels blame the
-**machine**, and both are wrong in the same way. The parallel session's WSL Linux reproduces **identical numbers** for the same
-cases — `instrument:808` live↔offline **−32.9 dB** with control **−89.5 dB**, `instrument:analog` **−13.7 dB** — and the
-runner reports −32.9 / −89.5 / −13.7. **Two different Linux machines, identical numbers.** So this is not a loaded or a broken
-runner: it is a deterministic **Linux** divergence, while the desktop (Windows) reports the corpus green at 77/77.
+**And the scoping that matters most: it looked like Linux, but it was a RACE.** §10.14 called these failures "platform realtime
+behaviour on that runner"; this report's earlier text called them "present on the runner and absent on the desktop", and then, on
+the strength of the parallel session's WSL reproduction of identical numbers (−32.9 / −89.5 / −13.7 on both Linux machines),
+called it "a deterministic **Linux** divergence". **That reading was wrong, and this paragraph is withdrawn.** Identical numbers
+at one moment do not prove determinism when the mechanism turns out to be a race — and the same case on identical code has been
+measured at **−323 dB on one run and −33 dB on the next**. The platform did not decide the outcome; it changed the **timing** of
+a race, and a race that resolves one way on an idle desktop resolves the other way on a loaded runner. **What was platform-shaped
+was the symptom, not the cause.**
 
 **That made it the smallest invariant-3 candidate this audit had ever held** — invariant 3 holds on Windows and does not hold on
 Linux, for 17 instruments, reproducibly, with the offline branch proven exact on both platforms and the realtime branch proven to
@@ -2612,30 +2614,43 @@ parallel session found a **law** on Windows: the live and offline branches are *
 engine's final processors are constructed**. Measured on Windows: `H = 22144` → **−300.00 dB** (bit-identical), `corr = 1.0000`.
 
 That is the shape of the capture-lead defect **one level deeper**: the harness **hardcodes** `H = 22144` (0.5 s at 44.1 kHz), while
-the live branch's real history depends on **when its engine was built** — and that moment is **platform-dependent**, because the
-worklets take a different time to load on Linux than on Windows. If the law holds on Linux as well (the parallel session is
-verifying it on WSL now), then:
+the live branch's real history depends on **when its engine was built**. If the law holds on Linux as well, then the seventeen
+Linux reds are the **same harness bias for the third time** — not a product divergence, and not an invariant-3 finding — and the fix
+is already named: `captureLive` must **return its history** and `renderOffline` must **take it as a parameter**, instead of the
+harness assuming a constant.
 
-- the seventeen Linux reds are the **same harness bias for the third time** — not a product divergence, and not an invariant-3
-  finding;
-- the invariant-3 candidate in this section **dissolves**, exactly as the "four product findings" dissolved in §10.16.5;
-- and the fix is already named: `captureLive` must **return its history** and `renderOffline` must **take it as a parameter**,
-  instead of the harness assuming a constant.
+**And it was confirmed, on both platforms, and fixed — twice, because the first fix moved the symptom, not the race.**
+`c0400b33` ("the offline branch renders the realtime branch's MEASURED history") landed the first half: `captureLive` measures the
+realtime branch's history and returns it, `renderOffline` takes it as a parameter for the render length, the event offset and the
+trim, and the second realtime capture gets **its own** offline reference when its history differs.
 
-**And it was confirmed, on both platforms, and fixed.** `c0400b33` ("the offline branch renders the realtime branch's MEASURED
-history") landed the fix: `captureLive` measures the realtime branch's history and returns it, `renderOffline` takes it as a
-parameter for the render length, the event offset and the trim, and the second realtime capture gets **its own** offline reference
-when its history differs. Measured on the change:
+**Then the cause itself.** `db28fffa` ("the realtime branch builds its engine on a frozen clock") — the realtime branch was
+building its engine on a **running** context, so its processors entered the audio thread at a frame that was a **race** between
+the main thread and the audio thread: whichever finished first decided whether the processors processed from quantum `N` or
+`N+1`. **A race cannot be matched by a number** — no history value can reproduce "whichever thread won". The fix is to remove the
+race: the context is **suspended before anything is built on it** (measured: a fresh context reports `currentTime` 0 and keeps
+reporting 0 across a suspend), the whole graph is built at that frozen clock, and the clock starts only once the graph is
+complete. The engine's processors then enter at frame 0, so the realtime branch's history **is** the capture's start frame and the
+offline branch renders exactly that much. **Both branches are now built at clock 0 — which is what the harness's own comment
+claimed from the beginning.** The comment was aspirational; it is now true.
 
-| case                               | before   | after         |
-| ---------------------------------- | -------- | ------------- |
-| `instrument:organ` (desktop)       | −31.7 dB | **−323.5 dB** |
-| `instrument:analog` (Linux runner) | −13.7 dB | **−76.0 dB**  |
+Measured on the **Linux runner** (the CI environment):
+
+| case                | before   | after                         |
+| ------------------- | -------- | ----------------------------- |
+| `instrument:808`    | −32.9 dB | **−336.4 dB** (bit-identical) |
+| `instrument:organ`  | −31.7 dB | **−323.6 dB** (bit-identical) |
+| `instrument:analog` | −13.7 dB | **−78.2 dB**                  |
+| `instrument:bell`   | −24.5 dB | **−321.8 dB** (bit-identical) |
+
+and on the desktop: 808 −94.5 dB, organ −323.6 dB, analog −78.6 dB, bell −321.8 dB — **all green**. What remains is each
+instrument's own offline determinism (`808`: control −89 dB, live↔live −89 dB).
 
 **Verified, not hypothesized** — and the seventeen Linux reds were the harness's, for the third time, exactly as §10.16.5's four
 FX divergences had been. **The invariant-3 candidate is withdrawn: it never existed.** The rule that produced it was this audit's own
 recurring one, now for the fourth time: **a harness that compares two branches must never assume that their histories match — it has
-to be told.**
+to be told.** And the deeper form of the same rule, which the race taught: **a measurement whose outcome depends on a race is not
+a measurement — and "identical on two machines" does not prove otherwise.**
 
 **Where the engine should hop — the precedent, and the anchor.** `docs/CURRENT-STATE.md` records the fix for the FX side: the
 **offline** chain is built at the **render origin**, so its ramps are still in flight when the first event lands, and the fix was to
@@ -2645,6 +2660,12 @@ make the offline write happen immediately ("smooth"). The instrument registry ha
 which differs between a live context that has been running and an offline context that starts at zero — and differs again by
 platform in how the capture start is quantised. **Hypothesized, not measured** — but it is the one place where the evidence and the
 precedent point at the same line of code.
+
+**And that hypothesis was not the cause either.** The cause was the **race** above: the realtime branch's processors entered the
+audio thread at a frame that a main-thread/audio-thread race decided, and the offline branch could not reproduce a race with a
+number. `src/instruments/registry.ts:2015` may still be worth a look for other reasons, but it is **not** what made seventeen
+instruments red on Linux, and this paragraph is corrected accordingly: **the anchor was right about the kind of thing (a
+construction-time state) and wrong about the line.**
 
 **And the gate itself changed, because the verdict was depending on which capture was taken.** `b2a02569` replaced the old
 exception with `realtimeBranchOwnsTheNull` (`:1525`). There are two ways a realtime branch fails to reproduce itself, and the
@@ -2656,10 +2677,19 @@ branch that does not repeat is **"don't measure"**, and it is **named**; red rem
 dirty against offline and consistent with each other. The seventeen stay red under the new rule, and now they are red **on
 purpose** rather than by an accident of ordering.
 
-**And the seventeen had no defect at all.** The decision §10.14 proposed — make the null corpus non-blocking in CI — was built on
-the reading that these failures were "platform noise", and the reading was wrong in the direction that matters: they were neither
-noise nor product, they were the harness's own bias — measured, fixed, and measured again. **What the corpus should do now is the
-only question left in this section, and it is a question about the corpus, not about the product.**
+**And the seventeen had no defect at all — and the corpus is green on the runner.** Measured on the Linux runners after `db28fffa`:
+`instrument:808` **−336.4 dB**, `instrument:organ` **−323.6 dB**, `instrument:bell` **−321.8 dB** — all bit-identical — and
+`instrument:analog` **−78.2 dB**, which is the instrument's own offline determinism, not a divergence. On the desktop: −94.5,
+−323.6, −321.8, −78.6 dB, all green.
+
+The decision §10.14 proposed — make the null corpus non-blocking in CI — was built on the reading that these failures were
+"platform noise", and the reading was wrong in the direction that matters: they were neither noise nor product, they were the
+harness's own bias — measured, fixed, and measured again. **With the corpus green on the runner, that proposal is moot: there is
+nothing left to excuse.** The blocking policy and the "not measurable" rule are unchanged, no corpus member was added or removed,
+and no threshold moved — the fix was entirely inside `src/testing/live-offline-parity.ts`.
+
+**What is left open in this section is a question about the corpus, not about the product:** whether the corpus should still be
+blocking now that it measures the thing it claims to measure.
 
 #### 10.16.7 Five red specs, five different defects — and one gate that measured the wrong thing
 
@@ -2717,6 +2747,16 @@ audit's own §9.2.2 number going stale while the audit kept quoting it.
 And the shape is §10.16.7's fourth one again: a gate that measures the **committed** count, and a change that moves the
 count **in the working tree** first. The rule that would have caught it before CI: **a number that appears in a spec, in a
 report and in a payload is one number, and it has three homes — change it in all three or in none.**
+
+**Provenance of the re-pin, recorded because the shared worktree decided it.** The commit that re-pinned the palette from 75 to
+77 (`66d48a41`) carried **more than the one line this session meant to commit**: the parallel session's staged edit of the same
+file — its pin change and the comment above it — was in the tree and went into that commit under this session's authorship.
+**The content was theirs; the authorship is mine**, and the audit trail cannot tell the difference, because every session in this
+repo commits under the same git identity. It is recorded here, in a file this session owns, because the commit message is not a
+durable place for it. The mirror case happened in the same week in the other direction: the parallel session's commits carried
+this session's paths, and both directions were reported rather than rewritten (§10.16.7's `mcp-onboarding` fix is the same
+story from the other side). The rule holds: **stage only your own paths, look at what your commit actually contains before you
+push it, and never let the other session's work be silently renamed.**
 
 ---
 
@@ -2876,10 +2916,10 @@ _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave
 (§10.12–§10.14), and again on 2026-10-29 with the CI-hygiene readings (§10.16) — including the correction of this
 report's own "four product findings" claim (§10.14 → §10.16.5) — and again on 2026-10-30 with the CI run's own verdict at
 77 cases (§10.16.6: the seventeen were not one defect, and the invariant-3 candidate dissolved), the fifth drift instance
-(§10.11.2) and the palette ratchet that the wave which shipped it broke (§10.16.8). Every claim is labelled Observed /
-Verified /
-Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the
-cited commit._
+(§10.11.2) and the palette ratchet that the wave which shipped it broke (§10.16.8), and once more on 2026-10-30 when the
+cause of the seventeen turned out to be a **race** in the harness's construction order and the corpus went green on the Linux
+runner. Every claim is labelled Observed / Verified / Inferred / Hypothesized / Not verified, and every measurement in §10.2 was
+reproduced from the repository at the cited commit._
 
 _Line numbers into `src/testing/live-offline-parity.ts` are anchored to the committed tree at **`a33f7ede`** ("the
 annotation's rule must describe the rule the gate applies"). That file is being rewritten by the parallel session
