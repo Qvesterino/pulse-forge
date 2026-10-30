@@ -1374,19 +1374,23 @@ export function IntentPanel() {
   // A mix instruction with preservation/scope language must enter the same
   // audition-first boundary as MCP, never the legacy direct production write.
   const tryConstrainedMix = async (prompt: string, parsedPrompt: ReturnType<typeof parseIntentText> | null) => {
-    if (
-      !prompt ||
-      parsedPrompt?.input.genre ||
-      parsedPrompt?.detected.some((chip) => chip.startsWith("♪")) ||
-      parseSectionRequests(prompt)
-    )
-      return false;
+    if (!prompt) return false;
     const normalized = prompt
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
     if (/\b(?:generate|create|vytvor|vygeneruj|generuj)\b/.test(normalized)) return false;
-    if (!parseProductionIntent(prompt) && !/\b(?:uprav|zmen|edit|change|adjust)\b/.test(normalized)) return false;
+    const isMixRequest =
+      Boolean(parseProductionIntent(prompt)) || /\b(?:uprav|zmen|edit|change|adjust)\b/.test(normalized);
+    const explicitMutation = /\b(?:mute|solo|delete|remove|rename|duplicate|stis|stlm|vypni|vymaz|odstran)\b/.test(
+      normalized,
+    );
+    if (
+      (parsedPrompt?.input.genre || parsedPrompt?.detected.some((chip) => chip.startsWith("♪"))) &&
+      !isMixRequest &&
+      !explicitMutation
+    )
+      return false;
     const { resolveMixLanguageConstraints } = await import("../intent/mix-language-constraints");
     const resolved = resolveMixLanguageConstraints(services.store.getDoc(), prompt);
     if (resolved.status === "none") return false;
@@ -1400,6 +1404,12 @@ export function IntentPanel() {
           prompt,
         });
       } else setError([resolved.reason, ...resolved.choices].join(" · "));
+      return true;
+    }
+    if (!isMixRequest) {
+      setError(
+        "Tento príkaz obsahuje ochranu, ktorú pri tejto akcii neviem bezpečne vynútiť. Uprav požiadavku alebo použi chránený mix náhľad.",
+      );
       return true;
     }
     setStatus("Pripravujem chránený mix náhľad…");

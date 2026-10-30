@@ -52,4 +52,17 @@ describe("Intent panel protected mix request", () => {
     expect(mocks.preview.mock.calls[0][1].idea).toContain('"kick-second"');
     expect(services.store.execute).not.toHaveBeenCalled();
   });
+
+  it.each(["mute kick, keep kick", "mute kick, keep kick, house"])(
+    "refuses a direct protected command: %s",
+    async (prompt) => {
+      const { doc } = makeProject();
+      const services = mockServices(doc);
+      renderWithContext(<IntentPanel />, { services });
+      fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: prompt } });
+      fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+      expect(await screen.findByText(/neviem bezpečne vynútiť/i)).toBeTruthy();
+      expect(services.store.execute).not.toHaveBeenCalled();
+    },
+  );
 });

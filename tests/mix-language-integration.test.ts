@@ -119,6 +119,11 @@ describe("language constraints end to end", () => {
     const direct = await executeMcpTool(ctx, "kyx_intent", { instruction: text });
     expect(direct.text).toContain("kyx_mix_idea");
     expect(direct.isError).toBe(true);
+    const dryRun = await executeMcpTool(ctx, "kyx_intent", { instruction: text, dry_run: true });
+    expect(dryRun.isError).toBe(true);
+    expect(dryRun.text).toContain("kyx_mix_idea");
+    const exact = await executeMcpTool(ctx, "kyx_intent", { instruction: "mute kick, keep kick" });
+    expect(exact.isError).toBe(true);
     expect(execute).not.toHaveBeenCalled();
   });
 });

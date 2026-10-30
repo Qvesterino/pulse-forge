@@ -15216,6 +15216,8 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
     // deterministic and inspectable.
     const doc = ctx.getDoc();
     const route = routeIntentText(trimmed, doc);
+    const protectionRefusal = refuseUnguardedMixConstraint(doc, route, trimmed);
+    if (protectionRefusal) return protectionRefusal;
     if (route.kind === "automationPlan") return automationPlanProposalResult(route);
     const plan = planIntent(doc, route);
     const text = plan.executable
@@ -15244,6 +15246,24 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
   return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()), trimmed);
 }
 
+/** A dry run must not advertise a different, unprotected plan from the one
+ * the executor would refuse. Both paths use the same constraint boundary. */
+function refuseUnguardedMixConstraint(doc: ProjectDocument, route: RoutedIntent, text: string): McpToolResult | null {
+  // Pattern generation has its own preservation contract. Every other route
+  // must not discard a recognized protection, including exact commands,
+  // presets and automation proposals that are not classified as "mix".
+  if (route.kind === "pattern" || route.kind === "revise") return null;
+  const resolution = resolveMixLanguageConstraints(doc, text);
+  if (resolution.status === "clarify")
+    return mcpError("POLICY_REFUSED", [resolution.reason, ...resolution.choices].join("\n"));
+  if (resolution.status === "ready")
+    return mcpError(
+      "POLICY_REFUSED",
+      "This instruction contains protected scope. Use kyx_mix_idea with preview:true to review it before applying.",
+    );
+  return null;
+}
+
 /** Execute a resolved route over MCP — the deterministic path AND the local
  * model fallback land here, so the destructive gate, the UI-local refusals
  * and the verification read-back apply to BOTH brains identically. The raw
@@ -15252,20 +15272,8 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
 function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent, text: string): McpToolResult {
   // A model or legacy router must not bypass the preview-only constraint
   // boundary by interpreting the protected words as an ordinary mixer write.
-  if (
-    ["production", "mix", "fader", "effectIntent", "paramIntent", "sendIntent", "bypassIntent", "compound"].includes(
-      route.kind,
-    )
-  ) {
-    const resolution = resolveMixLanguageConstraints(ctx.getDoc(), text);
-    if (resolution.status === "clarify")
-      return mcpError("POLICY_REFUSED", [resolution.reason, ...resolution.choices].join("\n"));
-    if (resolution.status === "ready")
-      return mcpError(
-        "POLICY_REFUSED",
-        "This instruction contains protected scope. Use kyx_mix_idea with preview:true to review it before applying.",
-      );
-  }
+  const protectionRefusal = refuseUnguardedMixConstraint(ctx.getDoc(), route, text);
+  if (protectionRefusal) return protectionRefusal;
   if (route.kind === "automationPlan") return automationPlanProposalResult(route);
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
