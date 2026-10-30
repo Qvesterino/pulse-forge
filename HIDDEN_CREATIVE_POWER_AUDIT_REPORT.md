@@ -2905,19 +2905,62 @@ therefore labelled `head-3328668c` but was produced from a tree that also contai
 the parallel session has been told; but a log whose name says one commit and whose bytes came from another is exactly the kind
 of artifact this report keeps flagging, and it is recorded here rather than left implicit.
 
-**What is still open, and how it closes.** The runner's own floor is **not yet measured** — that is the number the instrument
-exists to produce, and it arrives with the next CI run on the runner (the check prints `device floor xruns=… jitter=…` and the
-build/steady split in the same line). **Until it does, the cause of the seven dropped quanta on that runner is _Not verified_** —
-this section does not claim the machine and does not claim the graph. It claims only what was measured: the guard was blind to
-the signal, the probe's counter did not name its window, and the graph sits one hundredth under the jitter limit on an idle
-desktop.
+**The runner answered, and the answer is not "the machine".** The next CI run on the runner printed the floor, the window and the
+split in one line (read directly from the job's error annotation — one API request, no logs):
 
-**The recommendation that follows from the measurement, not from taste.** Two changes, in this order: **(1) measure the perf
-section in a clean process** — the budgets are wall-clock measurements and they are currently measured in the shadow of every
-check that ran before them, so they should be measured first or in their own page; **(2) judge the realtime jitter against the
-floor** rather than against an absolute multiple, which is what the floor was just built for. Both are changes to what the gates
-measure, and both are cheap. **What is _not_ recommended is loosening the limits** — the 1.5× limit did its job: it caught a
-graph that is one hundredth from the edge.
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=960 xruns=1
+heartbeat avg=186.16ms max=212.70ms (expected≈185.76ms, 1.00×) quantum=2.902ms
+· device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 0/1.00×)
+· graph build=0 steady=1
+```
+
+**The runner's device floor is perfect.** Zero dropped quanta on an empty graph, and the heartbeat delivered at **exactly 1.00×**
+its expected cadence — cold and warm. **The runner is not slow; it is a measuring device.** By §10.16.2's own rule — _the
+environment must explain the gate, never fail it_ — a machine that can measure **deserves a gated verdict**, so the red is
+**legitimate by the repository's own philosophy**, and "the runner is too weak to judge this" is **falsified**.
+
+**And the seven became one, for a reason the instrument names.** The old `xruns=7` was counted from the moment the processor was
+created, so it swept in the graph's **construction** — the phase where 48 effect chains are built on a fresh context. The new
+split says where the remaining drop is: **`build=0`, `steady=1`**. The single dropped quantum happened **while the graph was
+playing**, not while it was being built. So the realtime path on a 2-vCPU runner costs **one dropped quantum in 960** — and the
+other six were never in the measurement window at all.
+
+**What that leaves, stated plainly.** The 12×4 realtime graph **does not fit in realtime on a 2-vCPU runner** — by one quantum in
+960 — and on an idle desktop it sits at **1.27×–1.48×** of the heartbeat jitter limit, i.e. **one hundredth from the edge**. The
+red is not a machine artifact and not a measurement artifact. **It is a capacity finding: the realtime path has essentially no
+headroom for a 12-track, 4-effects-per-track project on modest hardware.**
+
+**And the two environments fail each other's checks — which is the sharpest form of the whole finding.** The runner's job
+reported **`failing checks: 1`**, and that one check is the realtime budget: the three **offline** budgets **passed** there. On
+this desktop, the realtime budget **passes** (0 xruns) and the three **offline** budgets **fail**. **The same tree, the same
+checks: each environment fails exactly what the other passes.** A budget that flips with the environment is a report about the
+environment. Neither machine is a measuring environment for these gates, and the reason is now measured rather than guessed:
+**the run's accumulated weight moves the numbers** (the corpus grew 67 → 77 items), and **the realtime scenario is at the edge
+on every device measured**.
+
+**So the gate is right and the scenario is wrong — or the DSP is.** The check's own claim is that it catches "a regression that
+makes the graph too heavy". It cannot do that: it compares the graph against **zero**, which is a **capacity test**, not a
+**regression test** — it cannot tell "this is one quantum worse than it was" from "this has always been one quantum over". The
+offline sibling has a baseline; the realtime one never got one. **That is the missing piece, and it is the same missing piece as
+the offline budgets' missing clean process.**
+
+**The recommendation that follows from the measurement, not from taste.** Three changes, in this order:
+
+1. **Give the realtime budget a baseline**, like its offline sibling has: measure a reference graph on the same device and judge
+   the 12×4 against it, instead of against an absolute zero that a given box may or may not reach. Then the gate reports "the
+   graph is N× heavier than the reference **on this device**", which is a regression statement.
+2. **Measure the perf section in a clean process** — it is a set of wall-clock measurements taken in the shadow of every check
+   that ran before them (the corpus grew 67 → 77 items, and the three offline budgets turned red with it). Measured first, or in
+   its own page.
+3. **Judge the realtime jitter against the floor** rather than against an absolute multiple, which is what the floor was built
+   for, and which would have turned "1.48×" into "the graph costs 48 % of the heartbeat cadence on a device that delivers 0 %".
+
+**What is _not_ recommended is loosening the limits.** The 1.5× limit did its job — it caught a graph that is one hundredth from
+the edge, and the floor proved the catch was the graph's and not the machine's. **And the capacity finding itself is a product
+question the owner has to answer, not a gate question**: a browser DAW that drops a quantum on a two-core machine when a project
+carries 48 effect chains is telling the owner something real about the realtime path — and the audit's job here was to make that
+sentence legible instead of hiding it behind a machine excuse.
 
 ---
 
