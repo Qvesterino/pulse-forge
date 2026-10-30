@@ -335,6 +335,7 @@ export function compileIteration(
   const result: GenerationResult = {
     status: generated.status,
     plan: generated.plan,
+    preservationSource: structuredClone(candidate.pattern),
     proposal: { pattern: finalPattern, diagnostics, status: generated.status },
     diagnostics,
     provider: generated.provider,
@@ -533,6 +534,7 @@ export async function compileIterationWithBank(
   const result: GenerationResult = {
     status: selected.status,
     plan: generated.plan,
+    preservationSource: structuredClone(candidate.pattern),
     proposal: { pattern: selected.pattern, diagnostics, status: selected.status },
     diagnostics,
     provider: generated.provider,

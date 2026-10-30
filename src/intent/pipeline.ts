@@ -356,6 +356,7 @@ export function resultForCandidate(result: GenerationResult, candidateIndex: num
   return {
     status: entry.status,
     plan: result.plan,
+    ...(result.preservationSource ? { preservationSource: result.preservationSource } : {}),
     proposal: {
       pattern,
       diagnostics,

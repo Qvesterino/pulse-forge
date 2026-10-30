@@ -53,6 +53,12 @@ import { addAutomationRamp } from "../commands/automation";
 import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../commands/intentRouting";
 import { applyGenerationResultCommand, applyGenerationResultWithFxCommand } from "../commands/aiPattern";
 import {
+  buildPatternMusicalProposal,
+  validatePatternMusicalProposal,
+  checkPatternProposalWrite,
+  type PatternMusicalProposalV1,
+} from "../intent/pattern-proposal";
+import {
   applyArrangeOps,
   applyClipArrangeOps,
   parseSelectedClipArrangeIntent,
@@ -1199,6 +1205,45 @@ export function IntentPanel() {
   // C2 revise: the intent of the LAST generation — "more energetic" re-runs
   // THIS intent with a shifted slider (same seed = same beat, new character).
   const lastIntentRef = useRef<IntentInput | null>(null);
+  const patternContractsRef = useRef(new Map<number, PatternMusicalProposalV1>());
+  const patternStoreRevision = (): number | null =>
+    "getRevision" in services.store ? services.store.getRevision() : null;
+
+  const preparePatternContract = (source: ProjectDocument, result: GenerationResult, revision: number | null) => {
+    const contracts = new Map<number, PatternMusicalProposalV1>();
+    if (!result.plan.intent.preserve?.length) return contracts;
+    const indices = result.bank?.map((candidate) => candidate.candidateIndex) ?? [];
+    indices.push(-1);
+    for (const index of indices) {
+      const picked = index === -1 ? result : resultForCandidate(result, index);
+      const contract = buildPatternMusicalProposal(source, picked, revision);
+      if (!contract.ok) throw new Error(contract.reason);
+      const cmd = picked.plan.intent.fx
+        ? applyGenerationResultWithFxCommand(source, picked)
+        : applyGenerationResultCommand(source, picked);
+      let next = cmd.execute(source);
+      const signed = artistMixProfileOf(normalizeIntent({ ...picked.plan.intent }));
+      const mix = signed ? planMixProfile(normalizeIntent({ ...picked.plan.intent })) : null;
+      if (mix?.decisions.length) next = applyMixIntent(next, mix).execute(next);
+      const checked = checkPatternProposalWrite(source, next, picked);
+      if (!checked.ok) throw new Error(checked.reason);
+      contracts.set(index, contract.value);
+    }
+    return contracts;
+  };
+
+  const checkPatternContract = (picked: GenerationResult, index: number) => {
+    if (!picked.plan.intent.preserve?.length) return;
+    if (!previewDocRef.current || services.store.getDoc() !== previewDocRef.current)
+      throw new Error("Návrh je zastaraný — projekt sa zmenil počas náhľadu. Vygeneruj znova.");
+    const checked = validatePatternMusicalProposal(
+      patternContractsRef.current.get(index),
+      services.store.getDoc(),
+      patternStoreRevision(),
+      picked,
+    );
+    if (!checked.ok) throw new Error(checked.reason);
+  };
 
   // A3 share moment: right after USE the beat belongs to the user — that is
   // the moment of pride and the moment to share. The CTA row appears after
@@ -1233,6 +1278,7 @@ export function IntentPanel() {
 
   const runGeneration = async (intentInput: IntentInput, controller: AbortController, promptText = text) => {
     try {
+      const sourceRevision = patternStoreRevision();
       // Wave A (audition-first): the multi-candidate default is owned by
       // candidate-budget.ts — a single-candidate run has nothing to audition
       // and therefore nothing for the taste loop to learn from, so the lean
@@ -1257,6 +1303,9 @@ export function IntentPanel() {
         setError(`Generation failed: ${reason} — try a different intent.`);
         return;
       }
+      if (services.store.getDoc() !== doc || patternStoreRevision() !== sourceRevision)
+        throw new Error("Návrh je zastaraný — projekt sa zmenil počas generovania. Vygeneruj znova.");
+      patternContractsRef.current = preparePatternContract(doc, result, sourceRevision);
       lastIntentRef.current = result.plan.intent;
       // Session context (vibe-code wave 2): the bank stays addressable —
       // "that second one, darker" resolves against it next prompt.
@@ -1293,7 +1342,7 @@ export function IntentPanel() {
       const count = result.bank?.length ?? 0;
       setStatus(
         count > 0
-          ? `✓ ${count} candidates — ▶ to audition, USE to apply`
+          ? `✓ ${count} candidates — ▶ to audition, USE to apply${result.plan.intent.preserve?.length ? ` · Zachovať: ${result.plan.intent.preserve.join(", ")}` : ""}`
           : `✓ pattern generated (${rankerModeLabel()})`,
       );
       // SESSION TAPE: the generation itself is a step (nothing applied yet, so
@@ -1451,6 +1500,7 @@ export function IntentPanel() {
       // summary, never implicit. A pure reference ("ten druhý") keeps the
       // instant re-apply below.
       const iterationController = new AbortController();
+      const iterationRevision = patternStoreRevision();
       abortRef.current?.abort();
       abortRef.current = iterationController;
       let iteration: Awaited<ReturnType<typeof compileIterationWithBank>>;
@@ -1478,6 +1528,15 @@ export function IntentPanel() {
               ? iterationFailureMessage(iteration.result.diagnostics.errors[0])
               : "Návrh iterácie neprešiel kontrolou briefu.",
           );
+          setBusy(false);
+          return;
+        }
+        try {
+          if (services.store.getDoc() !== doc || patternStoreRevision() !== iterationRevision)
+            throw new Error("Návrh je zastaraný — projekt sa zmenil počas generovania.");
+          patternContractsRef.current = preparePatternContract(doc, iteration.result, iterationRevision);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
           setBusy(false);
           return;
         }
@@ -1721,6 +1780,8 @@ export function IntentPanel() {
     setRenderingIndex(candidate.candidateIndex);
     try {
       let buffer = buffersRef.current.get(candidate.candidateIndex);
+      if (candidate.candidateIndex !== -1 && bankResult)
+        checkPatternContract(resultForCandidate(bankResult, candidate.candidateIndex), candidate.candidateIndex);
       if (!buffer) {
         // Wave: the audition HEARS the FX — the candidate's fx requests are
         // folded into the ghost document, so what you preview is what USE
@@ -1731,6 +1792,8 @@ export function IntentPanel() {
         buffersRef.current.set(candidate.candidateIndex, buffer);
       }
       if (playTokenRef.current !== token) return; // superseded meanwhile
+      if (candidate.candidateIndex !== -1 && bankResult)
+        checkPatternContract(resultForCandidate(bankResult, candidate.candidateIndex), candidate.candidateIndex);
       playAuditionBuffer(buffer, () => setPlayingIndex(null));
       setPlayingIndex(candidate.candidateIndex);
       const withFx = bankResult
@@ -1784,6 +1847,28 @@ export function IntentPanel() {
     const artistSigned = artistMixProfileOf(normalizeIntent({ ...picked.plan.intent }));
     const mixProfile = artistSigned ? planMixProfile(normalizeIntent({ ...picked.plan.intent })) : null;
     const mixWanted = (mixProfile?.decisions.length ?? 0) > 0;
+    let patternCommand: ReturnType<typeof applyGenerationResultCommand>;
+    let mixCommand: ReturnType<typeof applyMixIntent> | null = null;
+    try {
+      const selectedIndex = candidate?.candidateIndex ?? -1;
+      checkPatternContract(picked, selectedIndex);
+      patternCommand = fx
+        ? applyGenerationResultWithFxCommand(doc, picked, picked.plan.intent.genre || undefined)
+        : applyGenerationResultCommand(doc, picked, picked.plan.intent.genre || undefined);
+      const afterPattern = patternCommand.execute(doc);
+      if (mixWanted) mixCommand = applyMixIntent(afterPattern, mixProfile!);
+      if (picked.plan.intent.preserve?.length) {
+        const checked = checkPatternProposalWrite(
+          doc,
+          mixCommand ? mixCommand.execute(afterPattern) : afterPattern,
+          picked,
+        );
+        if (!checked.ok) throw new Error(checked.reason);
+      }
+    } catch (err) {
+      setError(`Návrh sa nedá použiť: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
     // Wave B closure: this is the human's pick — the biggest action in the
     // panel and the only place the audio-fit fit can learn WHICH candidate was
     // actually kept (the engine's delivered winner is not the same thing once
@@ -1791,14 +1876,8 @@ export function IntentPanel() {
     // can identify this proposal (see reaction-bridge.ts).
     const undoDepthBeforeUse = services.store.undoStackLength;
     services.store.beginUndoFrame("Generate + artist mix");
-    services.store.execute(
-      fx
-        ? applyGenerationResultWithFxCommand(doc, picked, picked.plan.intent.genre || undefined)
-        : applyGenerationResultCommand(doc, picked, picked.plan.intent.genre || undefined),
-    );
-    if (mixWanted) {
-      services.store.execute(applyMixIntent(services.store.getDoc(), mixProfile!));
-    }
+    services.store.execute(patternCommand);
+    if (mixCommand) services.store.execute(mixCommand);
     services.store.endUndoFrame();
     const appliedCandidateIndex = candidate ? candidate.candidateIndex : (bankResult?.selection?.selectedIndex ?? null);
     const useRegistration = noteCandidateUse(doc, services.store.getDoc(), undoDepthBeforeUse, {
@@ -6356,6 +6435,21 @@ export function IntentPanel() {
               ×
             </button>
           </div>
+        </div>
+      )}
+      {!blindPilotCandidateBankHidden && bankResult?.plan.intent.preserve?.length && (
+        <div className="intent-detected" aria-label="Protected pattern content">
+          Zachovať: {bankResult.plan.intent.preserve.join(", ")} · chránené stopy:{" "}
+          {(patternContractsRef.current.get(-1)?.constraints.rules.protect ?? [])
+            .map((path) => {
+              const target = path[1];
+              return typeof target === "object"
+                ? (doc.tracks.find((track) => track.id === target.id)?.name ?? target.id)
+                : "";
+            })
+            .filter(Boolean)
+            .join(", ")}{" "}
+          · zvuková kvalita nebola automaticky vyhodnotená
         </div>
       )}
       {!blindPilotCandidateBankHidden && bankCompliance.length > 0 && (

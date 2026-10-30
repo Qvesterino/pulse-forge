@@ -231,6 +231,8 @@ export interface GenerationResult {
   status: GenerationStatus;
   plan: GenerationPlan;
   proposal?: GenerationProposal;
+  /** Immutable in-memory source for an iteration of a candidate not yet in the project. */
+  preservationSource?: Pattern;
   diagnostics: GenerationDiagnostics;
   provider: {
     id: string;

@@ -876,7 +876,8 @@ const ALL_INTENT_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lea
  * positive role loop so a protected mention does not add the role to the
  * generation set. Deaccented text throughout.
  */
-const PRESERVE_TRIGGER = /\b(?:nechaj|ponechaj|keep|leave)\b/;
+const PRESERVE_TRIGGER =
+  /\b(?:nechaj|ponechaj|zachovaj|zachovat|nemen|nemenit|keep|leave|preserve|do not change|don't change|don't touch|do not touch)\b/g;
 const PRESERVE_DETERMINERS = new Set(["my", "moj", "moje", "moju", "mom", "the"]);
 const PRESERVE_CONJUNCTIONS = new Set(["a", "and", "i", "aj", "plus", "s", "with"]);
 const PRESERVE_NEGATIONS = new Set(["out", "von", "mimo", "prec", "away"]);
@@ -895,31 +896,50 @@ const PRESERVE_ROLE_STEMS: ReadonlyArray<readonly [RegExp, IntentRole]> = [
  * ("keep my bass drums only") ends the clause, never over-protects.
  */
 function preservedRolesOf(lower: string): IntentRole[] {
-  const trigger = PRESERVE_TRIGGER.exec(lower);
-  if (!trigger) return [];
   const preserved = new Set<IntentRole>();
-  let conjunction = false;
-  const clause = lower
-    .slice(trigger.index + trigger[0].length)
-    // Treat the common compound as one role alias before punctuation-based
-    // tokenization splits "hi-hat" into an unrecognized "hi" + "hat".
-    .replace(/\bhi[\s-]?hats?\b/g, " hihat ");
-  for (const word of clause.split(/[^a-z0-9]+/)) {
-    if (!word) continue;
-    if (PRESERVE_NEGATIONS.has(word)) return [];
-    if (PRESERVE_DETERMINERS.has(word)) continue;
-    if (PRESERVE_CONJUNCTIONS.has(word)) {
-      conjunction = true;
-      continue;
+  const text = lower.replace(/\bhi[\s-]?hats?\b/g, " hihat ");
+  for (const trigger of text.matchAll(PRESERVE_TRIGGER)) {
+    const clauseRoles = new Set<IntentRole>();
+    let conjunction = false;
+    let negated = false;
+    for (const word of text.slice(trigger.index! + trigger[0].length).split(/[^a-z0-9]+/)) {
+      if (!word) continue;
+      if (PRESERVE_NEGATIONS.has(word)) {
+        negated = true;
+        break;
+      }
+      if (PRESERVE_DETERMINERS.has(word)) continue;
+      if (PRESERVE_CONJUNCTIONS.has(word)) {
+        conjunction = true;
+        continue;
+      }
+      const role = /^808s?$/.test(word) ? "bass" : PRESERVE_ROLE_STEMS.find(([re]) => re.test(word))?.[1];
+      if (role) {
+        if (clauseRoles.size > 0 && !conjunction) break;
+        clauseRoles.add(role);
+        conjunction = false;
+        continue;
+      }
+      break;
     }
-    const role = /^808s?$/.test(word) ? "bass" : PRESERVE_ROLE_STEMS.find(([re]) => re.test(word))?.[1];
-    if (role) {
-      if (preserved.size > 0 && !conjunction) break;
-      preserved.add(role);
-      conjunction = false;
-      continue;
+    if (!negated) for (const role of clauseRoles) preserved.add(role);
+    // Slovak also puts the object before the imperative: "bicie nechaj tak".
+    // Only a directly adjacent role is eligible; never reach across a clause.
+    const preceding = /([a-z0-9]+)\s+$/.exec(text.slice(0, trigger.index));
+    const after = text
+      .slice(trigger.index! + trigger[0].length)
+      .trimStart()
+      .split(/[^a-z0-9]+/, 1)[0];
+    if (
+      preceding &&
+      /^(?:nechaj|ponechaj|zachovaj|zachovat|nemen|nemenit)$/.test(trigger[0]) &&
+      (after === "" || after === "tak" || after === "nedotknute")
+    ) {
+      const role = /^808s?$/.test(preceding[1])
+        ? "bass"
+        : PRESERVE_ROLE_STEMS.find(([re]) => re.test(preceding[1]))?.[1];
+      if (role) preserved.add(role);
     }
-    break; // first word outside the clause grammar ends the preserve list
   }
   return [...preserved];
 }
@@ -1331,7 +1351,7 @@ export function parseIntentText(text: string): ParsedIntent {
 
   // Protected roles — scanned BEFORE the positive loop so "nechaj bass"
   // names existing content instead of adding bass to the generation set.
-  const preserved = new Set<IntentRole>(preservedRolesOf(lower));
+  const preserved = new Set<IntentRole>(preservedRolesOf(deaccent(intentText)));
 
   // Roles. Negation phrases precede positive ones in ROLE_PHRASES, so an
   // exclusion seen earlier also suppresses the later positive match.

@@ -22,6 +22,35 @@ import { generateLocalResultFromOptions } from "../intent/pipeline";
 import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { snapshot } from "./core";
+import { checkPatternProposalWrite } from "../intent/pattern-proposal";
+import { deepEqualRef } from "./docDelta";
+
+function assertPatternWrite(doc: ProjectDocument, next: ProjectDocument, result: GenerationResult): void {
+  if (!result.plan.intent.preserve?.length) return;
+  const check = checkPatternProposalWrite(doc, next, result);
+  if (!check.ok) throw new Error(`Pattern preservation refused: ${check.reason}`);
+}
+
+function guardPatternCommand(
+  command: Command,
+  doc: ProjectDocument,
+  next: ProjectDocument,
+  result: GenerationResult,
+): Command {
+  assertPatternWrite(doc, next, result);
+  if (!result.plan.intent.preserve?.length) return command;
+  const base = structuredClone(doc);
+  return {
+    ...command,
+    execute(current) {
+      if (!deepEqualRef(current, base))
+        throw new Error("Pattern preservation refused: the project changed; regenerate the proposal.");
+      const candidate = command.execute(current);
+      assertPatternWrite(current, candidate, result);
+      return candidate;
+    },
+  };
+}
 
 /* ---------------- AI pattern generation ---------------- */
 
@@ -54,7 +83,10 @@ export function applyGenerationResultCommand(
     const groove = resolveGrooveForGeneration(doc, options);
     grooveUpdate = { swing: groove.swing };
   }
-  const bpmUpdate = result.plan.resolvedBpm;
+  // Do not silently retime protected material to a genre default. An explicit
+  // conflicting tempo request is still checked and refused by the guard.
+  const bpmUpdate =
+    result.plan.intent.preserve?.length && !result.plan.intent.bpmRange ? null : result.plan.resolvedBpm;
   const projectUpdates = {
     ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
     ...(bpmUpdate !== null && bpmUpdate !== undefined ? { bpm: bpmUpdate } : {}),
@@ -94,7 +126,12 @@ export function applyGenerationResultCommand(
       ),
       ...projectUpdates,
     };
-    return { ...snapshot("generatePattern", `Replace with ${pattern.name}`, doc, next), detail: meterDetail };
+    return guardPatternCommand(
+      { ...snapshot("generatePattern", `Replace with ${pattern.name}`, doc, next), detail: meterDetail },
+      doc,
+      next,
+      result,
+    );
   }
 
   const scene: Scene = {
@@ -111,7 +148,12 @@ export function applyGenerationResultCommand(
     activePatternId: pattern.id,
     ...projectUpdates,
   };
-  return { ...snapshot("generatePattern", `Generate ${pattern.name}`, doc, next), detail: meterDetail };
+  return guardPatternCommand(
+    { ...snapshot("generatePattern", `Generate ${pattern.name}`, doc, next), detail: meterDetail },
+    doc,
+    next,
+    result,
+  );
 }
 
 /**
@@ -129,17 +171,22 @@ export function applyGenerationResultWithFxCommand(
   const fx = result.plan.intent.fx ?? null;
   if (!fx) return patternCmd;
   const next = foldProductionIntent(patternCmd.execute(doc), fx);
-  return {
-    ...snapshot(
-      "applyGenerationWithFx",
-      `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`,
-      doc,
-      next,
-    ),
-    // The metre disclosure survives the FX fold — a generation that also
-    // changed the metre must still say so.
-    detail: patternCmd.detail,
-  };
+  return guardPatternCommand(
+    {
+      ...snapshot(
+        "applyGenerationWithFx",
+        `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`,
+        doc,
+        next,
+      ),
+      // The metre disclosure survives the FX fold — a generation that also
+      // changed the metre must still say so.
+      detail: patternCmd.detail,
+    },
+    doc,
+    next,
+    result,
+  );
 }
 
 /**
