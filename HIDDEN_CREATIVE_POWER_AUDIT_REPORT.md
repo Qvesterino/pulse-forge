@@ -1024,6 +1024,14 @@ whenever the ARR panel is not open (HCP-05-08). The precondition is re-checked *
 opening the palette and pressing Enter. Both stores (`ProjectStore` and `YDocStore`) expose the same
 `notify` member, because the collab path types the store as a union of the two.
 
+**What this cost later — the ratchet that was itself broken by the wave that shipped it.** The count above (75) was
+pinned by `tests/ui/palette-search-coverage.test.ts` precisely so that the palette could not grow quietly. A later wave
+(CF-12, `f9dbb25a`) added two palette routes — `extra:timepitch` and `extra:spectral` — and moved the count to **77**
+**without moving the pin**, so the committed tree's unit-test job has been red ever since: _"expected 77 to be 75"_. The
+gate whose whole job is to catch a silent palette growth was itself broken by the growth, and the only thing that noticed
+was someone else's CI. Re-pinned to **77** in `66d48a41` — the committed tree's measured count, not a guess. **The number in
+this section was the number that went stale, and the audit that wrote it did not notice.**
+
 ---
 
 ## 10. Verification
@@ -1058,28 +1066,28 @@ Every row below is from that clean tree. The test count moved from **121** to **
 session's CF-05 Tab-traversal fix added three assertions — the count is a measurement, and it is reported as
 measured.
 
-| check                                                                            | result                                                                                          |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                    |
-| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                  |
-| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                 |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                              |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                              |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                              |
-| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                              |
-| `tests/ui/App.test.tsx`                                                          | ✅                                                                                              |
-| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                              |
-| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                              |
-| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                 |
-| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                   |
-| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                              |
-| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                           |
-| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                 |
-| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11)                  |
-| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)         |
-| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **98** seams (committed payload `docs/status.json`; §10.11 measured 95) |
-| the committed payload's `spec-counts` claim                                      | ✅ **1334 claimed, 1334 measured** — `state: pass`, drift-checked (`docs/status.json`)          |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                            |
+| check                                                                            | result                                                                                                                    |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                                              |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                                            |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                                           |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                                        |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                                        |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                                        |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                                        |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                                        |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                                        |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                                        |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                                           |
+| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                                             |
+| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                                                        |
+| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                                                     |
+| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                                           |
+| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11); **red on `origin/main` again** (§10.11.2) |
+| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)                                   |
+| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **102** seams (committed payload `docs/status.json`; §10.11 measured 95)                          |
+| the committed payload's `spec-counts` claim                                      | ✅ **1336 claimed, 1336 measured** — `state: pass`, drift-checked (`docs/status.json`)                                    |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                                                      |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -1481,6 +1489,25 @@ source files, and the published page that had been lying turned true without bei
 
 That is the whole lesson of the four instances in one sentence: **a derivable artifact is not a document, it is a
 measurement — and a measurement is only right on the tree that produced it.**
+
+### 10.11.2 The fifth instance — the drift gate was red on `origin/main`, and this report said green
+
+**The parallel session's hand-off corrected an assumption this report had been carrying.** §10.1 records
+`npm run drift:check` as ✅ green. On `origin/main` it was **not**: `docs/CURRENT-STATE.md` claimed **1335** Vitest spec
+files while the committed tree held **1336**. The parallel session fixed it in `61a31bc0` — re-pinning the claim and
+regenerating `docs/status.json` and `docs/STATUS.md` — and the committed payload now reads **"1336 claimed, 1336
+measured"**, `state: pass`.
+
+Two things are worth separating here. The **count** was stale in the ordinary way (§10.11's shape, for the fifth time), and
+the **claim in this report** was stale in a worse way: it said green because a measurement had been green **on a tree that
+had since moved**. "The drift gate was green when this section was measured" is not the same sentence as "the drift gate is
+green now", and a report that keeps the first shape while the tree moves is a report that will lie quietly.
+
+**Re-measured here, on the committed tree, rather than taken on relay.** The counting rule is `git ls-files tests`, counting
+`.test.ts`/`.test.tsx` and excluding `tests/e2e/` (`scripts/status-report.mts:83-85`): **1336** measured against **1336**
+claimed. The seam claim moved too — the committed payload reads **1 check, 102 seams** (§10.11 measured 95). The working tree
+is already ahead again (104 seams), which is the point: **the number in the report is a measurement of a tree, and the tree
+moves.**
 
 ### 10.12 The sixteenth finding — the loudness map, read as a measurement
 
@@ -1946,7 +1973,7 @@ payload re-pin in §10.9 — and both times the commit was the truth.
 
 ### 10.16 Three readings of the CI numbers that the verdicts did not give
 
-Three findings from the CI runs of 2026-10-29, all measured from the Actions API (one request per question), and
+Findings from the CI runs of 2026-10-29 and 2026-10-30, all measured from the Actions API (one request per question), and
 all of them about what a red run **means** rather than about the product.
 
 #### 10.16.1 The queue is the cost, not the runner minutes
@@ -2559,7 +2586,29 @@ runner: it is a deterministic **Linux** divergence, while the desktop (Windows) 
 **That makes it the smallest invariant-3 candidate this audit has ever held** — invariant 3 holds on Windows and does not hold on
 Linux, for 17 instruments, reproducibly, with the offline branch proven exact on both platforms and the realtime branch proven to
 reproduce itself. It stays a **candidate**, not a verdict: the mechanism is not identified, and §10.16.6's own three signatures
-say the seventeen are not one defect.
+say the seventeen are not one defect. **And a third harness candidate, measured on Windows, could withdraw it entirely — see
+below.**
+
+**And the third harness candidate: a law, measured on Windows, that would make the seventeen a harness artefact again.** The
+parallel session found a **law** on Windows: the live and offline branches are **bit-identical only** when the offline history
+`H` equals `requestedStartFrame − settleFrames − 128`, where `settleFrames` is `ctx.currentFrame` **at the moment the realtime
+engine's final processors are constructed**. Measured on Windows: `H = 22144` → **−300.00 dB** (bit-identical), `corr = 1.0000`.
+
+That is the shape of the capture-lead defect **one level deeper**: the harness **hardcodes** `H = 22144` (0.5 s at 44.1 kHz), while
+the live branch's real history depends on **when its engine was built** — and that moment is **platform-dependent**, because the
+worklets take a different time to load on Linux than on Windows. If the law holds on Linux as well (the parallel session is
+verifying it on WSL now), then:
+
+- the seventeen Linux reds are the **same harness bias for the third time** — not a product divergence, and not an invariant-3
+  finding;
+- the invariant-3 candidate in this section **dissolves**, exactly as the "four product findings" dissolved in §10.16.5;
+- and the fix is already named: `captureLive` must **return its history** and `renderOffline` must **take it as a parameter**,
+  instead of the harness assuming a constant.
+
+**Hypothesized, not verified** — the Windows measurement is real and the law is stated as a law, but the Linux confirmation is in
+flight. Until it lands, the candidate stands, and this paragraph is what would withdraw it. **And the lesson is this audit's own
+recurring one, now for the fourth time: a harness that compares two branches must never assume that their histories match — it has
+to be told.**
 
 **Where the engine should hop — the precedent, and the anchor.** `docs/CURRENT-STATE.md` records the fix for the FX side: the
 **offline** chain is built at the **render origin**, so its ramps are still in flight when the first event lands, and the fix was to
@@ -2623,6 +2672,24 @@ two things that looked alike and were not; this is a gate that measured the **so
 **surface**. Both produced a number, and both numbers were wrong in the same direction — they made the project look
 worse than it is, and they hid a real regression in the place it mattered. The transferable rule: **before trusting a
 gate's count, ask what it read** — and then read the same thing the gate read, from the other end.
+
+#### 10.16.8 The sixth red — the ratchet that the wave which shipped it broke
+
+**The palette's own count pin was the casualty of the wave that grew the palette.** CF-12 (`f9dbb25a`) added two palette
+routes — `extra:timepitch` and `extra:spectral` — moving the count from **75** to **77**, and the pin in
+`tests/ui/palette-search-coverage.test.ts` stayed at 75. The committed tree has therefore been red on the unit-test job
+since that commit: _"expected 77 to be 75"_. Re-pinned to **77** in `66d48a41`, which is the committed tree's measured
+count — confirmed by the CI failure text and by running the spec, not by counting in one's head.
+
+**Why this one belongs in an audit about CI.** §9.2.2 shipped the palette **with a ratchet**: a spec that pins the action
+count precisely so the palette cannot grow quietly. Then a later wave grew it quietly, and the ratchet — which is a
+**number** — did not fail loudly; it failed as `"expected 77 to be 75"`, one line inside a job that a reader skims. The
+gate worked. **What did not work was the moment between shipping the count and re-pinning it**, and that moment was this
+audit's own §9.2.2 number going stale while the audit kept quoting it.
+
+And the shape is §10.16.7's fourth one again: a gate that measures the **committed** count, and a change that moves the
+count **in the working tree** first. The rule that would have caught it before CI: **a number that appears in a spec, in a
+report and in a payload is one number, and it has three homes — change it in all three or in none.**
 
 ---
 
@@ -2780,7 +2847,10 @@ docs/audits/2026-10-27-hidden-creative-power/
 _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave and after the browser check
 (§10.7), the four-instance drift story (§10.10–§10.11), the live↔offline handoff and its refutations
 (§10.12–§10.14), and again on 2026-10-29 with the CI-hygiene readings (§10.16) — including the correction of this
-report's own "four product findings" claim (§10.14 → §10.16.5). Every claim is labelled Observed / Verified /
+report's own "four product findings" claim (§10.14 → §10.16.5) — and again on 2026-10-30 with the CI run's own verdict at
+77 cases (§10.16.6: the seventeen are not one defect, and the invariant-3 candidate may dissolve), the fifth drift instance
+(§10.11.2) and the palette ratchet that the wave which shipped it broke (§10.16.8). Every claim is labelled Observed /
+Verified /
 Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the
 cited commit._
 
