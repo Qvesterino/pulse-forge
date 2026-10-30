@@ -527,6 +527,35 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       bpm: 120,
       tracks: [{ ...source, id: "rt-budget-floor", effects: [] }],
     };
+    // The SCENARIO LADDER — the boundary of the realtime path, measured on
+    // this device with this probe. The gate above asks whether the worst case
+    // (12×4) fits; the ladder answers "where does it stop fitting", which is
+    // the question the owner actually has: is 12×4 the promise the product
+    // makes, or a worst case that only a bigger machine can hold?
+    //
+    // It is a DIAGNOSTIC: the ladder never gates, and the gated 12×4 window
+    // keeps its exact position and construction so its verdict is unchanged
+    // by the ladder existing. The ladder is measured after it, heaviest
+    // first, so a boundary read is never flattered by a warm heap.
+    const ladderDoc = (trackCount: number, effectsPerTrack: number): ProjectDocument => ({
+      ...template,
+      bpm: 120,
+      tracks: Array.from({ length: trackCount }, (_, i) => ({
+        ...source,
+        id: `rt-ladder-${trackCount}x${effectsPerTrack}-${i}`,
+        effects: Array.from({ length: effectsPerTrack }, (_, e) => ({
+          id: `rt-ladder-fx-${trackCount}x${effectsPerTrack}-${i}-${e}`,
+          type: stack[(i + e) % stack.length],
+          bypassed: false,
+          params: defaultParamsOf(stack[(i + e) % stack.length]),
+        })),
+      })),
+    });
+    const LADDER: Array<[number, number]> = [
+      [12, 3],
+      [8, 4],
+      [12, 2],
+    ];
 
     ctx = new AudioContext();
     const audioCtx = ctx;
@@ -561,10 +590,6 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       return { pre, post: engine.getRtLoad() };
     };
 
-    const floorCold = await measureWindow(floorDoc);
-    const floorWarm = await measureWindow(floorDoc);
-    const graph = await measureWindow(doc);
-
     // Deltas: the processor's counters never reset, so every count is the
     // difference between two reads.
     const dropped = (from: { xruns: number } | null, to: { xruns: number } | null) =>
@@ -575,6 +600,22 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       const expected = snap && snap.sampleRate > 0 ? (64 * 128 * 1000) / snap.sampleRate : 0;
       return expected > 0 && snap ? snap.avgGapMs / expected : 0;
     };
+
+    const floorCold = await measureWindow(floorDoc);
+    const floorWarm = await measureWindow(floorDoc);
+    const graph = await measureWindow(doc);
+    // The ladder, AFTER the gated window: the gate's own measurement keeps
+    // the conditions it had before the ladder existed.
+    const ladder: Array<{ label: string; drops: number; jitter: number }> = [];
+    for (const [trackCount, effectsPerTrack] of LADDER) {
+      const step = await measureWindow(ladderDoc(trackCount, effectsPerTrack));
+      ladder.push({
+        label: `${trackCount}×${effectsPerTrack}`,
+        drops: dropped(step.pre, step.post),
+        jitter: jitterOf(step.post),
+      });
+    }
+
     const floorColdDrops = dropped(floorCold.pre, floorCold.post);
     const floorWarmDrops = dropped(floorWarm.pre, floorWarm.post);
     const deviceFloor = Math.min(floorColdDrops, floorWarmDrops);
@@ -604,7 +645,8 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       `quantum=${rt.quantumMs.toFixed(3)}ms` +
       ` · device floor xruns=${deviceFloor} jitter=${deviceFloorJitter.toFixed(2)}× ` +
       `(1 track, no effects; cold ${floorColdDrops}/${floorColdJitter.toFixed(2)}× / warm ${floorWarmDrops}/${floorWarmJitter.toFixed(2)}×)` +
-      ` · graph build=${graphBuildDrops} steady=${graphSteadyDrops}`;
+      ` · graph build=${graphBuildDrops} steady=${graphSteadyDrops}` +
+      ` · ladder ${ladder.map((r) => `${r.label} xruns=${r.drops} jitter=${r.jitter.toFixed(2)}×`).join(" · ")}`;
     // The gate: the device must not drop quanta, and the heartbeat must
     // arrive near its expected cadence (a graph that misses its deadline
     // makes the heartbeat late or bursty).
