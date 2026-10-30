@@ -152,10 +152,12 @@ Severity: Blocker / High / Medium / Low. Confidence: Confirmed (visible in sourc
 - **Finding:** **the MCP destructive permission is a one-click, persisting toggle with no confirmation and no global badge.** `IntentPanel.tsx:5351-5366` flips it immediately; `pf:mcp-allow-destructive` survives reloads (`flags.ts:26-35`); grep shows no TopBar/ActivityCenter indicator — the closest is the risk-agnostic `AGENT n` chip (`ActivityCenter.tsx:161-168`). `flags.ts:15-23` itself documents the gap as recorded, not hidden. The consent toggle beside it is likewise single-click (`IntentPanel.tsx:535-556`).
 - **Proposed:** confirmation naming the scope on enable + a persistent TopBar badge while on + optional idle expiry. Keep the flag semantics; do not weaken the MCP gate.
 
-### CF-15 | Medium-Low | Confirmed | Status: TIER A
+### CF-15 | Medium-Low | Confirmed | Status: **FIXED — commit `31411056`** (closes the top-15)
 
-- **Finding:** **the cut-tool indicator vanishes exactly when it matters.** The statusbar chip "TOOL CUT (V = select)" lives in `StatusHint`'s fallback (`App.tsx:1980-1983`), which any `[data-hint]` hover/focus replaces (`StatusHint.tsx:36-38`); the CUT toggle is only visible inside the ARR toolbar; the lane crosshair cursor exists only while hovering a lane (`04-arrangement.css:950-953`). Bare C/V also appear in neither `SHORTCUTS` nor `helpContent.ts` — the tool is documented nowhere user-facing (`App.tsx:1542-1544` is a code comment).
-- **Proposed:** hoist the active-tool chip out of the fallback (render it _before_ hint substitution, or pin it as its own element), and add C/V to the registry-derived surfaces. Small, additive, no gesture changes.
+- **Finding:** **the cut-tool indicator vanished exactly when it mattered.** The statusbar chip lived in `StatusHint`'s fallback, which any `[data-hint]` hover/focus fully replaces; bare V/C were documented nowhere user-facing.
+- **Fix:** the active-tool chip is a **pinned sibling** of the hint bar, rendered outside the hover-replaced fallback (nothing in select — the default stays silent); **V/C are SHORTCUTS entries** with `runShortcut` cases, so the palette and Help document the same binding that fires (the raw pre-matcher branch is gone; Ctrl+C/Ctrl+V keep their native text meaning).
+- **Honesty fix made while writing the labels:** the default pad map (`qwertyui`/`asdfghjk`) does **not** own C — the pad shadow is about a USER-BOUND pad. The labels say "inactive while a drum pad is bound to this key", and the shadow spec binds a pad to C and arms the rack (the real scenario), instead of asserting an armed rack alone.
+- **Verification:** THE PIN negative (the CUT chip survives a data-hint hover that swaps the hint bar), V/C through the registry, Ctrl+C negative, bound-pad shadow negative, palette exposure with the exact bindings; 65/65 across five suites incl. the ux-audit collision table; seam `tool-chip-visibility` (104 seams).
 
 ### Secondary findings (verified, below the top-15 line)
 
@@ -222,7 +224,7 @@ Scored 1–5 (impact, frequency, confidence, effort⁻¹, risk⁻¹ — higher i
 | CF-08                | 4      | 3    | 5    | 3        | 4      | 19    | **FIX NOW (shipped — `28e68a71`)**                 |
 | CF-13                | 3      | 4    | 5    | 4        | 4      | 20    | **FIX NOW (shipped — 029838bc)**                   |
 | CF-11                | 3      | 3    | 5    | 3        | 3      | 17    | **FIXED (per-project view state, `e6276191`)**     |
-| CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | TIER A                                             |
+| CF-15                | 2      | 3    | 5    | 5        | 5      | 20    | **FIX NOW (shipped — 31411056)**                   |
 | CF-22                | 2      | 3    | 5    | 4        | 5      | 19    | TIER A                                             |
 | CF-06                | 4      | 3    | 5    | 3        | 2      | 17    | **FIXED after owner approval (Shift+Space chord)** |
 | CF-14                | 4      | 2    | 5    | 3        | 3      | 17    | DESIGN REVIEW                                      |
@@ -277,7 +279,7 @@ _(Formerly deferred here: CF-05 — approved and shipped as `892dcc61`; see §4.
 ## 10. 30/60/90-day optimization roadmap
 
 **30 days — disclosure and parking (small, mostly additive).**
-CF-15 tool-chip pinning + C/V in the registry; CF-18 empty-A/B slot affordance; CF-22 dock focus restore. (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`; CF-10's take-start parking shipped early — commit `197f89c8`.) Exit: each has a seam entry with a negative.
+CF-18 empty-A/B slot affordance; CF-22 dock focus restore. (CF-15 shipped early — 31411056, closing the top-15.) (CF-07's REPLACE disclosure shipped early — commit `e063fa0e`; CF-10's take-start parking shipped early — commit `197f89c8`.) Exit: each has a seam entry with a negative.
 
 **60 days — the listening loops.**
 CF-19 MixPreview staleness guard; CF-13 project search. (CF-08 + CF-09 shipped early — `28e68a71`, census budget measured; CF-11 view-state persistence shipped early — `e6276191`.) The CF-05 Playwright journey (staged in `keyboard-guards.spec.ts`) joins the regular suite once the shared dev server is healthy — that run is also the first real-browser measurement this audit's blocked e2e pass was waiting for.
