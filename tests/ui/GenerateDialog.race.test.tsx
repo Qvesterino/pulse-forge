@@ -65,7 +65,15 @@ describe("GenerateDialog — async preview race protection", () => {
     const deferredB = new Promise<GenerationResult>((res) => (resolveB = res));
     const resultA = realResultFor(doc, "seed-A", 0.9); // grid cells titled …: 90%
     const resultB = realResultFor(doc, "seed-B", 0.5); // grid cells titled …: 50%
-    generateMock.mockImplementationOnce(() => deferredA).mockImplementationOnce(() => deferredB);
+    generateMock
+      .mockImplementationOnce(() => deferredA)
+      .mockImplementationOnce(() => deferredB)
+      // A third preview request arrives when the commit replaces the
+      // document: the preview effect depends on the document, and the store
+      // now really applies commands, so the document's identity changes.
+      // The default answers it — otherwise the mock runs dry and the dialog
+      // reads `.then` of undefined.
+      .mockImplementation(() => Promise.resolve(resultB));
 
     renderWithContext(<GenerateDialog open onClose={() => {}} />, { services });
 

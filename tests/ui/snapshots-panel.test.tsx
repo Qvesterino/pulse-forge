@@ -115,11 +115,18 @@ describe("snapshots section in the history panel", () => {
     const { services, core } = setup([snap]);
     renderWithContext(<UndoHistoryPanel open />, { services });
 
+    // The safety snapshot has to carry the project it is ABOUT TO replace,
+    // so its id is read BEFORE the restore. The restore itself swaps the
+    // document — and the store now really applies commands, so the current
+    // id is the restored one by the time the assertion runs.
+    const projectIdBeforeRestore = services.store.doc.id;
+
     fireEvent.click(await screen.findByText("RESTORE"));
 
     const safetyCall = core.snapshots.save.mock.calls.find((call) => (call[2] as string) === "Auto — before restore");
     expect(safetyCall).toBeTruthy();
-    expect(safetyCall?.[0]).toBe(services.store.doc.id);
+    expect(safetyCall?.[0]).toBe(projectIdBeforeRestore);
+    await waitFor(() => expect(services.store.doc.id).not.toBe(projectIdBeforeRestore));
     await waitFor(() => expect(core.snapshots.prune).toHaveBeenCalled());
   });
 });
