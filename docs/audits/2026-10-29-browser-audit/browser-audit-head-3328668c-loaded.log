@@ -1,0 +1,880 @@
+
+> pulse-forge@0.1.0 test:browser
+> node scripts/verify-browser.mjs
+
+PASS engine lifecycle: 3× init→process→teardown→reinit cycles clean — ok
+PASS factory bank generates a buffer for every manifest asset + RR variation — size=207/207
+PASS factory buffers are audible — ok
+PASS factory catalogue renders reproducibly (≤1 ULP: Chromium's biquad rounding) — differing=5/7 maxDelta=5.96e-8 controlDelta=0.00e+0
+PASS drum bank (kick/snare/hat): renders audible/finite/distinct — passed=38/38
+PASS presets: auditions finite/unclipped + loudness map in sync — passed=671/671
+PASS fx expansion: ringMod/tapeStop/freqShifter/pitchShift/vinyl/beatMangler audible + deterministic — passed=6/6
+PASS parity obligation: every effect/instrument is null-tested or explicitly excluded — fx=48+9 instruments=29+2
+PASS live↔offline null test: same engine + events on both contexts — passed=77/77 — environment=measurable (calibration fx:bitcrusher control=-334.4 dB needs ≤ -200 dB, live↔live=-334.4 dB needs ≤ -200 dB) — not measurable=0 (the realtime branch did not reproduce itself)
+PASS RR variants are re-derived from the curated base (same drum, micro-variation) — min=1.000/26
+PASS curated layer overrides factory slots end-to-end (same-id, synth fallback intact) — loaded=146/146 skipped=0 failed=0
+PASS svf drive keeps folded harmonics ≥40dB under the fundamental (2× oversampled) — ratio=8.89e-6
+PASS EQ: constructs + param sweep — ok
+PASS EQ: renders signal — peak=0.711
+PASS M/S EQ: constructs + param sweep — ok
+PASS M/S EQ: renders signal — peak=0.500
+PASS Multiband: constructs + param sweep — ok
+PASS Multiband: renders signal — peak=0.500
+PASS Compressor: constructs + param sweep — ok
+PASS Compressor: renders signal — peak=0.519
+PASS Saturation: constructs + param sweep — ok
+PASS Saturation: renders signal — peak=0.982
+PASS Tape Sat: constructs + param sweep — ok
+PASS Tape Sat: renders signal — peak=0.500
+PASS Wow & Flutter: constructs + param sweep — ok
+PASS Wow & Flutter: renders signal — peak=0.500
+PASS Clipper: constructs + param sweep — ok
+PASS Clipper: renders signal — peak=0.758
+PASS Limiter: constructs + param sweep — ok
+PASS Limiter: renders signal — peak=0.500
+PASS Step Gate: constructs + param sweep — ok
+PASS Step Gate: renders signal — peak=0.500
+PASS SV Filter: constructs + param sweep — ok
+PASS SV Filter: renders signal — peak=0.500
+PASS Flanger: constructs + param sweep — ok
+PASS Flanger: renders signal — peak=0.500
+PASS Tremolo: constructs + param sweep — ok
+PASS Tremolo: renders signal — peak=0.500
+PASS Autowah: constructs + param sweep — ok
+PASS Autowah: renders signal — peak=0.500
+PASS Stutter: constructs + param sweep — ok
+PASS Stutter: renders signal — peak=0.500
+PASS Comb: constructs + param sweep — ok
+PASS Comb: renders signal — peak=0.500
+PASS Vowel: constructs + param sweep — ok
+PASS Vowel: renders signal — peak=0.500
+PASS Vocoder: constructs + param sweep — ok
+PASS Vocoder: renders signal — peak=0.500
+PASS Reverse Swell: constructs + param sweep — ok
+PASS Reverse Swell: renders signal — peak=0.500
+PASS Granular Freeze: constructs + param sweep — ok
+PASS Granular Freeze: renders signal — peak=0.500
+PASS Duck Delay: constructs + param sweep — ok
+PASS Duck Delay: renders signal — peak=0.500
+PASS RIFT: constructs + param sweep — ok
+PASS RIFT: renders signal — peak=0.500
+PASS Multi-Tap: constructs + param sweep — ok
+PASS Multi-Tap: renders signal — peak=0.500
+PASS Reverb: constructs + param sweep — ok
+PASS Reverb: renders signal — peak=0.492
+PASS Delay: constructs + param sweep — ok
+PASS Delay: renders signal — peak=0.493
+PASS Pump: constructs + param sweep — ok
+PASS Pump: renders signal — peak=0.500
+PASS Distortion: constructs + param sweep — ok
+PASS Distortion: renders signal — peak=1.042
+PASS Bitcrusher: constructs + param sweep — ok
+PASS Bitcrusher: renders signal — peak=0.500
+PASS Chorus: constructs + param sweep — ok
+PASS Chorus: renders signal — peak=0.486
+PASS Phaser: constructs + param sweep — ok
+PASS Phaser: renders signal — peak=0.490
+PASS Haas Widener: constructs + param sweep — ok
+PASS Haas Widener: renders signal — peak=0.325
+PASS Sidechain: constructs + param sweep — ok
+PASS Sidechain: renders signal — peak=0.500
+PASS Transient Shaper: constructs + param sweep — ok
+PASS Transient Shaper: renders signal — peak=0.500
+PASS Drum Buss: constructs + param sweep — ok
+PASS Drum Buss: renders signal — peak=0.732
+PASS Bass Buss: constructs + param sweep — ok
+PASS Bass Buss: renders signal — peak=0.733
+PASS Utility: constructs + param sweep — ok
+PASS Utility: renders signal — peak=0.729
+PASS Gate: constructs + param sweep — ok
+PASS Gate: renders signal — peak=0.500
+PASS Shimmer: constructs + param sweep — ok
+PASS Shimmer: renders signal — peak=0.489
+PASS PRISM: constructs + param sweep — ok
+PASS PRISM: renders signal — peak=0.500
+PASS VLYX: constructs + param sweep — ok
+PASS VLYX: renders signal — peak=0.500
+PASS DRIFT: constructs + param sweep — ok
+PASS DRIFT: renders signal — peak=0.500
+PASS MORPH: constructs + param sweep — ok
+PASS MORPH: renders signal — peak=0.500
+PASS Ring Mod: constructs + param sweep — ok
+PASS Ring Mod: renders signal — peak=0.500
+PASS Tape Stop: constructs + param sweep — ok
+PASS Tape Stop: renders signal — peak=0.500
+PASS Freq Shift: constructs + param sweep — ok
+PASS Freq Shift: renders signal — peak=0.500
+PASS Pitch Shift: constructs + param sweep — ok
+PASS Pitch Shift: renders signal — peak=0.500
+PASS Pitch Correct: constructs + param sweep — ok
+PASS Pitch Correct: renders signal — peak=0.500
+PASS Vinyl Suite: constructs + param sweep — ok
+PASS Vinyl Suite: renders signal — peak=0.500
+PASS Beat Mangler: constructs + param sweep — ok
+PASS Beat Mangler: renders signal — peak=0.500
+PASS ZENIT: constructs + param sweep — ok
+PASS ZENIT: renders signal — peak=0.892
+PASS APEX: constructs + param sweep — ok
+PASS APEX: renders signal — peak=0.500
+PASS SPAN: constructs + param sweep — ok
+PASS SPAN: renders signal — peak=0.500
+PASS TIDE: constructs + param sweep — ok
+PASS TIDE: renders signal — peak=0.500
+PASS GROW: constructs + param sweep — ok
+PASS GROW: renders signal — peak=0.500
+PASS TWIST: constructs + param sweep — ok
+PASS TWIST: renders signal — peak=0.500
+PASS PORTAL: constructs + param sweep — ok
+PASS PORTAL: renders signal — peak=0.500
+PASS REZONANS: constructs + param sweep — ok
+PASS REZONANS: renders signal — peak=0.500
+PASS clipper honors ceiling — max=0.503 ceiling=0.501
+PASS pump modulates gain over the beat — maxRms=0.373 minRms=0.192 ratio=1.95
+PASS Sampler: noteOn renders signal — peak=0.408
+PASS Analog Synth: noteOn renders signal — peak=0.577
+PASS Bass Synth: noteOn renders signal — peak=0.930
+PASS 808 Synth: noteOn renders signal — peak=0.716
+PASS Texture Synth: noteOn renders signal — peak=0.146
+PASS Wavetable Synth: noteOn renders signal — peak=0.457
+PASS Granular Synth: noteOn renders signal — peak=0.044
+PASS Keys: noteOn renders signal — peak=0.055
+PASS Organ: noteOn renders signal — peak=0.445
+PASS Strings: noteOn renders signal — peak=0.551
+PASS Bell: noteOn renders signal — peak=0.554
+PASS Reese: noteOn renders signal — peak=0.506
+PASS Clavinet: noteOn renders signal — peak=0.030
+PASS Acid 303: noteOn renders signal — peak=0.399
+PASS Synth Brass: noteOn renders signal — peak=0.821
+PASS FM: noteOn renders signal — peak=0.448
+PASS Pluck Synth: noteOn renders signal — peak=0.061
+PASS Flute: noteOn renders signal — peak=0.370
+PASS Log Drum: noteOn renders signal — peak=0.429
+PASS Spectral Pad: noteOn renders signal — peak=0.126
+PASS Vocal Chop: noteOn renders signal — peak=0.165
+PASS Drum Synth: noteOn renders signal — peak=0.448
+PASS TSAR: noteOn renders signal — peak=0.628
+PASS KOPA: noteOn renders signal — peak=0.169
+PASS CHORÁL: noteOn renders signal — peak=0.759
+PASS LADIČ: noteOn renders signal — peak=0.180
+PASS HĽAS: noteOn renders signal — peak=0.116
+PASS ŠTRK: noteOn renders signal — peak=0.341
+PASS CINK: noteOn renders signal — peak=0.443
+PASS STRUNA: noteOn renders signal — peak=0.125
+PASS DYMKA: noteOn renders signal — peak=0.116
+PASS Spectral Pad: release during the attack fades from the attack level — before=3.08e-3 after=3.72e-3 ratio=1.21
+PASS Texture Synth: polyphony + voice stealing renders signal — peak=0.550
+PASS Wavetable Synth: morph moves the timbre (sine -> saw HF energy) — darkHF=0.037 brightHF=0.221
+PASS Granular Synth: deterministic render + noteOff cuts the tail — maxDiff=3.73e-9 fullTail=0.0776 cutTail=0.0000
+PASS Texture Synth: deterministic render (LFO clock anchored to the note timeline) — maxDiff=5.96e-8 peak=0.2476
+PASS offline export parity: wavetable + granular render audible with worklets loaded (offline worklet seeding) — wavetable=0.7743 granular=0.0708
+PASS TSAR: offline export is audible through the event-queue worklet (lazy load + processorOptions seed) — peak=0.5150
+PASS KOPA: offline export is audible through the event-queue worklet (lazy load + processorOptions seed) — peak=0.2571
+PASS GROW: lazy worklet generates the missing fundamental's 2nd harmonic on a real render — ready=true h2=0.0873 h1=0.0375
+PASS TWIST: lazy worklet shifts the phase of a real render while preserving its level — ready=true wetRms=0.354 dryRms=0.354 maxDiff=0.405
+PASS TWIST: KEY PUMP moves the render on a real key feed (bit-exact without one) — keyDiff=0.8001 noKeyDiff=0.00e+0
+PASS TWIST: DYNAMIC follows anti-phase SIDE-only input on the shipped worklet — ready=true differenceEnergy=662.1452
+PASS TWIST: KEY detector follows anti-phase SIDE-only audio on the shipped worklet — ready=true maxDiff=0.00e+0 keyEnergy=2212.9196
+PASS TWIST: invalid samples are silenced without poisoning the shipped filter state — ready=true finite=true maxDiff=0.00e+0 tailRms=0.283
+PASS TWIST: live worklet telemetry reports the effective curve parameters — {"lfo":0.02533333333333333,"focusHz":310,"env":0,"key":1,"radius":0.8643999886512757,"dispersion":0.8299999833106995,"punch":-0.44999998807907104,"punchHz":610,"punchMix":0.7200000286102295,"punchRadius":0.41849998891353607,"shape":2.5,"spread":0.3499999940395355,"field":-0.30000001192092896,"dyn":0,"dynPunch":0,"keyMode":0,"lfoDepth":0,"mix":1,"output":0}
+PASS REZONANS: lazy worklet loads and its harmony stack moves a real render — ready=true maxDiff=0.2144
+PASS REZONANS: +8 st formant raises the high-band share on a real render — base=0.238 raised=0.543
+PASS live worklet-path audibility: wavetable/granular/PRISM on a real AudioContext — wavetable=1.1749 granular=0.0699 prism=0.3760 (floor 0.0100)
+PASS analog RELEASE knob shapes the post-noteOff tail (noteOff path) — rel0.05=0.0003 rel3=0.0910
+PASS match EQ: master stage applies the curve (+6 dB high shelf lifts the high band) — lift=3.05 dB (flat -26.1 → lifted -23.1)
+PASS match EQ: full pipeline — measured mix vs retained reference points the right way — curve -6.0/-1.7/6.0/6.0 dB
+PASS match EQ: command + schema round-trip — master.matchEq.high=6.00
+PASS multi-tap delay deterministic across renders + feedback audible (worklet loop) — maxDiff=2.38e-7 wetPeak=0.8718
+PASS sampler STRETCH renders a +12st note (single buffer assignment) — peak=0.4052
+PASS texture: per-note pan renders left/right independently and neutral stays unchanged — neutralDiff=0.00e+0 left=0.2206/0.0000 right=0.0000/0.2206 overlap=0.2206/0.2237
+PASS vocalchop: per-note pan renders left/right independently and neutral stays unchanged — neutralDiff=0.00e+0 left=0.0492/0.0000 right=0.0000/0.0492 overlap=0.0492/0.0366
+PASS Acid 303 slide note moves the held fundamental without a new attack — pre 110/220=2.30e+5/6.26e+4; post 110/220=7.98e-1/3.32e+5
+PASS 808: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.51510 neutralΔ=0.00000 cutoffΔ=0.62881 ModXΔ=0.63028 ModYΔ=0.20876
+PASS 808: per-note release velocity changes the rendered note-off tail — short=0.25362 peak=6.24e-1 long=0.48990 peak=6.48e-1 ratio×1.93
+PASS 808: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.51458 left=0.72772/0.00000 right=0.72772/0.00000 overlap=0.72797/0.72492
+PASS 808: slide note moves the held fundamental without a new attack — pre 55.0/110.0Hz=4.69e+6/1.76e+4; post=2.68e+5/1.18e+7
+PASS 808: fine-pitch event shifts the rendered note through TriggerEngine — base=0.51458 octaveΔ=0.76085
+PASS sampler: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.23615 neutralΔ=0.00000 cutoffΔ=0.26120 ModXΔ=0.26451 ModYΔ=0.03332
+PASS sampler: per-note release velocity changes the rendered note-off tail — short=0.00166 peak=2.24e-2 long=0.04518 peak=2.53e-1 ratio×27.23
+PASS sampler: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.23633 left=0.47267/0.00000 right=0.47267/0.00000 overlap=0.46614/0.41663
+PASS sampler: fine-pitch event shifts the rendered note through TriggerEngine — base=0.23633 octaveΔ=0.33546
+PASS analog: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.12311 neutralΔ=0.00000 cutoffΔ=0.13243 ModXΔ=0.13334 ModYΔ=1.18396
+PASS analog: per-note release velocity changes the rendered note-off tail — short=0.00328 peak=4.97e-2 long=0.03806 peak=2.34e-1 ratio×11.62
+PASS analog: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.15474 left=0.30948/0.00000 right=0.30948/0.00000 overlap=0.30795/0.26556
+PASS analog: fine-pitch event shifts the rendered note through TriggerEngine — base=0.15474 octaveΔ=0.19148
+PASS bass: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.39052 neutralΔ=0.00000 cutoffΔ=0.43459 ModXΔ=0.43993 ModYΔ=0.98276
+PASS bass: per-note release velocity changes the rendered note-off tail — short=0.00202 peak=2.51e-2 long=0.05159 peak=3.84e-1 ratio×25.53
+PASS bass: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.43908 left=0.87542/0.00000 right=0.87542/0.00000 overlap=0.86030/0.73173
+PASS bass: fine-pitch event shifts the rendered note through TriggerEngine — base=0.43908 octaveΔ=0.44387
+PASS texture: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.07357 neutralΔ=0.00000 cutoffΔ=0.04454 ModXΔ=0.01485 ModYΔ=0.02796
+PASS texture: per-note release velocity changes the rendered note-off tail — short=0.00000 peak=0.00e+0 long=0.06349 peak=1.17e-1 ratio×6349207.90
+PASS texture: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.08938 left=0.17877/0.00000 right=0.17877/0.00000 overlap=0.17565/0.13278
+PASS texture: fine-pitch event shifts the rendered note through TriggerEngine — base=0.08938 octaveΔ=0.10965
+PASS wavetable: per-note release velocity changes the rendered note-off tail — short=0.01677 peak=1.78e-1 long=0.10074 peak=4.66e-1 ratio×6.01
+PASS wavetable: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.29690 left=0.59381/0.00000 right=0.59381/0.00000 overlap=0.98380/4.21973
+PASS wavetable: fine-pitch event shifts the rendered note through TriggerEngine — base=0.29690 octaveΔ=0.37504
+PASS granular: per-note release velocity changes the rendered note-off tail — short=0.01225 peak=1.39e-1 long=0.02424 peak=2.39e-1 ratio×1.98
+PASS granular: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.13792 left=0.27243/0.00000 right=0.27243/0.00000 overlap=0.26815/0.23608
+PASS granular: fine-pitch event shifts the rendered note through TriggerEngine — base=0.13792 octaveΔ=0.19754
+PASS keys: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.00075 neutralΔ=0.00000 cutoffΔ=0.00956 ModXΔ=0.00956 ModYΔ=0.05316
+PASS keys: per-note release velocity changes the rendered note-off tail — short=0.00000 peak=4.05e-5 long=0.00013 peak=9.01e-3 ratio×268.39
+PASS keys: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.00055 left=0.00109/0.00000 right=0.00109/0.00000 overlap=0.00107/0.00050
+PASS keys: fine-pitch event shifts the rendered note through TriggerEngine — base=0.00055 octaveΔ=0.00089
+PASS organ: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.17029 neutralΔ=0.00000 cutoffΔ=0.18294 ModXΔ=0.18376 ModYΔ=0.15128
+PASS organ: per-note release velocity changes the rendered note-off tail — short=0.00021 peak=2.38e-3 long=0.01722 peak=9.57e-2 ratio×81.34
+PASS organ: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.16538 left=0.33050/0.00000 right=0.33050/0.00000 overlap=0.32631/0.29012
+PASS organ: fine-pitch event shifts the rendered note through TriggerEngine — base=0.16538 octaveΔ=0.21273
+PASS strings: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.18946 neutralΔ=0.00000 cutoffΔ=0.20816 ModXΔ=0.20869 ModYΔ=0.62576
+PASS strings: per-note release velocity changes the rendered note-off tail — short=0.02998 peak=2.45e-1 long=0.15330 peak=3.91e-1 ratio×5.11
+PASS strings: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.14995 left=0.29991/0.00000 right=0.29991/0.00000 overlap=0.30203/0.26648
+PASS strings: fine-pitch event shifts the rendered note through TriggerEngine — base=0.14995 octaveΔ=0.20444
+PASS bell: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.08155 neutralΔ=0.00000 cutoffΔ=0.08396 ModXΔ=0.08399 ModYΔ=0.00758
+PASS bell: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.11815 left=0.16709/0.00000 right=0.16709/0.00000 overlap=0.16682/0.15249
+PASS bell: fine-pitch event shifts the rendered note through TriggerEngine — base=0.11815 octaveΔ=0.17028
+PASS reese: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.14532 neutralΔ=0.00000 cutoffΔ=0.15780 ModXΔ=0.16090 ModYΔ=0.89518
+PASS reese: per-note release velocity changes the rendered note-off tail — short=0.00622 peak=4.34e-2 long=0.04939 peak=1.54e-1 ratio×7.94
+PASS reese: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.13087 left=0.26175/0.00000 right=0.26175/0.00000 overlap=0.25684/0.23531
+PASS reese: fine-pitch event shifts the rendered note through TriggerEngine — base=0.13087 octaveΔ=0.18668
+PASS clav: per-note release velocity changes the rendered note-off tail — short=0.00018 peak=4.05e-3 long=0.00297 peak=2.95e-2 ratio×16.09
+PASS clav: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.01291 left=0.02581/0.00000 right=0.02581/0.00000 overlap=0.02571/0.03791
+PASS clav: fine-pitch event shifts the rendered note through TriggerEngine — base=0.01291 octaveΔ=0.02970
+PASS acid: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.19429 neutralΔ=0.00000 cutoffΔ=0.21012 ModXΔ=0.22358 ModYΔ=1.75629
+PASS acid: per-note release velocity changes the rendered note-off tail — short=0.00280 peak=3.05e-2 long=0.04498 peak=2.06e-1 ratio×16.06
+PASS acid: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.19482 left=0.38964/0.00000 right=0.38964/0.00000 overlap=0.05266/0.33249
+PASS acid: slide note moves the held fundamental without a new attack — pre 110.0/220.0Hz=4.58e+5/1.24e+5; post=6.42e+2/1.70e+6
+PASS acid: fine-pitch event shifts the rendered note through TriggerEngine — base=0.19482 octaveΔ=0.25101
+PASS brass: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.23435 neutralΔ=0.00000 cutoffΔ=0.26989 ModXΔ=0.27188 ModYΔ=1.62668
+PASS brass: per-note release velocity changes the rendered note-off tail — short=0.00775 peak=9.36e-2 long=0.06522 peak=2.89e-1 ratio×8.42
+PASS brass: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.29263 left=0.58526/0.00000 right=0.58526/0.00000 overlap=0.57997/0.44860
+PASS brass: fine-pitch event shifts the rendered note through TriggerEngine — base=0.29263 octaveΔ=0.36406
+PASS fm: per-note release velocity changes the rendered note-off tail — short=0.01235 peak=1.11e-1 long=0.05225 peak=1.86e-1 ratio×4.23
+PASS fm: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.17866 left=0.25267/0.00000 right=0.25267/0.00000 overlap=0.25178/0.22510
+PASS fm: fine-pitch event shifts the rendered note through TriggerEngine — base=0.17866 octaveΔ=0.24940
+PASS pluck: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.00039 neutralΔ=0.00000 cutoffΔ=0.00041 ModXΔ=0.00041 ModYΔ=0.04956
+PASS pluck: per-note release velocity changes the rendered note-off tail — short=0.00002 peak=4.35e-4 long=0.00008 peak=1.09e-3 ratio×4.27
+PASS pluck: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.00191 left=0.00344/0.00000 right=0.00344/0.00000 overlap=0.00340/0.00192
+PASS pluck: fine-pitch event shifts the rendered note through TriggerEngine — base=0.00191 octaveΔ=0.00140
+PASS flute: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.15594 neutralΔ=0.00000 cutoffΔ=0.16978 ModXΔ=0.17002 ModYΔ=0.00756
+PASS flute: per-note release velocity changes the rendered note-off tail — short=0.00633 peak=8.15e-2 long=0.04949 peak=2.52e-1 ratio×7.82
+PASS flute: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.15518 left=0.21946/0.00000 right=0.21946/0.00000 overlap=0.21913/0.19691
+PASS flute: fine-pitch event shifts the rendered note through TriggerEngine — base=0.15518 octaveΔ=0.22090
+PASS logdrum: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.19912 neutralΔ=0.00000 cutoffΔ=0.21993 ModXΔ=0.22059 ModYΔ=0.97264
+PASS logdrum: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.18383 left=0.36730/0.00000 right=0.36730/0.00000 overlap=0.36092/0.29114
+PASS logdrum: fine-pitch event shifts the rendered note through TriggerEngine — base=0.18383 octaveΔ=0.23677
+PASS spectral: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.05586 neutralΔ=0.00000 cutoffΔ=0.05949 ModXΔ=0.05965 ModYΔ=0.00985
+PASS spectral: per-note release velocity changes the rendered note-off tail — short=0.02997 peak=1.13e-1 long=0.05022 peak=1.47e-1 ratio×1.68
+PASS spectral: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.05598 left=0.10777/0.00000 right=0.10777/0.00000 overlap=0.10755/0.09276
+PASS spectral: fine-pitch event shifts the rendered note through TriggerEngine — base=0.05598 octaveΔ=0.06605
+PASS vocalchop: per-note release velocity changes the rendered note-off tail — short=0.00082 peak=1.37e-2 long=0.01383 peak=1.07e-1 ratio×16.88
+PASS vocalchop: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.05975 left=0.08451/0.00000 right=0.08451/0.00000 overlap=0.08422/0.07099
+PASS vocalchop: fine-pitch event shifts the rendered note through TriggerEngine — base=0.05975 octaveΔ=0.07894
+PASS drumsynth: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.13279 left=0.18779/0.00000 right=0.18779/0.00000 overlap=0.18678/0.16670
+PASS drumsynth: fine-pitch event shifts the rendered note through TriggerEngine — base=0.13279 octaveΔ=0.18696
+PASS tsar: fine-pitch event shifts the rendered note through TriggerEngine — base=0.34459 octaveΔ=0.48625
+PASS kopa: fine-pitch event shifts the rendered note through TriggerEngine — base=0.02992 octaveΔ=0.02941
+PASS choral: fine-pitch event shifts the rendered note through TriggerEngine — base=0.21299 octaveΔ=0.29768
+PASS ladic: fine-pitch event shifts the rendered note through TriggerEngine — base=0.09334 octaveΔ=0.14033
+PASS hlas: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03126 octaveΔ=0.05812
+PASS struna: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03815 octaveΔ=0.08523
+PASS dymka: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03393 octaveΔ=0.06658
+PASS strk: fine-pitch event shifts the rendered note through TriggerEngine — base=0.00714 octaveΔ=0.01041
+PASS cink: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03015 octaveΔ=0.04283
+PASS automation lane renders as a ramp (16th-grid interpolation) — ramp=0.4870 zero=0.4650 mid=0.4723 full=0.4870
+PASS phaser rate changes the rendered signal (wet chain alive) — maxDiff=0.3680
+PASS intent production path: generate → deterministic bank → apply → audible render — bank=6 unique=6 peak=0.861 elapsed=2564ms selection=model/active ledger=true
+PASS intent ranker: local ONNX worker scores a real candidate batch (or controlled fallback) — source=model scores=0.000/0.005/1.000
+PASS intent ranker: browser missing/offline, hash-mismatch and timeout fall back safely — missing=fallback hash=fallback timeout=fallback
+PASS distortion: cubic clip adds harmonics — fundamental=4.51e-1 third=4.03e-2
+PASS bitcrusher: 4-bit quantisation renders signal with sane peak — peak=0.993
+PASS chorus: produces audible signal past 20 ms (delay-line smear) — late-peak=1.000
+PASS kaskada: produces audible signal (stereo delay) — peak=0.446
+PASS kaskada: ping-pong produces stereo alternation (L ≠ R in echo region) — sampleDiff=121.615
+PASS kaskada: reverse mode renders an audibly reversed sweep — diff=0.630 peak=0.348
+PASS kaskada: dual spectrum + unmask meters flow over the port — dry=-3.1dB wet=-41.7dB umMaxRed=12.0dB
+PASS phaser: re-chains stages at runtime and renders signal — peak=0.920
+PASS sidechain: setSidechainInput attaches/detaches safely and renders signal — peak=1.000
+PASS audio-worklet: processors load and bitcrusher downsamples — changes=136 (worklet sample-hold is active)
+PASS Gate: fallback reports degraded state — degraded=true reason=AudioWorklet unavailable — gate bypassed (1:1 signal)
+PASS Transient Shaper: fallback reports degraded state — degraded=true reason=AudioWorklet unavailable — transient shaper bypassed (1:1 signal)
+PASS Limiter: fallback reports degraded state — degraded=true reason=AudioWorklet unavailable — limiter bypassed (1:1 signal)
+PASS Compressor: fallback reports degraded state — degraded=true reason=Fallback — native approximation (sidechain & HPF inactive)
+PASS gate: fallback passes signal 1:1 (never silent) — peak=0.500 expected≈0.500
+PASS gate: worklet path gates when modules are loaded — peak=0.0000 (fallback would be ≈0.5)
+PASS limiter: look-ahead worklet limits, meters and anticipates — peak=0.495/0.501 gr=5.1dB spread=1.017 onset=253/252
+PASS pdc: limiter track stays aligned with dry track (<2 ms) — skew=0.18ms (≈5ms means PDC inactive)
+PASS pdc: grouped return send aligns to the dry group path (within 128 samples) — dry=2104 send=2096 skew=8 samples
+PASS groups: moved track feeds only the new group — L=0.000 R=0.835 (leak would make L≈R)
+PASS mixer preview: fader preview on a muted channel stays silent (unmuted stays audible) — muted=0.0000 open=0.860
+PASS mixer preview: send preview drives the real return-bus path — wetDiff=1.0462 transparentDiff=0.00000
+PASS frozen: deleting a frozen track stops + removes its buffer source — started=true remainingSources=0
+PASS resample: master bounce captures audible audio — dur=3.06s peak=0.915 sr=48000
+PASS master meter: reads true stereo (hard-left stays out of R) — L=-1.7dB R=-94.5dB corr=0.17
+PASS 808: rapid retrigger renders every note (voice cleanup wiring) — first=0.722 third=1.006
+PASS wavetable: late-arriving user sample replaces the cached factory fallback — fallbackHF=0.019 sampleHF=0.065
+PASS export: MP3 encodes small and decodes back to the same duration — mp3=155kB vs wav=1130kB dur=6.61s/6.56s
+PASS quality: browser-generated pattern passes invariants and content hash is deterministic — 6afd1baa/6afd1baa
+PASS quality: generated pattern renders offline audio and a valid WAV — peak=0.861 wav=1401004
+PASS export: video records canvas + audio via MediaRecorder — mp4 81kB type=video/mp4
+PASS chop beats: pads play only their slice region + transients detected — before=0.0000 during=0.358 after=0.0001 onsets=[0.02,0.47]
+PASS per-pad mod: gain LFO tremolos one voice (envelope pumps vs flat) — plainSpread=1.02 modSpread=12.10
+PASS macro targets: fxParam resolves around base, repeated syncs never accumulate — syncs=3 first=0.5000 last=0.5000 (expect 0.5)
+PASS fxeq: worklet DSP renders in offline context (saturated) + honest fallback — fallback=true refRms=0.177 diffRms=0.836 peakSat=1.538
+PASS fxeq: CPU budget — worst case fits the audio-thread block budget — bestSample=913µs/block of 2902µs budget → 31.5% of one core (samples=913,954,996)
+PASS fxeq: reports DSP latency for PDC (oversampled bands) — latency=2.698 ms
+PASS ultina: worklet DSP renders in offline context (+6dB) + honest fallback — fallback=true refRms=0.177 diffRms=0.173 peak=0.499
+PASS ultina: CPU budget — all 10 modules fit the audio-thread block budget — bestSample=69µs/block of 2902µs budget → 2.4% of one core (samples=69,71,102)
+PASS ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots, gated node stays silent) — lufs=-9.4 specEnergy=2058 workletSnapshot=true gatedSilent=true
+PASS ozvena: phase-A per-engine benchmark (decision data) — E1=173µs (6%) E2=385µs (13%) E3=484µs (17%) ALL=648µs (22%) — budget 2902µs
+PASS ozvena: worklet reverb renders in offline context + PDC latency + honest fallback — fallback=true tailRms=0.00178 diffRms=0.00178 latencyMs=2.7
+PASS 808 amplitude decays over time — early=0.517 late=0.138
+PASS sampler plays transposed sample from C4 root — peak=0.403 at 1312
+PASS sampler: loop region sustains past the gate and releases cleanly — inLoop=0.037 afterRelease=0.000
+PASS fm synth: bell renders with FM sidebands, growl stays mixable — bellPeak=0.451 growlPeak=0.506
+PASS LFO modulates gain at audio rate — max=1.265 min=0.150 ratio=8.40
+PASS automation ramps track level over time — early=0.634 late=0.018 ratio=35.9
+PASS offline render: pattern mode produces audio of correct length — peak=0.860 dur=2.44s expected=2.44s
+PASS offline render: song mode (4-bar arrangement) is longer than one pattern pass — song=8.24s pattern=2.44s
+PASS offline render: drum and bass stems are independently audible — drum=0.859 bass=0.760
+PASS offline render encodes to a valid WAV file — bytes=376744
+PASS templates: factory templates are registered — 15 registered: house,techno,trap,ambient,scene-score,ukg,jersey,phonk,drill,lofi-house,reggaeton,boombap,vlyx-demo,dnb,empty
+PASS template house: valid project and renders audio — valid=true peak=0.860
+PASS template techno: valid project and renders audio — valid=true peak=0.860
+PASS template trap: valid project and renders audio — valid=true peak=0.861
+PASS template ambient: valid project and renders audio — valid=true peak=0.365
+PASS template scene-score: valid project and renders audio — valid=true peak=0.861
+PASS template ukg: valid project and renders audio — valid=true peak=0.861
+PASS template jersey: valid project and renders audio — valid=true peak=0.860
+PASS template phonk: valid project and renders audio — valid=true peak=0.860
+PASS template drill: valid project and renders audio — valid=true peak=0.860
+PASS template lofi-house: valid project and renders audio — valid=true peak=0.860
+PASS template reggaeton: valid project and renders audio — valid=true peak=0.860
+PASS template boombap: valid project and renders audio — valid=true peak=0.861
+PASS template vlyx-demo: valid project and renders audio — valid=true peak=0.861
+PASS template dnb: valid project and renders audio — valid=true peak=0.860
+PASS template empty: valid project and renders audio — valid=true peak=0.000
+PASS perf environment: this machine's timing is measurable — calib=14.1ms (floor 18ms) spread=1.0× (max 2×) — environment=measurable, the budget checks below are gated
+PASS perf: house — 8-bar render within budget — 12509ms for 15684ms audio (budget 14115ms, 0.80× realtime)
+FAIL perf: techno — 8-bar render within budget — 13839ms for 14745ms audio (budget 13271ms, 0.94× realtime)
+PASS perf: trap — 8-bar render within budget — 6318ms for 13914ms audio (budget 12523ms, 0.45× realtime)
+PASS perf: ambient — 8-bar render within budget — 5804ms for 24200ms audio (budget 21780ms, 0.24× realtime)
+PASS perf: scene-score — 8-bar render within budget — 3795ms for 16200ms audio (budget 14580ms, 0.23× realtime)
+PASS perf: ukg — 8-bar render within budget — 8171ms for 14636ms audio (budget 13172ms, 0.56× realtime)
+PASS perf: jersey — 8-bar render within budget — 4780ms for 13914ms audio (budget 12523ms, 0.34× realtime)
+PASS perf: phonk — 8-bar render within budget — 11120ms for 13441ms audio (budget 12097ms, 0.83× realtime)
+PASS perf: drill — 8-bar render within budget — 6962ms for 13721ms audio (budget 12349ms, 0.51× realtime)
+PASS perf: lofi-house — 8-bar render within budget — 12392ms for 16471ms audio (budget 14824ms, 0.75× realtime) — first sample 14859ms, retry recovered
+PASS perf: reggaeton — 8-bar render within budget — 10952ms for 20200ms audio (budget 18180ms, 0.54× realtime)
+PASS perf: boombap — 8-bar render within budget — 12629ms for 21533ms audio (budget 19380ms, 0.59× realtime)
+PASS perf: vlyx-demo — 8-bar render within budget — 9076ms for 16200ms audio (budget 14580ms, 0.56× realtime)
+PASS perf: dnb — 8-bar render within budget — 2397ms for 11234ms audio (budget 12000ms, 0.21× realtime)
+FAIL perf: 8-bar render average across all templates — avg=8624ms worst=13839ms over 14 templates; aggregate=0.53× realtime
+PASS rt budget: 12 tracks × 4 effects realtime — blocks=832 xruns=0 heartbeat avg=216.15ms max=269.70ms (expected≈170.67ms, 1.27×) quantum=2.667ms · device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=0
+FAIL perf: 8 tracks × 4 effects render stays within baseline + headroom — 17944ms vs 2938ms single-track baseline for 16500ms audio (budget 14938ms, 6.11× baseline)
+PASS scene-score template: song arrangement renders longer than one pattern — song=48.20s pattern=2.20s
+PASS groove: swing/humanize/ratchet change the exported audio — peak=0.860 sample-diff=577.7
+PASS artifact gate: genre renders are finite, tail-safe and under ceiling (transient candidates reported for review) — house reviewCandidates=147[533,534,2793,11198] tail=0.010 tp=-1.3 techno reviewCandidates=197[534,656,660,691] tail=0.010 tp=-1.3 trap reviewCandidates=44[529,530,534,535] tail=0.010 tp=-1.3 drill reviewCandidates=182[528,530,534,535] tail=0.010 tp=-1.3 phonk reviewCandidates=338[533,534,535,1027] tail=0.010 tp=-1.3 jersey reviewCandidates=303[526,527,529,530] tail=0.010 tp=-1.3 dnb reviewCandidates=32[529,534,8132,8133] tail=0.010 tp=-1.3 ambient reviewCandidates=0[] tail=0.010 tp=-8.2
+PASS round-robin: consecutive hat hits are not the same sample — layers=0 corr=[0.266,0.057,1.000,1.000,1.000,1.000,1.000]
+PASS presets: factory bank covers every instrument kind — kinds=31 presets=671
+PASS presets: apply command sticks and project still renders — applied=true peak=0.860
+PASS sampler AutoMap: filename keyzones route notes to the correct imported sample — keyzones=true low=72 high=871 full=871
+PASS audio clip stretch: pitch preserved, duration scaled, source untouched — zcStretch=411 zcResample=841 durStretch=2.02s durResample=0.52s quarterPeak=0.561 sourceCorrupted=false
+PASS audio clip playback: reverse starts at the high edge and loop phase wraps — reverse=0.242→0.214 loop=0.116→0.087
+PASS master chain tames a hot mix (limiter reduces, clipper softens) — unlimited=2.814 limited=0.860 clipped=0.860
+PASS master glue levels a hot mix (lower RMS + peak, no crush) — plain=4.359/1.277 glued=2.813/0.729
+PASS master limiter: look-ahead true peak stays below the delivery ceiling — samplePeak=0.683 truePeak=-3.30 dBTP ceiling=-3.00 dBTP
+PASS step modulator: gain alternates on the division grid (offline) — gate=0.7733/0.2628 ctrl=0.6603/0.6459
+PASS modulators: offline renders are deterministic (live == offline law) — SUM|a-b|=1.81e+0 rel=2.68e-5
+PASS random S&H: seeded stream is active and repeat-render stable — rel=1.56e-5 spread=0.86 blocks=30
+PASS envelope follower: source transients shape host gain (cross-track) — ducked=0.600 plain=1.022
+PASS compressor: worklet compresses hot input and reports GR — rms=0.0568 baseline=0.4950 gr=20.2dB
+PASS compressor: DE-ESS mode ducks the sibilance band, not the low band (host) — duck(6500Hz, band=6500)=0.3112 duck(6500Hz, band=300)=0.2743 released=0.0370 sibilant/low=0.120 baseline=0.3536
+PASS pitchCorrect: amount 0 passes the input tone through; amount 1 corrects toward the scale target — amount0: rms=0.3536 input=0.2500 · amount1: input=0.0083 target=0.2044
+PASS compressor: sidechain HPF gates bass-only detector — baseline=0.0404 bassOn=0.0184(gr 23.9) hpf300=0.2828(gr 0.0)
+PASS compressor: mix = 0 passes unity (parallel blend) — peak=0.8000 expected≈0.8
+PASS kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS) — integrated=-22.99 LUFS (momentary=-22.99)
+PASS step gate: pattern halves signal on off-beats (offline) — even=0.6925 odd=0.0811 ctrl=0.6932
+PASS step gate: mix=0 passes signal through (no gating) — mix0=1.8354 allOpen=1.8354
+PASS sidechain: multiband split frees high frequencies from ducking — fullBandRms=0.0215 multiBandRms=0.5054
+PASS svFilter: LP attenuates high frequencies (zero-crossing proxy) — crossingDensity=0.0090 (bare two-tone would be ~0.36)
+PASS svFilter: HP blocks low frequencies — rms=0.0070 (100 Hz through 1 kHz HP)
+PASS flanger: wet signal differs from dry (comb filtering active) — relDiff=2.120 rmsFlanged=0.0943
+PASS tremolo: AM modulates gain rhythmically — hi=0.3535 lo=0.0354 ratio=10.0 peak=0.500
+PASS autowah: envelope drives filter cutoff — quiet=0.0028 loud=0.6001 ratio=213.6
+PASS stutter: gate pattern alternates delayed loop audibility — high=0.4891 low=0.1292 ratio=3.8
+PASS fxeq: real AudioWorklet DSP renders (loaded for this context, honest degradation) — workletReady=true degraded=false rms=0.352 peak=0.564
+PASS fxeq: DSP latency reported over the port (PDC gets a nonzero figure) — latencySec=0.002698 (119 samples @ 44100)
+PASS fxeq: rack MIX knob reaches the core wet/dry (mix 0 vs 100 renders differ) — dryPeak=0.524 wetPeak=0.564 maxDiff=0.505
+PASS fxeq: band metering flows over the port (gated node stays silent) — peaksLen=6 hotBand=B2 hotVal=0.336 gatedSilent=true
+PASS fxeq: latency-aligned lane is transparent; measured lag matches the reported latency — sigRms=0.141 alignedRms=0.0060 lag=119 reported=119 (±128)
+PASS fxeq: multi-instance CPU — 4 creative instances stay inside the realtime budget — 4 instances × 3.0s audio in 1.65s wall → 13.7% of one realtime core per instance
+PASS prism: two browser worklet instances stay deterministic after JSON reload — sameShape=true maxDiff=0.00e+0 length=94175
+PASS fm: INDEX automation retunes a held note mid-flight — diff=0.4391
+PASS fm: RATIO automation re-pitches the modulator mid-note — diff=0.2320
+PASS fm: MPE pressure brightens the matched pitch — diff=0.4059
+PASS mod matrix analog: amt=0 is render-neutral — neutral=1.2e-7 peak=0.590
+PASS mod matrix analog: route modulates the render — diff=0.2527
+PASS mod matrix keys: amt=0 is render-neutral — neutral=0.0e+0 peak=0.047
+PASS mod matrix keys: route modulates the render — diff=0.0369
+PASS mod matrix 808: amt=0 is render-neutral — neutral=1.2e-7 peak=0.701
+PASS mod matrix 808: route modulates the render — diff=0.1984
+PASS mod matrix sampler: amt=0 is render-neutral — neutral=0.0e+0 peak=0.405
+PASS mod matrix sampler: route modulates the render — diff=0.0017
+PASS mod matrix vocalchop: amt=0 is render-neutral — neutral=0.0e+0 peak=0.109
+PASS mod matrix vocalchop: route modulates the render — diff=0.0875
+PASS mod matrix fallback: negative AMP/CUTOFF routes stay bounded and audible — peaks=0.067/0.642
+PASS mod matrix fallback: amount automation updates a held voice — diff=0.1435
+PASS mod matrix fallback: zero-amount route can activate a held voice — diff=0.1810 early=0.0000 late=0.1810
+PASS mod matrix fallback: source selector automation updates a held voice — diff=0.1713
+PASS mod matrix fallback: destination selector automation updates a held voice — diff=0.3518
+PASS mod matrix fallback: LFO rate automation updates a held voice — diff=0.1647
+PASS granular voice worklet: audible, position steers grains, repeats bit-identical — peak=0.327 posDiff=0.6528 repeatDiff=0
+PASS granular fallback cloud intact without worklets — peak=0.243
+PASS PDC control: gate reports its 2.5 ms look-ahead to the engine after the settle barrier — reported=120.0 samples (expected 120)
+PASS PDC export alignment: gate track vs dry track land within 2 samples after prepareOfflineRender — alignedDelta=0 samples (a=694.0, b=694.0)
+PASS rt-ticker: audio-clock tick source registered, cadence matches intervalBlocks, timestamps monotonic — ticks=54 span=0.565s expected=0.565s mono=true
+PASS scheduler driver: audio-clock ticker drives live playback windows end-to-end — kind=audio-ticker tickerTicks=32 windows=33 watchdogTicks=0 maxGap=34ms
+PASS lossy share delivery · ogg-opus (9009 B, 0.51s, rms 0.419) — container round-trip: rms 0.4193 (expected ~0.4243), peak 0.6164
+PASS lossy share delivery · m4a-aac (13146 B, 0.51s, rms 0.415) — container round-trip: rms 0.4146 (expected ~0.4243), peak 0.6019
+[PASS] engine lifecycle: 3× init→process→teardown→reinit cycles clean
+[PASS] factory bank generates a buffer for every manifest asset + RR variation — size=207/207
+[PASS] factory buffers are audible
+[PASS] factory catalogue renders reproducibly (≤1 ULP: Chromium's biquad rounding) — differing=5/7 maxDelta=5.96e-8 controlDelta=0.00e+0
+[PASS] drum bank (kick/snare/hat): renders audible/finite/distinct — passed=38/38
+[PASS] presets: auditions finite/unclipped + loudness map in sync — passed=671/671
+[PASS] fx expansion: ringMod/tapeStop/freqShifter/pitchShift/vinyl/beatMangler audible + deterministic — passed=6/6
+[PASS] parity obligation: every effect/instrument is null-tested or explicitly excluded — fx=48+9 instruments=29+2
+[PASS] live↔offline null test: same engine + events on both contexts — passed=77/77 — environment=measurable (calibration fx:bitcrusher control=-334.4 dB needs ≤ -200 dB, live↔live=-334.4 dB needs ≤ -200 dB) — not measurable=0 (the realtime branch did not reproduce itself)
+[PASS] RR variants are re-derived from the curated base (same drum, micro-variation) — min=1.000/26
+[PASS] curated layer overrides factory slots end-to-end (same-id, synth fallback intact) — loaded=146/146 skipped=0 failed=0
+[PASS] svf drive keeps folded harmonics ≥40dB under the fundamental (2× oversampled) — ratio=8.89e-6
+[PASS] EQ: constructs + param sweep
+[PASS] EQ: renders signal — peak=0.711
+[PASS] M/S EQ: constructs + param sweep
+[PASS] M/S EQ: renders signal — peak=0.500
+[PASS] Multiband: constructs + param sweep
+[PASS] Multiband: renders signal — peak=0.500
+[PASS] Compressor: constructs + param sweep
+[PASS] Compressor: renders signal — peak=0.519
+[PASS] Saturation: constructs + param sweep
+[PASS] Saturation: renders signal — peak=0.982
+[PASS] Tape Sat: constructs + param sweep
+[PASS] Tape Sat: renders signal — peak=0.500
+[PASS] Wow & Flutter: constructs + param sweep
+[PASS] Wow & Flutter: renders signal — peak=0.500
+[PASS] Clipper: constructs + param sweep
+[PASS] Clipper: renders signal — peak=0.758
+[PASS] Limiter: constructs + param sweep
+[PASS] Limiter: renders signal — peak=0.500
+[PASS] Step Gate: constructs + param sweep
+[PASS] Step Gate: renders signal — peak=0.500
+[PASS] SV Filter: constructs + param sweep
+[PASS] SV Filter: renders signal — peak=0.500
+[PASS] Flanger: constructs + param sweep
+[PASS] Flanger: renders signal — peak=0.500
+[PASS] Tremolo: constructs + param sweep
+[PASS] Tremolo: renders signal — peak=0.500
+[PASS] Autowah: constructs + param sweep
+[PASS] Autowah: renders signal — peak=0.500
+[PASS] Stutter: constructs + param sweep
+[PASS] Stutter: renders signal — peak=0.500
+[PASS] Comb: constructs + param sweep
+[PASS] Comb: renders signal — peak=0.500
+[PASS] Vowel: constructs + param sweep
+[PASS] Vowel: renders signal — peak=0.500
+[PASS] Vocoder: constructs + param sweep
+[PASS] Vocoder: renders signal — peak=0.500
+[PASS] Reverse Swell: constructs + param sweep
+[PASS] Reverse Swell: renders signal — peak=0.500
+[PASS] Granular Freeze: constructs + param sweep
+[PASS] Granular Freeze: renders signal — peak=0.500
+[PASS] Duck Delay: constructs + param sweep
+[PASS] Duck Delay: renders signal — peak=0.500
+[PASS] RIFT: constructs + param sweep
+[PASS] RIFT: renders signal — peak=0.500
+[PASS] Multi-Tap: constructs + param sweep
+[PASS] Multi-Tap: renders signal — peak=0.500
+[PASS] Reverb: constructs + param sweep
+[PASS] Reverb: renders signal — peak=0.492
+[PASS] Delay: constructs + param sweep
+[PASS] Delay: renders signal — peak=0.493
+[PASS] Pump: constructs + param sweep
+[PASS] Pump: renders signal — peak=0.500
+[PASS] Distortion: constructs + param sweep
+[PASS] Distortion: renders signal — peak=1.042
+[PASS] Bitcrusher: constructs + param sweep
+[PASS] Bitcrusher: renders signal — peak=0.500
+[PASS] Chorus: constructs + param sweep
+[PASS] Chorus: renders signal — peak=0.486
+[PASS] Phaser: constructs + param sweep
+[PASS] Phaser: renders signal — peak=0.490
+[PASS] Haas Widener: constructs + param sweep
+[PASS] Haas Widener: renders signal — peak=0.325
+[PASS] Sidechain: constructs + param sweep
+[PASS] Sidechain: renders signal — peak=0.500
+[PASS] Transient Shaper: constructs + param sweep
+[PASS] Transient Shaper: renders signal — peak=0.500
+[PASS] Drum Buss: constructs + param sweep
+[PASS] Drum Buss: renders signal — peak=0.732
+[PASS] Bass Buss: constructs + param sweep
+[PASS] Bass Buss: renders signal — peak=0.733
+[PASS] Utility: constructs + param sweep
+[PASS] Utility: renders signal — peak=0.729
+[PASS] Gate: constructs + param sweep
+[PASS] Gate: renders signal — peak=0.500
+[PASS] Shimmer: constructs + param sweep
+[PASS] Shimmer: renders signal — peak=0.489
+[PASS] PRISM: constructs + param sweep
+[PASS] PRISM: renders signal — peak=0.500
+[PASS] VLYX: constructs + param sweep
+[PASS] VLYX: renders signal — peak=0.500
+[PASS] DRIFT: constructs + param sweep
+[PASS] DRIFT: renders signal — peak=0.500
+[PASS] MORPH: constructs + param sweep
+[PASS] MORPH: renders signal — peak=0.500
+[PASS] Ring Mod: constructs + param sweep
+[PASS] Ring Mod: renders signal — peak=0.500
+[PASS] Tape Stop: constructs + param sweep
+[PASS] Tape Stop: renders signal — peak=0.500
+[PASS] Freq Shift: constructs + param sweep
+[PASS] Freq Shift: renders signal — peak=0.500
+[PASS] Pitch Shift: constructs + param sweep
+[PASS] Pitch Shift: renders signal — peak=0.500
+[PASS] Pitch Correct: constructs + param sweep
+[PASS] Pitch Correct: renders signal — peak=0.500
+[PASS] Vinyl Suite: constructs + param sweep
+[PASS] Vinyl Suite: renders signal — peak=0.500
+[PASS] Beat Mangler: constructs + param sweep
+[PASS] Beat Mangler: renders signal — peak=0.500
+[PASS] ZENIT: constructs + param sweep
+[PASS] ZENIT: renders signal — peak=0.892
+[PASS] APEX: constructs + param sweep
+[PASS] APEX: renders signal — peak=0.500
+[PASS] SPAN: constructs + param sweep
+[PASS] SPAN: renders signal — peak=0.500
+[PASS] TIDE: constructs + param sweep
+[PASS] TIDE: renders signal — peak=0.500
+[PASS] GROW: constructs + param sweep
+[PASS] GROW: renders signal — peak=0.500
+[PASS] TWIST: constructs + param sweep
+[PASS] TWIST: renders signal — peak=0.500
+[PASS] PORTAL: constructs + param sweep
+[PASS] PORTAL: renders signal — peak=0.500
+[PASS] REZONANS: constructs + param sweep
+[PASS] REZONANS: renders signal — peak=0.500
+[PASS] clipper honors ceiling — max=0.503 ceiling=0.501
+[PASS] pump modulates gain over the beat — maxRms=0.373 minRms=0.192 ratio=1.95
+[PASS] Sampler: noteOn renders signal — peak=0.408
+[PASS] Analog Synth: noteOn renders signal — peak=0.577
+[PASS] Bass Synth: noteOn renders signal — peak=0.930
+[PASS] 808 Synth: noteOn renders signal — peak=0.716
+[PASS] Texture Synth: noteOn renders signal — peak=0.146
+[PASS] Wavetable Synth: noteOn renders signal — peak=0.457
+[PASS] Granular Synth: noteOn renders signal — peak=0.044
+[PASS] Keys: noteOn renders signal — peak=0.055
+[PASS] Organ: noteOn renders signal — peak=0.445
+[PASS] Strings: noteOn renders signal — peak=0.551
+[PASS] Bell: noteOn renders signal — peak=0.554
+[PASS] Reese: noteOn renders signal — peak=0.506
+[PASS] Clavinet: noteOn renders signal — peak=0.030
+[PASS] Acid 303: noteOn renders signal — peak=0.399
+[PASS] Synth Brass: noteOn renders signal — peak=0.821
+[PASS] FM: noteOn renders signal — peak=0.448
+[PASS] Pluck Synth: noteOn renders signal — peak=0.061
+[PASS] Flute: noteOn renders signal — peak=0.370
+[PASS] Log Drum: noteOn renders signal — peak=0.429
+[PASS] Spectral Pad: noteOn renders signal — peak=0.126
+[PASS] Vocal Chop: noteOn renders signal — peak=0.165
+[PASS] Drum Synth: noteOn renders signal — peak=0.448
+[PASS] TSAR: noteOn renders signal — peak=0.628
+[PASS] KOPA: noteOn renders signal — peak=0.169
+[PASS] CHORÁL: noteOn renders signal — peak=0.759
+[PASS] LADIČ: noteOn renders signal — peak=0.180
+[PASS] HĽAS: noteOn renders signal — peak=0.116
+[PASS] ŠTRK: noteOn renders signal — peak=0.341
+[PASS] CINK: noteOn renders signal — peak=0.443
+[PASS] STRUNA: noteOn renders signal — peak=0.125
+[PASS] DYMKA: noteOn renders signal — peak=0.116
+[PASS] Spectral Pad: release during the attack fades from the attack level — before=3.08e-3 after=3.72e-3 ratio=1.21
+[PASS] Texture Synth: polyphony + voice stealing renders signal — peak=0.550
+[PASS] Wavetable Synth: morph moves the timbre (sine -> saw HF energy) — darkHF=0.037 brightHF=0.221
+[PASS] Granular Synth: deterministic render + noteOff cuts the tail — maxDiff=3.73e-9 fullTail=0.0776 cutTail=0.0000
+[PASS] Texture Synth: deterministic render (LFO clock anchored to the note timeline) — maxDiff=5.96e-8 peak=0.2476
+[PASS] offline export parity: wavetable + granular render audible with worklets loaded (offline worklet seeding) — wavetable=0.7743 granular=0.0708
+[PASS] TSAR: offline export is audible through the event-queue worklet (lazy load + processorOptions seed) — peak=0.5150
+[PASS] KOPA: offline export is audible through the event-queue worklet (lazy load + processorOptions seed) — peak=0.2571
+[PASS] GROW: lazy worklet generates the missing fundamental's 2nd harmonic on a real render — ready=true h2=0.0873 h1=0.0375
+[PASS] TWIST: lazy worklet shifts the phase of a real render while preserving its level — ready=true wetRms=0.354 dryRms=0.354 maxDiff=0.405
+[PASS] TWIST: KEY PUMP moves the render on a real key feed (bit-exact without one) — keyDiff=0.8001 noKeyDiff=0.00e+0
+[PASS] TWIST: DYNAMIC follows anti-phase SIDE-only input on the shipped worklet — ready=true differenceEnergy=662.1452
+[PASS] TWIST: KEY detector follows anti-phase SIDE-only audio on the shipped worklet — ready=true maxDiff=0.00e+0 keyEnergy=2212.9196
+[PASS] TWIST: invalid samples are silenced without poisoning the shipped filter state — ready=true finite=true maxDiff=0.00e+0 tailRms=0.283
+[PASS] TWIST: live worklet telemetry reports the effective curve parameters — {"lfo":0.02533333333333333,"focusHz":310,"env":0,"key":1,"radius":0.8643999886512757,"dispersion":0.8299999833106995,"punch":-0.44999998807907104,"punchHz":610,"punchMix":0.7200000286102295,"punchRadius":0.41849998891353607,"shape":2.5,"spread":0.3499999940395355,"field":-0.30000001192092896,"dyn":0,"dynPunch":0,"keyMode":0,"lfoDepth":0,"mix":1,"output":0}
+[PASS] REZONANS: lazy worklet loads and its harmony stack moves a real render — ready=true maxDiff=0.2144
+[PASS] REZONANS: +8 st formant raises the high-band share on a real render — base=0.238 raised=0.543
+[PASS] live worklet-path audibility: wavetable/granular/PRISM on a real AudioContext — wavetable=1.1749 granular=0.0699 prism=0.3760 (floor 0.0100)
+[PASS] analog RELEASE knob shapes the post-noteOff tail (noteOff path) — rel0.05=0.0003 rel3=0.0910
+[PASS] match EQ: master stage applies the curve (+6 dB high shelf lifts the high band) — lift=3.05 dB (flat -26.1 → lifted -23.1)
+[PASS] match EQ: full pipeline — measured mix vs retained reference points the right way — curve -6.0/-1.7/6.0/6.0 dB
+[PASS] match EQ: command + schema round-trip — master.matchEq.high=6.00
+[PASS] multi-tap delay deterministic across renders + feedback audible (worklet loop) — maxDiff=2.38e-7 wetPeak=0.8718
+[PASS] sampler STRETCH renders a +12st note (single buffer assignment) — peak=0.4052
+[PASS] texture: per-note pan renders left/right independently and neutral stays unchanged — neutralDiff=0.00e+0 left=0.2206/0.0000 right=0.0000/0.2206 overlap=0.2206/0.2237
+[PASS] vocalchop: per-note pan renders left/right independently and neutral stays unchanged — neutralDiff=0.00e+0 left=0.0492/0.0000 right=0.0000/0.0492 overlap=0.0492/0.0366
+[PASS] Acid 303 slide note moves the held fundamental without a new attack — pre 110/220=2.30e+5/6.26e+4; post 110/220=7.98e-1/3.32e+5
+[PASS] 808: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.51510 neutralΔ=0.00000 cutoffΔ=0.62881 ModXΔ=0.63028 ModYΔ=0.20876
+[PASS] 808: per-note release velocity changes the rendered note-off tail — short=0.25362 peak=6.24e-1 long=0.48990 peak=6.48e-1 ratio×1.93
+[PASS] 808: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.51458 left=0.72772/0.00000 right=0.72772/0.00000 overlap=0.72797/0.72492
+[PASS] 808: slide note moves the held fundamental without a new attack — pre 55.0/110.0Hz=4.69e+6/1.76e+4; post=2.68e+5/1.18e+7
+[PASS] 808: fine-pitch event shifts the rendered note through TriggerEngine — base=0.51458 octaveΔ=0.76085
+[PASS] sampler: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.23615 neutralΔ=0.00000 cutoffΔ=0.26120 ModXΔ=0.26451 ModYΔ=0.03332
+[PASS] sampler: per-note release velocity changes the rendered note-off tail — short=0.00166 peak=2.24e-2 long=0.04518 peak=2.53e-1 ratio×27.23
+[PASS] sampler: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.23633 left=0.47267/0.00000 right=0.47267/0.00000 overlap=0.46614/0.41663
+[PASS] sampler: fine-pitch event shifts the rendered note through TriggerEngine — base=0.23633 octaveΔ=0.33546
+[PASS] analog: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.12311 neutralΔ=0.00000 cutoffΔ=0.13243 ModXΔ=0.13334 ModYΔ=1.18396
+[PASS] analog: per-note release velocity changes the rendered note-off tail — short=0.00328 peak=4.97e-2 long=0.03806 peak=2.34e-1 ratio×11.62
+[PASS] analog: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.15474 left=0.30948/0.00000 right=0.30948/0.00000 overlap=0.30795/0.26556
+[PASS] analog: fine-pitch event shifts the rendered note through TriggerEngine — base=0.15474 octaveΔ=0.19148
+[PASS] bass: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.39052 neutralΔ=0.00000 cutoffΔ=0.43459 ModXΔ=0.43993 ModYΔ=0.98276
+[PASS] bass: per-note release velocity changes the rendered note-off tail — short=0.00202 peak=2.51e-2 long=0.05159 peak=3.84e-1 ratio×25.53
+[PASS] bass: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.43908 left=0.87542/0.00000 right=0.87542/0.00000 overlap=0.86030/0.73173
+[PASS] bass: fine-pitch event shifts the rendered note through TriggerEngine — base=0.43908 octaveΔ=0.44387
+[PASS] texture: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.07357 neutralΔ=0.00000 cutoffΔ=0.04454 ModXΔ=0.01485 ModYΔ=0.02796
+[PASS] texture: per-note release velocity changes the rendered note-off tail — short=0.00000 peak=0.00e+0 long=0.06349 peak=1.17e-1 ratio×6349207.90
+[PASS] texture: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.08938 left=0.17877/0.00000 right=0.17877/0.00000 overlap=0.17565/0.13278
+[PASS] texture: fine-pitch event shifts the rendered note through TriggerEngine — base=0.08938 octaveΔ=0.10965
+[PASS] wavetable: per-note release velocity changes the rendered note-off tail — short=0.01677 peak=1.78e-1 long=0.10074 peak=4.66e-1 ratio×6.01
+[PASS] wavetable: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.29690 left=0.59381/0.00000 right=0.59381/0.00000 overlap=0.98380/4.21973
+[PASS] wavetable: fine-pitch event shifts the rendered note through TriggerEngine — base=0.29690 octaveΔ=0.37504
+[PASS] granular: per-note release velocity changes the rendered note-off tail — short=0.01225 peak=1.39e-1 long=0.02424 peak=2.39e-1 ratio×1.98
+[PASS] granular: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.13792 left=0.27243/0.00000 right=0.27243/0.00000 overlap=0.26815/0.23608
+[PASS] granular: fine-pitch event shifts the rendered note through TriggerEngine — base=0.13792 octaveΔ=0.19754
+[PASS] keys: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.00075 neutralΔ=0.00000 cutoffΔ=0.00956 ModXΔ=0.00956 ModYΔ=0.05316
+[PASS] keys: per-note release velocity changes the rendered note-off tail — short=0.00000 peak=4.05e-5 long=0.00013 peak=9.01e-3 ratio×268.39
+[PASS] keys: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.00055 left=0.00109/0.00000 right=0.00109/0.00000 overlap=0.00107/0.00050
+[PASS] keys: fine-pitch event shifts the rendered note through TriggerEngine — base=0.00055 octaveΔ=0.00089
+[PASS] organ: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.17029 neutralΔ=0.00000 cutoffΔ=0.18294 ModXΔ=0.18376 ModYΔ=0.15128
+[PASS] organ: per-note release velocity changes the rendered note-off tail — short=0.00021 peak=2.38e-3 long=0.01722 peak=9.57e-2 ratio×81.34
+[PASS] organ: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.16538 left=0.33050/0.00000 right=0.33050/0.00000 overlap=0.32631/0.29012
+[PASS] organ: fine-pitch event shifts the rendered note through TriggerEngine — base=0.16538 octaveΔ=0.21273
+[PASS] strings: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.18946 neutralΔ=0.00000 cutoffΔ=0.20816 ModXΔ=0.20869 ModYΔ=0.62576
+[PASS] strings: per-note release velocity changes the rendered note-off tail — short=0.02998 peak=2.45e-1 long=0.15330 peak=3.91e-1 ratio×5.11
+[PASS] strings: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.14995 left=0.29991/0.00000 right=0.29991/0.00000 overlap=0.30203/0.26648
+[PASS] strings: fine-pitch event shifts the rendered note through TriggerEngine — base=0.14995 octaveΔ=0.20444
+[PASS] bell: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.08155 neutralΔ=0.00000 cutoffΔ=0.08396 ModXΔ=0.08399 ModYΔ=0.00758
+[PASS] bell: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.11815 left=0.16709/0.00000 right=0.16709/0.00000 overlap=0.16682/0.15249
+[PASS] bell: fine-pitch event shifts the rendered note through TriggerEngine — base=0.11815 octaveΔ=0.17028
+[PASS] reese: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.14532 neutralΔ=0.00000 cutoffΔ=0.15780 ModXΔ=0.16090 ModYΔ=0.89518
+[PASS] reese: per-note release velocity changes the rendered note-off tail — short=0.00622 peak=4.34e-2 long=0.04939 peak=1.54e-1 ratio×7.94
+[PASS] reese: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.13087 left=0.26175/0.00000 right=0.26175/0.00000 overlap=0.25684/0.23531
+[PASS] reese: fine-pitch event shifts the rendered note through TriggerEngine — base=0.13087 octaveΔ=0.18668
+[PASS] clav: per-note release velocity changes the rendered note-off tail — short=0.00018 peak=4.05e-3 long=0.00297 peak=2.95e-2 ratio×16.09
+[PASS] clav: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.01291 left=0.02581/0.00000 right=0.02581/0.00000 overlap=0.02571/0.03791
+[PASS] clav: fine-pitch event shifts the rendered note through TriggerEngine — base=0.01291 octaveΔ=0.02970
+[PASS] acid: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.19429 neutralΔ=0.00000 cutoffΔ=0.21012 ModXΔ=0.22358 ModYΔ=1.75629
+[PASS] acid: per-note release velocity changes the rendered note-off tail — short=0.00280 peak=3.05e-2 long=0.04498 peak=2.06e-1 ratio×16.06
+[PASS] acid: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.19482 left=0.38964/0.00000 right=0.38964/0.00000 overlap=0.05266/0.33249
+[PASS] acid: slide note moves the held fundamental without a new attack — pre 110.0/220.0Hz=4.58e+5/1.24e+5; post=6.42e+2/1.70e+6
+[PASS] acid: fine-pitch event shifts the rendered note through TriggerEngine — base=0.19482 octaveΔ=0.25101
+[PASS] brass: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.23435 neutralΔ=0.00000 cutoffΔ=0.26989 ModXΔ=0.27188 ModYΔ=1.62668
+[PASS] brass: per-note release velocity changes the rendered note-off tail — short=0.00775 peak=9.36e-2 long=0.06522 peak=2.89e-1 ratio×8.42
+[PASS] brass: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.29263 left=0.58526/0.00000 right=0.58526/0.00000 overlap=0.57997/0.44860
+[PASS] brass: fine-pitch event shifts the rendered note through TriggerEngine — base=0.29263 octaveΔ=0.36406
+[PASS] fm: per-note release velocity changes the rendered note-off tail — short=0.01235 peak=1.11e-1 long=0.05225 peak=1.86e-1 ratio×4.23
+[PASS] fm: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.17866 left=0.25267/0.00000 right=0.25267/0.00000 overlap=0.25178/0.22510
+[PASS] fm: fine-pitch event shifts the rendered note through TriggerEngine — base=0.17866 octaveΔ=0.24940
+[PASS] pluck: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.00039 neutralΔ=0.00000 cutoffΔ=0.00041 ModXΔ=0.00041 ModYΔ=0.04956
+[PASS] pluck: per-note release velocity changes the rendered note-off tail — short=0.00002 peak=4.35e-4 long=0.00008 peak=1.09e-3 ratio×4.27
+[PASS] pluck: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.00191 left=0.00344/0.00000 right=0.00344/0.00000 overlap=0.00340/0.00192
+[PASS] pluck: fine-pitch event shifts the rendered note through TriggerEngine — base=0.00191 octaveΔ=0.00140
+[PASS] flute: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.15594 neutralΔ=0.00000 cutoffΔ=0.16978 ModXΔ=0.17002 ModYΔ=0.00756
+[PASS] flute: per-note release velocity changes the rendered note-off tail — short=0.00633 peak=8.15e-2 long=0.04949 peak=2.52e-1 ratio×7.82
+[PASS] flute: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.15518 left=0.21946/0.00000 right=0.21946/0.00000 overlap=0.21913/0.19691
+[PASS] flute: fine-pitch event shifts the rendered note through TriggerEngine — base=0.15518 octaveΔ=0.22090
+[PASS] logdrum: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.19912 neutralΔ=0.00000 cutoffΔ=0.21993 ModXΔ=0.22059 ModYΔ=0.97264
+[PASS] logdrum: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.18383 left=0.36730/0.00000 right=0.36730/0.00000 overlap=0.36092/0.29114
+[PASS] logdrum: fine-pitch event shifts the rendered note through TriggerEngine — base=0.18383 octaveΔ=0.23677
+[PASS] spectral: per-note cutoff and Mod X/Y affect rendered audio while neutral stays close — base=0.05586 neutralΔ=0.00000 cutoffΔ=0.05949 ModXΔ=0.05965 ModYΔ=0.00985
+[PASS] spectral: per-note release velocity changes the rendered note-off tail — short=0.02997 peak=1.13e-1 long=0.05022 peak=1.47e-1 ratio×1.68
+[PASS] spectral: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.05598 left=0.10777/0.00000 right=0.10777/0.00000 overlap=0.10755/0.09276
+[PASS] spectral: fine-pitch event shifts the rendered note through TriggerEngine — base=0.05598 octaveΔ=0.06605
+[PASS] vocalchop: per-note release velocity changes the rendered note-off tail — short=0.00082 peak=1.37e-2 long=0.01383 peak=1.07e-1 ratio×16.88
+[PASS] vocalchop: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.05975 left=0.08451/0.00000 right=0.08451/0.00000 overlap=0.08422/0.07099
+[PASS] vocalchop: fine-pitch event shifts the rendered note through TriggerEngine — base=0.05975 octaveΔ=0.07894
+[PASS] drumsynth: per-note pan preserves center and renders isolated hard-pan plus overlapping opposite pans — centerΔ=0.000000 base=0.13279 left=0.18779/0.00000 right=0.18779/0.00000 overlap=0.18678/0.16670
+[PASS] drumsynth: fine-pitch event shifts the rendered note through TriggerEngine — base=0.13279 octaveΔ=0.18696
+[PASS] tsar: fine-pitch event shifts the rendered note through TriggerEngine — base=0.34459 octaveΔ=0.48625
+[PASS] kopa: fine-pitch event shifts the rendered note through TriggerEngine — base=0.02992 octaveΔ=0.02941
+[PASS] choral: fine-pitch event shifts the rendered note through TriggerEngine — base=0.21299 octaveΔ=0.29768
+[PASS] ladic: fine-pitch event shifts the rendered note through TriggerEngine — base=0.09334 octaveΔ=0.14033
+[PASS] hlas: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03126 octaveΔ=0.05812
+[PASS] struna: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03815 octaveΔ=0.08523
+[PASS] dymka: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03393 octaveΔ=0.06658
+[PASS] strk: fine-pitch event shifts the rendered note through TriggerEngine — base=0.00714 octaveΔ=0.01041
+[PASS] cink: fine-pitch event shifts the rendered note through TriggerEngine — base=0.03015 octaveΔ=0.04283
+[PASS] automation lane renders as a ramp (16th-grid interpolation) — ramp=0.4870 zero=0.4650 mid=0.4723 full=0.4870
+[PASS] phaser rate changes the rendered signal (wet chain alive) — maxDiff=0.3680
+[PASS] intent production path: generate → deterministic bank → apply → audible render — bank=6 unique=6 peak=0.861 elapsed=2564ms selection=model/active ledger=true
+[PASS] intent ranker: local ONNX worker scores a real candidate batch (or controlled fallback) — source=model scores=0.000/0.005/1.000
+[PASS] intent ranker: browser missing/offline, hash-mismatch and timeout fall back safely — missing=fallback hash=fallback timeout=fallback
+[PASS] distortion: cubic clip adds harmonics — fundamental=4.51e-1 third=4.03e-2
+[PASS] bitcrusher: 4-bit quantisation renders signal with sane peak — peak=0.993
+[PASS] chorus: produces audible signal past 20 ms (delay-line smear) — late-peak=1.000
+[PASS] kaskada: produces audible signal (stereo delay) — peak=0.446
+[PASS] kaskada: ping-pong produces stereo alternation (L ≠ R in echo region) — sampleDiff=121.615
+[PASS] kaskada: reverse mode renders an audibly reversed sweep — diff=0.630 peak=0.348
+[PASS] kaskada: dual spectrum + unmask meters flow over the port — dry=-3.1dB wet=-41.7dB umMaxRed=12.0dB
+[PASS] phaser: re-chains stages at runtime and renders signal — peak=0.920
+[PASS] sidechain: setSidechainInput attaches/detaches safely and renders signal — peak=1.000
+[PASS] audio-worklet: processors load and bitcrusher downsamples — changes=136 (worklet sample-hold is active)
+[PASS] Gate: fallback reports degraded state — degraded=true reason=AudioWorklet unavailable — gate bypassed (1:1 signal)
+[PASS] Transient Shaper: fallback reports degraded state — degraded=true reason=AudioWorklet unavailable — transient shaper bypassed (1:1 signal)
+[PASS] Limiter: fallback reports degraded state — degraded=true reason=AudioWorklet unavailable — limiter bypassed (1:1 signal)
+[PASS] Compressor: fallback reports degraded state — degraded=true reason=Fallback — native approximation (sidechain & HPF inactive)
+[PASS] gate: fallback passes signal 1:1 (never silent) — peak=0.500 expected≈0.500
+[PASS] gate: worklet path gates when modules are loaded — peak=0.0000 (fallback would be ≈0.5)
+[PASS] limiter: look-ahead worklet limits, meters and anticipates — peak=0.495/0.501 gr=5.1dB spread=1.017 onset=253/252
+[PASS] pdc: limiter track stays aligned with dry track (<2 ms) — skew=0.18ms (≈5ms means PDC inactive)
+[PASS] pdc: grouped return send aligns to the dry group path (within 128 samples) — dry=2104 send=2096 skew=8 samples
+[PASS] groups: moved track feeds only the new group — L=0.000 R=0.835 (leak would make L≈R)
+[PASS] mixer preview: fader preview on a muted channel stays silent (unmuted stays audible) — muted=0.0000 open=0.860
+[PASS] mixer preview: send preview drives the real return-bus path — wetDiff=1.0462 transparentDiff=0.00000
+[PASS] frozen: deleting a frozen track stops + removes its buffer source — started=true remainingSources=0
+[PASS] resample: master bounce captures audible audio — dur=3.06s peak=0.915 sr=48000
+[PASS] master meter: reads true stereo (hard-left stays out of R) — L=-1.7dB R=-94.5dB corr=0.17
+[PASS] 808: rapid retrigger renders every note (voice cleanup wiring) — first=0.722 third=1.006
+[PASS] wavetable: late-arriving user sample replaces the cached factory fallback — fallbackHF=0.019 sampleHF=0.065
+[PASS] export: MP3 encodes small and decodes back to the same duration — mp3=155kB vs wav=1130kB dur=6.61s/6.56s
+[PASS] quality: browser-generated pattern passes invariants and content hash is deterministic — 6afd1baa/6afd1baa
+[PASS] quality: generated pattern renders offline audio and a valid WAV — peak=0.861 wav=1401004
+[PASS] export: video records canvas + audio via MediaRecorder — mp4 81kB type=video/mp4
+[PASS] chop beats: pads play only their slice region + transients detected — before=0.0000 during=0.358 after=0.0001 onsets=[0.02,0.47]
+[PASS] per-pad mod: gain LFO tremolos one voice (envelope pumps vs flat) — plainSpread=1.02 modSpread=12.10
+[PASS] macro targets: fxParam resolves around base, repeated syncs never accumulate — syncs=3 first=0.5000 last=0.5000 (expect 0.5)
+[PASS] fxeq: worklet DSP renders in offline context (saturated) + honest fallback — fallback=true refRms=0.177 diffRms=0.836 peakSat=1.538
+[PASS] fxeq: CPU budget — worst case fits the audio-thread block budget — bestSample=913µs/block of 2902µs budget → 31.5% of one core (samples=913,954,996)
+[PASS] fxeq: reports DSP latency for PDC (oversampled bands) — latency=2.698 ms
+[PASS] ultina: worklet DSP renders in offline context (+6dB) + honest fallback — fallback=true refRms=0.177 diffRms=0.173 peak=0.499
+[PASS] ultina: CPU budget — all 10 modules fit the audio-thread block budget — bestSample=69µs/block of 2902µs budget → 2.4% of one core (samples=69,71,102)
+[PASS] ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots, gated node stays silent) — lufs=-9.4 specEnergy=2058 workletSnapshot=true gatedSilent=true
+[PASS] ozvena: phase-A per-engine benchmark (decision data) — E1=173µs (6%) E2=385µs (13%) E3=484µs (17%) ALL=648µs (22%) — budget 2902µs
+[PASS] ozvena: worklet reverb renders in offline context + PDC latency + honest fallback — fallback=true tailRms=0.00178 diffRms=0.00178 latencyMs=2.7
+[PASS] 808 amplitude decays over time — early=0.517 late=0.138
+[PASS] sampler plays transposed sample from C4 root — peak=0.403 at 1312
+[PASS] sampler: loop region sustains past the gate and releases cleanly — inLoop=0.037 afterRelease=0.000
+[PASS] fm synth: bell renders with FM sidebands, growl stays mixable — bellPeak=0.451 growlPeak=0.506
+[PASS] LFO modulates gain at audio rate — max=1.265 min=0.150 ratio=8.40
+[PASS] automation ramps track level over time — early=0.634 late=0.018 ratio=35.9
+[PASS] offline render: pattern mode produces audio of correct length — peak=0.860 dur=2.44s expected=2.44s
+[PASS] offline render: song mode (4-bar arrangement) is longer than one pattern pass — song=8.24s pattern=2.44s
+[PASS] offline render: drum and bass stems are independently audible — drum=0.859 bass=0.760
+[PASS] offline render encodes to a valid WAV file — bytes=376744
+[PASS] templates: factory templates are registered — 15 registered: house,techno,trap,ambient,scene-score,ukg,jersey,phonk,drill,lofi-house,reggaeton,boombap,vlyx-demo,dnb,empty
+[PASS] template house: valid project and renders audio — valid=true peak=0.860
+[PASS] template techno: valid project and renders audio — valid=true peak=0.860
+[PASS] template trap: valid project and renders audio — valid=true peak=0.861
+[PASS] template ambient: valid project and renders audio — valid=true peak=0.365
+[PASS] template scene-score: valid project and renders audio — valid=true peak=0.861
+[PASS] template ukg: valid project and renders audio — valid=true peak=0.861
+[PASS] template jersey: valid project and renders audio — valid=true peak=0.860
+[PASS] template phonk: valid project and renders audio — valid=true peak=0.860
+[PASS] template drill: valid project and renders audio — valid=true peak=0.860
+[PASS] template lofi-house: valid project and renders audio — valid=true peak=0.860
+[PASS] template reggaeton: valid project and renders audio — valid=true peak=0.860
+[PASS] template boombap: valid project and renders audio — valid=true peak=0.861
+[PASS] template vlyx-demo: valid project and renders audio — valid=true peak=0.861
+[PASS] template dnb: valid project and renders audio — valid=true peak=0.860
+[PASS] template empty: valid project and renders audio — valid=true peak=0.000
+[PASS] perf environment: this machine's timing is measurable — calib=14.1ms (floor 18ms) spread=1.0× (max 2×) — environment=measurable, the budget checks below are gated
+[PASS] perf: house — 8-bar render within budget — 12509ms for 15684ms audio (budget 14115ms, 0.80× realtime)
+[FAIL] perf: techno — 8-bar render within budget — 13839ms for 14745ms audio (budget 13271ms, 0.94× realtime)
+[PASS] perf: trap — 8-bar render within budget — 6318ms for 13914ms audio (budget 12523ms, 0.45× realtime)
+[PASS] perf: ambient — 8-bar render within budget — 5804ms for 24200ms audio (budget 21780ms, 0.24× realtime)
+[PASS] perf: scene-score — 8-bar render within budget — 3795ms for 16200ms audio (budget 14580ms, 0.23× realtime)
+[PASS] perf: ukg — 8-bar render within budget — 8171ms for 14636ms audio (budget 13172ms, 0.56× realtime)
+[PASS] perf: jersey — 8-bar render within budget — 4780ms for 13914ms audio (budget 12523ms, 0.34× realtime)
+[PASS] perf: phonk — 8-bar render within budget — 11120ms for 13441ms audio (budget 12097ms, 0.83× realtime)
+[PASS] perf: drill — 8-bar render within budget — 6962ms for 13721ms audio (budget 12349ms, 0.51× realtime)
+[PASS] perf: lofi-house — 8-bar render within budget — 12392ms for 16471ms audio (budget 14824ms, 0.75× realtime) — first sample 14859ms, retry recovered
+[PASS] perf: reggaeton — 8-bar render within budget — 10952ms for 20200ms audio (budget 18180ms, 0.54× realtime)
+[PASS] perf: boombap — 8-bar render within budget — 12629ms for 21533ms audio (budget 19380ms, 0.59× realtime)
+[PASS] perf: vlyx-demo — 8-bar render within budget — 9076ms for 16200ms audio (budget 14580ms, 0.56× realtime)
+[PASS] perf: dnb — 8-bar render within budget — 2397ms for 11234ms audio (budget 12000ms, 0.21× realtime)
+[FAIL] perf: 8-bar render average across all templates — avg=8624ms worst=13839ms over 14 templates; aggregate=0.53× realtime
+[PASS] rt budget: 12 tracks × 4 effects realtime — blocks=832 xruns=0 heartbeat avg=216.15ms max=269.70ms (expected≈170.67ms, 1.27×) quantum=2.667ms · device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=0
+[FAIL] perf: 8 tracks × 4 effects render stays within baseline + headroom — 17944ms vs 2938ms single-track baseline for 16500ms audio (budget 14938ms, 6.11× baseline)
+[PASS] scene-score template: song arrangement renders longer than one pattern — song=48.20s pattern=2.20s
+[PASS] groove: swing/humanize/ratchet change the exported audio — peak=0.860 sample-diff=577.7
+[PASS] artifact gate: genre renders are finite, tail-safe and under ceiling (transient candidates reported for review) — house reviewCandidates=147[533,534,2793,11198] tail=0.010 tp=-1.3 techno reviewCandidates=197[534,656,660,691] tail=0.010 tp=-1.3 trap reviewCandidates=44[529,530,534,535] tail=0.010 tp=-1.3 drill reviewCandidates=182[528,530,534,535] tail=0.010 tp=-1.3 phonk reviewCandidates=338[533,534,535,1027] tail=0.010 tp=-1.3 jersey reviewCandidates=303[526,527,529,530] tail=0.010 tp=-1.3 dnb reviewCandidates=32[529,534,8132,8133] tail=0.010 tp=-1.3 ambient reviewCandidates=0[] tail=0.010 tp=-8.2
+[PASS] round-robin: consecutive hat hits are not the same sample — layers=0 corr=[0.266,0.057,1.000,1.000,1.000,1.000,1.000]
+[PASS] presets: factory bank covers every instrument kind — kinds=31 presets=671
+[PASS] presets: apply command sticks and project still renders — applied=true peak=0.860
+[PASS] sampler AutoMap: filename keyzones route notes to the correct imported sample — keyzones=true low=72 high=871 full=871
+[PASS] audio clip stretch: pitch preserved, duration scaled, source untouched — zcStretch=411 zcResample=841 durStretch=2.02s durResample=0.52s quarterPeak=0.561 sourceCorrupted=false
+[PASS] audio clip playback: reverse starts at the high edge and loop phase wraps — reverse=0.242→0.214 loop=0.116→0.087
+[PASS] master chain tames a hot mix (limiter reduces, clipper softens) — unlimited=2.814 limited=0.860 clipped=0.860
+[PASS] master glue levels a hot mix (lower RMS + peak, no crush) — plain=4.359/1.277 glued=2.813/0.729
+[PASS] master limiter: look-ahead true peak stays below the delivery ceiling — samplePeak=0.683 truePeak=-3.30 dBTP ceiling=-3.00 dBTP
+[PASS] step modulator: gain alternates on the division grid (offline) — gate=0.7733/0.2628 ctrl=0.6603/0.6459
+[PASS] modulators: offline renders are deterministic (live == offline law) — SUM|a-b|=1.81e+0 rel=2.68e-5
+[PASS] random S&H: seeded stream is active and repeat-render stable — rel=1.56e-5 spread=0.86 blocks=30
+[PASS] envelope follower: source transients shape host gain (cross-track) — ducked=0.600 plain=1.022
+[PASS] compressor: worklet compresses hot input and reports GR — rms=0.0568 baseline=0.4950 gr=20.2dB
+[PASS] compressor: DE-ESS mode ducks the sibilance band, not the low band (host) — duck(6500Hz, band=6500)=0.3112 duck(6500Hz, band=300)=0.2743 released=0.0370 sibilant/low=0.120 baseline=0.3536
+[PASS] pitchCorrect: amount 0 passes the input tone through; amount 1 corrects toward the scale target — amount0: rms=0.3536 input=0.2500 · amount1: input=0.0083 target=0.2044
+[PASS] compressor: sidechain HPF gates bass-only detector — baseline=0.0404 bassOn=0.0184(gr 23.9) hpf300=0.2828(gr 0.0)
+[PASS] compressor: mix = 0 passes unity (parallel blend) — peak=0.8000 expected≈0.8
+[PASS] kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS) — integrated=-22.99 LUFS (momentary=-22.99)
+[PASS] step gate: pattern halves signal on off-beats (offline) — even=0.6925 odd=0.0811 ctrl=0.6932
+[PASS] step gate: mix=0 passes signal through (no gating) — mix0=1.8354 allOpen=1.8354
+[PASS] sidechain: multiband split frees high frequencies from ducking — fullBandRms=0.0215 multiBandRms=0.5054
+[PASS] svFilter: LP attenuates high frequencies (zero-crossing proxy) — crossingDensity=0.0090 (bare two-tone would be ~0.36)
+[PASS] svFilter: HP blocks low frequencies — rms=0.0070 (100 Hz through 1 kHz HP)
+[PASS] flanger: wet signal differs from dry (comb filtering active) — relDiff=2.120 rmsFlanged=0.0943
+[PASS] tremolo: AM modulates gain rhythmically — hi=0.3535 lo=0.0354 ratio=10.0 peak=0.500
+[PASS] autowah: envelope drives filter cutoff — quiet=0.0028 loud=0.6001 ratio=213.6
+[PASS] stutter: gate pattern alternates delayed loop audibility — high=0.4891 low=0.1292 ratio=3.8
+[PASS] fxeq: real AudioWorklet DSP renders (loaded for this context, honest degradation) — workletReady=true degraded=false rms=0.352 peak=0.564
+[PASS] fxeq: DSP latency reported over the port (PDC gets a nonzero figure) — latencySec=0.002698 (119 samples @ 44100)
+[PASS] fxeq: rack MIX knob reaches the core wet/dry (mix 0 vs 100 renders differ) — dryPeak=0.524 wetPeak=0.564 maxDiff=0.505
+[PASS] fxeq: band metering flows over the port (gated node stays silent) — peaksLen=6 hotBand=B2 hotVal=0.336 gatedSilent=true
+[PASS] fxeq: latency-aligned lane is transparent; measured lag matches the reported latency — sigRms=0.141 alignedRms=0.0060 lag=119 reported=119 (±128)
+[PASS] fxeq: multi-instance CPU — 4 creative instances stay inside the realtime budget — 4 instances × 3.0s audio in 1.65s wall → 13.7% of one realtime core per instance
+[PASS] prism: two browser worklet instances stay deterministic after JSON reload — sameShape=true maxDiff=0.00e+0 length=94175
+[PASS] fm: INDEX automation retunes a held note mid-flight — diff=0.4391
+[PASS] fm: RATIO automation re-pitches the modulator mid-note — diff=0.2320
+[PASS] fm: MPE pressure brightens the matched pitch — diff=0.4059
+[PASS] mod matrix analog: amt=0 is render-neutral — neutral=1.2e-7 peak=0.590
+[PASS] mod matrix analog: route modulates the render — diff=0.2527
+[PASS] mod matrix keys: amt=0 is render-neutral — neutral=0.0e+0 peak=0.047
+[PASS] mod matrix keys: route modulates the render — diff=0.0369
+[PASS] mod matrix 808: amt=0 is render-neutral — neutral=1.2e-7 peak=0.701
+[PASS] mod matrix 808: route modulates the render — diff=0.1984
+[PASS] mod matrix sampler: amt=0 is render-neutral — neutral=0.0e+0 peak=0.405
+[PASS] mod matrix sampler: route modulates the render — diff=0.0017
+[PASS] mod matrix vocalchop: amt=0 is render-neutral — neutral=0.0e+0 peak=0.109
+[PASS] mod matrix vocalchop: route modulates the render — diff=0.0875
+[PASS] mod matrix fallback: negative AMP/CUTOFF routes stay bounded and audible — peaks=0.067/0.642
+[PASS] mod matrix fallback: amount automation updates a held voice — diff=0.1435
+[PASS] mod matrix fallback: zero-amount route can activate a held voice — diff=0.1810 early=0.0000 late=0.1810
+[PASS] mod matrix fallback: source selector automation updates a held voice — diff=0.1713
+[PASS] mod matrix fallback: destination selector automation updates a held voice — diff=0.3518
+[PASS] mod matrix fallback: LFO rate automation updates a held voice — diff=0.1647
+[PASS] granular voice worklet: audible, position steers grains, repeats bit-identical — peak=0.327 posDiff=0.6528 repeatDiff=0
+[PASS] granular fallback cloud intact without worklets — peak=0.243
+[PASS] PDC control: gate reports its 2.5 ms look-ahead to the engine after the settle barrier — reported=120.0 samples (expected 120)
+[PASS] PDC export alignment: gate track vs dry track land within 2 samples after prepareOfflineRender — alignedDelta=0 samples (a=694.0, b=694.0)
+[PASS] rt-ticker: audio-clock tick source registered, cadence matches intervalBlocks, timestamps monotonic — ticks=54 span=0.565s expected=0.565s mono=true
+[PASS] scheduler driver: audio-clock ticker drives live playback windows end-to-end — kind=audio-ticker tickerTicks=32 windows=33 watchdogTicks=0 maxGap=34ms
+[PASS] lossy share delivery · ogg-opus (9009 B, 0.51s, rms 0.419) — container round-trip: rms 0.4193 (expected ~0.4243), peak 0.6164
+[PASS] lossy share delivery · m4a-aac (13146 B, 0.51s, rms 0.415) — container round-trip: rms 0.4146 (expected ~0.4243), peak 0.6019
+[PASS] offline generation: preview → accept → undo/redo → JSON export → reload preserved the pattern
+[DBG] {"hit":"BUTTON.step active beat-start","seqTop":0,"seqH":425,"stepY":299.390625}
+[info] app boot — ignored 4 refused request(s) to the optional local gallery service: 4× http://127.0.0.1:1234/api/intake
+[PASS] app boots into browser, opens a template, panels mount, project listed on return
+[PASS] collab: two pages sync edits + presence over the real server
+[PASS] instant jam: beat link + room seeds, syncs, late joiner adopts, transport shared (spread 235 ticks)
+[PASS] embed: /embed player renders, plays and links back into the studio
+[PASS] share link: ?import= opens the project straight into the studio
+[PASS] touch: long-press on a step opens the step editor (no right-click needed)
+[PASS] plugin workflow: add flagship effect, collapse, bypass, undo, macro nudge, play/stop
+
+436/439 checks passed
