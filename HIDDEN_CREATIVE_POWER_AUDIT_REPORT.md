@@ -2265,6 +2265,15 @@ because its numbers do not resemble the runner's. **Update (2026-10-29):** the d
 the parallel session's later local run reports the corpus **green at 77/77** — while the runner sits at **17/77 red** with one
 case unjudgeable. **The split that matters is therefore not desktop-vs-runner but Windows-vs-Linux** (§10.16.6).
 
+**Update (2026-10-30): the 77/77 claim now has an artifact in the repository.** The parallel session committed its desktop run
+at `74a1d8dd` — `docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`, whose line reads
+`PASS live↔offline null test: same engine + events on both contexts — passed=77/77 — environment=measurable … not measurable=0`.
+Until that commit, "the desktop is 77/77" was a claim with provenance but no artifact, and this report treated it as such.
+**One caveat, recorded where the instrument is described (§10.16.9): that log was produced against a working tree that also
+contained this session's uncommitted `src/browser-checks.ts`, so its name says one commit and its bytes came from another.** The
+77/77 line itself is unaffected by that — the parity corpus does not touch the realtime budget — but the artifact's provenance is
+now written down instead of assumed.
+
 **This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
 runner the same corpus reported **21/67** _(that annotation; the corpus has since moved to **18/67** at `ae372bf4` and
 **17/77** at `b2a02569` — §10.16.6)_; on a measurable desktop it reported **4/67**, with the calibration clean on
@@ -2794,7 +2803,7 @@ which is exactly why the line was not yet a finding.
 
 **Defect 1 — the guard and the gate measure different subsystems.** §10.16.2 fixed the machine test that decides
 `machineLoaded`: it spins the **main thread** and asks whether the harness thread can time anything
-(`src/browser-checks.ts:4746-4750`). The signal that trips this gate lives on the **audio thread** — the device clock advancing
+(`src/browser-checks.ts:4830-4834`). The signal that trips this gate lives on the **audio thread** — the device clock advancing
 by more than one render quantum (`src/audio-worklets/rt-monitor-processor.js:44-47`: `advanced > 128` → `droppedQuanta`).
 Two different subsystems, so the guard cannot see what it is guarding. **The CI run says both things at once**:
 `environment=measurable` (a main-thread measurement) and `xruns=7` (an audio-thread measurement), in the same run. §10.16.2's
@@ -2810,8 +2819,8 @@ graph's construction included — not the count inside the window. **A number th
 with another number**, and this one was being compared with a desktop run.
 
 **The fix — the check measures its own device floor, with the same probe, on the same device.** `auditRtBudget`
-(`src/browser-checks.ts:498-640`) now measures a **floor** before the graph: the same context, the same rt-monitor, the same
-window — **one track and no effects** (`:525-530`). The floor is read **twice** (cold, then warm on the same graph, `:564-565`),
+(`src/browser-checks.ts:498-642`) now measures a **floor** before the graph: the same context, the same rt-monitor, the same
+window — **one track and no effects** (`:525-529`). The floor is read **twice** (cold, then warm on the same graph, `:564-565`),
 because the first window can carry the context's cold start; the device's ability is the **better** of the two readings. The
 verdict then follows the device:
 
@@ -2821,12 +2830,12 @@ verdict then follows the device:
   and "the graph" → the verdict is **informational**, with the numbers attached (`:616-628`).
 
 That is §10.16.2's rule applied to the subsystem it was missing, and it is the same shape the **offline** budget already uses
-(`auditDenseRender`, `:552-632`: "the budget is RELATIVE to the same-machine baseline"). The realtime budget was the sibling
+(`auditDenseRender`, `:654-734`: "the budget is RELATIVE to the same-machine baseline"). The realtime budget was the sibling
 gate that never got the relative form. The jitter criterion got the same treatment: a device that cannot deliver a heartbeat on
-time even on an empty graph cannot be judged by heartbeat jitter (`:620-624`).
+time even on an empty graph cannot be judged by heartbeat jitter (`:623-628`).
 
 **Every count is now a delta, and the window is named.** The processor's counters are cumulative, so each number is the
-difference between two reads (`:570-573`), and `blocks` is the count **inside the window** rather than since the context was
+difference between two reads (`:570-578`), and `blocks` is the count **inside the window** rather than since the context was
 created. The message also splits the graph phase into **build** and **steady**, because "48 effects do not run in realtime" and
 "constructing 48 effects stalls the audio thread" are different findings with different fixes.
 
@@ -2881,7 +2890,11 @@ number depends on the accumulated state of the run instead of on the code it cla
 verified_** — heap growth and GC pressure is the obvious candidate, but `calib` is a pure CPU spin and cannot see the allocator
 or the collector, so it cannot confirm it. The parallel session recorded the same three failures and wrote them up as "the perf
 gates are load-sensitive" (`74a1d8dd`); the measurement above says **load is not the whole story**, because the box measured
-itself as idle (`calib=12.0ms`) in the run that still failed all three.
+itself as idle (`calib=12.0ms`) in the run that still failed all three. **And the gate's own comment claims the opposite**
+("Offline rendering is CPU-bound and load-independent, so unlike the realtime budget it is always gated",
+`src/browser-checks.ts:650`) — so the repo currently holds two statements about the same gate that contradict each other, and
+**the measurement sides with neither**: the rendering is CPU-bound, it is not load-independent, and the ratio did not separate
+structure from noise by a wide margin when the box was merely warm.
 
 **Provenance of the committed artifact, recorded here because this session owns the instrument.** The log the parallel session
 committed at `74a1d8dd` (`docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`) contains **this
