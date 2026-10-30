@@ -721,9 +721,9 @@ export async function auditDenseRender(
     // baseline does, so the gate was reading the machine and not the graph
     // (16045 ms against a 14679 ms budget on a box that was running other
     // work, while nothing in the render path had changed). Measured ratios
-    // for the same tree: 5.45× (idle), 5.68× (clean), 5.74-6.49× (loaded).
-    // 7.5× sits above that band and still trips when an effect's DSP gets
-    // materially more expensive.
+    // for the same tree: 5.17× (clean worktree at 4bc8a224), 5.45× (idle),
+    // 5.68× (clean), 5.74-6.49× (loaded). 7.5× sits above that band and still
+    // trips when an effect's DSP gets materially more expensive.
     const BUDGET_BASELINE_RATIO = 7.5;
     const budgetMs = Math.max(12000, baselineMs * BUDGET_BASELINE_RATIO);
     const ok = ms < budgetMs;
@@ -738,7 +738,7 @@ export async function auditDenseRender(
     };
   } catch (error) {
     return {
-      name: "perf: 8 tracks × 4 effects render stays within baseline + headroom",
+      name: "perf: 8 tracks × 4 effects render stays within the baseline ratio",
       ok: false,
       message: String(error),
     };
@@ -4808,16 +4808,21 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   //
   // 2026-10-30 recalibration. The budget used to be calibrated in 2026-09 on
   // an idle M1-class laptop, where the 14-template average was ~2 s. This
-  // tree measures 5.1-6.4 s for the SAME work, so those numbers described a
+  // tree measures 4.6-6.4 s for the SAME work, so those numbers described a
   // machine, not the code. The budget is now set from the band measured on
   // this tree:
   //
   //   run                                    8-bar average
+  //   clean checkout at 4bc8a224 (this tree)    4579 ms
   //   clean checkout (worktree, 2fbcfda0)       6025 ms
   //   shared desktop, the corpus in front        6321 ms
   //   shared desktop, other work running         5137 ms
   //   isolated page, no corpus in front          6379 ms
-  //   → band 5137-6379 ms, budget 9000 ms.
+  //   → band 4579-6379 ms over five runs, budget 9000 ms.
+  //
+  // The lowest row is the tree that CARRIES the budget, measured in a clean
+  // worktree — so the 9000 ms budget has ~2× of headroom over the code it
+  // guards, and the spread above it is the machine, not the render path.
   //
   // A budget INSIDE the band is a coin flip: the 2026-10-29 tree measured
   // 8346 / 8624 / 9118 ms on the same box under load and was red all three
@@ -4833,7 +4838,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   // comment's.
   {
     const BUDGET_PER_RENDER_MS = 12000;
-    /** The 8-bar average across all templates. Measured band 5137-6379 ms. */
+    /** The 8-bar average across all templates. Measured band 4579-6379 ms. */
     const BUDGET_AVERAGE_MS = 9000;
     // Shared-machine guard: measure a fixed pure-JS workload first. On a
     // busy machine (concurrent builds) wall-clock budgets trip on load, not
