@@ -357,16 +357,19 @@ interface CaptureResult {
    * frames its worklets had already processed when the capture began.
    *
    * This is the number the offline branch has to match (see `renderOffline`).
-   * It is MEASURED, not assumed, and it is exact: the capture's context is
-   * frozen before the engine is built, so the engine's processors join the
-   * audio thread at frame 0 and the branch's history at the capture start is
-   * the capture start frame itself.
+   * It is exact, and it is the SAME for both realtime captures of a case: the
+   * capture's context is frozen before the engine is built, so the engine's
+   * processors join the audio thread at frame 0, and the capture starts on a
+   * fixed frame - so the branch's history at the capture start IS that frame.
    *
-   * The offline render used to use a fixed history instead, and that only
-   * matched on an idle desktop whose timing happened to land on that number:
-   * measured 2026-10-29, the Linux runners' real history was one render
+   * Both properties matter. Exact, because the alternative was a history
+   * derived from the arming clock, and a race cannot be matched by a number
+   * (measured 2026-10-29: the Linux runners' real history was one render
    * quantum different and 18 of 77 cases went red on a divergence that was
-   * never the engine's.
+   * never the engine's). The SAME for both captures, because a second
+   * reference costs a third offline render per case - and the corpus runs
+   * before the wall-clock budget checks, so 77 extra renders make the perf
+   * gates measure a heavier run rather than a heavier product.
    */
   historyFrames: number;
 }
@@ -539,9 +542,22 @@ async function captureLive(
     // begins. Waiting for capture-start on the main thread is unsafe: a busy
     // browser can deliver that port message after the audio clock has already
     // advanced, making an event appear late even though capture began on time.
-    const requestedStartFrame =
+    //
+    // The frame is a CONSTANT whenever the clock allows it (the context was
+    // frozen and starts at frame 0, so the engine's whole history at the
+    // capture is exactly this many frames), and only falls back to the
+    // clock-derived frame if the arming took so long that the constant is
+    // already in the past.
+    //
+    // It has to be constant: the history IS the capture start frame, and a
+    // clock-derived one differs between the two realtime captures of a case -
+    // which then needs a second offline reference, i.e. a third render per
+    // case, and the corpus gets measurably heavier for every one of them.
+    const requestedStartFrame = Math.max(
+      CAPTURE_LEAD_FRAMES,
       Math.ceil(((ctx.currentTime + CAPTURE_START_LEAD_SEC) * ctx.sampleRate) / CAPTURE_QUANTUM_FRAMES) *
-      CAPTURE_QUANTUM_FRAMES;
+        CAPTURE_QUANTUM_FRAMES,
+    );
     const requestedStartTime = requestedStartFrame / ctx.sampleRate;
     // The realtime branch's history at the capture start, in frames. The
     // engine's processors were built while the context was frozen, so they
