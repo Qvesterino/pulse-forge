@@ -83,7 +83,9 @@ export function syncDocChangeWhilePlaying(deps: LiveEditSyncDeps): void {
  * cadence ≥ 95 ms), so a clip the planner is about to fire can never be
  * double-fired here.
  */
-export function resumeSpanningAudioClips(deps: LiveEditSyncDeps & { skipIds?: ReadonlySet<string> }): void {
+export function resumeSpanningAudioClips(
+  deps: LiveEditSyncDeps & { skipIds?: ReadonlySet<string>; forwardSlackSec?: number },
+): void {
   const doc = deps.getDoc();
   const arrangement = doc?.arrangement;
   const pos = deps.transport.position;
@@ -91,7 +93,14 @@ export function resumeSpanningAudioClips(deps: LiveEditSyncDeps & { skipIds?: Re
   // objects — services.seek runs on every playing seek whatever they hold).
   if (!doc || !arrangement || !Number.isFinite(pos) || pos <= 0) return;
   const barUnit = ticksPerBar(doc);
-  const slackTicks = deps.transport.secondsPerTick * RESUME_FORWARD_SLACK_SEC;
+  // Default slack: the split-seam/doc-edit path, where the scheduler's window
+  // start sits ~95 ms AHEAD of the playhead so nothing in the slack can be
+  // double-fired. Callers whose next scheduler window starts AT the playhead
+  // (services seek/play, collab follow — right after resync()/start()) must
+  // pass 0: there the window planner is about to fire every clip starting at
+  // or after the playhead, and resuming them here too is an audible flam.
+  const slackSec = deps.forwardSlackSec ?? RESUME_FORWARD_SLACK_SEC;
+  const slackTicks = deps.transport.secondsPerTick * slackSec;
   const when = deps.engine.currentTime + 0.005;
   const scenes = doc.scenes ?? [];
   const projectBpm = Number.isFinite(doc.bpm) && (doc.bpm as number) > 0 ? (doc.bpm as number) : 120;

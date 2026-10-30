@@ -126,19 +126,22 @@ class SidechainProcessor extends AudioWorkletProcessor {
       this.lastSplitFreq = splitFreq;
     }
 
+    // All parameters are k-rate (parameterDescriptors) — hoist the per-sample
+    // transcendental work out of the loop. Bit-identical math, ~130 fewer
+    // Math.exp/log10/pow calls per 128-frame block.
+    const thresh = threshold[0];
+    const rat = ratio[0];
+    const attCoef = Math.exp(-1 / (sr * Math.max(0.0002, attack[0])));
+    const relCoef = Math.exp(-1 / (sr * Math.max(0.001, release[0])));
+    const amt = amount[0];
+    const threshDb = 20 * Math.log10(Math.max(Math.pow(10, thresh / 20), 1e-7));
+    const overFactor = 1 - 1 / Math.max(1, rat);
+
     for (let i = 0; i < len; i++) {
       const sideRaw = sidechain[0][i];
       const sidePeak = Number.isFinite(sideRaw) ? Math.abs(sideRaw) : 0;
 
-      const thresh = threshold.length > 1 ? threshold[i] : threshold[0];
-      const rat = ratio.length > 1 ? ratio[i] : ratio[0];
-      const att = attack.length > 1 ? attack[i] : attack[0];
-      const rel = release.length > 1 ? release[i] : release[0];
-      const amt = amount.length > 1 ? amount[i] : amount[0];
-
       // Asymmetric envelope follower (per-sample).
-      const attCoef = Math.exp(-1 / (sr * Math.max(0.0002, att)));
-      const relCoef = Math.exp(-1 / (sr * Math.max(0.001, rel)));
       this.env =
         sidePeak > this.env
           ? attCoef * this.env + (1 - attCoef) * sidePeak
@@ -147,9 +150,8 @@ class SidechainProcessor extends AudioWorkletProcessor {
 
       // Gain reduction.
       const envDb = 20 * Math.log10(Math.max(this.env, 1e-7));
-      const threshDb = 20 * Math.log10(Math.max(Math.pow(10, thresh / 20), 1e-7));
       const overDb = Math.max(0, envDb - threshDb);
-      const reductionDb = overDb * (1 - 1 / Math.max(1, rat));
+      const reductionDb = overDb * overFactor;
       const reduction = Math.pow(10, -reductionDb / 20);
       const gain = Math.max(0, 1 - amt * (1 - reduction));
 

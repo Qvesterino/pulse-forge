@@ -756,6 +756,12 @@ export async function renderProject(
     // offline context finishes in the background and is discarded by GC)
     // and the UI transitions to "cancelled".
     const rendering = ctx.startRendering();
+    // Abort path: the race below rejects while `rendering` stays in flight —
+    // and after the finally-teardown disposes the graph it can REJECT
+    // (browser-dependent). Mark it handled so a cancelled export never
+    // surfaces as an unhandled promise rejection; a real render failure
+    // without abort still propagates through the await below.
+    rendering.catch(() => {});
     // `return await`, not `return`: returning a promise from inside a try block
     // runs the enclosing `finally` BEFORE the caller can await it, so the
     // engine's dispose() below tore the whole graph down the instant rendering

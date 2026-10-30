@@ -299,20 +299,74 @@ export class PlaybackController {
       } else {
         this.transport.play();
       }
-      const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
-      const beatPhase = pos / PPQ;
-      this.engine.transportStarted(this.engine.currentTime, beatPhase, this.transport.position / PPQ);
-      // Frozen playback is transport-aware: sources are torn down by
-      // panic() on pause/stop and resurrected here on every play.
-      this.engine.restartFrozenSources(this.transport.position);
-      // LIVE-EDITING: play-from-position inside a clip's body — the clip's
-      // start is behind the first scheduling window, so resume it explicitly
-      // (same mid-clip resume as seek).
-      resumeSpanningAudioClips({ engine: this.engine, transport: this.transport, getDoc: () => this.projectRef() });
-      this.scheduler.start();
+      try {
+        this.resurrectAudioAfterStart();
+        this.scheduler.start();
+      } catch (error) {
+        // play-path divergence guard: anything throwing between
+        // transport.play() (already committed above) and scheduler.start()
+        // used to leave playing === true with no scheduler, no audio and no
+        // recovery until a manual stop. Fall back to the pause path instead.
+        console.warn("[services] play could not start the audio graph:", error);
+        this.scheduler.stop();
+        this.engine.panic();
+        this.transport.pause();
+        this.onTransportPause?.();
+        this.generativeLifecycle?.pause();
+      }
       this.generativeLifecycle?.start();
     }
     this.notify();
+  };
+
+  /**
+   * Re-arm the audio surfaces a play gesture needs (shared by playPause and
+   * the collab follow path, where a REMOTE pulse starts the transport).
+   * forwardSlackSec 0: the next scheduler window starts AT the playhead, so
+   * the planner owns every clip starting at/after it — resuming them here
+   * too would double-fire them (audit 2026-10-30, seek flam).
+   */
+  resurrectAudioAfterStart(): void {
+    const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
+    this.engine.transportStarted(this.engine.currentTime, pos / PPQ, this.transport.position / PPQ);
+    // Frozen playback is transport-aware: sources are torn down by
+    // panic() on pause/stop and resurrected here on every play.
+    this.engine.restartFrozenSources(this.transport.position);
+    // LIVE-EDITING: play-from-position inside a clip's body — the clip's
+    // start is behind the first scheduling window, so resume it explicitly
+    // (same mid-clip resume as seek).
+    resumeSpanningAudioClips({
+      engine: this.engine,
+      transport: this.transport,
+      getDoc: () => this.projectRef(),
+      forwardSlackSec: 0,
+    });
+  }
+
+  /**
+   * Re-align the audio surfaces after a transport JUMP while playing (local
+   * seek and the collab remote-seek pulse share this). Order mirrors the
+   * seek audit fixes: panic silences pre-jump voices, automationReset
+   * cancels pre-jump AudioParam timelines, note-repeat/MIDI bookkeeping
+   * re-anchors, then the scheduler replans from the new position and the
+   * spanning-clip resume fills the mid-clip gap.
+   */
+  realignAfterTransportJump = (): void => {
+    this.engine.panic();
+    // Audit 03 D1: panic() kills voices but not AudioParam timelines —
+    // pre-jump windows left automation/modulator writes up to a lookahead
+    // (~120 ms) ahead, which fired between the post-jump writes as an
+    // audible snap-back. Cancel them; the next scheduler window (≤25 ms)
+    // re-lands fresh values from the new position.
+    this.engine.automationReset();
+    // Audit 03 D2: held note-repeat rolls re-anchor to the new position —
+    // a stale nextTick muted the roll until the playhead climbed back.
+    this.noteRepeatRef?.reanchorToTransport();
+    // Audit 03 D5: same ghost-hit cleanup as stop (pending MIDI sends).
+    this.midiOutputRef?.cancelPending();
+    this.resurrectAudioAfterStart();
+    this.scheduler.resync();
+    this.generativeLifecycle?.seek();
   };
 
   stop = (): void => {
@@ -334,28 +388,12 @@ export class PlaybackController {
   seek = (tick: number): void => {
     this.transport.seek(Math.max(0, tick));
     if (this.transport.playing) {
-      this.engine.panic();
-      // Audit 03 D1: panic() kills voices but not AudioParam timelines —
-      // pre-seek windows left automation/modulator writes up to a lookahead
-      // (~120 ms) ahead, which fired between the post-seek writes as an
-      // audible snap-back. Cancel them; the next scheduler window (≤25 ms)
-      // re-lands fresh values from the new position.
-      this.engine.automationReset();
-      // Audit 03 D2: held note-repeat rolls re-anchor to the new position —
-      // a stale nextTick muted the roll until the playhead climbed back.
-      this.noteRepeatRef?.reanchorToTransport();
-      // Audit 03 D5: same ghost-hit cleanup as stop (pending MIDI sends).
-      this.midiOutputRef?.cancelPending();
-      const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
-      this.engine.transportStarted(this.engine.currentTime, pos / PPQ, this.transport.position / PPQ);
-      this.engine.restartFrozenSources(this.transport.position);
-      this.scheduler.resync();
-      // LIVE-EDITING: the panic above silenced everything, and the scheduler
-      // only fires clips whose START enters a future window — a clip whose
-      // body spans the new playhead (seek into its middle) needs an explicit
-      // mid-clip resume or it stays silent forever.
-      resumeSpanningAudioClips({ engine: this.engine, transport: this.transport, getDoc: () => this.projectRef() });
-      this.generativeLifecycle?.seek();
+      // Audio realignment shared with the collab remote-seek pulse: panic,
+      // automationReset, note-repeat/MIDI re-anchor, frozen restart,
+      // scheduler resync and the mid-clip resume (no forward slack — the
+      // planner's next window starts at the new playhead and would
+      // double-fire anything resumed here).
+      this.realignAfterTransportJump();
     }
     this.notify();
   };
@@ -902,6 +940,10 @@ export async function openProject(
         if (!state.playing) {
           scheduler.stop();
           engine.panic();
+          // Local stop cancels AudioParam timelines too (audit 03 D1); the
+          // follow path used to skip it, leaving ≤120 ms of pre-pulse
+          // automation writes to fire after the remote stop.
+          engine.automationReset();
           generativeRuntimeRef?.stopAll().catch((err) => console.warn("[generative] remote stopAll failed:", err));
         }
         applyTransportState(transport, state, Date.now() / 1000);
@@ -910,9 +952,20 @@ export async function openProject(
           setLiveTakeAuditionProject(null);
         }
         if (shouldStartScheduler) {
+          // Mirror the local play gesture: without this, a follower that had
+          // received a remote STOP first stayed permanently silent — panic
+          // had disposed the frozen sources and one-shot clips and nothing
+          // resurrected them (audit 2026-10-30).
+          playback.resurrectAudioAfterStart();
           scheduler.start();
           generativeRuntimeRef?.startAll().catch((err) => console.warn("[generative] remote startAll failed:", err));
-        } else if (wasPlaying && state.playing) scheduler.resync();
+        } else if (wasPlaying && state.playing) {
+          // Remote seek while playing: mirror the local seek (panic +
+          // automationReset + re-anchors + resync + spanning-clip resume) —
+          // a bare resync() left pre-pulse notes and automation scheduled on
+          // the WebAudio clock sounding over the new position.
+          playback.realignAfterTransportJump();
+        }
         // A REMOTE pulse mutates the transport from outside the controller —
         // without this, the TopBar play button (and every playback
         // subscriber) stayed stale until the next local gesture.
@@ -1416,6 +1469,19 @@ export async function openProject(
     generativeContextLifecycle.dispose();
     await generativeRuntime.dispose();
     playback.stop();
+    // The ENGINE is deliberately NOT released here. It belongs to `core`,
+    // which outlives the project — the project browser hands the SAME core to
+    // the next openProject() — and the live AudioContext is shared across
+    // projects by design (invariant #7). dispose() would close that context,
+    // and setProject's body is guarded by `if (this.ctx)`: the next project
+    // would open with NO audio graph (no master chain, no meters) until the
+    // first play gesture rebuilt it on a brand-new context.
+    //
+    // Whether the app should hold an audio device handle while the user sits
+    // in the project browser is a real question, but it is a PRODUCT decision
+    // that needs its own ADR — not a teardown hunk. AudioEngine.dispose() is
+    // scoped to throwaway engines (offline renders, benchmarks, tools) that
+    // never swap to another context; this engine does.
     collab?.dispose();
     // The bandmate's 250 ms tick timer outlives the project otherwise — its
     // closure retains the whole session (store, transport, Y.Doc), so every

@@ -44,6 +44,20 @@ export function MixPreviewChipLazy() {
     [],
   );
 
+  useEffect(
+    () => () => {
+      // Unmount (project switch, panel teardown): stop the preview and close
+      // the chip's own AudioContext — nothing else owns its lifetime, and an
+      // open realtime context is one the GC reliably will not collect.
+      stopPlayback();
+      const ctx = ctxRef.current;
+      ctxRef.current = null;
+      gainRef.current = null;
+      if (ctx) void ctx.close().catch(() => {});
+    },
+    [],
+  );
+
   function stopPlayback() {
     const source = sourceRef.current;
     if (source) {

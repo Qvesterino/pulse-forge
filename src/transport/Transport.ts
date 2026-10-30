@@ -213,9 +213,13 @@ export class Transport {
     // not actually change.
     if (Math.abs(nextBpm - this.bpm_) < 0.001) return;
     if (this.playing_) {
-      const current = this.tickAt(this.clock.now());
-      this.anchorTick = current;
-      this.anchorTime = this.clock.now();
+      // One clock read for BOTH sides of the anchor pair: pairing
+      // tickAt(now1) with anchorTime = now2 shifted the map backward by
+      // (now2 − now1) · secondsPerTick — tiny, but a real anchor mismatch
+      // (seek() pairs its reads correctly, audit 2026-10-30).
+      const now = this.clock.now();
+      this.anchorTick = this.tickAt(now);
+      this.anchorTime = now;
     }
     this.bpm_ = nextBpm;
   }

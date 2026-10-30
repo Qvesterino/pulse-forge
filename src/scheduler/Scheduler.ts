@@ -355,6 +355,39 @@ export class Scheduler {
   private songPatternsByIdCache = new Map<string, ProjectDocument["patterns"][number]>();
   private tracksByIdProject: ProjectDocument | null = null;
   private tracksByIdCache = new Map<string, ProjectDocument["tracks"][number]>();
+  /**
+   * Song-mode automation target keys, ref-guarded like the caches above.
+   * The per-tick `new Set(filter().flatMap().map())` allocated two arrays,
+   * one string per target and the Set itself on EVERY 25 ms tick even when
+   * nothing changed (audit 2026-10-30).
+   */
+  private automationTargetsCache: {
+    doc: ProjectDocument;
+    clips: ProjectDocument["arrangement"]["automationClips"];
+    keys: Set<string>;
+  } | null = null;
+
+  private automationTargetKeys(doc: ProjectDocument): Set<string> {
+    const clips = doc.arrangement.automationClips;
+    if (
+      this.automationTargetsCache &&
+      this.automationTargetsCache.doc === doc &&
+      this.automationTargetsCache.clips === clips
+    ) {
+      return this.automationTargetsCache.keys;
+    }
+    const keys = new Set(
+      (clips ?? [])
+        .filter((clip) => !clip.muted)
+        .flatMap((clip) =>
+          automationTargetsOfClip(clip).map(
+            (target) => `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`,
+          ),
+        ),
+    );
+    this.automationTargetsCache = { doc, clips, keys };
+    return keys;
+  }
 
   /**
    * O(1) track lookup for per-event resolution (quality backlog B6): the
@@ -558,6 +591,16 @@ export class Scheduler {
     // A seek invalidates a scheduled tempo flip — the boundary is re-detected
     // against the new position on the next window.
     this.pendingTempoFlip = null;
+    // Boundaries already ARMED (fired to their listener with an audio time
+    // from the OLD time map) are cancelled immediately, exactly like the
+    // mismatch-cancel updateTickBoundaries runs one tick later — without
+    // this, a stale armed boundary can fire inside the ≤25 ms window between
+    // the seek and that pass (audit 2026-10-30). Unarmed subscriptions (a
+    // future bar boundary queued before the seek) stay: they re-arm on the
+    // new time map.
+    for (const subscription of [...this.tickBoundarySubscriptions]) {
+      if (subscription.pendingAudioTime !== null) this.cancelTickBoundary(subscription);
+    }
     const transport = this.deps.getTransport();
     this.windowStartTick = Math.max(0, transport.position);
     // ...and the metronome cursor: the next beat click belongs to the new
@@ -1206,17 +1249,7 @@ export class Scheduler {
           // events' musical times — in tempo-split windows this is the
           // piecewise map, so the seam stays exact for automation too.
           this.songTimeAt ?? ((tick: number) => transport.timeAtTick(tick)),
-          mode === "song"
-            ? new Set(
-                (doc.arrangement.automationClips ?? [])
-                  .filter((clip) => !clip.muted)
-                  .flatMap((clip) =>
-                    automationTargetsOfClip(clip).map(
-                      (target) => `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`,
-                    ),
-                  ),
-              )
-            : undefined,
+          mode === "song" ? this.automationTargetKeys(doc) : undefined,
         );
       }
     }

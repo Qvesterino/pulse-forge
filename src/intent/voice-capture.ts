@@ -43,6 +43,11 @@ export function createVoiceCapture(): VoiceCapture {
       return false;
     }
     context = new AudioContext();
+    // The getUserMedia await can outlive the user-gesture transient; a
+    // context the autoplay policy left suspended never fires
+    // onaudioprocess and capture silently records nothing. Best-effort
+    // resume — stopAndResample() closes the context on every path.
+    if (context.state === "suspended") void context.resume().catch(() => {});
     source = context.createMediaStreamSource(stream);
     processor = context.createScriptProcessor(4096, 1, 1);
     chunks = [];

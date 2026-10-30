@@ -39,6 +39,15 @@ class GateProcessor extends AudioWorkletProcessor {
     if (!input || !input[0] || !output || !output[0]) return true;
     const sr = globalThis.sampleRate || 44100;
     const channels = Math.min(input.length, output.length);
+    // attack/release are k-rate (parameterDescriptors) — hoist the envelope
+    // coefficients and the ramp steps out of the sample loop. Bit-identical
+    // math, 2 Math.exp + 2 divisions fewer per sample.
+    const attMax = Math.max(0.0001, parameters.attack[0]);
+    const relMax = Math.max(0.001, parameters.release[0]);
+    const attCoef = Math.exp(-1 / (sr * attMax));
+    const relCoef = Math.exp(-1 / (sr * relMax));
+    const attStep = 1 / Math.max(1, sr * attMax);
+    const relStep = 1 / Math.max(1, sr * relMax);
     for (let i = 0; i < output[0].length; i++) {
       let peak = 0;
       for (let ch = 0; ch < channels; ch++) {
@@ -49,14 +58,10 @@ class GateProcessor extends AudioWorkletProcessor {
       const threshold = parameters.threshold.length > 1 ? parameters.threshold[i] : parameters.threshold[0];
       const hysteresis = parameters.hysteresis.length > 1 ? parameters.hysteresis[i] : parameters.hysteresis[0];
       const lookahead = parameters.lookahead.length > 1 ? parameters.lookahead[i] : parameters.lookahead[0];
-      const attack = parameters.attack.length > 1 ? parameters.attack[i] : parameters.attack[0];
       const hold = parameters.hold.length > 1 ? parameters.hold[i] : parameters.hold[0];
-      const release = parameters.release.length > 1 ? parameters.release[i] : parameters.release[0];
       const range = parameters.range.length > 1 ? parameters.range[i] : parameters.range[0];
       const mix = parameters.mix.length > 1 ? parameters.mix[i] : parameters.mix[0];
-      const envCoef = Math.exp(
-        -1 / (sr * (peak > this.envelope ? Math.max(0.0001, attack) : Math.max(0.001, release))),
-      );
+      const envCoef = peak > this.envelope ? attCoef : relCoef;
       this.envelope = envCoef * this.envelope + (1 - envCoef) * peak;
       if (Math.abs(this.envelope) < 1e-20) this.envelope = 0;
       // Hysteresis: OPEN at the threshold, CLOSE only below threshold minus
@@ -78,10 +83,7 @@ class GateProcessor extends AudioWorkletProcessor {
         // the gate without being clipped by the attack ramp.
         this.gain = target;
       } else {
-        const step =
-          target > this.gain
-            ? 1 / Math.max(1, sr * Math.max(0.0001, attack))
-            : 1 / Math.max(1, sr * Math.max(0.001, release));
+        const step = target > this.gain ? attStep : relStep;
         this.gain += (target - this.gain) * Math.min(1, step);
       }
       if (Math.abs(this.gain) < 1e-20) this.gain = 0;
