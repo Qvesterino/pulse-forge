@@ -36,12 +36,30 @@ const BUDGET_LOAD_RATIO = 35;
  * (Q3): the probe targets EVERY schema id, so the per-block routed-entry
  * count grew ~15% when the band-EQ surface landed — measured 1.45–1.65× at
  * the old schema size, 1.84–2.21× after (the spread is machine load; idle
- * cost itself swings 2× between runs). Budget 2.4× still discriminates the
- * pathology this gate exists for — the old per-block applyAllParams() path
- * (full schema walk + crossover stage rebuild) measured ~2.4× at HALF the
- * current schema size and would exceed 4× today.
+ * cost itself swings 2× between runs).
+ *
+ * 2026-10-30 recalibration: the 2.4× budget sat INSIDE the healthy band, so
+ * a healthy run could fail it. The FXEQ core changed after the 2026-09-05
+ * calibration (7371bb3f, 2026-09-24), and the ratio was re-measured on three
+ * machines and under three load shapes:
+ *
+ * | environment                                       | idle → morphing | ratio  |
+ * | ------------------------------------------------- | --------------- | ------ |
+ * | Windows desktop, idle                             | 122 → 194 µs    | 1.59×  |
+ * | Linux, 16 vCPU                                    | 120 → 191 µs    | 1.58×  |
+ * | Linux, pinned to 1 CPU, 3 spinners                | 137 → 221 µs    | 1.61×  |
+ * | Linux, pinned to 1 CPU, 4 spinners starting mid-run | 138 → 229 µs  | 1.66×  |
+ * | CI runner (2-vCPU Linux)                          | —               | 2.45×  |
+ *
+ * Constant load and load that starts BETWEEN the two phases both leave the
+ * ratio at ~1.6×, so the runner's 2.45× is a property of that machine, not of
+ * the load and not of the phase order. The budget therefore moves to 3.0×:
+ * it still discriminates the pathology this gate exists for — the old
+ * per-block applyAllParams() path (full schema walk + crossover stage rebuild)
+ * measured ~2.4× at HALF the current schema size and would exceed 4× today —
+ * while the observed healthy band (up to 2.45×) sits under it with room.
  */
-const BUDGET_MORPH_RATIO = 2.4;
+const BUDGET_MORPH_RATIO = 3.0;
 
 type Proc = ReturnType<typeof createFxEqProcessor>;
 
