@@ -2987,6 +2987,46 @@ the shape `auditDenseRender` already has and the shape the realtime gate now has
 average, so it moved with it — **0.29× / 0.53× / 1.02× / 1.18× / 1.18×** across the same five runs — and a criterion that moves
 4× with the machine is not machine-independent either.
 
+**And the relative sibling has a defect of its own, in the same class — found by the parallel session and corrected here against
+the code.** `auditDenseRender` (`src/browser-checks.ts:748-834`) does budget the 8×4 matrix **relatively** (`:815-817`), and that
+is the right form — but the two numbers it divides are **not adjacent**, and the order biases the result in the dangerous
+direction. The code measures the **heavy 8×4 render FIRST** (`:788-790`) and the **single-track baseline AFTER it** (`:803-805`):
+
+```text
+const t0 = performance.now();                                     // :788
+const rendered = await renderProject(doc, bank, { … });            // :789  ← the 8×4 graph, measured FIRST
+const ms = performance.now() - t0;                                 // :790
+…
+const b0 = performance.now();                                      // :803
+await renderProject(baselineDoc, bank, { … });                     // :804  ← the baseline, measured AFTER
+const baselineMs = performance.now() - b0;                         // :805
+const budgetMs = Math.max(12000, baselineMs * BUDGET_BASELINE_RATIO);  // :816
+const ok = ms < budgetMs;                                          // :817
+```
+
+**Two distinct defects, and the second is worse than the first.**
+
+1. **The order makes the gate blind in the direction that hides a regression.** The baseline is measured **after** the heavy
+   render, so **any load that arrives during or after the heavy render inflates the baseline and deflates the ratio** — the
+   denominator grows while the numerator does not, and **the gate passes while the graph is heavier than the machine it was
+   measured on.** A missed regression is the worse of the two failure directions, because a flaky red announces itself and a
+   silent pass does not. Moving the baseline to the other side would only **invert** the bias (load arriving during the heavy
+   render would then inflate the ratio and manufacture a false failure); the fix is to **bracket** the heavy render with a
+   baseline on **both** sides and judge against the machine state at the moment the heavy render actually ran.
+2. **The ratio is load-sensitive in itself, even when both measurements saw the same load.** The parallel session's two readings
+   show the mechanism: under load the **baseline grew 1.58×** (2284 → 3604 ms) while the **8×4 render grew 1.94×**
+   (10697 → 20701 ms), so the parallel workload is penalised about **1.23×** more than the serial one — and the ratio read
+   **4.68× → 5.74×** purely because of that. **A ratio between a parallel workload and a serial one does not cancel the
+   machine's speed**; it only cancels it if both sides contend equally, which they do not.
+
+**And the guard cannot be the fix for the second defect, because it measures the wrong KIND of work.** The render is CPU-bound
+and **parallel** — eight tracks with four effects each — while the guard is a **single-threaded busy-loop on the main thread**
+(`src/browser-checks.ts:4830-4834`). A spin on one core does not see contention on the others, and a parallel workload suffers
+from contention **more** than a serial one does — which is exactly the 1.94×-vs-1.58× asymmetry above. **A guard that probes the
+machine the way the gate's workload actually runs** — a parallel CPU probe, N workers in parallel — would measure the quantity
+the render depends on. That is the same lesson as §10.16.9's Defect 1 and §10.16.11's adjacency rule, now stated for the third
+time in three functions: **a guard must measure the same subsystem, in the same shape, as the workload it arbitrates.**
+
 — while the machine's own calibration is unchanged (`calib=12.0–15.5ms` against `12.3ms`) and **nothing in the render path moved**:
 `git log --since=2026-10-29 07:00 -- src/rendering src/audio-engine src/project-model src/effects src/audio-worklets` returns
 **no commits**, and the two parity fixes touched only `src/testing/live-offline-parity.ts` and test files. What _did_ change is
