@@ -1086,8 +1086,8 @@ measured.
 | `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                                                |
 | `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11); **red on `origin/main` twice more** (§10.11.2) |
 | the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)                                        |
-| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **104** seams (committed payload `docs/status.json`; §10.11 measured 95)                               |
-| the committed payload's `spec-counts` claim                                      | ✅ **1336 claimed, 1336 measured** — `state: pass`, drift-checked (`docs/status.json`)                                         |
+| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **105** seams (committed payload `docs/status.json`; §10.11 measured 95)                               |
+| the committed payload's `spec-counts` claim                                      | ✅ **1337 claimed, 1337 measured** — `state: pass`, drift-checked (`docs/status.json`); re-pinned in `3328668c` (§10.16.9)     |
 | `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                                                           |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
@@ -1496,8 +1496,8 @@ measurement — and a measurement is only right on the tree that produced it.**
 **The parallel session's hand-off corrected an assumption this report had been carrying.** §10.1 records
 `npm run drift:check` as ✅ green. On `origin/main` it was **not**: `docs/CURRENT-STATE.md` claimed **1335** Vitest spec
 files while the committed tree held **1336**. The parallel session fixed it in `61a31bc0` — re-pinning the claim and
-regenerating `docs/status.json` and `docs/STATUS.md` — and the committed payload now reads **"1336 claimed, 1336
-measured"**, `state: pass`.
+regenerating `docs/status.json` and `docs/STATUS.md` — and from that commit the committed payload read **"1336 claimed,
+1336 measured"**, `state: pass`.
 
 Two things are worth separating here. The **count** was stale in the ordinary way (§10.11's shape, for the fifth time), and
 the **claim in this report** was stale in a worse way: it said green because a measurement had been green **on a tree that
@@ -1506,7 +1506,8 @@ green now", and a report that keeps the first shape while the tree moves is a re
 
 **Re-measured here, on the committed tree, rather than taken on relay.** The counting rule is `git ls-files tests`, counting
 `.test.ts`/`.test.tsx` and excluding `tests/e2e/` (`scripts/status-report.mts:83-85`): **1336** measured against **1336**
-claimed. The seam claim moved too — the committed payload now reads **1 check, 104 seams** (§10.11 measured 95).
+claimed _at that commit_. The seam claim moved too — from that commit the committed payload read **1 check, 104 seams**
+(§10.11 measured 95).
 
 **And then it went red again, the same day, for the same reason.** CF-15 (`31411056`) added two seams to
 `tests/seam-manifest.json` and regenerated nothing, so the payload's seam claim went stale **again** — and this time it was
@@ -1526,6 +1527,24 @@ tree: `npm run drift:check` → `✓ no drift — derivable artifacts match thei
 **So the drift gate has now been red on `origin/main` twice in two days, both times for a count that moved in the working tree
 and not in the artifact.** The gate is doing its job — it caught both. What is still missing is the moment between "the count
 moved" and "the artifact moved", which belongs to whoever moved the count.
+
+**And the same shape ran again one wave later — against this report's own numbers.** The parallel session's next wave
+landed a new spec file (`tests/mix-proposal-constraints.test.ts`) and one more seam (CF-22, `108242d9`), so the counts moved
+again — **1336 → 1337** specs, **104 → 105** seams — and were re-pinned in `3328668c` **in the same wave that moved them**,
+with the status artifacts refreshed in the same commit. That is the practice §10.11.1 asks for, and the tree is clean.
+
+**The report was the laggard.** §10.1 still quoted **1336** and **104** while the committed payload already read **"1337
+claimed, 1337 measured"** and **1 check, 105 seams**. Both are corrected in place above. This is the **seventh** instance of
+the shape, and it is the first one where the drift was not in the tree at all — the tree and the artifact agreed, and only
+the prose was old.
+
+**So the number has FOUR homes, not three.** §10.16.8 said: _"a number that appears in a spec, in a report and in a payload
+is one number, and it has three homes — change it in all three or in none."_ The instance here names the missing one: the
+ratchet spec, the payload artifact, `docs/CURRENT-STATE.md`, **and this report**. Two of those four are derived and are
+covered by the drift gate; the other two are maintained by hand. **The gate catches the tree↔artifact mismatch; nothing
+catches the hand-maintained copies**, because a report is not derived from anything — so its numbers go stale silently and
+read as current until somebody re-reads them. A report that quotes live counts must either re-measure them on every
+commit or quote them with the commit they were measured on; this one now quotes both.
 
 ### 10.12 The sixteenth finding — the loudness map, read as a measurement
 
@@ -2757,6 +2776,135 @@ durable place for it. The mirror case happened in the same week in the other dir
 this session's paths, and both directions were reported rather than rewritten (§10.16.7's `mcp-onboarding` fix is the same
 story from the other side). The rule holds: **stage only your own paths, look at what your commit actually contains before you
 push it, and never let the other session's work be silently renamed.**
+
+#### 10.16.9 The realtime budget asked the device a question the device could not answer
+
+**The red.** The parallel session's browser job was green on the parity corpus and **red** on the realtime budget:
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=960 xruns=7
+heartbeat avg=184.39ms max=188.30ms (expected≈185.76ms, 0.99×) quantum=2.902ms
+```
+
+**What the verdict could not say.** The heartbeat arrived on its expected cadence — **0.99×** against a 1.5× limit — so the gate
+did **not** trip on the heartbeat. It tripped on `xruns === 0`: seven quanta the device dropped. The parallel session read that
+as "the 2-vCPU runner cannot draw 48 effects into a 2.902 ms quantum". **This session's reading was "the guard that was supposed
+to demote this gate cannot see the signal this gate trips on."** Both readings are compatible with the same line of output,
+which is exactly why the line was not yet a finding.
+
+**Defect 1 — the guard and the gate measure different subsystems.** §10.16.2 fixed the machine test that decides
+`machineLoaded`: it spins the **main thread** and asks whether the harness thread can time anything
+(`src/browser-checks.ts:4746-4750`). The signal that trips this gate lives on the **audio thread** — the device clock advancing
+by more than one render quantum (`src/audio-worklets/rt-monitor-processor.js:44-47`: `advanced > 128` → `droppedQuanta`).
+Two different subsystems, so the guard cannot see what it is guarding. **The CI run says both things at once**:
+`environment=measurable` (a main-thread measurement) and `xruns=7` (an audio-thread measurement), in the same run. §10.16.2's
+rule — _the environment must explain the gate, never fail it_ — was therefore **not in force for this check**: the check had
+a guard, and the guard was blind.
+
+**Defect 2 — the probe's reset is half-effective.** `resetRtLoad()` (`src/audio-engine/meteringRig.ts:384-386` →
+`src/audio-worklets/rt-monitor-node.ts:111-123`) zeroes the **host-side mirror** of the snapshot, but the **processor's** own
+counters (`src/audio-worklets/rt-monitor-processor.js:32-33`) are never reset: `this.blocks` and `this.droppedQuanta` count from
+the moment the processor was constructed, and every report carries the cumulative value. So the heartbeat jitter **was** scoped
+to the measurement window and `blocks`/`xruns` **were not**: `blocks=960` was the count since the context was created — the
+graph's construction included — not the count inside the window. **A number that does not name its window cannot be compared
+with another number**, and this one was being compared with a desktop run.
+
+**The fix — the check measures its own device floor, with the same probe, on the same device.** `auditRtBudget`
+(`src/browser-checks.ts:498-640`) now measures a **floor** before the graph: the same context, the same rt-monitor, the same
+window — **one track and no effects** (`:525-530`). The floor is read **twice** (cold, then warm on the same graph, `:564-565`),
+because the first window can carry the context's cold start; the device's ability is the **better** of the two readings. The
+verdict then follows the device:
+
+- **floor clean** → the device can hold a graph → the graph's xrun count is the graph's cost → the gate stays **strict**,
+  `xruns === 0 && jitterRatio < RT_JITTER_LIMIT` (`:611`), exactly as before;
+- **floor dirty** → this device cannot hold **any** graph, so the absolute criterion cannot discriminate between "the machine"
+  and "the graph" → the verdict is **informational**, with the numbers attached (`:616-628`).
+
+That is §10.16.2's rule applied to the subsystem it was missing, and it is the same shape the **offline** budget already uses
+(`auditDenseRender`, `:552-632`: "the budget is RELATIVE to the same-machine baseline"). The realtime budget was the sibling
+gate that never got the relative form. The jitter criterion got the same treatment: a device that cannot deliver a heartbeat on
+time even on an empty graph cannot be judged by heartbeat jitter (`:620-624`).
+
+**Every count is now a delta, and the window is named.** The processor's counters are cumulative, so each number is the
+difference between two reads (`:570-573`), and `blocks` is the count **inside the window** rather than since the context was
+created. The message also splits the graph phase into **build** and **steady**, because "48 effects do not run in realtime" and
+"constructing 48 effects stalls the audio thread" are different findings with different fixes.
+
+**Observed on this machine, on the instrumented check** — the same tree, two independent runs:
+
+```text
+PASS rt budget: 12 tracks × 4 effects realtime — blocks=832 xruns=0 heartbeat avg=216.15ms
+max=269.70ms (expected≈170.67ms, 1.27×) quantum=2.667ms · device floor xruns=0 jitter=1.00×
+(1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=0
+
+PASS rt budget: 12 tracks × 4 effects realtime — blocks=704 xruns=0 heartbeat avg=252.68ms
+max=367.40ms (expected≈170.67ms, 1.48×) quantum=2.667ms · device floor xruns=0 jitter=1.00×
+(1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=0
+```
+
+(The first is the parallel session's own desktop run, committed at `74a1d8dd`; the second is this session's, on a quieter box —
+`calib=12.0ms` against `14.1ms`.)
+
+**What the floor changes about the number.** The floor's heartbeat arrives at **exactly 1.00×** its expected cadence — cold and
+warm, on the same context, moments before the graph plays. The device is therefore **not** late: it delivers a heartbeat on time
+when there is nothing to play, so the graph's **1.27× / 1.48×** is **the graph's** cost, measured against the same device. That
+is the discrimination the parallel session asked for, and it does not need a theory of the runner: the two numbers come from the
+same context, the same probe, the same minute.
+
+**And the graph is at the edge of the budget.** The jitter limit is **1.5×** and the graph measured **1.48×** on an idle desktop
+— **one hundredth of headroom**. The realtime path for 12 tracks × 4 effects is not comfortably inside its budget; it is at the
+boundary, which is why a 2-vCPU runner trips it and a desktop does not. **The xrun count was never the interesting number**: the
+device did not drop a single quantum in any desktop run, because at 48 kHz on a healthy device the graph _almost_ holds.
+
+**The same criterion is not reproducible run to run.** Three runs of the same tree on this machine gave **1.05×**, **1.27×** and
+**1.48×**. A criterion whose verdict flips with the machine's momentary state is not a measurement — that is §10.16.2's own
+sentence, and it applies to the jitter limit with the same force it applied to the millisecond floor. The floor now supplies the
+reference that the absolute limit lacks.
+
+**A second finding fell out of the same runs, and it is not this session's to own: three offline budgets are red on the current
+tree, on an idle desktop, with the render path unchanged.** The parallel session's committed run and this session's two runs all
+report the same three failures —
+
+| check                   | 2026-10-29 tree  | current tree                                     | verdict now       |
+| ----------------------- | ---------------- | ------------------------------------------------ | ----------------- |
+| `perf: techno — 8-bar`  | 10509 ms         | 13839 / 13641 / 21964 ms                         | ❌ (budget 13271) |
+| `perf: 8-bar average`   | avg 5197 ms      | avg 8624 / 8346 / 9118 ms                        | ❌ (limit 7000)   |
+| `perf: 8×4 vs baseline` | 13915 ms (5.45×) | 17944 / 16624 / 17996 ms (6.11× / 6.49× / 6.02×) | ❌ (limit ≈ 5.0×) |
+
+— while the machine's own calibration is unchanged (`calib=12.0–15.5ms` against `12.3ms`) and **nothing in the render path moved**:
+`git log --since=2026-10-29 07:00 -- src/rendering src/audio-engine src/project-model src/effects src/audio-worklets` returns
+**no commits**, and the two parity fixes touched only `src/testing/live-offline-parity.ts` and test files. What _did_ change is
+the **weight of the run before the budgets**: the parity corpus grew from **67 to 77 items**, each one an offline render plus a
+realtime capture, all executed in the same browser page before the perf section opens. **So the budgets' verdict moved because
+the run got heavier, not because the product got heavier** — the same shape as the realtime gate, one level down: a gate whose
+number depends on the accumulated state of the run instead of on the code it claims to measure. **The exact mechanism is _Not
+verified_** — heap growth and GC pressure is the obvious candidate, but `calib` is a pure CPU spin and cannot see the allocator
+or the collector, so it cannot confirm it. The parallel session recorded the same three failures and wrote them up as "the perf
+gates are load-sensitive" (`74a1d8dd`); the measurement above says **load is not the whole story**, because the box measured
+itself as idle (`calib=12.0ms`) in the run that still failed all three.
+
+**Provenance of the committed artifact, recorded here because this session owns the instrument.** The log the parallel session
+committed at `74a1d8dd` (`docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`) contains **this
+session's instrumented output** — the `device floor … graph build=… steady=…` line exists only in the working tree at the time —
+because the two sessions share one worktree and the parallel session ran the browser gate against it. **The artifact is
+therefore labelled `head-3328668c` but was produced from a tree that also contained this session's uncommitted
+`src/browser-checks.ts`.** The log's own content is honest about it (the instrumented line is visibly not in `3328668c`), and
+the parallel session has been told; but a log whose name says one commit and whose bytes came from another is exactly the kind
+of artifact this report keeps flagging, and it is recorded here rather than left implicit.
+
+**What is still open, and how it closes.** The runner's own floor is **not yet measured** — that is the number the instrument
+exists to produce, and it arrives with the next CI run on the runner (the check prints `device floor xruns=… jitter=…` and the
+build/steady split in the same line). **Until it does, the cause of the seven dropped quanta on that runner is _Not verified_** —
+this section does not claim the machine and does not claim the graph. It claims only what was measured: the guard was blind to
+the signal, the probe's counter did not name its window, and the graph sits one hundredth under the jitter limit on an idle
+desktop.
+
+**The recommendation that follows from the measurement, not from taste.** Two changes, in this order: **(1) measure the perf
+section in a clean process** — the budgets are wall-clock measurements and they are currently measured in the shadow of every
+check that ran before them, so they should be measured first or in their own page; **(2) judge the realtime jitter against the
+floor** rather than against an absolute multiple, which is what the floor was just built for. Both are changes to what the gates
+measure, and both are cheap. **What is _not_ recommended is loosening the limits** — the 1.5× limit did its job: it caught a
+graph that is one hundredth from the edge.
 
 ---
 
