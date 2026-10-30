@@ -115,7 +115,7 @@ describe("palette search coverage", () => {
     // audio-clip transformation routes. The proposed P-1 scope caps it at
     // 100 — so this spec must be updated DELIBERATELY when an approved scope
     // lands, never by a change that grew the palette quietly.
-    expect(actions.length).toBe(77);
+    expect(actions.length).toBe(79);
     expect(actions.length).toBeLessThanOrEqual(100);
   });
 
