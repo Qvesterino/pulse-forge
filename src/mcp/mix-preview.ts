@@ -15,11 +15,7 @@ import {
 import { validateMusicalProposal } from "../intent/validate-musical-proposal";
 import { deepEqualRef } from "../commands/docDelta";
 import { snapshot } from "../commands/core";
-import {
-  mergeProposalConstraints,
-  resolveMixLanguageConstraints,
-  type MixConstraintSelection,
-} from "../intent/mix-language-constraints";
+import type { MixConstraintSelection } from "../intent/mix-language-constraints";
 
 /**
  * kyx_mix_idea PREVIEW — the auto-rendered before/after A/B.
@@ -492,6 +488,11 @@ export async function previewMixIdea(
   const explicitConstraints =
     request.constraints === undefined ? undefined : parseProposalConstraints(request.constraints);
   if (explicitConstraints === null) return { ok: false, reason: "Invalid constraint declaration." };
+  // Loaded at the moment of use. The module reaches the intent routing table
+  // (91.8 KB built), and the studio boot path must not carry it — the seam
+  // guard that measures this is tests/boot-path-seams.test.ts.
+  const { mergeProposalConstraints, resolveMixLanguageConstraints } =
+    await import("../intent/mix-language-constraints");
   const language = resolveMixLanguageConstraints(doc, request.idea);
   if (language.status === "clarify") return { ok: false, reason: [language.reason, ...language.choices].join("\n") };
   const constraints =
