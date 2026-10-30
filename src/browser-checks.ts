@@ -730,6 +730,44 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
 }
 
 /**
+ * The single-track 8-bar baseline — the reference every perf ratio is
+ * measured against.
+ *
+ * It is the cheapest render that still exercises the whole offline path (the
+ * engine, the sample bank, the mixer, the offline context), so a ratio
+ * against it cancels the machine's SPEED out of the comparison. That is the
+ * only form that survives a shared box: the same tree measured the
+ * 14-template average at 4579 ms and at 19049 ms on one machine (4.05×
+ * apart), while the ratio to this baseline stayed inside 1.92-2.30×.
+ *
+ * ONE function, so the per-template block and the dense-matrix gate measure
+ * the same reference — two baselines would be two different rulers.
+ */
+async function measureSingleTrackBaseline(bank: SampleBank): Promise<{ ms: number; audioMs: number }> {
+  const template = createProjectFromTemplate("house");
+  const source = template.tracks.find((t): t is DrumTrack => t.kind === "drum");
+  const scene = template.scenes[0];
+  if (!source || !scene) throw new Error("baseline template is missing its drum track or scene");
+  const doc: ProjectDocument = {
+    ...template,
+    bpm: 120,
+    tracks: [{ ...source, id: "perf-base", effects: [] }],
+    arrangement: {
+      ...template.arrangement,
+      clips: Array.from({ length: 8 }, (_, bar) => ({
+        id: `perf-base-bar-${bar}`,
+        sceneId: scene.id,
+        startBar: bar,
+        lengthBars: 1,
+      })),
+    },
+  };
+  const t0 = performance.now();
+  const rendered = await renderProject(doc, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.5 });
+  return { ms: performance.now() - t0, audioMs: rendered.duration * 1000 };
+}
+
+/**
  * Dense-matrix offline render budget (release-gate hardening).
  *
  * The per-template budget above measures ONE track's worth of work. This
@@ -785,33 +823,46 @@ export async function auditDenseRender(
         })),
       },
     };
+    // The baseline is measured on BOTH sides of the heavy render, so the
+    // machine state at the moment the heavy render ran can be BRACKETED
+    // instead of guessed from a single later reading. With the baseline only
+    // AFTER the render, any load that arrived during or after it inflated
+    // the denominator and DEFLATED the ratio — the gate passed while the
+    // graph was heavier than the machine it was measured on. The bracket
+    // removes that direction of bias.
+    //
+    // The budget is RELATIVE to that baseline, not an absolute wall clock: a
+    // co-tenanted runner can miss an absolute deadline while every lighter
+    // render still passes. Measuring the identical 8-bar arrangement with a
+    // SINGLE bare track and then the N×M matrix cancels the machine's speed
+    // out of the ratio, so what the gate actually measures is "how much more
+    // does this graph cost than the same song on one track" — which is the
+    // regression a new effect would cause.
+    const baselineBefore = await measureSingleTrackBaseline(bank);
     const t0 = performance.now();
     const rendered = await renderProject(doc, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.5 });
     const ms = performance.now() - t0;
     const audioMs = rendered.duration * 1000;
-    // Budget is RELATIVE to the same-machine baseline, not an absolute wall
-    // clock: the per-template budget above shows a co-tenanted runner can miss
-    // an absolute deadline while every lighter render still passes. Measuring
-    // the identical 8-bar arrangement with a SINGLE bare track and then the
-    // N×M matrix cancels the machine's speed out of the ratio, so what the gate
-    // actually measures is "how much more does this graph cost than the same
-    // song on one track" — which is the regression a new effect would cause.
-    const baselineDoc: ProjectDocument = {
-      ...doc,
-      tracks: [{ ...source, id: "dense-base", effects: [] }],
-    };
-    const b0 = performance.now();
-    await renderProject(baselineDoc, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.5 });
-    const baselineMs = performance.now() - b0;
+    const baselineAfter = await measureSingleTrackBaseline(bank);
+    const baselineMs = (baselineBefore.ms + baselineAfter.ms) / 2;
     // The budget is a RATIO of the same-machine baseline, not an absolute
     // reserve over it. An absolute reserve is consumed by a loaded machine:
     // the 8×4 matrix amplifies contention more than the single-track
     // baseline does, so the gate was reading the machine and not the graph
     // (16045 ms against a 14679 ms budget on a box that was running other
     // work, while nothing in the render path had changed). Measured ratios
-    // for the same tree: 5.17× (clean worktree at 4bc8a224), 5.45× (idle),
-    // 5.68× (clean), 5.74-6.49× (loaded). 7.5× sits above that band and still
-    // trips when an effect's DSP gets materially more expensive.
+    // for the same tree: 4.11× / 4.78× / 4.78× (three runs on 2026-10-30,
+    // committed as rt-ladder-run{1,2,3}-*.log), 5.17× (clean worktree at
+    // 4bc8a224), 5.45× (idle), 5.68× (clean), 5.74-6.49× (loaded). 7.5× sits
+    // above that band and still trips when an effect's DSP gets materially
+    // more expensive.
+    //
+    // Known limit: a ratio between a PARALLEL workload (this matrix) and a
+    // SERIAL one (the single-track baseline) does not cancel the machine's
+    // speed under contention — the parallel side is penalised more, which
+    // inflates the ratio. The bracket above keeps the machine state honest;
+    // the residual asymmetry is why the limit sits above the loaded band
+    // rather than at the clean one.
     const BUDGET_BASELINE_RATIO = 7.5;
     const budgetMs = Math.max(12000, baselineMs * BUDGET_BASELINE_RATIO);
     const ok = ms < budgetMs;
@@ -821,7 +872,8 @@ export async function auditDenseRender(
       message:
         `${ms.toFixed(0)}ms vs ${baselineMs.toFixed(0)}ms single-track baseline for ` +
         `${audioMs.toFixed(0)}ms audio (budget ${budgetMs.toFixed(0)}ms = ${BUDGET_BASELINE_RATIO}× baseline, ` +
-        `${(ms / Math.max(1, baselineMs)).toFixed(2)}× measured)` +
+        `${(ms / Math.max(1, baselineMs)).toFixed(2)}× measured; baseline bracketed ` +
+        `${baselineBefore.ms.toFixed(0)}–${baselineAfter.ms.toFixed(0)}ms)` +
         (informationalOnly ? ` — machine loaded${calibNote ? ` (${calibNote})` : ""}, informational run` : ""),
     };
   } catch (error) {
@@ -4894,40 +4946,47 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   // the budget, every export in the app feels broken. The arrangement is
   // the template's own pattern chained 8 bars in its first scene.
   //
-  // 2026-10-30 recalibration. The budget used to be calibrated in 2026-09 on
-  // an idle M1-class laptop, where the 14-template average was ~2 s. This
-  // tree measures 4.6-6.4 s for the SAME work, so those numbers described a
-  // machine, not the code. The budget is now set from the band measured on
-  // this tree:
+  // 2026-10-30, second pass. The first recalibration raised the absolute
+  // budget from 7000 ms to 9000 ms, set above the band measured on this
+  // tree. That was wrong in FORM, and three committed runs on the same
+  // machine, on the same tree, proved it
+  // (docs/audits/2026-10-27-hidden-creative-power/rt-ladder-run{1,2,3}-*.log):
   //
-  //   run                                    8-bar average
-  //   clean checkout at 4bc8a224 (this tree)    4579 ms
-  //   clean checkout (worktree, 2fbcfda0)       6025 ms
-  //   shared desktop, the corpus in front        6321 ms
-  //   shared desktop, other work running         5137 ms
-  //   isolated page, no corpus in front          6379 ms
-  //   → band 4579-6379 ms over five runs, budget 9000 ms.
+  //   run                                    8-bar average   single-track baseline
+  //   clean checkout at 4bc8a224                 4579 ms            2151 ms
+  //   rt-ladder run 1 (37ff58c0)               16544 ms            8568 ms
+  //   rt-ladder run 2 (37ff58c0)               19032 ms            9133 ms
+  //   rt-ladder run 3 (37ff58c0)               19049 ms            8267 ms
   //
-  // The lowest row is the tree that CARRIES the budget, measured in a clean
-  // worktree — so the 9000 ms budget has ~2× of headroom over the code it
-  // guards, and the spread above it is the machine, not the render path.
+  // The ABSOLUTE numbers moved 4.05× — the same code, the same box — and the
+  // per-template budget was red on 7-8 of the 14 templates in every one of
+  // those runs. No millisecond threshold survives a 4× machine-speed change,
+  // and picking a bigger one is coin-flipping: today's spread already
+  // contains every candidate.
   //
-  // A budget INSIDE the band is a coin flip: the 2026-10-29 tree measured
-  // 8346 / 8624 / 9118 ms on the same box under load and was red all three
-  // times while NOTHING in the render path had changed. 9000 ms sits above
-  // the band, so the verdict follows the code instead of the weather.
+  // The RATIOS did not move:
   //
-  // What the re-calibration costs, stated plainly: the gate is now sensitive
-  // to a regression that adds ~40% to the average (2.6 s), not to the 3.5×
-  // over the old 2026-09 baseline. A machine-independent criterion (the
-  // aggregate wall-clock-to-audio ratio this check already prints, judged
-  // against a ratio instead of a millisecond count) would keep the old
-  // sensitivity without the weather — that is the owner's call, not this
-  // comment's.
+  //   criterion                          measured band over the five runs
+  //   average / single-track baseline    1.92× / 2.13× / 1.93× / 2.08× / 2.30×
+  //   heaviest template / average        2.16× / 1.91× / 1.71× / 1.89× / 1.57×
+  //
+  // So the gates below are RATIOS against a baseline rendered in the same
+  // process, on both sides of the measurement (the same bracket the
+  // dense-matrix gate uses). That is the only form here that measures the
+  // render path instead of the weather.
+  //
+  // What it costs, stated plainly: the aggregate gate trips when the render
+  // path gets ~30% slower than the band, and the shape gate trips when one
+  // template gets disproportionately heavy. The per-template numbers are
+  // REPORTED, not gated — the same template measured 6642 ms and 17460 ms
+  // in two adjacent runs on one machine (2.6×), so no per-template
+  // threshold, absolute or relative, survives that noise.
   {
     const BUDGET_PER_RENDER_MS = 12000;
-    /** The 8-bar average across all templates. Measured band 4579-6379 ms. */
-    const BUDGET_AVERAGE_MS = 9000;
+    /** The 14-template average as a multiple of the single-track baseline. Measured band 1.92-2.30×. */
+    const BUDGET_AVERAGE_RATIO = 3;
+    /** The heaviest template as a multiple of the average. Measured band 1.57-2.16×. */
+    const BUDGET_WORST_RATIO = 3;
     // Shared-machine guard: measure a fixed pure-JS workload first. On a
     // busy machine (concurrent builds) wall-clock budgets trip on load, not
     // on regressions — degrade to informational (pass + flag) instead of
@@ -4976,8 +5035,14 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       }`,
     );
     const budgetTimes: number[] = [];
+    const templateCosts: { id: string; ms: number; audioMs: number; recovered: boolean; error?: string }[] = [];
     let totalAudioMs = 0;
     let totalWallMs = 0;
+    // The machine state the templates ran in, measured on BOTH sides of them
+    // (the same bracket the dense-matrix gate uses). A baseline taken only
+    // AFTER the templates would absorb any load that arrived during them and
+    // DEFLATE the ratio below.
+    const baselineBefore = await measureSingleTrackBaseline(bank);
     for (const template of TEMPLATES) {
       if (template.id === "empty") continue;
       try {
@@ -5028,34 +5093,59 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         budgetTimes.push(ms);
         totalAudioMs += audioMs;
         totalWallMs += ms;
-        // The workload is fixed at eight bars, but its duration changes with
-        // tempo. A fixed wall-clock budget unfairly penalises slow genres
-        // (for example, 96 BPM is 20 seconds of audio) even though the DSP
-        // cost is proportional to sample count. Keep the original 12 s floor
-        // for short renders and allow a 0.9× realtime ceiling for longer ones.
-        const renderBudgetMs = Math.max(BUDGET_PER_RENDER_MS, audioMs * 0.9);
-        check(
-          `perf: ${template.id} — 8-bar render within budget`,
-          machineLoaded || ms < renderBudgetMs,
-          `${ms.toFixed(0)}ms for ${audioMs.toFixed(0)}ms audio (budget ${renderBudgetMs.toFixed(0)}ms, ${(
-            ms / Math.max(1, audioMs)
-          ).toFixed(2)}× realtime)${recovered ? ` — first sample ${first.ms.toFixed(0)}ms, retry recovered` : ""}${
-            machineLoaded ? ` — machine loaded (${calibNote}), informational run` : ""
-          }`,
-        );
+        // The per-template cost is REPORTED, not gated: the same template
+        // measured 6642 ms and 17460 ms in two adjacent runs on one machine
+        // (2.6×), so no per-template threshold — absolute or relative —
+        // survives that noise. The gates below read the aggregate, which
+        // does. The retry above still runs, because it makes the REPORTED
+        // number the better of two samples rather than the worse one.
+        templateCosts.push({ id: template.id, ms, audioMs, recovered });
       } catch (error) {
-        check(`perf: ${template.id} — 8-bar render within budget`, false, String(error));
+        templateCosts.push({ id: template.id, ms: 0, audioMs: 0, recovered: false, error: String(error) });
       }
+    }
+    const baselineAfter = await measureSingleTrackBaseline(bank);
+    const machineMs = (baselineBefore.ms + baselineAfter.ms) / 2;
+    const machineAudioMs = (baselineBefore.audioMs + baselineAfter.audioMs) / 2;
+    // The per-template cost is reported here, against the bracketed baseline.
+    for (const cost of templateCosts) {
+      if (cost.error !== undefined) {
+        check(`perf: ${cost.id} — 8-bar render cost`, false, cost.error);
+        continue;
+      }
+      const scale = Math.max(1, (machineMs * cost.audioMs) / Math.max(1, machineAudioMs));
+      check(
+        `perf: ${cost.id} — 8-bar render cost`,
+        true,
+        `${cost.ms.toFixed(0)}ms for ${cost.audioMs.toFixed(0)}ms audio (${(
+          cost.ms / Math.max(1, cost.audioMs)
+        ).toFixed(2)}× realtime, ${(cost.ms / scale).toFixed(2)}× the single-track baseline)${
+          cost.recovered ? " — first sample was slower, retry recovered" : ""
+        }`,
+      );
     }
     if (budgetTimes.length > 0) {
       const avg = budgetTimes.reduce((a, b) => a + b, 0) / budgetTimes.length;
       const worst = Math.max(...budgetTimes);
+      const avgRatio = avg / Math.max(1, machineMs);
+      const worstRatio = worst / Math.max(1, avg);
       check(
-        "perf: 8-bar render average across all templates",
-        machineLoaded || avg < BUDGET_AVERAGE_MS,
-        `avg=${avg.toFixed(0)}ms worst=${worst.toFixed(0)}ms over ${budgetTimes.length} templates (budget ${BUDGET_AVERAGE_MS}ms); aggregate=${(
-          totalWallMs / Math.max(1, totalAudioMs)
-        ).toFixed(2)}× realtime${machineLoaded ? ` — machine loaded (${calibNote}), informational run` : ""}`,
+        "perf: 8-bar render average stays within the single-track baseline ratio",
+        machineLoaded || avgRatio < BUDGET_AVERAGE_RATIO,
+        `avg=${avg.toFixed(0)}ms worst=${worst.toFixed(0)}ms over ${budgetTimes.length} templates vs ${machineMs.toFixed(
+          0,
+        )}ms single-track baseline (${avgRatio.toFixed(2)}×, budget ${BUDGET_AVERAGE_RATIO}×; baseline bracketed ${baselineBefore.ms.toFixed(
+          0,
+        )}–${baselineAfter.ms.toFixed(0)}ms); aggregate=${(totalWallMs / Math.max(1, totalAudioMs)).toFixed(
+          2,
+        )}× realtime${machineLoaded ? ` — machine loaded (${calibNote}), informational run` : ""}`,
+      );
+      check(
+        "perf: the heaviest template stays in proportion to the average",
+        machineLoaded || worstRatio < BUDGET_WORST_RATIO,
+        `worst=${worst.toFixed(0)}ms = ${worstRatio.toFixed(2)}× the average (budget ${BUDGET_WORST_RATIO}×)${
+          machineLoaded ? ` — machine loaded (${calibNote}), informational run` : ""
+        }`,
       );
     }
     // ── AUDIO-THREAD BUDGET: N tracks × M effects under the RT monitor ──
