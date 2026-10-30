@@ -536,7 +536,12 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     // It is a DIAGNOSTIC: the ladder never gates, and the gated 12×4 window
     // keeps its exact position and construction so its verdict is unchanged
     // by the ladder existing. The ladder is measured after it, heaviest
-    // first, so a boundary read is never flattered by a warm heap.
+    // first — but "heaviest first" is NOT a protection against a warm heap:
+    // measured 2026-10-30, the ladder's first (lightest of the heavy three)
+    // reading came back worse than the gated 12×4 that preceded it, and the
+    // readings then rose with measurement order while the graph got
+    // lighter. Order alone does not buy a clean reading; the adjacent floor
+    // below is what does.
     const ladderDoc = (trackCount: number, effectsPerTrack: number): ProjectDocument => ({
       ...template,
       bpm: 120,
@@ -606,13 +611,34 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     const graph = await measureWindow(doc);
     // The ladder, AFTER the gated window: the gate's own measurement keeps
     // the conditions it had before the ladder existed.
-    const ladder: Array<{ label: string; drops: number; jitter: number }> = [];
+    //
+    // Each scenario is measured against a floor taken ADJACENT to it — the
+    // same context, the same probe, one track and no effects, immediately
+    // before that scenario. Measured 2026-10-30: a ladder WITHOUT an
+    // adjacent floor does not answer its own question. The first reading of
+    // the ladder (12×3, 36 effects) came back at 2.61× against the gated
+    // 12×4's 2.30× — a LIGHTER graph reading worse — and the readings then
+    // rose with measurement order (8×4 → 3.13×, 12×2 → 3.12×) while the
+    // graph got lighter all the way down to 24 effects. That is the shape of
+    // a page that is getting slower, not of a capacity curve. The floor is
+    // the reference that tells the two apart: it is measured before every
+    // scenario, so a degradation that hits the empty graph and the loaded
+    // one alike cancels in the RATIO, and what is left is the graph's own
+    // cost, expressed in the device's heartbeat budget at that moment.
+    const ladder: Array<{ label: string; drops: number; jitter: number; floorJitter: number; ratio: number }> = [];
     for (const [trackCount, effectsPerTrack] of LADDER) {
+      const adjacent = await measureWindow(floorDoc);
       const step = await measureWindow(ladderDoc(trackCount, effectsPerTrack));
+      const floorJitter = jitterOf(adjacent.post);
+      const scenarioJitter = jitterOf(step.post);
       ladder.push({
         label: `${trackCount}×${effectsPerTrack}`,
-        drops: dropped(step.pre, step.post),
-        jitter: jitterOf(step.post),
+        drops: dropped(step.pre, step.post) - dropped(adjacent.pre, adjacent.post),
+        jitter: scenarioJitter,
+        floorJitter,
+        // The ratio cancels a degradation that hits the empty graph and the
+        // loaded one alike. It is the graph's cost, not the device's mood.
+        ratio: floorJitter > 0 ? scenarioJitter / floorJitter : scenarioJitter,
       });
     }
 
@@ -646,7 +672,12 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       ` · device floor xruns=${deviceFloor} jitter=${deviceFloorJitter.toFixed(2)}× ` +
       `(1 track, no effects; cold ${floorColdDrops}/${floorColdJitter.toFixed(2)}× / warm ${floorWarmDrops}/${floorWarmJitter.toFixed(2)}×)` +
       ` · graph build=${graphBuildDrops} steady=${graphSteadyDrops}` +
-      ` · ladder ${ladder.map((r) => `${r.label} xruns=${r.drops} jitter=${r.jitter.toFixed(2)}×`).join(" · ")}`;
+      ` · ladder ${ladder
+        .map(
+          (r) =>
+            `${r.label} xruns=${r.drops} jitter=${r.jitter.toFixed(2)}× floor=${r.floorJitter.toFixed(2)}× ratio=${r.ratio.toFixed(2)}×`,
+        )
+        .join(" · ")}`;
     // The gate: the device must not drop quanta, and the heartbeat must
     // arrive near its expected cadence (a graph that misses its deadline
     // makes the heartbeat late or bursty).
