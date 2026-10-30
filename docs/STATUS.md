@@ -11,7 +11,7 @@ Generated 2026-10-30T13:37:47.378Z · **5 pass · 0 fail · 4 pending · 0 not r
 | State | Claim | Command | Measured | Freshness |
 | ----- | ----- | ------- | -------- | --------- |
 | ✓ PASS | Every user-facing seam is declared with an entry-point spec and a negative assertion | `node scripts/check-seam-coverage.mjs` | 1 check(s), 105 seams | drift-checked |
-| ✓ PASS | docs/CURRENT-STATE.md's spec-file count equals the committed tree | `git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)` | 1342 claimed, 1342 measured | drift-checked |
+| ✓ PASS | docs/CURRENT-STATE.md's spec-file count equals the committed tree | `git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)` | 1345 claimed, 1345 measured | drift-checked |
 | ✓ PASS | The deterministic taste benchmark still matches its committed baseline | `npm run taste:benchmark (harness re-run + committed baseline diff)` | score 1 · deterministic=true · 0 drift row(s) | drift-checked |
 | ✓ PASS | A stamped master verifies offline with the published verifier | `npm run verify:wav:fixture -- <tmp>/stamped.wav && node tools/kyx-verify/kyx-verify.mjs <tmp>/stamped.wav` | VERIFIED (exit 0, hash recomputed from the file) | drift-checked |
 | ✓ PASS | VLYX sound identity: target correction reduces the mean deviation from the reference curve | `tests/fixtures/vlyx-claim/vlyx-claim-v1.json (golden) + src/analysis/vlyxClaim.ts` | mean deviation from the reference curve 2.7 → 1.6 dB (−1.1 dB, 5/10 bands) | drift-checked |
