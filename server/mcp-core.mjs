@@ -5582,6 +5582,32 @@ export const MCP_TOOL_DEFS = [
                 type: "string",
               },
             },
+            languageConstraints: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  mode: {
+                    type: "string",
+                    enum: ["only", "protect"],
+                  },
+                  label: {
+                    type: "string",
+                  },
+                  trackId: {
+                    type: "string",
+                  },
+                  padId: {
+                    type: "string",
+                  },
+                  protectsParentTrack: {
+                    type: "boolean",
+                  },
+                },
+                required: ["mode", "label", "trackId", "protectsParentTrack"],
+              },
+            },
             beforeLufs: {
               type: ["number", "null"],
             },

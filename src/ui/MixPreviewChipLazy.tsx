@@ -186,6 +186,16 @@ export function MixPreviewChipLazy() {
           {visibleLane.revisionAfterRender ?? "unknown"} ({visibleLane.freshness ?? "unknown"})
         </span>
       )}
+      {visibleLane?.languageConstraints && visibleLane.languageConstraints.length > 0 && (
+        <ul className="mix-preview-warnings" aria-label="Interpreted constraints">
+          {visibleLane.languageConstraints.map((item, index) => (
+            <li key={`${item.mode}:${item.trackId}:${item.padId ?? ""}:${index}`}>
+              {item.mode === "only" ? "Only change" : "Protect"}: {item.label}
+              {item.mode === "protect" && item.protectsParentTrack ? " (including its drum track and effects)" : ""}
+            </li>
+          ))}
+        </ul>
+      )}
       {visibleLane && visibleLane.steps.length > 0 && (
         <ol className="mix-preview-changes" aria-label="Planned parameter changes">
           {visibleLane.steps.map((step, index) => (

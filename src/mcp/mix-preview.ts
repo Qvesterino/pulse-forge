@@ -15,6 +15,11 @@ import {
 import { validateMusicalProposal } from "../intent/validate-musical-proposal";
 import { deepEqualRef } from "../commands/docDelta";
 import { snapshot } from "../commands/core";
+import {
+  mergeProposalConstraints,
+  resolveMixLanguageConstraints,
+  type MixConstraintSelection,
+} from "../intent/mix-language-constraints";
 
 /**
  * kyx_mix_idea PREVIEW — the auto-rendered before/after A/B.
@@ -71,6 +76,7 @@ export interface MixPreviewLane {
   /** The ONE-undo command the Apply button executes. */
   command: Command;
   constraints?: ProposalConstraints;
+  languageConstraints?: MixConstraintSelection[];
   stats: MixPreviewStats;
   /** Null means whole-project preview; a range is measured and auditioned in isolation. */
   window?: MixPreviewWindow | null;
@@ -426,6 +432,7 @@ export async function buildMixPreview(
     window?: MixPreviewWindow | null;
     projectRevision?: number | null;
     constraints?: ProposalConstraints;
+    languageConstraints?: MixConstraintSelection[];
   } = {},
 ): Promise<MixPreviewLane> {
   const afterDoc = normalizeProject(plan.command.execute(structuredClone(doc)));
@@ -454,6 +461,7 @@ export async function buildMixPreview(
     afterDoc,
     command: plan.command,
     ...(options.constraints ? { constraints: structuredClone(options.constraints) } : {}),
+    ...(options.languageConstraints ? { languageConstraints: structuredClone(options.languageConstraints) } : {}),
     stats: {
       beforeLufs,
       afterLufs,
@@ -481,8 +489,17 @@ export async function previewMixIdea(
 ): Promise<MixPreviewOutcome> {
   const doc = structuredClone(services.store.getDoc());
   const projectRevision = storeRevision(services.store);
-  const constraints = request.constraints === undefined ? undefined : parseProposalConstraints(request.constraints);
-  if (constraints === null) return { ok: false, reason: "Invalid constraint declaration." };
+  const explicitConstraints =
+    request.constraints === undefined ? undefined : parseProposalConstraints(request.constraints);
+  if (explicitConstraints === null) return { ok: false, reason: "Invalid constraint declaration." };
+  const language = resolveMixLanguageConstraints(doc, request.idea);
+  if (language.status === "clarify") return { ok: false, reason: [language.reason, ...language.choices].join("\n") };
+  const constraints =
+    language.status === "ready"
+      ? explicitConstraints
+        ? mergeProposalConstraints(explicitConstraints, language.constraints)
+        : language.constraints
+      : explicitConstraints;
   for (const path of [...(constraints?.allow ?? []), ...(constraints?.protect ?? [])]) {
     if (path[0] === "tracks" && path.length > 1 && typeof path[1] !== "object") {
       return { ok: false, reason: "Track constraints must use a stable {id} selector." };
@@ -552,7 +569,7 @@ export async function previewMixIdea(
   // and a chip that only shows a lane must not pay for them on every studio
   // boot. Same seam as the renderer below.
   const { planMixIdea } = await import("./mix-idea");
-  const plan = planMixIdea(doc, request.idea, request.target);
+  const plan = planMixIdea(doc, language.status === "ready" ? language.plannerText : request.idea, request.target);
   if (!plan.ok) return { ok: false, reason: plan.reason };
   const { renderProject, throwIfAborted } = await import("../rendering/renderer");
   throwIfAborted(signal);
@@ -568,7 +585,12 @@ export async function previewMixIdea(
         ...(previewWindow ? { minimumDurationTicks: previewWindow.endTick, arrangementOnly: true } : {}),
         signal,
       }),
-    { window: previewWindow, projectRevision, ...(constraints ? { constraints } : {}) },
+    {
+      window: previewWindow,
+      projectRevision,
+      ...(constraints ? { constraints } : {}),
+      ...(language.status === "ready" ? { languageConstraints: language.selections } : {}),
+    },
   );
   const revisionAfterRender = storeRevision(services.store);
   lane.revisionAfterRender = revisionAfterRender;
@@ -620,6 +642,10 @@ export function formatMixPreview(outcome: MixPreviewOutcome): string {
       ? `measured/auditioned ticks ${outcome.lane.window.startTick}..${outcome.lane.window.endTick} (${outcome.lane.window.startSec.toFixed(3)}..${outcome.lane.window.endSec.toFixed(3)} s)`
       : "measured/auditioned full project",
     `project revision: ${outcome.lane.projectRevision ?? "unknown"} → ${outcome.lane.revisionAfterRender ?? "unknown"} (${outcome.lane.freshness ?? "unknown"})`,
+    ...(outcome.lane.languageConstraints ?? []).map(
+      (item) =>
+        `${item.mode === "only" ? "Only change" : "Protect"}: ${item.label}${item.mode === "protect" && item.protectsParentTrack ? " (including its parent drum track and effects)" : ""}`,
+    ),
     ...outcome.lane.steps.map((step, index) => {
       const changes = step.changes
         .map(({ param, before, after }) => `${param} ${before === null ? "unset" : before} → ${after}`)

@@ -1322,6 +1322,45 @@ export function IntentPanel() {
     }
   };
 
+  // A mix instruction with preservation/scope language must enter the same
+  // audition-first boundary as MCP, never the legacy direct production write.
+  const tryConstrainedMix = async (prompt: string, parsedPrompt: ReturnType<typeof parseIntentText> | null) => {
+    if (
+      !prompt ||
+      parsedPrompt?.input.genre ||
+      parsedPrompt?.detected.some((chip) => chip.startsWith("♪")) ||
+      parseSectionRequests(prompt)
+    )
+      return false;
+    const normalized = prompt
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    if (/\b(?:generate|create|vytvor|vygeneruj|generuj)\b/.test(normalized)) return false;
+    if (!parseProductionIntent(prompt) && !/\b(?:uprav|zmen|edit|change|adjust)\b/.test(normalized)) return false;
+    const { resolveMixLanguageConstraints } = await import("../intent/mix-language-constraints");
+    const resolved = resolveMixLanguageConstraints(services.store.getDoc(), prompt);
+    if (resolved.status === "none") return false;
+    if (resolved.status === "clarify") {
+      if (resolved.retries?.length) {
+        setClarify({
+          reason: "mix-constraint-target",
+          message: resolved.reason,
+          executable: resolved.retries,
+          advice: resolved.choices,
+          prompt,
+        });
+      } else setError([resolved.reason, ...resolved.choices].join(" · "));
+      return true;
+    }
+    setStatus("Pripravujem chránený mix náhľad…");
+    const { previewMixIdea } = await import("../mcp/mix-preview");
+    const outcome = await previewMixIdea(services, { idea: prompt });
+    if (!outcome.ok) setError(outcome.reason);
+    else setStatus("Náhľad je pripravený — skontroluj chránené stopy a vypočuj A/B pred použitím.");
+    return true;
+  };
+
   const generate = async (requestedText = text, options: { allowRouteBusy?: boolean } = {}) => {
     const promptText = requestedText.trim();
     const promptParsed = promptText === text.trim() ? parsed : promptText ? parseIntentText(promptText) : null;
@@ -1354,6 +1393,15 @@ export function IntentPanel() {
     if (promptBriefContract.conflicts.length > 0) {
       setError(BRIEF_CONFLICT_BLOCK_MESSAGE);
       return;
+    }
+    setBusy(true);
+    try {
+      if (await tryConstrainedMix(promptText, promptParsed)) return;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+      return;
+    } finally {
+      setBusy(false);
     }
     // User actually used the AI path — the onboarding hint can advance.
     notifyOnboardingProgress("intent-generated");
@@ -4293,6 +4341,8 @@ export function IntentPanel() {
     let executedRoute: RoutedIntent | null = null;
     let delegatedToNestedRoute = false;
     try {
+      const promptParsed = source === text.trim() ? parsed : parseIntentText(source);
+      if (await tryConstrainedMix(source, promptParsed)) return;
       // Pre-routed entry: the local-model fallback (below) re-enters with an
       // adapted route so the big dispatch chain runs exactly once.
       const routeSelection = selection.getState();

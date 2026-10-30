@@ -66,6 +66,7 @@ import { guardStaleWrites, describePath, readPath, WriteConflictError } from "./
 import { decidePermission, readAutonomyPolicy, readDeclaredRevision } from "./permissionLattice";
 import { guardScopedWrites, readScopeDeclaration, ScopeViolationError } from "./scope-guard";
 import { applyDocDelta, deepEqualRef, type DeltaPath } from "../commands/docDelta";
+import { resolveMixLanguageConstraints } from "../intent/mix-language-constraints";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import {
@@ -625,6 +626,21 @@ const OUTPUT_MIX_IDEA: McpOutputSchema = {
           },
         },
         warnings: { type: "array", items: { type: "string" } },
+        languageConstraints: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              mode: { type: "string", enum: ["only", "protect"] },
+              label: { type: "string" },
+              trackId: { type: "string" },
+              padId: { type: "string" },
+              protectsParentTrack: { type: "boolean" },
+            },
+            required: ["mode", "label", "trackId", "protectsParentTrack"],
+          },
+        },
         beforeLufs: { type: ["number", "null"] },
         afterLufs: { type: ["number", "null"] },
         matchGainDb: { type: "number", minimum: -12, maximum: 12 },
@@ -8627,6 +8643,16 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       }
       const target = typeof record.target === "string" ? record.target.trim() : undefined;
       const apply = record.apply === true;
+      const languageConstraints = resolveMixLanguageConstraints(ctx.getDoc(), idea);
+      if (languageConstraints.status === "clarify") {
+        return mcpError("INVALID_ARGUMENTS", [languageConstraints.reason, ...languageConstraints.choices].join("\n"));
+      }
+      if (languageConstraints.status === "ready" && record.preview !== true) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "This idea contains constraints. Use preview:true to review and apply the protected proposal.",
+        );
+      }
       if (record.preview === true) {
         // PREVIEW MODE: render the before/after pair, measure both, arm the
         // studio chip — still a pure read over the project.
@@ -8648,6 +8674,19 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             ctx.signal,
           );
           if (outcome.ok) {
+            if (constraints || languageConstraints.status === "ready") {
+              const { mergeProposalConstraints } = await import("../intent/mix-language-constraints");
+              const { deepEqualRef } = await import("../commands/docDelta");
+              const expected =
+                languageConstraints.status === "ready"
+                  ? constraints
+                    ? mergeProposalConstraints(constraints, languageConstraints.constraints)
+                    : languageConstraints.constraints
+                  : constraints;
+              if (!outcome.lane.constraints || !deepEqualRef(outcome.lane.constraints, expected)) {
+                return mcpError("EXECUTION_FAILED", "Preview transport did not preserve the requested constraints.");
+              }
+            }
             const { validateMusicalProposal } = await import("../intent/validate-musical-proposal");
             const validation = validateMusicalProposal(mixPreviewProposal(outcome.lane));
             if (!validation.ok) return mcpError("EXECUTION_FAILED", validation.reason);
@@ -8666,6 +8705,9 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
                   interpreter: outcome.lane.interpreter,
                   steps: outcome.lane.steps,
                   warnings: outcome.lane.warnings,
+                  ...(outcome.lane.languageConstraints
+                    ? { languageConstraints: outcome.lane.languageConstraints }
+                    : {}),
                   beforeLufs: outcome.lane.stats.beforeLufs,
                   afterLufs: outcome.lane.stats.afterLufs,
                   matchGainDb: outcome.lane.stats.matchGainDb,
@@ -15208,6 +15250,22 @@ function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = fa
  * text rides along for the kinds whose UI executor re-parses it (mix uses
  * the text-parser's input for the profile spec, AS-014). */
 function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent, text: string): McpToolResult {
+  // A model or legacy router must not bypass the preview-only constraint
+  // boundary by interpreting the protected words as an ordinary mixer write.
+  if (
+    ["production", "mix", "fader", "effectIntent", "paramIntent", "sendIntent", "bypassIntent", "compound"].includes(
+      route.kind,
+    )
+  ) {
+    const resolution = resolveMixLanguageConstraints(ctx.getDoc(), text);
+    if (resolution.status === "clarify")
+      return mcpError("POLICY_REFUSED", [resolution.reason, ...resolution.choices].join("\n"));
+    if (resolution.status === "ready")
+      return mcpError(
+        "POLICY_REFUSED",
+        "This instruction contains protected scope. Use kyx_mix_idea with preview:true to review it before applying.",
+      );
+  }
   if (route.kind === "automationPlan") return automationPlanProposalResult(route);
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
