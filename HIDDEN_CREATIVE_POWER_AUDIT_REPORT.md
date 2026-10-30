@@ -2954,11 +2954,24 @@ reference that the absolute limit lacks.
 tree, on an idle desktop, with the render path unchanged.** The parallel session's committed run and this session's two runs all
 report the same three failures —
 
-| check                   | 2026-10-29 tree  | current tree                                     | verdict now       |
-| ----------------------- | ---------------- | ------------------------------------------------ | ----------------- |
-| `perf: techno — 8-bar`  | 10509 ms         | 13839 / 13641 / 21964 ms                         | ❌ (budget 13271) |
-| `perf: 8-bar average`   | avg 5197 ms      | avg 8624 / 8346 / 9118 ms                        | ❌ (limit 7000)   |
-| `perf: 8×4 vs baseline` | 13915 ms (5.45×) | 17944 / 16624 / 17996 ms (6.11× / 6.49× / 6.02×) | ❌ (limit ≈ 5.0×) |
+| check                   | 2026-10-29 idle run (`82f59555`, 77/77 corpus, 439/439) | current tree (loaded)                               | verdict now       |
+| ----------------------- | ------------------------------------------------------- | --------------------------------------------------- | ----------------- |
+| `perf: techno — 8-bar`  | ✅ 9015 ms                                              | ❌ 13839 / 13641 / 21964 ms                         | ❌ (budget 13271) |
+| `perf: 8-bar average`   | ✅ avg 4708 ms (aggregate 0.29×)                        | ❌ avg 8624 / 8346 / 9118 ms                        | ❌ (limit 7000)   |
+| `perf: 8×4 vs baseline` | ✅ 10697 ms vs 2284 ms baseline (**4.68× baseline**)    | ❌ 17944 / 16624 / 17996 ms (6.11× / 6.49× / 6.02×) | ❌ (limit ≈ 5.0×) |
+
+**— IN PLACE (2026-10-30, evening): the first column of this table was untraceable and is replaced with a traceable one.** The
+previous column read _"2026-10-29 tree: techno 10509 ms, avg 5197 ms, 8×4 13915 ms (5.45×)"_ — and **those three numbers exist in
+no tracked artifact**: a search of every `*.log` under `docs/audits/` finds `10509`, `5197` and `13915` **nowhere**. They entered
+this report from a session message whose run was never committed to a log, and they are **withdrawn**. The replacement column is
+the **same 77-case corpus** on the **same parity-obligation line** (`fx=48+9 instruments=29+2`), read from the tracked idle log
+`browser-audit-head-82f59555.log` (commit `82f59555`, 2026-10-29 10:31, **439/439 green**), and it is a **stronger** anchor than the
+one it replaces: it shows the tree **green with the corpus at 77**, which is precisely the fact that makes the corpus size
+unusable as an explanation (§ below). The "current tree" column was already traceable — `17944 / 6.11×` to
+`browser-audit-3328668c-plus-rt-floor-loaded.log`, `16624 / 6.49×` to `rt-floor-runB-quiet.log`, `17996 / 6.02×` to
+`rt-floor-runA-contended.log`. **The rule this adds: a number in a report is a claim about an artifact; if no artifact carries
+it, the number is a rumour — and "I searched and found nothing" is a measurement, so the search is recorded here rather than
+quietly replaced.**
 
 **IN PLACE (2026-10-30, later the same day): the absolute form is still red, and the RELATIVE form in the same run is green.**
 The parallel session re-calibrated the absolute budget to **9000 ms** from a measured band of **4579–6379 ms** (`4bc8a224`), and
@@ -3042,6 +3055,37 @@ itself as idle (`calib=12.0ms`) in the run that still failed all three. **And th
 `src/browser-checks.ts:650`) — so the repo currently holds two statements about the same gate that contradict each other, and
 **the measurement sides with neither**: the rendering is CPU-bound, it is not load-independent, and the ratio did not separate
 structure from noise by a wide margin when the box was merely warm.
+
+**— IN PLACE (2026-10-30, evening): the mechanism named in the paragraph above is WITHDRAWN; the parallel session checked it
+against the tracked logs and it does not hold.** The sentence "the parity corpus grew from **67 to 77 items**" is a true fact
+about the tree and a **false cause**, and the difference is worth recording rather than quietly rewriting:
+
+- **The 77-case corpus was already there when the tree was green.** The idle log `browser-audit-head-82f59555.log` (commit
+  `82f59555`, **2026-10-29 10:31**) reads `passed=77/77` and the same `parity obligation … fx=48+9 instruments=29+2` line as
+  every later log, and it was **439/439 green** with `perf avg=4708 ms` and `dense 10697 ms`. **Only the oldest log
+  (`browser-audit.log`) has 67** (`failed=4/67`, `fx=38+19`). **The corpus count was therefore already 77 in the run that
+  passed, and it cannot explain a verdict that flipped.**
+- **What actually changed between the green run and the red ones is the parallel session's own commit `c0400b33`
+  (2026-10-30 01:51)** — "the offline branch renders the realtime branch's MEASURED history". Before it, the second live take's
+  history usually **differed** from the first (it was derived from the arming clock), so it got **its own** offline reference:
+  **a third offline render per case**, 77 cases × ~1.15 s of audio plus the whole graph, all before the perf section opens.
+  **The heavier run was caused by that change, and the parallel session owns it.**
+- **It is fixed, in the tree, by the parallel session.** The capture now starts on a **constant** frame
+  (`src/testing/live-offline-parity.ts:88-122`: `CAPTURE_START_LEAD_SEC = 0.5` → `CAPTURE_LEAD_FRAMES`, which is **22144 frames
+  at 44.1 kHz**, with a clock-derived fallback when the arming took longer), so both live takes share **one** history → **one**
+  offline reference → **two** renders per case → the corpus is back to its original cost — and the history no longer depends on the
+  arming hour, so it is the same on the Linux runners too.
+- **What survives unchanged is the SHAPE of the finding, and the parallel session confirms it explicitly:** the verdict moved
+  because the **run got heavier, not because the product got heavier**. Only the attribution inside that sentence was wrong. And
+  the sentence just above it — the box measured itself as **idle** (`calib=12.0ms`) in a run that failed all three — now has a
+  second, sharper reading: **the run was heavy because it did more work, and the calibration is a CPU spin that cannot see
+  either.** A guard that cannot see the thing that moved is not a gate.
+
+**The generalisable part of this correction, which is the part worth keeping:** _"the run got heavier" is a conclusion, and
+"the corpus grew" is a candidate mechanism — and the two are not the same claim._ A candidate mechanism has to be checked against
+an artifact that shows the mechanism **absent** while the conclusion held. Here that artifact existed (`82f59555`, green, same
+corpus), and checking it took one grep. **The conclusion was right and the mechanism was wrong, which is the worst combination:
+the right conclusion survives for the wrong reason, and nobody re-checks it.**
 
 **Provenance of the committed artifact, recorded here because this session owns the instrument.** The log the parallel session
 committed at `74a1d8dd` (`docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`) contains **this

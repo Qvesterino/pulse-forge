@@ -103,12 +103,21 @@ failing checks: 1 FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGE
 
 ## 4. The environments fail each other's checks
 
-| check                   | 2026-10-29 tree (desktop) | current tree (desktop)                           | current tree (runner) |
-| ----------------------- | ------------------------- | ------------------------------------------------ | --------------------- |
-| realtime budget         | ✅ 1.05×                  | ✅ **0** xruns / ❌ **1** xruns / ❌ **1** xruns | ❌ `xruns=1`          |
-| `perf: techno`          | ✅ 10509 ms               | ❌ 13839 / 13641 / 21964 ms                      | ✅                    |
-| `perf: 8-bar average`   | ✅ avg 5197 ms            | ❌ avg 8624 / 8346 / 9118 ms                     | ✅                    |
-| `perf: 8×4 vs baseline` | ✅ 13915 ms (5.45×)       | ❌ 17944 / 16624 / 20701 ms                      | ✅                    |
+| check                   | 2026-10-29 idle run (`82f59555`, desktop) | current tree (desktop)                           | current tree (runner) |
+| ----------------------- | ----------------------------------------- | ------------------------------------------------ | --------------------- |
+| realtime budget         | ✅ 1.05×                                  | ✅ **0** xruns / ❌ **1** xruns / ❌ **1** xruns | ❌ `xruns=1`          |
+| `perf: techno`          | ✅ 9015 ms                                | ❌ 13839 / 13641 / 21964 ms                      | ✅                    |
+| `perf: 8-bar average`   | ✅ avg 4708 ms (aggregate 0.29×)          | ❌ avg 8624 / 8346 / 9118 ms                     | ✅                    |
+| `perf: 8×4 vs baseline` | ✅ 10697 ms vs 2284 ms (**4.68×**)        | ❌ 17944 / 16624 / 20701 ms                      | ✅                    |
+
+**IN PLACE (2026-10-30, evening): the middle column's ORIGINAL values were withdrawn as untraceable.** This file first carried
+`10509 ms / avg 5197 ms / 13915 ms (5.45×)` for the 2026-10-29 tree. A search of every `*.log` under `docs/audits/` finds
+**`10509`, `5197` and `13915` in no artifact at all** — they reached this file from a session message whose run was never
+committed to a log. They are **withdrawn**. The replacement column is the tracked idle log
+`browser-audit-head-82f59555.log` (commit `82f59555`, 2026-10-29 10:31, **439/439 green**), which carries the **same 77-case
+corpus** as every later log — so it is also the fact that **the corpus size cannot explain** the later reds (the parallel
+session's own commit `c0400b33` added a **third offline render per case**, and that is what made the run heavier; it has since
+been fixed by the constant capture frame, `CAPTURE_LEAD_FRAMES` in `src/testing/live-offline-parity.ts:88-122`).
 
 The runner's job reported **`failing checks: 1`** — only the realtime budget. On the desktop the three offline budgets **fail**.
 **Same tree, same checks: each environment fails exactly what the other passes.**
