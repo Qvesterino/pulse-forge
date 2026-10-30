@@ -1520,7 +1520,8 @@ measured rather than inferred: `npm run drift:check` on the committed tree exits
 while `mcp-mirrors`, `domain-goldens` and the counts section are **green** — so the drift was in exactly one claim, the seam
 count, and nowhere else. Regenerated with `npm run status:report` and committed in `d696851f`; the diff is **only** the seam
 count (102 → 104) plus the generation timestamp, every other row byte-identical — so no parallel session's uncommitted work
-leaked into the artifact, which is the failure mode §10.11.1 is about.
+leaked into the artifact, which is the failure mode §10.11.1 is about. **Re-verified by running the gate itself on the fixed
+tree: `npm run drift:check` → `✓ no drift — derivable artifacts match their generators`, exit 0.**
 
 **So the drift gate has now been red on `origin/main` twice in two days, both times for a count that moved in the working tree
 and not in the artifact.** The gate is doing its job — it caught both. What is still missing is the moment between "the count
