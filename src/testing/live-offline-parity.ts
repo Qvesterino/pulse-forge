@@ -113,14 +113,11 @@ const CAPTURE_QUANTUM_FRAMES = 128;
  *
  * This constant is the NOMINAL history - what the realtime branch's history
  * is when nothing perturbs it. The harness uses the MEASURED history instead
- * (see `captureLive`), because the realtime branch's real history also
- * contains the gap between the engine's construction and the capture's
- * arming, and that gap is a whole number of render quanta that depends on
- * the machine's load. Measured 2026-10-29: an idle desktop armed its capture
- * one quantum after the engine's construction and matched this constant
- * bit-exactly; the Linux runners armed it in the SAME quantum, so their
- * history was one quantum shorter - and 18 of 77 cases went red on a
- * divergence that was never the engine's.
+ * (see `captureLive`): the realtime branch's context is frozen before the
+ * engine is built, so the engine's processors join the audio thread at frame
+ * 0 and the branch's history at the capture start is exactly its capture
+ * start frame - a number, not the outcome of a race between the main thread
+ * and the audio thread.
  */
 const CAPTURE_LEAD_FRAMES = Math.ceil((CAPTURE_START_LEAD_SEC * SR) / CAPTURE_QUANTUM_FRAMES) * CAPTURE_QUANTUM_FRAMES;
 /** Additional scheduling cushion for browser-thread note-event probes. */
@@ -360,15 +357,16 @@ interface CaptureResult {
    * frames its worklets had already processed when the capture began.
    *
    * This is the number the offline branch has to match (see `renderOffline`).
-   * It is MEASURED, not assumed: the offline render used to use a fixed
-   * history, and the realtime branch's real history moves with the machine's
-   * load - the gap between the engine's construction and the capture's arming
-   * is a whole number of render quanta, and it is a different number of
-   * quanta on a loaded runner than on an idle desktop. Measured 2026-10-29:
-   * an idle desktop had the capture armed one quantum after the engine's
-   * construction and matched the fixed history bit-exactly, while the Linux
-   * runners armed it in the SAME quantum - one quantum less history - and 18
-   * of 77 cases went red on a divergence that was never the engine's.
+   * It is MEASURED, not assumed, and it is exact: the capture's context is
+   * frozen before the engine is built, so the engine's processors join the
+   * audio thread at frame 0 and the branch's history at the capture start is
+   * the capture start frame itself.
+   *
+   * The offline render used to use a fixed history instead, and that only
+   * matched on an idle desktop whose timing happened to land on that number:
+   * measured 2026-10-29, the Linux runners' real history was one render
+   * quantum different and 18 of 77 cases went red on a divergence that was
+   * never the engine's.
    */
   historyFrames: number;
 }
@@ -436,7 +434,30 @@ async function captureLive(
   const ctx = new AudioContext({ sampleRate: SR });
   let engine: AudioEngine | null = null;
   try {
-    if (ctx.state === "suspended") await ctx.resume();
+    // FREEZE THE TIMELINE BEFORE ANYTHING IS BUILT ON IT.
+    //
+    // A fresh AudioContext starts RUNNING, so the engine's processors join the
+    // audio thread at a frame that is a RACE between the main thread and the
+    // audio thread: whichever of them gets there first decides whether the
+    // processors process from quantum N or quantum N+1. That frame is exactly
+    // what the offline branch's history has to match, and a race cannot be
+    // matched by a number - measured 2026-10-29, the same case came out
+    // bit-identical on one run and 33 dB apart on the next.
+    //
+    // Suspending immediately keeps the clock at 0 (measured: a fresh context
+    // reports currentTime 0 synchronously and stays there across a suspend),
+    // so the whole graph is built while the context is frozen. When the clock
+    // finally starts, the engine's processors join at frame 0 and the realtime
+    // branch's history at the capture start IS its capture start frame - a
+    // number, not a race.
+    await ctx.suspend();
+    // The engine resumes a suspended context on its own (AudioEngine's
+    // ensureContext does it best-effort, because a real app wants to make
+    // noise). Here the HARNESS owns the timeline: the clock must not start
+    // before the graph is finished, or the engine's start frame is a race
+    // again. The state is reported as running so nothing resumes the context
+    // behind the harness's back - the resume below is the real one.
+    Object.defineProperty(ctx, "state", { get: () => "running", configurable: true });
     await loadParityCapture(ctx);
     // Same loader contract as the offline branch (core + the doc's plugins),
     // so both engines hold the same processor implementations.
@@ -459,18 +480,15 @@ async function captureLive(
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-    // The clock the FINAL processors are constructed at. Everything before
-    // this point (the context, the worklet modules, the limiter wait) shifts
-    // the whole timeline and cancels out: the capture start is measured from
-    // the same clock. What does NOT cancel out is the gap between here and
-    // the capture's arming below - that gap is what the realtime branch's
-    // history is made of, and it is a whole number of render quanta that
-    // changes with the machine's load.
-    const settleClock = ctx.currentTime;
     // Rebuild the chains on the settled graph: the first event then lands
     // within a quantum of the final processor construction, matching the
     // offline render (which always builds on a cold, settled timeline).
     engine.setProject(doc);
+    // The graph is finished, so the clock may start. The processors were
+    // built while the context was frozen, so they join the audio thread at
+    // frame 0 - and the realtime branch's history at the capture start is
+    // then exactly the capture start frame.
+    await ctx.resume();
     if (expectedWorklet) {
       const instruments = (
         engine as unknown as {
@@ -525,14 +543,12 @@ async function captureLive(
       Math.ceil(((ctx.currentTime + CAPTURE_START_LEAD_SEC) * ctx.sampleRate) / CAPTURE_QUANTUM_FRAMES) *
       CAPTURE_QUANTUM_FRAMES;
     const requestedStartTime = requestedStartFrame / ctx.sampleRate;
-    // The realtime branch's history at the capture start, in frames. Its
-    // processors were constructed at settleClock and the audio thread picks
-    // them up at the NEXT render quantum, so the branch has processed
-    // (requestedStartFrame - settleFrames - QUANTUM) frames by the time the
-    // capture starts. The offline branch renders exactly this many frames
-    // before its compared window.
-    const settleFrames = Math.round(settleClock * ctx.sampleRate);
-    const historyFrames = requestedStartFrame - settleFrames - CAPTURE_QUANTUM_FRAMES;
+    // The realtime branch's history at the capture start, in frames. The
+    // engine's processors were built while the context was frozen, so they
+    // started processing at frame 0 and the branch has processed exactly
+    // `requestedStartFrame` frames by the time the capture starts. The offline
+    // branch renders exactly this many frames before its compared window.
+    const historyFrames = requestedStartFrame;
     script(engine, (offset) => {
       const when = requestedStartTime + leadSec + eventPrerollSec + offset;
       scheduledTimes.push(when);
@@ -1507,8 +1523,8 @@ export async function measureParityCase(
   const reference2 =
     live2.historyFrames === live.historyFrames
       ? reference
-      : (await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec, live2.historyFrames)) ??
-        reference;
+      : ((await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec, live2.historyFrames)) ??
+        reference);
   const live2Match = live2
     ? compareWithQuantumRetry(reference2, live2.left, live.sampleRate)
     : { alignOffset: 0, nullDb: Number.NaN, quantumShift: false };
