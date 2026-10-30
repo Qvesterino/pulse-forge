@@ -210,6 +210,15 @@
       "negativeSpec": "NEGATIVE: closing a panel does not steal focus from outside it"
     },
     {
+      "id": "effect-ab-empty-slot-guidance",
+      "status": "COVERED",
+      "entryPoint": "src/ui/EffectAbControls.tsx status line — ARMED vs ACTIVE wording",
+      "note": "CF-18: clicking an empty A/B slot intentionally ARMS it for the next STORE (documented prepare-a-variation flow) but changes no sound — the old status read 'B ACTIVE · EMPTY', which looked like a compare that did nothing. The status now distinguishes ARMED · EMPTY (with the path out: tweak and STORE captures here, recall needs a stored snapshot) from ACTIVE · STORED, and the empty-slot button title explains the arm.",
+      "spec": "tests/ui/EffectAbControls.test.tsx",
+      "seamEvent": "ARMED · EMPTY",
+      "negativeSpec": "NEGATIVE: a STORED active slot still reads ACTIVE · STORED (no armed wording)"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

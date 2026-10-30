@@ -28,7 +28,11 @@ describe("EffectAbControls", () => {
         onLoad={onLoad}
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("B ACTIVE · EMPTY");
+    // CF-18: an empty active slot is ARMED, not a compare — the status names
+    // the arm and the path out of it instead of a cryptic ACTIVE · EMPTY.
+    expect(screen.getByRole("status")).toHaveTextContent("B ARMED · EMPTY");
+    expect(screen.getByRole("status")).toHaveTextContent("STORE captures here");
+    expect(screen.getByRole("status")).toHaveTextContent("recall needs a stored snapshot");
   });
 
   it("recalls a stored alternate through the load callback", () => {
@@ -51,5 +55,32 @@ describe("EffectAbControls", () => {
 
     expect(onStateChange).not.toHaveBeenCalled();
     expect(onLoad).toHaveBeenCalledWith("B");
+  });
+});
+
+describe("EffectAbControls — CF-18 empty-slot affordance", () => {
+  it("NEGATIVE: a STORED active slot still reads ACTIVE · STORED (no armed wording)", () => {
+    render(
+      <EffectAbControls
+        effectName="PRISM"
+        params={{}}
+        deviceState={{
+          kind: "effect-ab-v1",
+          data: { slots: { A: { "band1.gainDb": 3 } }, active: "A" },
+        }}
+        onStateChange={vi.fn()}
+        onLoad={vi.fn()}
+      />,
+    );
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("A ACTIVE · STORED");
+    expect(status.textContent).not.toContain("ARMED");
+    expect(status.textContent).not.toContain("EMPTY");
+  });
+
+  it("the empty-slot button title explains the arm and the recall requirement", () => {
+    render(<EffectAbControls effectName="PRISM" params={{}} onStateChange={vi.fn()} onLoad={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "B" }).getAttribute("title")).toContain("arms it for the next STORE");
+    expect(screen.getByRole("button", { name: "B" }).getAttribute("title")).toContain("recall needs a stored snapshot");
   });
 });

@@ -84,7 +84,13 @@ export function EffectAbControls({
           type="button"
           className={"btn btn-small" + (state.active === slot ? " active" : "")}
           aria-pressed={state.active === slot}
-          title={slots[slot] ? "Load slot " + slot : "Slot " + slot + " (empty — use STORE)"}
+          title={
+            slots[slot]
+              ? "Load slot " + slot
+              : "Slot " +
+                slot +
+                " is empty — clicking arms it for the next STORE (the sound does not change; recall needs a stored snapshot)"
+          }
           onClick={() => load(slot)}
         >
           {slot}
@@ -130,7 +136,12 @@ export function EffectAbControls({
         CLEAR
       </button>
       <span className="effect-ab-status" role="status">
-        {state.active} ACTIVE · {slots[state.active] ? "STORED" : "EMPTY"}
+        {slots[state.active]
+          ? state.active + " ACTIVE · STORED"
+          : // CF-18: an empty active slot is ARMED for the next STORE, not a
+            // compare — the click changes no sound, so the status names the
+            // arm and the path out of it instead of reading as a broken A/B.
+            state.active + " ARMED · EMPTY — tweak and STORE captures here (recall needs a stored snapshot)"}
       </span>
     </div>
   );
