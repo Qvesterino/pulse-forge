@@ -44,11 +44,18 @@ describe("NoteRepeat.reanchorToTransport (audit 03)", () => {
 
   it("PlaybackController.seek wires the re-anchor + automation cancel + MIDI cancel (source pin)", () => {
     const source = readFileSync(resolve(process.cwd(), "src/services.ts"), "utf8");
-    const start = source.indexOf("seek = (tick: number)");
+    // Audit 2026-10-30: the realignment moved into a shared method — the
+    // collab remote-seek follow path must run the SAME wiring as a local
+    // seek — so the pin follows the wiring there and asserts the delegation.
+    const start = source.indexOf("realignAfterTransportJump = (): void => {");
+    expect(start).toBeGreaterThan(0);
     const body = source.slice(start, start + 1600);
     expect(body).toContain("this.engine.automationReset()");
     expect(body).toContain("this.noteRepeatRef?.reanchorToTransport()");
     expect(body).toContain("this.midiOutputRef?.cancelPending()");
+    const seekStart = source.indexOf("seek = (tick: number)");
+    expect(seekStart).toBeGreaterThan(0);
+    expect(source.slice(seekStart, seekStart + 700)).toContain("this.realignAfterTransportJump()");
   });
 });
 
