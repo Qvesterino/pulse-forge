@@ -3042,6 +3042,31 @@ gate in this repo measures a ratio across machines and is stable; the other meas
 fastest of the six runs recorded above. **That is a number change, and a number change is the owner's call — not this report's
 and not the parallel session's.** The form is settled by the measurements; the value is not.
 
+**— UPDATE (2026-10-30, 19:10): the FORM LANDED, and it landed as this report argued for it.** The parallel session committed
+`d4df9e8d` _"perf(gates): the perf budgets measure ratios, not milliseconds"_ — and the change is **not** a bigger millisecond
+number:
+
+- **the per-template cost is now REPORTED, not gated** (the same template varies **2.6×** between adjacent runs on one machine, so
+  no per-template threshold — absolute or relative — is meaningful);
+- **the average and worst budgets are ratios against a baseline rendered in the same process** (`BUDGET_AVERAGE_RATIO = 3`,
+  `BUDGET_WORST_RATIO = 3`) instead of millisecond counts;
+- **the dense-matrix gate keeps its relative form and gains the BRACKET** this report asked for: the single-track baseline is
+  measured **before and after** the heavy render and averaged (`baselineBefore`, `baselineAfter`), which removes the order bias
+  documented below — a baseline taken _after_ the graph deflates the ratio, so the gate passed while the product got heavier.
+
+**This is the audit's recommendation implemented by the session that owns that line, and the code comment cites the same
+reasoning.** **The one thing that did NOT happen — and should not have — is a larger absolute budget.** The owner's remaining
+choice is only the _value_ of the new ratio, not its form: the measured band on this tree is **1.92–2.30×** for the dense matrix
+and the per-template ratio swings ~2.6× run to run, so a limit of **3×** sits above the observed band — the property the
+millisecond budget never had.
+
+**And the parallel session's own numbers complete the picture this section kept missing:** the **device floor is clean
+everywhere** (0 xruns, 1.00×) while the graph drops **exactly one quantum**, with the jitter reading **1.05× / 1.16× / 1.27× /
+1.48×** against a limit of 1.5× in three runs of one tree. **The floor says "the device can measure", so the absolute limit is
+the only thing holding the gate up** — and a baseline would replace it with a measured difference. **The dense gate's absolute
+reserve is consumed under load for the same reason** (16045 ms against a 14679 ms budget): the matrix amplifies contention more
+than the serial baseline it is divided by.
+
 **And the relative sibling has a defect of its own, in the same class — found by the parallel session and corrected here against
 the code.** `auditDenseRender` (`src/browser-checks.ts:748-834`) does budget the 8×4 matrix **relatively** (`:815-817`), and that
 is the right form — but the two numbers it divides are **not adjacent**, and the order biases the result in the dangerous
