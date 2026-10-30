@@ -1029,8 +1029,9 @@ pinned by `tests/ui/palette-search-coverage.test.ts` precisely so that the palet
 (CF-12, `f9dbb25a`) added two palette routes — `extra:timepitch` and `extra:spectral` — and moved the count to **77**
 **without moving the pin**, so the committed tree's unit-test job has been red ever since: _"expected 77 to be 75"_. The
 gate whose whole job is to catch a silent palette growth was itself broken by the growth, and the only thing that noticed
-was someone else's CI. Re-pinned to **77** in `66d48a41` — the committed tree's measured count, not a guess. **The number in
-this section was the number that went stale, and the audit that wrote it did not notice.**
+was someone else's CI. Re-pinned to **77** in `66d48a41` — the committed tree's measured count, not a guess — and then to **79** in
+`a1328a50` when CF-15 landed its two tool routes. **The number in this section was the number that went stale, and the audit
+that wrote it did not notice.**
 
 ---
 
@@ -1066,28 +1067,28 @@ Every row below is from that clean tree. The test count moved from **121** to **
 session's CF-05 Tab-traversal fix added three assertions — the count is a measurement, and it is reported as
 measured.
 
-| check                                                                            | result                                                                                                                    |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                                              |
-| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                                            |
-| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                                           |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                                        |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                                        |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                                        |
-| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                                        |
-| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                                        |
-| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                                        |
-| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                                        |
-| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                                           |
-| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                                             |
-| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                                                        |
-| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                                                     |
-| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                                           |
-| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11); **red on `origin/main` again** (§10.11.2) |
-| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)                                   |
-| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **102** seams (committed payload `docs/status.json`; §10.11 measured 95)                          |
-| the committed payload's `spec-counts` claim                                      | ✅ **1336 claimed, 1336 measured** — `state: pass`, drift-checked (`docs/status.json`)                                    |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                                                      |
+| check                                                                            | result                                                                                                                         |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                                                   |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                                                 |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                                                |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                                             |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                                             |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                                             |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                                             |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                                             |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                                             |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                                             |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                                                |
+| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                                                  |
+| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                                                             |
+| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                                                          |
+| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                                                |
+| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11); **red on `origin/main` twice more** (§10.11.2) |
+| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)                                        |
+| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **104** seams (committed payload `docs/status.json`; §10.11 measured 95)                               |
+| the committed payload's `spec-counts` claim                                      | ✅ **1336 claimed, 1336 measured** — `state: pass`, drift-checked (`docs/status.json`)                                         |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                                                           |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -1505,9 +1506,25 @@ green now", and a report that keeps the first shape while the tree moves is a re
 
 **Re-measured here, on the committed tree, rather than taken on relay.** The counting rule is `git ls-files tests`, counting
 `.test.ts`/`.test.tsx` and excluding `tests/e2e/` (`scripts/status-report.mts:83-85`): **1336** measured against **1336**
-claimed. The seam claim moved too — the committed payload reads **1 check, 102 seams** (§10.11 measured 95). The working tree
-is already ahead again (104 seams), which is the point: **the number in the report is a measurement of a tree, and the tree
-moves.**
+claimed. The seam claim moved too — the committed payload now reads **1 check, 104 seams** (§10.11 measured 95).
+
+**And then it went red again, the same day, for the same reason.** CF-15 (`31411056`) added two seams to
+`tests/seam-manifest.json` and regenerated nothing, so the payload's seam claim went stale **again** — and this time it was
+measured rather than inferred: `npm run drift:check` on the committed tree exits **1** with
+
+```
+✗ DRIFT [status] docs/status.json: committed artifact is stale
+✗ DRIFT [status] docs/STATUS.md: committed artifact is stale
+```
+
+while `mcp-mirrors`, `domain-goldens` and the counts section are **green** — so the drift was in exactly one claim, the seam
+count, and nowhere else. Regenerated with `npm run status:report` and committed in `d696851f`; the diff is **only** the seam
+count (102 → 104) plus the generation timestamp, every other row byte-identical — so no parallel session's uncommitted work
+leaked into the artifact, which is the failure mode §10.11.1 is about.
+
+**So the drift gate has now been red on `origin/main` twice in two days, both times for a count that moved in the working tree
+and not in the artifact.** The gate is doing its job — it caught both. What is still missing is the moment between "the count
+moved" and "the artifact moved", which belongs to whoever moved the count.
 
 ### 10.12 The sixteenth finding — the loudness map, read as a measurement
 
