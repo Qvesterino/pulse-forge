@@ -42,6 +42,8 @@ export type ShortcutKey =
   | "moveTrackUp"
   | "moveTrackDown"
   | "duplicateTrack"
+  | "setToolSelect"
+  | "setToolCut"
   | "panelMix"
   | "panelFx"
   | "panelArr"
@@ -229,6 +231,22 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "pasteClips", label: "Paste clips at playhead", group: "Clips", keyHint: "V", ctrl: true },
   { key: "toggleClipMute", label: "Mute / unmute selected audio clips", group: "Clips", keyHint: "M" },
   { key: "toggleSnap", label: "Toggle snap grid on/off", group: "Clips", keyHint: "J" },
+  // CF-15: the arrangement tools finally live in the registry — the labels
+  // say when they DO NOT fire, because a binding that fires only sometimes
+  // must say when (the drum rack's pad keys shadow these letters while
+  // armed, per the documented pad-key contract).
+  {
+    key: "setToolSelect",
+    label: "Select tool (inactive while a drum pad is bound to this key)",
+    group: "Clips",
+    keyHint: "V",
+  },
+  {
+    key: "setToolCut",
+    label: "Cut tool — split clips at the click (inactive while a drum pad is bound to this key)",
+    group: "Clips",
+    keyHint: "C",
+  },
   { key: "groupClips", label: "Group selected clips", group: "Clips", keyHint: "G", ctrl: true },
   { key: "ungroupClips", label: "Ungroup selected clips", group: "Clips", keyHint: "G", ctrl: true, shift: true },
   { key: "toggleClipLock", label: "Lock / unlock selected clips", group: "Clips", keyHint: "L", shift: true },

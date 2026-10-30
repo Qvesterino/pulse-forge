@@ -296,6 +296,17 @@
   overflow: hidden;
   white-space: nowrap;
 }
+/* CF-15 — the active-tool chip: pinned next to the hint bar (never part of
+   the hover-replaced fallback), loud enough to read as a MODE. */
+.statusbar-tool-chip {
+  font-family: var(--mono);
+  font-size: var(--fs-compact);
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 1px 6px;
+  white-space: nowrap;
+}
 .statusbar-hint-label {
   font-family: var(--mono);
   font-size: var(--fs-compact);

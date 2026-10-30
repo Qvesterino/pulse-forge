@@ -132,3 +132,37 @@ describe("command palette — audio-clip transforms (CF-12)", () => {
     expect(seen).toEqual(["pf-open-time-pitch", "pf-open-spectral"]);
   });
 });
+
+describe("command palette — the arrangement tools are registry entries (CF-15)", () => {
+  it("V/C are searchable palette actions", () => {
+    const actions = buildPaletteActions({
+      runShortcut: () => {},
+      snapshotNow: () => {},
+      openGallery: () => {},
+      toggleHistoryPanel: () => {},
+      toggleDiagnostics: () => {},
+    });
+    const select = actions.find((action) => action.id === "shortcut:setToolSelect");
+    const cut = actions.find((action) => action.id === "shortcut:setToolCut");
+    expect(select, "the Select-tool palette entry must exist").toBeTruthy();
+    expect(cut, "the Cut-tool palette entry must exist").toBeTruthy();
+    expect(select!.binding).toBe("V");
+    expect(cut!.title).toContain("Cut tool");
+  });
+
+  it("running the palette entries switches the tool (the same cases the keys use)", () => {
+    // The palette invokes runShortcut — drive it through App's registry seam
+    // by dispatching the very shortcuts the entries wrap.
+    const seen: string[] = [];
+    const actions = buildPaletteActions({
+      runShortcut: (key) => seen.push(key),
+      snapshotNow: () => {},
+      openGallery: () => {},
+      toggleHistoryPanel: () => {},
+      toggleDiagnostics: () => {},
+    });
+    actions.find((action) => action.id === "shortcut:setToolCut")!.run();
+    actions.find((action) => action.id === "shortcut:setToolSelect")!.run();
+    expect(seen).toEqual(["setToolCut", "setToolSelect"]);
+  });
+});

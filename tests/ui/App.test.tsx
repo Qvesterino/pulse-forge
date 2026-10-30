@@ -12,6 +12,7 @@ import { initLayout } from "../../src/ui/layout";
 import { mockServices, renderWithContext } from "../helpers";
 import { stashSongStarter } from "../../src/landing/handoff";
 import { resetShortcutBindings, setShortcutBinding } from "../../src/ui/shortcuts";
+import { bindPadKey, resetPadKeys, setPadKeysArmed } from "../../src/ui/padKeys";
 
 describe("App (top-level shell)", () => {
   it("renders the .app root without crashing", () => {
@@ -413,5 +414,77 @@ describe("App — Escape never touches the transport (CF-06)", () => {
     fireEvent.keyDown(nameField, { key: "Escape" });
     expect(document.activeElement).not.toBe(nameField);
     expect(services.playback.stop).not.toHaveBeenCalled();
+  });
+});
+
+describe("App — the cut tool is registry-owned and its chip is pinned (CF-15)", () => {
+  afterEach(() => {
+    resetPadKeys();
+  });
+
+  it("V selects and C cuts through the registry (the raw branch is gone)", () => {
+    const services = mockServices();
+    const { container } = renderWithContext(
+      <App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+      { services },
+    );
+    // The house template auto-selects a drum track, which arms the pad keys;
+    // this journey belongs to a non-drum (or un-armed) context.
+    setPadKeysArmed(false);
+    fireEvent.keyDown(window, { key: "c" });
+    expect(container.querySelector(".statusbar-tool-chip")?.textContent).toBe("TOOL CUT (V = select)");
+    fireEvent.keyDown(window, { key: "v" });
+    expect(container.querySelector(".statusbar-tool-chip")).toBeNull();
+  });
+
+  it("NEGATIVE: Ctrl+C does not switch the tool (the matcher refuses modified chords)", () => {
+    const services = mockServices();
+    const { container } = renderWithContext(
+      <App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+      { services },
+    );
+    fireEvent.keyDown(window, { key: "c", ctrlKey: true });
+    expect(container.querySelector(".statusbar-tool-chip")).toBeNull();
+  });
+
+  it("NEGATIVE: a drum pad BOUND to C keeps owning it while armed — the pad shadow survives the registry move", () => {
+    const services = mockServices();
+    const { container } = renderWithContext(
+      <App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+      { services },
+    );
+    // The DEFAULT pad map does not own C (qwertyui/asdfghjk) — the shadow is
+    // about a USER-BOUND pad, which the rebind surface allows.
+    bindPadKey(0, "c");
+    setPadKeysArmed(true);
+    try {
+      fireEvent.keyDown(window, { key: "c" });
+      expect(container.querySelector(".statusbar-tool-chip")).toBeNull();
+    } finally {
+      setPadKeysArmed(false);
+    }
+  });
+
+  it("THE PIN: the CUT chip survives a data-hint hover — it is no longer the hint fallback", () => {
+    const services = mockServices();
+    const { container } = renderWithContext(
+      <App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+      { services },
+    );
+    setPadKeysArmed(false);
+    fireEvent.keyDown(window, { key: "c" });
+    const chip = container.querySelector(".statusbar-tool-chip");
+    expect(chip).not.toBeNull();
+
+    // Hover any [data-hint] control: the hint bar swaps its fallback for the
+    // hovered control's name — the chip must NOT vanish with it.
+    const hinted = document.createElement("div");
+    hinted.setAttribute("data-hint", "Channel fader");
+    hinted.setAttribute("data-hint-value", "0.90");
+    document.body.appendChild(hinted);
+    fireEvent.pointerOver(hinted);
+    expect(container.querySelector(".statusbar-hint")?.textContent).toContain("Channel fader");
+    expect(container.querySelector(".statusbar-tool-chip")?.textContent).toBe("TOOL CUT (V = select)");
+    hinted.remove();
   });
 });

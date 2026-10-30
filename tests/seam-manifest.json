@@ -192,6 +192,15 @@
       "negativeSpec": "NEGATIVE: no match shows a truthful empty state; clearing restores every row"
     },
     {
+      "id": "tool-chip-visibility",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx statusbar — .statusbar-tool-chip sibling of the hint bar; setToolSelect/setToolCut in SHORTCUTS + runShortcut",
+      "note": "CF-15: the CUT chip used to live in StatusHint's FALLBACK, which any [data-hint] hover/focus fully replaces — the one mode indicator vanished exactly when the user started interacting. The chip is now a pinned sibling rendered outside the hint swap, and V/C are registry verbs (palette + Help document the same binding that fires). The pad-key shadow is about a USER-BOUND pad (the default map is qwertyui/asdfghjk and does not own C) — pinned by a spec that binds a pad to C and arms the rack.",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "statusbar-tool-chip",
+      "negativeSpec": "THE PIN: the CUT chip survives a data-hint hover"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

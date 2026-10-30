@@ -897,6 +897,20 @@ export function App({
         snapController.toggleEnabled();
         return;
       }
+      // CF-15: the arrangement tools are registry entries — the same two
+      // letters the raw branch used to own, now visible in the palette and
+      // Help. The cut tool splits any clip at the click (ADR 0025 made the
+      // split timeline-wide); Escape resets to select.
+      case "setToolSelect": {
+        event?.preventDefault();
+        toolStore.setTool("select");
+        return;
+      }
+      case "setToolCut": {
+        event?.preventDefault();
+        toolStore.setTool("cut");
+        return;
+      }
       case "groupClips": {
         event?.preventDefault();
         try {
@@ -1566,20 +1580,12 @@ export function App({
         return;
       }
 
-      // Tool switching (real behavior now): V = select, C = cut. The cut tool
-      // splits any clip at the click position (ADR 0025 made split
-      // timeline-wide); Escape resets to select. While the drum rack is
-      // armed, pad keys shadow these letters — the documented pad-key
-      // contract (see padKeys.ts). The old S/P/C/B/E/M map died because five
-      // of its six tools had no behavior; these two letters each have one.
-      if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
-        const lower = event.key.toLowerCase();
-        if (lower === "c" || lower === "v") {
-          event.preventDefault();
-          toolStore.setTool(lower === "c" ? "cut" : "select");
-          return;
-        }
-      }
+      // Tool switching moved into the registry (CF-15): V = select, C = cut
+      // are SHORTCUTS entries handled by runShortcut below, so the palette
+      // and the help overlay document the same binding that fires. The
+      // pad-key guard above already shadows these letters while the drum
+      // rack is armed, and the matcher refuses modified chords, so
+      // Ctrl+C/Ctrl+V keep their native text-editing meaning.
 
       // Ctrl/Cmd+B opens a review flow. A/B renders stay runtime-only until
       // the producer confirms adding the bounce as one undoable audio clip.
@@ -2034,6 +2040,17 @@ export function App({
               )}
               <footer className="statusbar">
                 <SessionStateIndicator onOpenArrangement={() => setBottomPanel("arr")} />
+                {/* CF-15: the active-tool chip is PINNED — a sibling of the
+                    hint bar, not part of its fallback — because the hint
+                    fallback is fully replaced whenever any [data-hint]
+                    control is hovered or focused, which is exactly when a
+                    mode that changes what a click DOES must stay visible.
+                    Renders nothing in select (the default reads as noise). */}
+                {tool !== "select" && (
+                  <span className="statusbar-tool-chip" role="status">
+                    TOOL {tool.toUpperCase()} (V = select)
+                  </span>
+                )}
                 <StatusHint
                   fallback={
                     <span>
@@ -2047,9 +2064,6 @@ export function App({
                         `${trackShortcutLabels.join(" · ")} tracks`
                       )}
                       {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
-                      {/* Real tools now (V select / C cut) — the chip returns,
-                          flagged when a mode is active so it never reads as noise. */}
-                      {tool !== "select" && ` · TOOL ${tool.toUpperCase()} (V = select)`}
                     </span>
                   }
                 />

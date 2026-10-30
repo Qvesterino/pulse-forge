@@ -39,6 +39,9 @@ const ALL_KEYS: ShortcutKey[] = [
   "pasteClips",
   "toggleClipMute",
   "toggleSnap",
+  // The arrangement tools (CF-15) — the V/C keys are registry verbs now.
+  "setToolSelect",
+  "setToolCut",
   "groupClips",
   "ungroupClips",
   "toggleClipLock",
