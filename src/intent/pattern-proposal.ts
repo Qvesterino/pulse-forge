@@ -157,7 +157,8 @@ export function checkPatternProposalWrite(
   if (!scope.ok)
     return {
       ok: false,
-      reason: scope.reason ?? `Protected track changed: ${scope.violations.map((item) => item.path).join(", ")}`,
+      reason:
+        scope.reason ?? `Protected project element changed: ${scope.violations.map((item) => item.path).join(", ")}`,
     };
   return checked;
 }

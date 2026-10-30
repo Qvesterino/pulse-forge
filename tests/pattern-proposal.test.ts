@@ -97,7 +97,7 @@ describe("protected pattern proposals", () => {
   it("rejects production FX that would alter the protected drum track", () => {
     const { doc, result } = fixture();
     result.plan.intent.fx = { targets: ["drums"], goals: [{ concept: "lofi", amount: 0.9 }], sourceText: "lofi drums" };
-    expect(() => applyGenerationResultWithFxCommand(doc, result)).toThrow(/Protected track changed/);
+    expect(() => applyGenerationResultWithFxCommand(doc, result)).toThrow(/Protected project element changed/);
   });
 
   it("refuses ambiguous drum sources instead of preserving only the first one", () => {
