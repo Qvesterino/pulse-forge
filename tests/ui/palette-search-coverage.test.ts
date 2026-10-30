@@ -15,15 +15,16 @@ import { buildPaletteActions, filterActions, type PaletteDeps } from "../../src/
  *   stem, warp, chord, groove, velocity, effect, plugin, waveform, sample,
  *   tempo, humanize, swing, reference, bounce, midi clip.
  *
- *   AFTER: 77 actions, 9 of 48 return zero, and TWELVE of the previously
+ *   AFTER: 79 actions, 9 of 48 return zero, and TWELVE of the previously
  *   unreachable capabilities became genuinely findable (freeze, quantize,
  *   macro, marker, crossfade, chord, groove, velocity, effect, plugin,
  *   humanize, swing) — the gate below pins each one by its exact action.
  *
  *   CF-12 (2026-10-29) added two more routes to the SAME dialogs the audio
  *   clip's context menu already had (Time & pitch, Spectral edit), so the
- *   count moved 75 -> 77. The count is pinned on purpose: a palette that
- *   grows past this line has to be a decision, not a side effect.
+ *   count moved 75 -> 77; CF-15 added the cut-tool chip and the V/C registry
+ *   verbs, so it moved 77 -> 79. The count is pinned on purpose: a palette
+ *   that grows past this line has to be a decision, not a side effect.
  *
  * The count alone would have flattered the result: "record" and "tempo" and
  * "stem" also stopped being zero, but by coincidence of the subsequence

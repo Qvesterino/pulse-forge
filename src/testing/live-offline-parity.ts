@@ -110,6 +110,17 @@ const CAPTURE_QUANTUM_FRAMES = 128;
  * The lead is quantised to the render quantum, because the live capture's
  * start frame is quantised too (the capture worklet can only start on a
  * quantum boundary).
+ *
+ * This constant is the NOMINAL history - what the realtime branch's history
+ * is when nothing perturbs it. The harness uses the MEASURED history instead
+ * (see `captureLive`), because the realtime branch's real history also
+ * contains the gap between the engine's construction and the capture's
+ * arming, and that gap is a whole number of render quanta that depends on
+ * the machine's load. Measured 2026-10-29: an idle desktop armed its capture
+ * one quantum after the engine's construction and matched this constant
+ * bit-exactly; the Linux runners armed it in the SAME quantum, so their
+ * history was one quantum shorter - and 18 of 77 cases went red on a
+ * divergence that was never the engine's.
  */
 const CAPTURE_LEAD_FRAMES = Math.ceil((CAPTURE_START_LEAD_SEC * SR) / CAPTURE_QUANTUM_FRAMES) * CAPTURE_QUANTUM_FRAMES;
 /** Additional scheduling cushion for browser-thread note-event probes. */
@@ -344,13 +355,40 @@ interface CaptureResult {
   requestedStartFrame: number;
   /** Smallest future lead, in seconds, when the script scheduled its events. */
   minimumEventLeadSec: number;
+  /**
+   * The REALTIME branch's history at the capture start, in frames: how many
+   * frames its worklets had already processed when the capture began.
+   *
+   * This is the number the offline branch has to match (see `renderOffline`).
+   * It is MEASURED, not assumed: the offline render used to use a fixed
+   * history, and the realtime branch's real history moves with the machine's
+   * load - the gap between the engine's construction and the capture's arming
+   * is a whole number of render quanta, and it is a different number of
+   * quanta on a loaded runner than on an idle desktop. Measured 2026-10-29:
+   * an idle desktop had the capture armed one quantum after the engine's
+   * construction and matched the fixed history bit-exactly, while the Linux
+   * runners armed it in the SAME quantum - one quantum less history - and 18
+   * of 77 cases went red on a divergence that was never the engine's.
+   */
+  historyFrames: number;
 }
 
 async function loadParityCapture(ctx: BaseAudioContext): Promise<void> {
   await ctx.audioWorklet.addModule(new URL("/parity-capture-worklet.js", self.location.href).href);
 }
 
-/** Render the script through the shared engine on an OfflineAudioContext. */
+/**
+ * Render the script through the shared engine on an OfflineAudioContext.
+ *
+ * `historyFrames` is how many frames the offline branch renders BEFORE its
+ * compared window - the branch's HISTORY. It has to equal the REALTIME
+ * branch's history (see `captureLive`), or the two branches reach the first
+ * event with different worklet state and the null measures that difference
+ * instead of the engine. Measured 2026-10-29: with the history matched the
+ * two branches are BIT-identical (-300 dB); with it off by a render quantum
+ * the same case measures -32.9 dB - which is exactly what the Linux runners
+ * reported for 18 of 77 cases.
+ */
 async function renderOffline(
   bank: SampleBank,
   doc: ProjectDocument,
@@ -358,8 +396,9 @@ async function renderOffline(
   sampleRate: number,
   eventPrerollSec = 0,
   leadSec = 0,
+  historyFrames = CAPTURE_LEAD_FRAMES,
 ): Promise<Float32Array | null> {
-  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec + leadSec) * sampleRate) + CAPTURE_LEAD_FRAMES;
+  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec + leadSec) * sampleRate) + historyFrames;
   const ctx = new OfflineAudioContext(2, frames, sampleRate);
   // Same loader contract as the renderer: core + exactly the plugin suites
   // this doc uses.
@@ -369,16 +408,16 @@ async function renderOffline(
   try {
     engine.useContext(ctx);
     engine.setProject(doc);
-    // The event offset carries the capture lead, so the offline worklets
-    // reach the first event with the SAME history the realtime ones have.
-    script(engine, (offset) => CAPTURE_LEAD_FRAMES / sampleRate + leadSec + eventPrerollSec + offset);
+    // The event offset carries the history, so the offline worklets reach the
+    // first event with the SAME history the realtime ones have.
+    script(engine, (offset) => historyFrames / sampleRate + leadSec + eventPrerollSec + offset);
     // The export barrier: exact PDC sizing before the (un-abortable) render —
     // the same sequencing the real renderer performs.
     await engine.prepareOfflineRender();
     const buffer = await ctx.startRendering();
-    // The compared window starts where the live capture starts: the lead is
-    // history, not signal.
-    return buffer.getChannelData(0).subarray(CAPTURE_LEAD_FRAMES);
+    // The compared window starts where the live capture starts: the history is
+    // context, not signal.
+    return buffer.getChannelData(0).subarray(historyFrames);
   } finally {
     engine.detachBank();
     engine.dispose();
@@ -420,6 +459,14 @@ async function captureLive(
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    // The clock the FINAL processors are constructed at. Everything before
+    // this point (the context, the worklet modules, the limiter wait) shifts
+    // the whole timeline and cancels out: the capture start is measured from
+    // the same clock. What does NOT cancel out is the gap between here and
+    // the capture's arming below - that gap is what the realtime branch's
+    // history is made of, and it is a whole number of render quanta that
+    // changes with the machine's load.
+    const settleClock = ctx.currentTime;
     // Rebuild the chains on the settled graph: the first event then lands
     // within a quantum of the final processor construction, matching the
     // offline render (which always builds on a cold, settled timeline).
@@ -478,6 +525,14 @@ async function captureLive(
       Math.ceil(((ctx.currentTime + CAPTURE_START_LEAD_SEC) * ctx.sampleRate) / CAPTURE_QUANTUM_FRAMES) *
       CAPTURE_QUANTUM_FRAMES;
     const requestedStartTime = requestedStartFrame / ctx.sampleRate;
+    // The realtime branch's history at the capture start, in frames. Its
+    // processors were constructed at settleClock and the audio thread picks
+    // them up at the NEXT render quantum, so the branch has processed
+    // (requestedStartFrame - settleFrames - QUANTUM) frames by the time the
+    // capture starts. The offline branch renders exactly this many frames
+    // before its compared window.
+    const settleFrames = Math.round(settleClock * ctx.sampleRate);
+    const historyFrames = requestedStartFrame - settleFrames - CAPTURE_QUANTUM_FRAMES;
     script(engine, (offset) => {
       const when = requestedStartTime + leadSec + eventPrerollSec + offset;
       scheduledTimes.push(when);
@@ -525,6 +580,7 @@ async function captureLive(
       requestedFrames,
       requestedStartFrame,
       minimumEventLeadSec,
+      historyFrames,
     };
   } finally {
     engine?.detachBank();
@@ -1396,9 +1452,19 @@ export async function measureParityCase(
   if (live.minimumEventLeadSec <= 0) {
     return { ...empty, error: `live event was scheduled late (${(live.minimumEventLeadSec * 1000).toFixed(1)} ms)` };
   }
-  const reference = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec);
+  // The offline branch renders the SAME history the realtime branch measured
+  // for itself - that is what makes the two branches comparable at all.
+  const reference = await renderOffline(
+    bank,
+    doc,
+    script,
+    live.sampleRate,
+    eventPrerollSec,
+    leadSec,
+    live.historyFrames,
+  );
   if (!reference) return { ...empty, error: "offline render produced no buffer" };
-  const control = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec);
+  const control = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec, live.historyFrames);
   // Third control: a SECOND realtime capture. If two live runs of the same
   // case disagree by the same order as the live null, the divergence is the
   // realtime clock/jitter, not the engine's live-vs-offline behaviour.
@@ -1432,8 +1498,19 @@ export async function measureParityCase(
   // The second realtime capture against the OFFLINE reference: the verdict
   // depends on which capture happened to be taken, and this is the number
   // that says so.
+  //
+  // It gets its OWN offline reference when its history differs from the
+  // first capture's: the second capture's setup took its own number of render
+  // quanta, so the first reference describes a different history. Judging it
+  // against a reference with the wrong history would report the history
+  // mismatch as an engine divergence.
+  const reference2 =
+    live2.historyFrames === live.historyFrames
+      ? reference
+      : (await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec, live2.historyFrames)) ??
+        reference;
   const live2Match = live2
-    ? compareWithQuantumRetry(reference, live2.left, live.sampleRate)
+    ? compareWithQuantumRetry(reference2, live2.left, live.sampleRate)
     : { alignOffset: 0, nullDb: Number.NaN, quantumShift: false };
   const stats = (data: Float32Array) => {
     let peak = 0;
