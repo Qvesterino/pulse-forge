@@ -5071,6 +5071,15 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   //   average / single-track baseline    1.92× / 2.13× / 1.93× / 2.08× / 2.30×
   //   heaviest template / average        2.16× / 1.91× / 1.71× / 1.89× / 1.57×
   //
+  // The second row is what the shape gate used to read, and it is a per-ITEM
+  // extreme — the same template measured 6642 ms and 17460 ms in two adjacent
+  // runs (2.6×), so that row carries the noise. The gate now reads the mean
+  // of the THREE heaviest templates instead: over the 12 committed template
+  // corpora its band is 1.51×-1.98× (tighter than the single heaviest one's
+  // 1.57×-2.41×), and with one template 2.6× slower it stays under the budget
+  // in every set, where the single heaviest crosses it in every set.
+  // Recompute both: docs/audits/2026-10-30-perf-gate-guard/.
+  //
   // So the gates below are RATIOS against a baseline rendered in the same
   // process, on both sides of the measurement (the same bracket the
   // dense-matrix gate uses). That is the only form here that measures the
