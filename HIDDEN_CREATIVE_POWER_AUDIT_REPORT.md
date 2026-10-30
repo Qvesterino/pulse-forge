@@ -2426,7 +2426,7 @@ finding, named a suspect, and was wrong — and the only reason that is recovera
 evidence (a null in dB, a `live↔live` value, a control), so the next measurement could **falsify** it instead of
 merely disagreeing with it.
 
-#### 10.16.6 The corpus at 77 on the runner: 17 reds — and they are not one defect
+#### 10.16.6 The corpus at 77 on the runner: 17 reds — not one defect, and not the engine's
 
 **The current verdict, read from the CI run itself** (`b2a02569`, the browser-audio job's failure annotation — fetched
 directly, not relayed):
@@ -2535,11 +2535,12 @@ this metric is not. So `corr = 0.9997` must not be read as "the same signal" —
 cannot separate from the other. That is exactly the distinction the runner's 17 cases turn on, and it is invisible unless
 the metric's definition is read instead of its name.
 
-**What stays open, and it is not a small thing.** Which branch carries the perturbation, what shape it has, and why Linux
-has it while Windows does not, is **not resolved** — and until it is, the corpus may well be _right_ to be red there.
-§10.14's proposal to make the null corpus non-blocking in CI was built on the "platform noise" reading; if the difference
-is real on one platform, that proposal would hide a real live↔offline difference — the
-exact thing invariant 3 exists to catch. **That decision must not be taken on the strength of a label.**
+**What stays open, and it is not a small thing.** The mechanism behind the seventeen was the harness's, and it is fixed and
+measured. **What is now open is the decision itself — and it may be moot.** Whether the corpus is green on the Linux runner after
+`c0400b33` is the next CI run's answer, and it is the only question left in this section. If it is green, §10.14's proposal to make
+the null corpus non-blocking in CI is **moot**; if anything stays red, it will be a real live↔offline difference — which is
+exactly what the corpus should be doing. **And a decision must not be taken on the strength of a label: neither the old one, nor
+this one.**
 
 **And the desktop's reds move with the machine's state — while the runner's do not.** The tracked idle re-measurement
 (`docs/audits/2026-10-29-browser-audit/browser-audit-remeasure.log:445`, commit `5bb0af20`) reports **`failed=1/77`**
@@ -2600,11 +2601,9 @@ cases — `instrument:808` live↔offline **−32.9 dB** with control **−89.5 
 runner reports −32.9 / −89.5 / −13.7. **Two different Linux machines, identical numbers.** So this is not a loaded or a broken
 runner: it is a deterministic **Linux** divergence, while the desktop (Windows) reports the corpus green at 77/77.
 
-**That makes it the smallest invariant-3 candidate this audit has ever held** — invariant 3 holds on Windows and does not hold on
+**That made it the smallest invariant-3 candidate this audit had ever held** — invariant 3 holds on Windows and does not hold on
 Linux, for 17 instruments, reproducibly, with the offline branch proven exact on both platforms and the realtime branch proven to
-reproduce itself. It stays a **candidate**, not a verdict: the mechanism is not identified, and §10.16.6's own three signatures
-say the seventeen are not one defect. **And a third harness candidate, measured on Windows, could withdraw it entirely — see
-below.**
+reproduce itself. **It was not a candidate. It was the harness again, and the paragraph above is withdrawn** — see below.
 
 **And the third harness candidate: a law, measured on Windows, that would make the seventeen a harness artefact again.** The
 parallel session found a **law** on Windows: the live and offline branches are **bit-identical only** when the offline history
@@ -2622,9 +2621,19 @@ verifying it on WSL now), then:
 - and the fix is already named: `captureLive` must **return its history** and `renderOffline` must **take it as a parameter**,
   instead of the harness assuming a constant.
 
-**Hypothesized, not verified** — the Windows measurement is real and the law is stated as a law, but the Linux confirmation is in
-flight. Until it lands, the candidate stands, and this paragraph is what would withdraw it. **And the lesson is this audit's own
-recurring one, now for the fourth time: a harness that compares two branches must never assume that their histories match — it has
+**And it was confirmed, on both platforms, and fixed.** `c0400b33` ("the offline branch renders the realtime branch's MEASURED
+history") landed the fix: `captureLive` measures the realtime branch's history and returns it, `renderOffline` takes it as a
+parameter for the render length, the event offset and the trim, and the second realtime capture gets **its own** offline reference
+when its history differs. Measured on the change:
+
+| case                               | before   | after         |
+| ---------------------------------- | -------- | ------------- |
+| `instrument:organ` (desktop)       | −31.7 dB | **−323.5 dB** |
+| `instrument:analog` (Linux runner) | −13.7 dB | **−76.0 dB**  |
+
+**Verified, not hypothesized** — and the seventeen Linux reds were the harness's, for the third time, exactly as §10.16.5's four
+FX divergences had been. **The invariant-3 candidate is withdrawn: it never existed.** The rule that produced it was this audit's own
+recurring one, now for the fourth time: **a harness that compares two branches must never assume that their histories match — it has
 to be told.**
 
 **Where the engine should hop — the precedent, and the anchor.** `docs/CURRENT-STATE.md` records the fix for the FX side: the
@@ -2646,10 +2655,10 @@ branch that does not repeat is **"don't measure"**, and it is **named**; red rem
 dirty against offline and consistent with each other. The seventeen stay red under the new rule, and now they are red **on
 purpose** rather than by an accident of ordering.
 
-**Two different defects do not get one shared remedy**, and the decision §10.14 proposed — make the null corpus non-blocking in CI
-— must not be taken on the strength of a label. It now rests on a different question: not "is this noise?" but "is a live↔offline
-difference that reproduces on Linux and not on Windows a product defect?" That is a **product decision**, and this audit's conclusion
-is that the corpus is right to be red until somebody answers it.
+**And the seventeen had no defect at all.** The decision §10.14 proposed — make the null corpus non-blocking in CI — was built on
+the reading that these failures were "platform noise", and the reading was wrong in the direction that matters: they were neither
+noise nor product, they were the harness's own bias — measured, fixed, and measured again. **What the corpus should do now is the
+only question left in this section, and it is a question about the corpus, not about the product.**
 
 #### 10.16.7 Five red specs, five different defects — and one gate that measured the wrong thing
 
@@ -2865,7 +2874,7 @@ _Prepared 2026-10-27 against `main`, updated 2026-10-28 after the P-1 / P-4 wave
 (§10.7), the four-instance drift story (§10.10–§10.11), the live↔offline handoff and its refutations
 (§10.12–§10.14), and again on 2026-10-29 with the CI-hygiene readings (§10.16) — including the correction of this
 report's own "four product findings" claim (§10.14 → §10.16.5) — and again on 2026-10-30 with the CI run's own verdict at
-77 cases (§10.16.6: the seventeen are not one defect, and the invariant-3 candidate may dissolve), the fifth drift instance
+77 cases (§10.16.6: the seventeen were not one defect, and the invariant-3 candidate dissolved), the fifth drift instance
 (§10.11.2) and the palette ratchet that the wave which shipped it broke (§10.16.8). Every claim is labelled Observed /
 Verified /
 Inferred / Hypothesized / Not verified, and every measurement in §10.2 was reproduced from the repository at the
