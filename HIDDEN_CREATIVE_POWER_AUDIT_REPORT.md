@@ -34,6 +34,13 @@ palette actions and 51 global shortcuts; every one of them moves something that 
 not inferred), and the Help overlay's entire `CAPTURE` section is **one** binding. Meanwhile the AI intent
 layer can route 41 kinds of instruction and the MCP surface silently no-ops on 5 of them while reporting
 success.
+**— IN PLACE (2026-10-30):** the sentence about **zero** capture actions was true when it was measured and is now
+**one** action, not zero. P-2 was decided (the ARR REC strip stays in ARR; the recording state moves into the
+project) and phase 1 landed (`70f3b175`, schema v41): the palette holds **80** actions and the first capture
+action in the product's index is `recording.arm`, with its pre-condition stated rather than silently missing.
+**The rest of the family is still invisible** — Take, Comp, Freeze, Monitor, Punch and recovery — so the finding's
+shape survives; what changed is that the arm now has an address and the remainder of the family is what §11's P-1
+phase 2 still has to expose.
 
 **The answer to "which hidden capabilities are genuinely working, versus merely present in code?"** is: the
 recording and take lane is the single most complete, most guarded subsystem in the product (30 catalogued
@@ -55,7 +62,13 @@ effect, plugin, humanize, swing) are now findable by name, and each one is pinne
 action that owns it. The mechanism is a **curated command registry** (`src/commands/palette-registry.ts`),
 not a dump of all 297 factories: twenty commands, three rules, and an honest disabled-with-reason state for
 the ones that cannot run yet. **The recording family is still not in the palette** — that is P-2, and it is
-the largest remaining hole.
+the largest remaining hole. **— IN PLACE (2026-10-30): the second half of that sentence is now history.** The
+owner decided P-2 (the ARR REC strip stays in ARR; the recording state moves into the project) and **phase 1
+landed in `70f3b175`, schema v41**: the arm target is now a project fact with a palette route
+(`recording.arm`), so the recording family **is** in the palette — the palette grew **79 → 80** actions and
+**42 of 48** representative queries still hit. What is still outside the palette is the capture **session**'s
+own state (second channel, extra input routes, take mode, punch/loop), which by design stays local because it
+describes a running capture rather than a song (§10.16.10).
 
 **What requires approval:** everything still open in §11 — chiefly a first-run flow that teaches one
 thing once, the disclosure of a fixed post-fader send rule as a configurable choice, and the capture
@@ -297,7 +310,7 @@ were **observed live**. Not verified: what a real user searches for.
 
 ### HCP-02-01 — The palette contains zero capture actions
 
-**Class:** B · **Priority:** 2 · **Confidence:** **Observed live** + Verified in code · **Status:** **STILL OPEN** — the curated registry could not reach the capture family; it is blocked on P-2 (§9.2.2)
+**Class:** B · **Priority:** 2 · **Confidence:** **Observed live** + Verified in code · **Status:** **PARTIALLY SHIPPED (2026-10-30) — the curated registry could not reach the capture family; it is blocked on P-2 (§9.2.2)**. **IN PLACE:** P-2 was decided and its phase 1 landed (`70f3b175`, schema v41): the palette now holds **80** actions and **one of them is a capture action** — `recording.arm`, group "Record", with the precondition spelled out ("Select a track to arm for recording") and a command that reaches the document. **What remains open is the rest of the family** — Take, Comp, Freeze, Monitor, Punch and the recovery affordance are still unreachable from the palette, and the capture **session**'s own state (second channel, extra input routes, take mode, punch/loop) is by design still local to the UI, because it describes a running capture rather than a song (§10.16.10).
 
 **Creative goal:** recording is the highest-value act in music production. It must be reachable from the
 surface the product itself advertises as "every action, searchable" (the tooltip on the Ctrl+K button,
@@ -793,17 +806,17 @@ today. Each lists the missing glue and compares it against the alternative of a 
 
 ### 7.1 Record a take (the highest-value act in the product)
 
-| stage                   | what the user must do today                                   | friction                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| intention               | "I want to record a vocal"                                    | —                                                                                                                                           |
-| recognition             | the ARR dock tab contains a REC strip                         | the REC control is in the **ARR** tab; the _recording_ affordances are in a different dock tab (**LIVE/TAKE LANES**) and in the footer chip |
-| entry point             | ARR tab → REC button                                          | two tabs and a context menu compete for the same job                                                                                        |
-| prerequisites           | a track armed, an audio input selected, a mic permission      | **not stated on the disabled button** (HCP-02-12); the preconditions are knowable only from the code                                        |
-| action                  | click REC                                                     | —                                                                                                                                           |
-| feedback                | armed chip, take lanes, REC counter                           | present and good — the session-state chip is a strength                                                                                     |
-| audible/visible outcome | the take appears in TAKE LANES                                | —                                                                                                                                           |
-| undo/recovery           | a durable checkpoint + a recovery offer after an unclean exit | **the recovery affordance is ~380 JSX lines in another tab** (HCP-02-11)                                                                    |
-| **index**               | **the palette has no capture action at all**                  | **HCP-02-01**                                                                                                                               |
+| stage                   | what the user must do today                                   | friction                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| intention               | "I want to record a vocal"                                    | —                                                                                                                                                                                      |
+| recognition             | the ARR dock tab contains a REC strip                         | the REC control is in the **ARR** tab; the _recording_ affordances are in a different dock tab (**LIVE/TAKE LANES**) and in the footer chip                                            |
+| entry point             | ARR tab → REC button                                          | two tabs and a context menu compete for the same job                                                                                                                                   |
+| prerequisites           | a track armed, an audio input selected, a mic permission      | **not stated on the disabled button** (HCP-02-12); the preconditions are knowable only from the code                                                                                   |
+| action                  | click REC                                                     | —                                                                                                                                                                                      |
+| feedback                | armed chip, take lanes, REC counter                           | present and good — the session-state chip is a strength                                                                                                                                |
+| audible/visible outcome | the take appears in TAKE LANES                                | —                                                                                                                                                                                      |
+| undo/recovery           | a durable checkpoint + a recovery offer after an unclean exit | **the recovery affordance is ~380 JSX lines in another tab** (HCP-02-11)                                                                                                               |
+| **index**               | **the palette has no capture action at all**                  | **HCP-02-01** — **IN PLACE (2026-10-30):** the palette now holds **80** actions and the arm has one (`recording.arm`, `70f3b175`); the rest of the capture family is still unreachable |
 
 ### 7.2 Consolidate a selected range to one audio clip
 
@@ -1006,6 +1019,14 @@ instrument, effects ×2, mix, chords, macros, clips ×2).
 | representative capability queries that match **nothing** | 24 of 48 | **9 of 48** |
 | capabilities findable by name                            | —        | **12**      |
 
+**— IN PLACE (2026-10-30): the "after" column has moved on twice since it was measured.** The palette holds **80**
+actions (75 → 77 with CF-12's two clip routes → 79 with CF-15's two tool routes → **80** with P-2's recording arm), and the
+zero-hit count is **6 of 48**, not 9 — the spec pins a **ceiling** of 9 (`tests/ui/palette-search-coverage.test.ts:139`), so
+the extra recoveries below it do not break the gate. Measured live from that spec's own output: `80 actions · 42/48 queries
+hit · 6 zero-hit: bounce, automation, consolidate, waveform, sample, reference`. **A ceiling and a measurement are different
+numbers**, and quoting the ceiling as if it were the measurement is the same hand-maintained-copy failure this section is
+about.
+
 The twelve are pinned by spec to the exact action that owns each one — freeze, quantize, macro, marker,
 crossfade, chord, groove, velocity, effect, plugin, humanize, swing — because a **count would have flattered
 the result**: "record", "tempo" and "stem" also stopped being zero, but only by coincidence of the
@@ -1013,9 +1034,18 @@ subsequence matcher ("record" lands on "Conform the selected clips to the chord 
 family is still unreachable from the palette**, and that is not a registry entry: `armedTrackId` and the
 recorder state are local React state inside the arrangement panel (`src/ui/ArrangementPanel.tsx:755`), so
 exposing them is the **P-2** proposal — one address for the recording surface.
+**— IN PLACE (2026-10-30):** the last sentence described the state before P-2 was decided. The owner decided
+P-2 (the ARR REC strip stays in ARR; the recording state moves into the project) and phase 1 landed
+(`70f3b175`, schema v41): `armedTrackId` is **no longer local React state** — it is `recording.armedTrackId`
+in the document, reached by the command `setRecordingArm` and by the palette action `recording.arm`. The
+**recorder state** (the capture session's own state) is still local, deliberately: it describes a running
+capture, not a song. The palette is now **80** actions with **42 of 48** queries hitting (§10.16.10).
 
 The nine that still match nothing — **bounce, automation, midi clip, silence, consolidate, warp, waveform,
 sample, reference** — are commands that need a dialog, a value, or a rendered buffer.
+**— IN PLACE (2026-10-30):** six, not nine — **bounce, automation, consolidate, waveform, sample, reference**.
+CF-12's two clip routes and CF-15's two tool routes recovered **midi clip**, **silence**, **warp** and **stem** since this
+list was written; the six that remain are commands that need a dialog, a value, or a rendered buffer.
 
 **Where the failures go.** A palette command that fails surfaces through `store.notify` → the existing global
 `CommandToast`, not through `pf-arrangement-action-error` — that one has a single subscriber and is silent
@@ -1067,28 +1097,28 @@ Every row below is from that clean tree. The test count moved from **121** to **
 session's CF-05 Tab-traversal fix added three assertions — the count is a measurement, and it is reported as
 measured.
 
-| check                                                                            | result                                                                                                                         |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                                                   |
-| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                                                 |
-| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                                                |
-| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                                             |
-| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                                             |
-| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                                             |
-| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                                             |
-| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                                             |
-| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                                             |
-| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                                             |
-| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                                                |
-| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                                                  |
-| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                                                             |
-| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                                                          |
-| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                                                |
-| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11); **red on `origin/main` twice more** (§10.11.2) |
-| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)                                        |
-| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **105** seams (committed payload `docs/status.json`; §10.11 measured 95)                               |
-| the committed payload's `spec-counts` claim                                      | ✅ **1337 claimed, 1337 measured** — `state: pass`, drift-checked (`docs/status.json`); re-pinned in `3328668c` (§10.16.9)     |
-| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                                                           |
+| check                                                                            | result                                                                                                                             |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ui/palette-command-registry.test.tsx`                                     | ✅ **13 tests** — the registry contract + the rendering gate                                                                       |
+| `tests/ui/palette-search-coverage.test.ts`                                       | ✅ **5 tests** — the action-count cap and the zero-hit ceiling                                                                     |
+| `tests/ui/command-palette.test.tsx`                                              | ✅ **20 tests**                                                                                                                    |
+| `tests/ui/shortcuts.test.ts`                                                     | ✅                                                                                                                                 |
+| `tests/ui/ModMatrixRow.test.tsx`                                                 | ✅                                                                                                                                 |
+| `tests/ui/HelpOverlay.test.tsx`                                                  | ✅                                                                                                                                 |
+| `tests/ui/DockChrome.test.tsx`                                                   | ✅                                                                                                                                 |
+| `tests/ui/App.test.tsx`                                                          | ✅                                                                                                                                 |
+| `tests/a11y/icon-only-buttons.test.tsx`                                          | ✅                                                                                                                                 |
+| `tests/collab-contract-parity.test.ts`                                           | ✅                                                                                                                                 |
+| `tests/ui/strip-silence-naming.test.ts`                                          | ✅ **4 tests** — the P-4a naming gate (falsified twice, §9.2.1)                                                                    |
+| `tests/drift-check.test.ts`                                                      | ✅ **12 tests** — the derivable-artifact gate                                                                                      |
+| `tests/mcp-mirror-sync.test.ts`                                                  | ✅ **4 tests** — the MCP tool-surface mirror guard                                                                                 |
+| **total**                                                                        | **13 suites · 124 tests green** — re-measured on `cc81ffe3` (§10.1.1)                                                              |
+| `npx tsc --noEmit --incremental false`                                           | ✅ **exit 0** — the whole tree typechecks, on the tree as it now stands (§10.3)                                                    |
+| `npm run drift:check`                                                            | ✅ **green** — `✓ no drift` (§10.9); red once in between, green again (§10.11); **red on `origin/main` twice more** (§10.11.2)     |
+| the P-1 palette in a real browser                                                | ✅ **done on a clean tree** — the disabled row, its reason, its `aria-disabled` (§10.7)                                            |
+| `node scripts/check-seam-coverage.mjs`                                           | ✅ **green** — 1 check, **106** seams (committed payload `docs/status.json`; §10.11 measured 95; the 106th is CF-18's, `362a82be`) |
+| the committed payload's `spec-counts` claim                                      | ✅ **1345 claimed, 1345 measured** — `state: pass`, drift-checked (`docs/status.json`); re-pinned in `4c58e9d4` (§10.11.2)         |
+| `npx playwright test tests/e2e/05-keyboard-shortcuts.spec.ts --project=chromium` | ✅ **1 passed (21.5 s)** — see §10.6                                                                                               |
 
 ### 10.2 What was verified _by measurement_ rather than by reading
 
@@ -1545,6 +1575,44 @@ covered by the drift gate; the other two are maintained by hand. **The gate catc
 catches the hand-maintained copies**, because a report is not derived from anything — so its numbers go stale silently and
 read as current until somebody re-reads them. A report that quotes live counts must either re-measure them on every
 commit or quote them with the commit they were measured on; this one now quotes both.
+
+### 10.11.3 The eighth instance — this time the ARTIFACT was stale too, and `main` was red
+
+**The seventh instance (§10.11.2) was a report-only drift: the tree and the artifact agreed, and only the prose was old.
+The eighth instance is the harder shape — the artifact itself was stale, so the drift gate was red on `origin/main`
+itself.** Measured here, not inherited: `npm run drift:check` on the committed tree exits **1** with
+
+```
+✗ DRIFT [domain-goldens] tests/domain-goldens/serialization.json: committed artifact is stale
+✗ DRIFT [status] docs/status.json: committed artifact is stale
+✗ DRIFT [status] docs/STATUS.md: committed artifact is stale
+```
+
+while `mcp-mirrors` and the counts section are **green**. Three stale artifacts, and they have **three different owners**,
+which is what made this instance worth a section of its own:
+
+| artifact                                  | stale because                                                          | whose count                          | re-pinned in |
+| ----------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------ | ------------ |
+| `tests/domain-goldens/serialization.json` | the document's schema version is part of the serialized form (40 → 41) | **this session's** P-2 (`70f3b175`)  | `df3b0e87`   |
+| `docs/status.json`, `docs/STATUS.md`      | the seam count moved 105 → 106                                         | CF-18 (`362a82be`), not this session | `4c58e9d4`   |
+
+**The provenance matters more than the fix.** The seam's `+1` is CF-18's — the parallel session added the
+`effect-ab-empty-slot-guidance` seam to `tests/seam-manifest.json` and regenerated nothing — and it made the
+**"Hygiene (format + drift)"** job red on `80940176` and on every commit after it, which is visible in CI as the error
+annotation `drift check failed (exit 1)` with both stale paths named. **This session's own wave owed no count re-pin at
+all**: it added no spec FILE (the new P-2 specs live in an existing file, so the spec-file count stayed **1345**) and it
+touched `tests/seam-manifest.json` not at all. **A wave that moves no count can still land on a red tree**, because the
+red belongs to whoever moved the count one wave earlier — so the re-pin is a shared debt, not a private one, and the
+honest commit says whose count it was (`4c58e9d4`: "the +1 seam is CF-18's, not this wave's").
+
+**And the report was the laggard for the third time, on the same tree.** §10.1 quoted **1337 / 105** while the committed
+payload already read **"1345 claimed, 1345 measured"** and **"1 check, 106 seams"** — eight specs and one seam of drift
+in the prose alone. The four homes moved as follows in this instance: the **ratchet spec** (`palette-search-coverage`)
+was re-pinned deliberately at **80** actions by this session's wave; `docs/CURRENT-STATE.md` was re-pinned by the parallel
+session to **1345**; the **payload artifact** was regenerated here (`4c58e9d4`); and **this report** is corrected in place
+above. **The rule this adds: a report that quotes a live count must name the commit the count was measured on — the
+moment the tree moves, the quote is history, and the only difference between "history" and "a lie" is whether the reader
+can tell.**
 
 ### 10.12 The sixteenth finding — the loudness map, read as a measurement
 
@@ -3003,6 +3071,171 @@ question the owner has to answer, not a gate question**: a browser DAW that drop
 carries 48 effect chains is telling the owner something real about the realtime path — and the audit's job here was to make that
 sentence legible instead of hiding it behind a machine excuse.
 
+#### 10.16.10 P-2 — the owner's answer, and the first phase that landed with it
+
+**The owner answered P-2 on 2026-10-30: the ARR REC strip STAYS in ARR, and the recording state moves into the PROJECT.**
+That is a scope decision, and it landed as one — but the audit's own §11 entry for P-2 had already named the specific hole
+underneath it, so the decision had a smaller, sharper reading than "the recording surface gets one address":
+
+> **P-2 · The recording surface gets one address.** … **Note:** this is now the single largest hole the palette still has — the
+> recording family is the one family the curated registry could not reach, because `armedTrackId` and the recorder state are local
+> React state rather than project state (§9.2.2).
+
+**"One address" was not the hole; the hole was that the target of a recording was not a fact about the song.** `armedTrackId`
+was a `useState` string inside `ArrangementPanel`, so: the palette could not reach it, **no command could arm a track**, a
+scripted or MCP route could not arm a track, and **nothing could undo an arm**. §11's phrasing — "the recording family is the
+one family the curated registry could not reach" — is literally true, and the reason is a single line of component state.
+
+**What landed (`70f3b175`, schema 41).** The arm target became a **project fact**, on the ordinary command path:
+
+| change                 | file                               | what it does                                                                               |
+| ---------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `RecordingArm`         | `src/project-model/types.ts`       | `ProjectDocument.recording.armedTrackId` — absent = nothing is armed                       |
+| `SCHEMA_VERSION` 40→41 | `src/project-model/schema.ts`      | additive; absent = the unchanged default for every existing project                        |
+| `setRecordingArm`      | `src/commands/recording.ts`        | an undoable command; an unchanged arm does not push a no-op undo frame                     |
+| palette route          | `src/commands/palette-registry.ts` | `recording.arm`, group "Record", precondition "Select a track to arm for recording"        |
+| the ARR strip          | `src/ui/ArrangementPanel.tsx`      | the ARM select now executes the command; the arm is READ from the document, not from state |
+| collab                 | `src/collab/YDocAdapter.ts`        | the arm is synced, so a peer sees the same armed track                                     |
+
+**What deliberately did NOT land, and why — the distinction the owner's answer turns on.** The capture **session**'s own
+state (second channel, extra input routes, take mode, punch/loop flags, live recorder status) **stays local to the UI**. The
+reason is a category, not a preference: **the arm target describes a song, and the capture session describes a running
+capture.** A session's state must not be persisted into the document and must not be undoable — undoing "I had a second
+input routed" is not a musical act, and a project that saved it would carry a fact about a recording session that has not
+happened yet. The arm is the opposite: _where the next take lands_ is part of the arrangement, exactly like the selected
+Live Set.
+
+**Verified, and the interesting part is what the counts did.** `tsc --noEmit --incremental false` exit 0; the 4 P-2-related
+spec files **43/43**; a 13-file sweep **276/276**; a 7-file sweep **179/179**. And the four homes moved as follows: the
+**spec-file count stayed 1345** (the new specs live in an existing file, so the count does not move and no count re-pin is
+owed by this wave), the **seam count did not move** (the manifest was not touched — the 106th seam is CF-18's, `362a82be`),
+the **payload was re-pinned** (`4c58e9d4`, because `main`'s Hygiene was red from a count this wave did not move), and the
+**serialization golden was re-pinned** (`df3b0e87`, because the document's schema version is part of the serialized form).
+**A schema bump is a wave that touches the other three homes even when it moves no count.**
+
+**What is deliberately still open: the MCP route.** The command surface now reaches the arm, but the **MCP tool surface** does
+not — there is no `mcp__record__arm` route, because `src/mcp/tools.ts` was being edited by the parallel session at the time
+and a concurrent edit to one 14 000-line file from two sessions is how a conflict becomes a lost wave. **This is recorded
+as open rather than done**: the palette route ships, the MCP route does not, and §11's P-1 (one registry that the palette,
+the MCP surface and the intent router all read) is the structural reason the MCP route will need to exist as a
+_derivation_ rather than as another hand-written tool.
+
+#### 10.16.11 The scenario ladder — measuring the boundary, and finding that the instrument was measuring the run
+
+**The owner asked for the boundary** (§10.16.9's open question: is 12×4 the promise the product makes, or a worst case that
+only a bigger machine can hold?), and the instrument for it was committed in `7dd4c448`: a ladder of scenarios
+(**12×3**, **8×4**, **12×2**) measured after the gated 12×4 window, on the same context and the same probe. It never
+gates — it is a diagnostic — and this section is what it took to make it answer its own question.
+
+**The first measurement, on this desktop (`calib=15.3ms`), read like this:**
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=448 xruns=2 heartbeat avg=391.68ms
+max=417.40ms (expected≈170.67ms, 2.30×) quantum=2.667ms · device floor xruns=0 jitter=1.00×
+(1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=2
+· ladder 12×3 xruns=1 jitter=2.61× · 8×4 xruns=1 jitter=3.13× · 12×2 xruns=1 jitter=3.12×
+```
+
+**Reading 1 — the xrun count understates the failure by two orders of magnitude, and the heartbeat is the honest number.**
+The window is **2.5 s** (`src/browser-checks.ts:501`), and at 48 kHz / 128 frames a full-rate context renders **937** quanta in
+it. The measured count is **448** — **48 % of real time**. The audio thread was not "dropping a quantum now and then"; it was
+**running at half speed** on the 12×4 graph while the empty graph held **exactly** 1.00×. Yet the gate's own headline says
+`xruns=2`, because the xrun counter fires only when the device clock jumps a whole quantum past the processor
+(`src/audio-worklets/rt-monitor-processor.js:44-47`), and a thread that is uniformly behind never jumps — it just arrives
+late. **§10.16.9 said "the xrun count was never the interesting number"; the measurement now says the xrun count is not even
+the right order of magnitude** — the heartbeat lateness (**2.30×** of the expected cadence) is what a musician would actually
+hear, and it is 2.30 against a limit of 1.5.
+
+**Reading 2 — the ladder's own readings were inverted, and that is a defect in the ladder, not in the product.** In the order
+they were taken: the gated **12×4** (48 effects) read **2.30×**; the ladder's **12×3** (36 effects) read **2.61×**; **8×4**
+(32 effects) read **3.13×**; **12×2** (24 effects) read **3.12×**. **A lighter graph read worse, and the readings rose with
+measurement order while the graph got lighter all the way down.** That is not a capacity curve — it is the shape of a page
+that is getting slower, the same accumulated-weight effect that moved the three offline budgets in §10.16.9. The device
+floor could not tell the two apart, because it was measured **once, at the start** of the block: it answered for a moment that
+was no longer the moment the ladder was read in. **The instrument was measuring the run.**
+
+**The fix (`894e2368`, `37ff58c0`): a floor taken ADJACENT to every scenario, and the scenario read as a RATIO against it.**
+Same context, same probe, one track and no effects, immediately before each scenario — so the reference is the device's ability
+**at that moment**, not at the start of the block. And the scenario is reported as `jitter ÷ adjacent floor jitter`: a
+degradation that hits the empty graph and the loaded one alike **cancels in the ratio**, so what survives is the graph's own cost
+expressed in the device's heartbeat budget. Both drop counts are reported **raw** (the scenario's and the floor's) — a net
+difference was tried first and read as nonsense (`xruns=-1`: the floor's window can drop a quantum the scenario's does not).
+The ladder stays a diagnostic and the gated 12×4 window keeps its exact position and construction, so **the gate's own verdict
+is unchanged by the fix** — the fix changes what the ladder can say, not what the gate says.
+
+**The fixed instrument on the CI runner — the controlled environment.** The runner's browser job failed, so its error annotation
+carries the line (one API request; job logs are behind a login, annotations are not):
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=896 xruns=1 heartbeat avg=204.10ms
+max=255.50ms (expected≈185.76ms, 1.10×) quantum=2.902ms · device floor xruns=0 jitter=1.00×
+(1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=1
+· ladder 12×3 xruns=0 (floor 0) jitter=1.03× floor=0.93× ratio=1.11×
+· 8×4 xruns=1 (floor 0) jitter=1.28× floor=1.00× ratio=1.27×
+· 12×2 xruns=3 (floor 0) jitter=1.49× floor=0.85× ratio=1.75×
+```
+
+**The fixed instrument on this desktop, twice** (run A on a busy box, `calib=13.8ms`; run B on a quiet box, `calib=17.3ms`):
+
+| scenario            | chains | runner ratio | desktop run A ratio | desktop run B ratio |
+| ------------------- | ------ | ------------ | ------------------- | ------------------- |
+| **12×4** (the gate) | 48     | **1.10×**    | **2.31×**           | **2.34×**           |
+| 12×3                | 36     | 1.11×        | 2.26×               | 2.38×               |
+| 8×4                 | 32     | 1.27×        | 1.75×               | 1.81×               |
+| 12×2                | 24     | 1.75×        | 1.50×               | 1.51×               |
+
+**Reading 3 — the ladder measures POSITION, not weight, and that survives the fix.** Three runs, two devices, the same shape: the
+readings rise with the order the scenarios were measured in. On the runner the floors stayed flat (0.93× / 1.00× / 0.85× — the
+device did **not** degrade), so the order effect is **not** a device-degradation effect and the ratio cannot cancel it: the
+lightest scenario (12×2, 24 chains) read the **worst** (1.75×), and the heaviest ladder scenario (12×3, 36 chains) read the
+**best** (1.11×). On the desktop the floors degraded hard (1.18× → 1.74× → 2.24× across the three scenarios), the ratio cancelled
+most of that, and what survived happened to come out monotonic in weight — **the opposite ordering to the runner's**. Two devices,
+the same instrument, opposite orderings: **the ladder's ordering is not a property of the product.** The mechanism is not
+identified — **Not verified** — and the honest statement is that a single-pass ladder shares one context and one engine across its
+scenarios, each of which rebuilds the whole graph (`engine.setProject`), and whatever that rebuild leaves behind accumulates in
+reading order. **What would settle it** is a ladder that measures the same scenario twice, first and last, so the order effect is
+measured instead of hidden, or one that gives every scenario a fresh context. **That is the next instrument step, and it is not
+in this commit** — the ladder is a diagnostic, and its remaining defect does not gate anything.
+
+**Reading 4 — what DOES settle the owner's question, and it is the gate's own scenario.** On the runner — the controlled
+environment, and a **weaker** machine than this desktop — the 12×4 graph ran at **896 of 896 possible quanta**: **100 % of real
+time**, heartbeat at **1.10×** its expected cadence against a limit of 1.5×, and **exactly one dropped quantum in the window**. So
+the promise the product makes — twelve tracks with four effects each, 48 effect chains — **fits in realtime on modest hardware**,
+and the only thing the gate objects to is that single quantum. On this desktop the same scenario rendered **384–448** quanta in
+the same 2.5 s window — **41–48 % of real time** — with a 2.3× heartbeat; but this desktop's own calibration drifted across the
+day from **12.0 ms** (the parallel session's run) to **17.3 ms** in the "quiet" run, a **44 %** swing with no heavy job of this
+session's running, and ~35 `node.exe` processes (eight Playwright MCP servers, several Vite dev servers, other sessions) were
+resident throughout. **A desktop whose own calibration moves 44 % is not a measuring environment for absolute realtime numbers** —
+and its number says more about the box than about the product.
+
+**So the boundary, as far as it is measured, is: on a 2-vCPU Linux runner the realtime path holds 48 effect chains at full real
+time, with one dropped quantum of margin; on a loaded desktop the same scenario does not fit, and the desktop's own floor says
+the box was the reason.** §10.16.9's recommendation stands and is now sharper: **the 12×4 scenario is a promise modest hardware
+can hold, so the gate must stop being a capacity test against zero** — it needs the same relative form its offline sibling got
+(`4bc8a224`: a ratio, not an absolute), which for a realtime gate means judging the graph against the **adjacent floor** this
+section built, rather than against an absolute zero that a device may or may not reach. **Loosening the 1.5× limit is still not
+recommended** — the limit did its job; the criterion's FORM is what is wrong.
+
+**Why this is the general lesson, not just a ladder bug.** The floor was introduced (in `80cb40ee`) to answer "is this the
+machine or the graph?" — and it answered that question correctly, because the gated window sits **right next to** its floor.
+The ladder sat **four windows further down the page**, and a floor that is not adjacent is not a floor: **it is a reading
+from another moment.** The rule this adds: **a reference measurement must be taken next to the measurement it references.**
+A floor three windows earlier is as blind as a guard that measures a different subsystem (§10.16.9's Defect 1) — it is simply
+blind in time rather than in subsystem. **And the second rule this adds is the one the ladder itself failed: a set of
+scenarios measured one after another in a shared context measures the ORDER unless the design proves otherwise** — so a
+capacity curve has to be demonstrated to be monotone in weight before it is read as one. **Three runs on two devices, with two
+different orderings, is exactly the evidence that it was not.**
+
+**The raw artifacts behind this section** are committed next to it, in
+`docs/audits/2026-10-27-hidden-creative-power/`: `07-realtime-scenario-ladder.md` (the write-up with all three runs quoted
+verbatim), `rt-ladder-run1-no-adjacent-floor.log` (the inverted reading — the defect's evidence),
+`rt-ladder-run2-adjacent-floor-contended.log` and `rt-ladder-run3-adjacent-floor-quiet.log` (the fixed instrument, twice, on a
+contended and on a "quiet" desktop). The runner's line is quoted from the job's **error annotation** on `37ff58c0` — one API
+request; the job log itself requires repository admin rights and answers **403**. The two desktop runs were taken in an **isolated
+detached worktree** at `37ff58c0`, because the parallel session's in-flight audio-hardening refactor edits the playback path and
+the two DSP processors the ladder's effect stack uses: **measuring on a tree another session is editing would have measured their
+work-in-progress.**
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
@@ -3011,7 +3244,9 @@ None of these is implemented. Each needs a product decision, not a patch.
 
 **P-1 · A command-registry-derived index (the root fix).** — **PHASE 1 SHIPPED (§9.2.2).**
 The curated registry landed: 20 commands, three rules, 55 → 75 palette actions, 24 → 9 zero-hit queries, and
-twelve capabilities findable by name. **Still open:** the registry is a **curated whitelist**, not a derived
+twelve capabilities findable by name. **IN PLACE (2026-10-30):** the palette is now **80** actions and the zero-hit
+count is **6** (the spec's ceiling stays 9) — §10.16.10, §10.11.3.
+**Still open:** the registry is a **curated whitelist**, not a derived
 index. Making the command registry the single source of _what the product can do_ — so the palette, the MCP
 tool surface and the intent router all read the same table — remains the structural fix for HCP-05-01,
 HCP-04-01 and HCP-04-03. **Needs:** a decision on what "visible in the palette" means per command (an
@@ -3019,13 +3254,19 @@ explicit flag, not a heuristic), and the action-count ceiling (currently pinned 
 **Rejected alternative:** adding palette entries by hand — it reproduces the same list-of-lists problem one
 entry at a time.
 
-**P-2 · The recording surface gets one address.**
+**P-2 · The recording surface gets one address.** — **DECIDED (2026-10-30): the ARR REC strip STAYS in ARR; the recording
+state moves into the PROJECT. PHASE 1 SHIPPED (`70f3b175`, schema v41).**
 Capture, arm, punch, comp, freeze and take review are six verbs spread over three dock tabs, a context menu
-and a footer chip. The proposal is **one address**, not one panel: the session-state chip already exists and
-already aggregates the state — it is the natural home for the verbs. **Needs:** a decision on whether the
-ARR REC strip stays where it is. **Note:** this is now the single largest hole the palette still has — the
-recording family is the one family the curated registry could not reach, because `armedTrackId` and the
-recorder state are local React state rather than project state (§9.2.2).
+and a footer chip. The proposal was **one address**, not one panel: the session-state chip already exists and
+already aggregates the state — it is the natural home for the verbs. **The owner answered the open question
+("whether the ARR REC strip stays where it is"): it stays.** The hole underneath the proposal was narrower and
+sharper than "one address" — the recording family's target was not a fact about the song at all: `armedTrackId` was
+component state, so the palette could not reach it, no command could arm a track and nothing could undo an arm.
+**Phase 1** moved the arm target into the document as `recording.armedTrackId` (schema 41), as an undoable command
+with a palette route and a collab mirror (§10.16.10). **Still open:** the capture **session**'s own state (second
+channel, extra input routes, take mode, punch/loop) stays local by design — it describes a running capture, not a
+song — and the **MCP route** for the arm is not shipped, because `src/mcp/tools.ts` was under another session's edit
+at the time; the structural fix for it is P-1's single derived registry, not another hand-written tool.
 
 **P-3 · One first-run, one key.**
 Five onboarding mechanisms with five storage keys; the tour and the hint bar teach the same material
@@ -3071,8 +3312,9 @@ Backlog numbers refer to §8; the shipped `QW-n` ids refer to §9.
    extend the role landings to the six suites or stop showing the promise.
 8. **Measure:** instrument the palette's own empty state (how many queries return zero) — the only honest
    way to size P-1. **— DONE.** The 48-query capability sweep is pinned by
-   `tests/ui/palette-search-coverage.test.ts`, which holds the zero-hit count at **9** and the action count at
-   **75** (ceiling 100).
+   `tests/ui/palette-search-coverage.test.ts`, which holds the zero-hit count at a **ceiling of 9** (measured:
+   **6**) and the action count at **80** (ceiling 100). **IN PLACE (2026-10-30):** the action count moved 75 → 80
+   with CF-12, CF-15 and P-2, each of which re-pinned it deliberately.
 
 ### 60 days — build the index
 
@@ -3082,9 +3324,12 @@ Backlog numbers refer to §8; the shipped `QW-n` ids refer to §9.
    **— PARTLY DONE (§9.2.2).** The curated registry covers **20 commands** across those modules; the
    `paletteVisible` flag is still missing, and the registry is still hand-curated rather than derived.
 2. **P-1, phase 2:** give the palette **capture actions** (HCP-02-01), dispatched through the same handlers
-   and the same preconditions as the REC button — with the disabled-with-reason state. **— NOT DONE, and
-   blocked on P-2**: the recorder's state has to leave local React state before a registry entry can exist
-   for it.
+   and the same preconditions as the REC button — with the disabled-with-reason state. **— PARTLY DONE (2026-10-30).**
+   It was blocked on P-2: the recorder's state has to leave local React state before a registry entry can exist for it.
+   P-2 is now decided and phase 1 landed (`70f3b175`, schema v41), so the **arm** has a registry entry
+   (`recording.arm`) and the palette is **80** actions. **What is still missing** is the rest of the family — Take,
+   Comp, Freeze, Monitor, Punch, recovery — whose preconditions are properties of the **capture session** (second
+   channel, input routes, take mode, punch/loop), and that state is still local by design (§10.16.10).
 3. **Give the five unwired intent kinds real MCP builders** (HCP-04-01, the wiring half) — reusing the
    commands the in-app panel already calls.
 4. **Expose the Assist engine** over MCP and the intent router (HCP-04-03).
