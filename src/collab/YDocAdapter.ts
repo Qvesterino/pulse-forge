@@ -38,6 +38,7 @@ import type {
   ProjectLineage,
   ProjectProducerBriefV1,
   ProjectTransferOriginV1,
+  RecordingArm,
   ReturnTrack,
   SampleLayer,
   Scene,
@@ -120,6 +121,7 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
       : {}),
     ...(m.has("liveSets") ? { liveSets: plainValue(m.get("liveSets")) as unknown as LiveSet[] } : {}),
     ...(m.has("activeLiveSetId") ? { activeLiveSetId: m.get("activeLiveSetId") as string } : {}),
+    ...(m.has("recording") ? { recording: plainValue(m.get("recording")) as unknown as RecordingArm } : {}),
     createdAt: (m.get("createdAt") as string) ?? "",
     updatedAt: (m.get("updatedAt") as string) ?? "",
   };
@@ -997,6 +999,10 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   syncPlainJsonField(yMap, "producerBrief", newDoc.producerBrief);
   syncPlainJsonField(yMap, "transferOrigin", newDoc.transferOrigin);
   syncPlainJsonField(yMap, "liveSets", newDoc.liveSets);
+  // The recording arm (schema v41) — where a take lands is part of the song,
+  // so a collab peer must see it too; otherwise the arm vanishes for peers
+  // and the palette arms a track only on the machine that pressed the key.
+  syncPlainJsonField(yMap, "recording", newDoc.recording);
 }
 
 export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void {

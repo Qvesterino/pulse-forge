@@ -89,6 +89,7 @@ import {
   resizeAudioClip,
   slipAudioClip,
   setActiveAudioTake,
+  setRecordingArm,
   splitArrangementClipAtTick,
   splitAudioClipAtTick,
   stripSilenceAudioClip,
@@ -863,7 +864,17 @@ export function ArrangementPanel() {
     suppressTakeLaneClickRef.current = false;
   }, [selectedAudioTakeGroup?.id, showAudioTakeLanes]);
   // ── Timeline recording: arm a track, REC an audio input straight into the song ──
-  const [armedTrackId, setArmedTrackId] = useState<string>("");
+  // The ARM TARGET is a project fact (schema v41): where a take lands is part
+  // of the song, so it lives in the document and moves through the ordinary
+  // command path. That is what makes the recording family reachable from the
+  // command palette — it used to be local React state here, and the one
+  // family nothing could arm, script or undo. The capture SESSION's own
+  // state (second channel, extra input routes, take mode, punch/loop flags,
+  // recorder status) stays local: it describes a running capture, so it must
+  // not be persisted and must not be undoable.
+  const armedTrackId = doc.tracks.some((t) => t.id === doc.recording?.armedTrackId)
+    ? (doc.recording?.armedTrackId ?? "")
+    : "";
   const [armedSecondTrackId, setArmedSecondTrackId] = useState<string>("");
   const [armedAdditionalTrackIds, setArmedAdditionalTrackIds] = useState<string[]>([]);
   const [independentInputRoutes, setIndependentInputRoutes] = useState<
@@ -873,6 +884,18 @@ export function ArrangementPanel() {
   const [recordingTakeGroupSelection, setRecordingTakeGroupSelection] = useState("");
   const [loopTakeCapture, setLoopTakeCapture] = useState(false);
   const [punchCapture, setPunchCapture] = useState(false);
+  // An arm that arrived from the PALETTE or a command must not leave the
+  // capture session pointing a second channel at the track that is no longer
+  // the target. The select's own handler clears these synchronously; this
+  // covers the path where the arm came from somewhere else.
+  useEffect(() => {
+    if (!armedTrackId) return;
+    setArmedSecondTrackId((current) => (current === armedTrackId ? "" : current));
+    setArmedAdditionalTrackIds((current) => current.map((id) => (id === armedTrackId ? "" : id)));
+    setIndependentInputRoutes((current) =>
+      current.map((route) => (route.trackId === armedTrackId ? { ...route, trackId: "" } : route)),
+    );
+  }, [armedTrackId]);
   const recordingTakeGroups = (arrangement.takeGroups ?? []).filter((group) => group.trackId === armedTrackId);
   const recordingTakeMode =
     recordingTakeGroupSelection === "new" ||
@@ -4373,7 +4396,7 @@ export function ArrangementPanel() {
                 disabled={recState !== "idle"}
                 onChange={(event) => {
                   const trackId = event.target.value;
-                  setArmedTrackId(trackId);
+                  services.store.execute(setRecordingArm(doc, trackId));
                   if (trackId === armedSecondTrackId) setArmedSecondTrackId("");
                   if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
                   if (trackId)

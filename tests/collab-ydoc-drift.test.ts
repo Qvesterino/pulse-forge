@@ -37,6 +37,7 @@ const ALL_TOP_LEVEL_KEYS: Record<keyof ProjectDocument, true> = {
   transferOrigin: true,
   liveSets: true,
   activeLiveSetId: true,
+  recording: true,
   tracks: true,
   patterns: true,
   activePatternId: true,

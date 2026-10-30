@@ -113,10 +113,13 @@ describe("palette search coverage", () => {
   it("pins the action count so the palette cannot grow into a command dump", () => {
     // 55 before the curated registry (51 registry-derived + 4 extras),
     // 75 after it (+20 curated commands), 77 after CF-12 added the two
-    // audio-clip transformation routes. The proposed P-1 scope caps it at
-    // 100 — so this spec must be updated DELIBERATELY when an approved scope
-    // lands, never by a change that grew the palette quietly.
-    expect(actions.length).toBe(79);
+    // audio-clip transformation routes, 79 after CF-15's two tool routes,
+    // 80 after P-2 added the recording arm — the last family the palette
+    // could not reach, because the arm was local React state. The proposed
+    // P-1 scope caps it at 100 — so this spec must be updated DELIBERATELY
+    // when an approved scope lands, never by a change that grew the palette
+    // quietly.
+    expect(actions.length).toBe(80);
     expect(actions.length).toBeLessThanOrEqual(100);
   });
 

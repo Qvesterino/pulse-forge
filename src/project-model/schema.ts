@@ -68,7 +68,7 @@ import {
 } from "./targets";
 import { assignPointIds } from "./automation";
 
-export const SCHEMA_VERSION = 40;
+export const SCHEMA_VERSION = 41;
 
 /**
  * The oldest project shape this build knows about.
@@ -3787,6 +3787,10 @@ export const SCHEMA_HISTORY: Record<number, SchemaChange> = {
   40: {
     kind: "additive",
     note: "v40 adds the optional per-track `orbit` mapping — the TSAR ORBIT 2-D performance surface's X/Y axis assignment (ADR 0074). Absent = the track has no ORBIT surface, which is the unchanged default for every other track; a present mapping is repaired by the normaliser (an unknown parameter id or an impossible range falls back to the documented default axis) so a damaged file still loads as a WORKING surface",
+  },
+  41: {
+    kind: "additive",
+    note: "v41 adds the optional `recording.armedTrackId` — which track the next recorded take lands on. It was local React state in the arrangement panel, which made the recording family the one family the command palette could not reach: an armed track could not be commanded, scripted or undone. Absent = nothing is armed, the unchanged default for every project; the capture SESSION's own state (second channel, extra input routes, take mode, punch/loop flags, recorder status) deliberately stays out of the document, because it describes a running capture rather than a song",
   },
 };
 

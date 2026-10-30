@@ -35,6 +35,7 @@ export * from "./liveSets";
 export * from "./patterns";
 export * from "./arrangement";
 export * from "./markers";
+export * from "./recording";
 export * from "./metadata";
 // The clip layers below read the project key when they rebuild a stem set, so this one needs a
 // local binding — a re-export would not give the barrel body the name.

@@ -55,6 +55,7 @@ import { seedBasslineCommand } from "./instrument";
 import { createLiveSet } from "./liveSets";
 import { addMarker } from "./markers";
 import { quantizePatternToGrid, quantizePatternToScale } from "./quantize";
+import { setRecordingArm } from "./recording";
 import { createScene, duplicateSceneAsVariation } from "./scenes";
 
 export interface PaletteCommandContext {
@@ -401,6 +402,19 @@ export const PALETTE_COMMAND_SPECS: PaletteCommandSpec[] = [
       const ids = selectedAudioClipIds(ctx);
       if (ids.length < 2) return null;
       return crossfadeAudioClips(ctx.doc, ids[0], ids[1]);
+    },
+  },
+
+  /* -------------------------------------------------------------- Record */
+  {
+    id: "recording.arm",
+    label: "Arm the selected track for recording",
+    group: "Record",
+    keywords: "arm record recording take capture input microphone",
+    precondition: (ctx) => (selectedTrack(ctx) ? null : "Select a track to arm for recording"),
+    build: (ctx) => {
+      const track = selectedTrack(ctx);
+      return track ? setRecordingArm(ctx.doc, track.id) : null;
     },
   },
 ];

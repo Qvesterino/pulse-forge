@@ -11,6 +11,7 @@ import { renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { SelectionState } from "../../src/store/SelectionStore";
 import { applyEssentialKit } from "../../src/commands/effectParams";
+import { setRecordingArm } from "../../src/commands/recording";
 import { trackEffectsOf } from "../../src/commands/docOps";
 
 /**
@@ -157,6 +158,60 @@ describe("the registry spec shape", () => {
   it("exposes a lookup by id", () => {
     const spec: PaletteCommandSpec | undefined = PALETTE_COMMAND_SPECS.find((s) => s.id === "pattern.quantizeGrid");
     expect(spec).toBeDefined();
+  });
+});
+
+/**
+ * THE RECORDING ARM — the last family the palette could not reach.
+ *
+ * The arm used to be local React state inside the arrangement panel, so
+ * nothing could arm a track, script it, or undo it: the recording family was
+ * the one family the command palette had no route into. It is a PROJECT fact
+ * now (schema v41) — where a take lands is part of the song.
+ *
+ * These three properties are what makes the family reachable, and each one
+ * is a promise the UI could break again by moving the state back into the
+ * component:
+ *   1. the palette can INVOKE it, and says why when it cannot;
+ *   2. it lands in the DOCUMENT, so it is undoable and survives a save;
+ *   3. disarming is a command too — "nothing armed" is a state, not an
+ *      absence.
+ */
+describe("the recording arm (P-2)", () => {
+  it("arms the selected track into the DOCUMENT, not into React state", () => {
+    const ctx = readyContext();
+    const trackId = ctx.selection.trackIds[0];
+    expect(trackId, "the ready context selects no track").toBeTruthy();
+    const applied = setRecordingArm(ctx.doc, trackId).execute(ctx.doc);
+    expect(applied.recording?.armedTrackId).toBe(trackId);
+  });
+
+  it("undoes the arm back to the previous document", () => {
+    const ctx = readyContext();
+    const trackId = ctx.selection.trackIds[0];
+    const command = setRecordingArm(ctx.doc, trackId);
+    const applied = command.execute(ctx.doc);
+    expect(command.undo(applied).recording?.armedTrackId).toBeUndefined();
+  });
+
+  it("disarming is a command: the arm can be taken back", () => {
+    const ctx = readyContext();
+    const trackId = ctx.selection.trackIds[0];
+    const armed = setRecordingArm(ctx.doc, trackId).execute(ctx.doc);
+    const disarmed = setRecordingArm(armed, "").execute(armed);
+    expect(disarmed.recording?.armedTrackId).toBeUndefined();
+  });
+
+  it("is reachable from the palette, and says why when it cannot run", () => {
+    const ready = buildPaletteActions(deps({ commandContext: () => readyContext() }));
+    const arm = ready.find((action) => action.id === "cmd:recording.arm");
+    expect(arm, "the palette has no recording arm action").toBeDefined();
+    expect(arm?.unavailableReason ?? null).toBeNull();
+
+    const empty = buildPaletteActions(deps({ commandContext: () => context() }));
+    const blocked = empty.find((action) => action.id === "cmd:recording.arm");
+    expect(blocked?.unavailableReason).toBeTruthy();
+    expect(blocked?.unavailableReason).toMatch(/track/i);
   });
 });
 

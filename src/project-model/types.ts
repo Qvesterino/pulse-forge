@@ -1452,6 +1452,24 @@ export interface LiveSet {
   pads: LiveSetPad[];
 }
 
+/**
+ * Which track the next recorded take lands on (schema v41).
+ *
+ * The capture SESSION's own state — the second channel, the extra input
+ * routes, the take mode, the punch/loop flags and the live recorder status —
+ * stays in the UI: it describes a running capture, not a song, and it must
+ * not be persisted or undone.
+ *
+ * What belongs to the PROJECT is the TARGET. A take's destination is part of
+ * the song, and a target that lives only in one component's React state
+ * cannot be commanded, scripted or undone — which is why the recording
+ * family used to be the one family the command palette could not reach.
+ */
+export interface RecordingArm {
+  /** The track a recorded take lands on. Absent = nothing is armed. */
+  armedTrackId?: ID;
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
@@ -1490,6 +1508,8 @@ export interface ProjectDocument {
   groove?: Partial<GrooveSettings>;
   /** MIDI input configuration. Optional for backwards compatibility. */
   midi?: MidiConfig;
+  /** Which track the next recorded take lands on (schema v41). Absent = nothing is armed. */
+  recording?: RecordingArm;
   createdAt: string;
   updatedAt: string;
 }
