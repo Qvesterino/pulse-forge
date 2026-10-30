@@ -58,7 +58,7 @@ PASS rt budget: 12 tracks × 4 effects realtime — blocks=832 xruns=0 heartbeat
 FAIL perf: 8 tracks × 4 effects render stays within baseline + headroom — 17944ms vs 2938ms single-track baseline for 16500ms audio (budget 14938ms, 6.11× baseline)
 ```
 
-Source: `docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`. **Provenance caveat:** that log was
+Source: `docs/audits/2026-10-29-browser-audit/browser-audit-3328668c-plus-rt-floor-loaded.log`. **Provenance caveat:** that log was
 produced against a working tree that also contained the uncommitted instrument, so its name says `head-3328668c` and its bytes
 came from a later state. The `77/77` parity line in it is unaffected; the realtime line is by construction this instrument's.
 
@@ -131,7 +131,7 @@ The runner's job reported **`failing checks: 1`** — only the realtime budget. 
 | CI runner, 2-vCPU Linux        | 0 xruns, 1.00× | ❌ **1** xruns   | ✅ 3 green      |
 
 The parallel session's fresh run at HEAD `3328668c` (`d5480075`,
-`docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c.log`):
+`docs/audits/2026-10-29-browser-audit/browser-audit-3328668c-plus-rt-floor.log`):
 
 ```text
 FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=896 xruns=1 heartbeat avg=197.32ms max=221.70ms (expected≈170.67ms, 1.16×) quantum=2.667ms · device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=1

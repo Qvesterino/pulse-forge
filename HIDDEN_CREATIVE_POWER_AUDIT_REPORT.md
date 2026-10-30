@@ -2350,7 +2350,7 @@ confidence is what carried into the notes. The repair is the same as for any oth
 and let the other side say whether it was the right place.**
 
 **One caveat about a second artifact, recorded where the instrument is described (§10.16.9):** the parallel session's
-`74a1d8dd` log (`browser-audit-head-3328668c-loaded.log`) also reads `passed=77/77`, but it was produced against a working tree
+`74a1d8dd` log (`browser-audit-3328668c-plus-rt-floor-loaded.log`) also reads `passed=77/77`, but it was produced against a working tree
 that also contained this session's uncommitted `src/browser-checks.ts`, so its name says one commit and its bytes came from
 another. The `64d3a798` artifact has no such caveat — it was taken at its own HEAD.
 
@@ -3088,7 +3088,7 @@ corpus), and checking it took one grep. **The conclusion was right and the mecha
 the right conclusion survives for the wrong reason, and nobody re-checks it.**
 
 **Provenance of the committed artifact, recorded here because this session owns the instrument.** The log the parallel session
-committed at `74a1d8dd` (`docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`) contains **this
+committed at `74a1d8dd` (`docs/audits/2026-10-29-browser-audit/browser-audit-3328668c-plus-rt-floor-loaded.log`) contains **this
 session's instrumented output** — the `device floor … graph build=… steady=…` line exists only in the working tree at the time —
 because the two sessions share one worktree and the parallel session ran the browser gate against it. **The artifact is
 therefore labelled `head-3328668c` but was produced from a tree that also contained this session's uncommitted
@@ -3131,7 +3131,7 @@ environment. Neither machine is a measuring environment for these gates, and the
 on every device measured**.
 
 **And then the third environment said the last word: the desktop flips too.** The parallel session committed a fresh run at HEAD
-`3328668c` (`d5480075`, `docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c.log`), on this same machine:
+`3328668c` (`d5480075`, `docs/audits/2026-10-29-browser-audit/browser-audit-3328668c-plus-rt-floor.log`), on this same machine:
 
 ```text
 FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=896 xruns=1 heartbeat avg=197.32ms
