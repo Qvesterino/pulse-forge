@@ -652,41 +652,66 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     // much of real time the device actually managed with this graph". It needs
     // no assumption about the machine's speed, which is exactly what the
     // millisecond-based readings could not give.
+    //
+    // DELTAS, never raw counters: the processor's counters are cumulative, so
+    // a raw ratio of two raw counters measures how much the accumulator grew
+    // (which shrinks as the run goes on) rather than how the graph performed.
     const blocksOf = (snap: { blocks: number } | null) => snap?.blocks ?? 0;
+    const windowBlocksOf = (w: { pre: { blocks: number } | null; post: { blocks: number } | null }) =>
+      Math.max(0, blocksOf(w.post) - blocksOf(w.pre));
 
+    // TWO PASSES, in opposite order. Measured 2026-10-30: a single ascending
+    // pass cannot separate the graph's cost from the page state the earlier
+    // scenarios left behind — the same 12×4 graph read 1.00× as the gated
+    // window (first position, fresh page) and 2.07× as the fifth ladder
+    // scenario, and the floor did NOT show the degradation (it read 1.05×),
+    // because an empty graph does not suffer what a 48-chain graph suffers
+    // from a warmed heap. Two passes put every scenario at opposite ends of
+    // the sequence: their AVERAGE cancels a drift that is linear in position,
+    // and their SPREAD is the size of what was left.
     const ladder: Array<{
       label: string;
       chains: number;
       fit: number;
-      drops: number;
-      floorDrops: number;
+      fitSpread: number;
       jitter: number;
-      floorJitter: number;
+      jitterSpread: number;
       ratio: number;
+      drops: number;
     }> = [];
-    for (const [trackCount, effectsPerTrack] of LADDER) {
-      const adjacent = await measureWindow(floorDoc);
-      const step = await measureWindow(ladderDoc(trackCount, effectsPerTrack));
-      const floorJitter = jitterOf(adjacent.post);
-      const scenarioJitter = jitterOf(step.post);
-      const floorBlocks = blocksOf(adjacent.post);
+    const passes: Array<{ fit: number; jitter: number; ratio: number; drops: number }[]> = [[], []];
+    for (const [passIndex, order] of [
+      [0, LADDER],
+      [1, [...LADDER].reverse()],
+    ] as const) {
+      for (const [trackCount, effectsPerTrack] of order) {
+        const adjacent = await measureWindow(floorDoc);
+        const step = await measureWindow(ladderDoc(trackCount, effectsPerTrack));
+        const floorJitter = jitterOf(adjacent.post);
+        const scenarioJitter = jitterOf(step.post);
+        const floorBlocks = windowBlocksOf(adjacent);
+        const stepBlocks = windowBlocksOf(step);
+        passes[passIndex].push({
+          fit: floorBlocks > 0 ? stepBlocks / floorBlocks : 0,
+          jitter: scenarioJitter,
+          ratio: floorJitter > 0 ? scenarioJitter / floorJitter : scenarioJitter,
+          drops: dropped(step.pre, step.post),
+        });
+      }
+    }
+    for (const [index, [trackCount, effectsPerTrack]] of LADDER.entries()) {
+      const a = passes[0][index];
+      const b = passes[1][passes[1].length - 1 - index];
+      const mean = (x: number, y: number) => (x + y) / 2;
       ladder.push({
         label: `${trackCount}×${effectsPerTrack}`,
         chains: trackCount * effectsPerTrack,
-        fit: floorBlocks > 0 ? blocksOf(step.post) / floorBlocks : 0,
-        // The scenario's OWN drops and the adjacent floor's drops, both raw.
-        // A net difference was tried first and it reads as nonsense: the
-        // floor's window can drop a quantum the scenario's window does not,
-        // so the net goes negative — and a negative count of dropped quanta
-        // is not a number a reader can believe. Two raw numbers say the same
-        // thing without lying about either.
-        drops: dropped(step.pre, step.post),
-        floorDrops: dropped(adjacent.pre, adjacent.post),
-        jitter: scenarioJitter,
-        floorJitter,
-        // The ratio cancels a degradation that hits the empty graph and the
-        // loaded one alike. It is the graph's cost, not the device's mood.
-        ratio: floorJitter > 0 ? scenarioJitter / floorJitter : scenarioJitter,
+        fit: mean(a.fit, b.fit),
+        fitSpread: Math.abs(a.fit - b.fit),
+        jitter: mean(a.jitter, b.jitter),
+        jitterSpread: Math.abs(a.jitter - b.jitter),
+        ratio: mean(a.ratio, b.ratio),
+        drops: a.drops + b.drops,
       });
     }
 
@@ -716,7 +741,7 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     // The gated window's own fit fraction, against the floor measured right
     // before it: "how much of real time the device actually managed". The
     // ladder's re-measurement of the same 12×4 is the position check.
-    const floorWarmBlocks = blocksOf(floorWarm.post);
+    const floorWarmBlocks = windowBlocksOf(floorWarm);
     const gatedFit = floorWarmBlocks > 0 ? windowBlocks / floorWarmBlocks : 0;
     const detail =
       `blocks=${windowBlocks} fit=${gatedFit.toFixed(2)} xruns=${graphDrops} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
@@ -728,8 +753,8 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       ` · ladder ${ladder
         .map(
           (r) =>
-            `${r.label}(${r.chains}c) fit=${r.fit.toFixed(2)} xruns=${r.drops} (floor ${r.floorDrops}) ` +
-            `jitter=${r.jitter.toFixed(2)}× floor=${r.floorJitter.toFixed(2)}× ratio=${r.ratio.toFixed(2)}×`,
+            `${r.label}(${r.chains}c) fit=${r.fit.toFixed(2)}±${r.fitSpread.toFixed(2)} ` +
+            `jitter=${r.jitter.toFixed(2)}±${r.jitterSpread.toFixed(2)}× ratio=${r.ratio.toFixed(2)}× xruns=${r.drops}`,
         )
         .join(" · ")}`;
     // The gate: the device must not drop quanta, and the heartbeat must
