@@ -136,7 +136,7 @@ export function MixPreviewChipLazy() {
       const outcome = await applyAndVerifyMixPreview(services, lane);
       if (!outcome.applied) {
         setAppliedLane(null);
-        setError("Project changed before Apply. Dismiss this preview and run it again.");
+        setError(outcome.reason ?? "Project changed before Apply. Dismiss this preview and run it again.");
         return;
       }
       setVerification(outcome.verification ?? null);

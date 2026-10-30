@@ -1,3 +1,5 @@
+import type { ProposalConstraints } from "./proposal-constraints";
+
 /** A read-only, versioned description of a proposal; it does not execute commands. */
 export interface MusicalProposalV1 {
   schema: "kyx.musical-proposal";
@@ -7,11 +9,11 @@ export interface MusicalProposalV1 {
   scope: {
     /** Listening and measurement range, not a restriction on writes. */
     audition: { startTick: number; endTick: number } | null;
-    writeScope: "unrestricted";
+    writeScope: "unrestricted" | "declared";
     targetTrackIds: string[];
   };
   intent: { label: string; goals: string[]; interpreter: string };
-  constraints: { status: "not_declared"; items: [] };
+  constraints: { status: "not_declared"; items: [] } | { status: "declared"; rules: ProposalConstraints };
   candidates: Array<{
     id: string;
     changes: Array<{

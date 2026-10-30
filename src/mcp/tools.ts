@@ -553,6 +553,7 @@ const OUTPUT_MIX_IDEA: McpOutputSchema = {
     ok: { type: "boolean" },
     applied: { type: "boolean" },
     reason: { type: "string", maxLength: 2_000 },
+    proposal: { type: "object", additionalProperties: true },
     interpreter: { type: "string", enum: ["production", "assistant"] },
     targets: { type: "array", items: { type: "string" } },
     goals: { type: "array", items: { type: "string" } },
@@ -3365,6 +3366,16 @@ export const MCP_TOOLS: McpToolDef[] = [
           description:
             "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Optional startTick+endTick scopes both measurement and audition. Read-only; render-bound transports only",
         },
+        constraints: {
+          type: "object",
+          description:
+            'Preview-only document path constraints. Each path contains property names, numeric indices, or {"id":"..."} entity selectors; allow:[] forbids writes.',
+          additionalProperties: false,
+          properties: {
+            allow: { type: "array", maxItems: 128, items: { type: "array", minItems: 1, maxItems: 32, items: {} } },
+            protect: { type: "array", maxItems: 128, items: { type: "array", minItems: 1, maxItems: 32, items: {} } },
+          },
+        },
         startTick: {
           type: "integer",
           minimum: 0,
@@ -4232,7 +4243,13 @@ export interface McpToolContext {
   /** kyx_mix_idea preview: render the before/after pair, measure, arm the
    * session lane the studio chip picks up. Read-only over the project. */
   mixPreview?: (
-    request: { idea: string; target?: string; startTick?: number; endTick?: number },
+    request: {
+      idea: string;
+      target?: string;
+      startTick?: number;
+      endTick?: number;
+      constraints?: import("../intent/proposal-constraints").ProposalConstraints;
+    },
     signal?: AbortSignal,
   ) => Promise<import("./mix-preview").MixPreviewOutcome>;
 }
@@ -8581,6 +8598,16 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (record.apply === true && record.preview === true) {
         return mcpError("INVALID_ARGUMENTS", "apply and preview are mutually exclusive");
       }
+      let constraints: import("../intent/proposal-constraints").ProposalConstraints | undefined;
+      if (record.constraints !== undefined) {
+        if (record.preview !== true)
+          return mcpError("INVALID_ARGUMENTS", "constraints require preview:true; apply through the preview card");
+        const { parseProposalConstraints } = await import("../intent/proposal-constraints");
+        const parsed = parseProposalConstraints(record.constraints);
+        if (!parsed)
+          return mcpError("INVALID_ARGUMENTS", "Invalid constraints: expected bounded allow/protect document paths");
+        constraints = parsed;
+      }
       const hasStartTick = record.startTick !== undefined;
       const hasEndTick = record.endTick !== undefined;
       if (hasStartTick !== hasEndTick) {
@@ -8615,10 +8642,16 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             {
               idea,
               ...(target ? { target } : {}),
+              ...(constraints ? { constraints } : {}),
               ...(hasStartTick ? { startTick: record.startTick as number, endTick: record.endTick as number } : {}),
             },
             ctx.signal,
           );
+          if (outcome.ok) {
+            const { validateMusicalProposal } = await import("../intent/validate-musical-proposal");
+            const validation = validateMusicalProposal(mixPreviewProposal(outcome.lane));
+            if (!validation.ok) return mcpError("EXECUTION_FAILED", validation.reason);
+          }
           const data = outcome.ok
             ? {
                 status: "previewed",

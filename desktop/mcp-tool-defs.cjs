@@ -5193,6 +5193,34 @@ const MCP_TOOL_DEFS = [
           description:
             "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Optional startTick+endTick scopes both measurement and audition. Read-only; render-bound transports only",
         },
+        constraints: {
+          type: "object",
+          description:
+            'Preview-only document path constraints. Each path contains property names, numeric indices, or {"id":"..."} entity selectors; allow:[] forbids writes.',
+          additionalProperties: false,
+          properties: {
+            allow: {
+              type: "array",
+              maxItems: 128,
+              items: {
+                type: "array",
+                minItems: 1,
+                maxItems: 32,
+                items: {},
+              },
+            },
+            protect: {
+              type: "array",
+              maxItems: 128,
+              items: {
+                type: "array",
+                minItems: 1,
+                maxItems: 32,
+                items: {},
+              },
+            },
+          },
+        },
         startTick: {
           type: "integer",
           minimum: 0,
@@ -5240,6 +5268,10 @@ const MCP_TOOL_DEFS = [
         reason: {
           type: "string",
           maxLength: 2000,
+        },
+        proposal: {
+          type: "object",
+          additionalProperties: true,
         },
         interpreter: {
           type: "string",

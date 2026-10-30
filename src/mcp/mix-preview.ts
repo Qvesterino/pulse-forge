@@ -1,12 +1,20 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
-import { ticksPerBar } from "../project-model/schema";
+import { normalizeProject, ticksPerBar } from "../project-model/schema";
 import { analyzeMixHealth } from "../analysis/mixDoctor";
 import { resolveAnalysisWindow } from "../analysis/contract";
 import type { MixIdeaPlan, MixIdeaStep } from "./mix-idea";
 import type { Services } from "../services";
 import { storeRevision } from "./revision";
 import type { MusicalProposalV1 } from "../intent/musical-proposal";
+import {
+  checkProposalConstraints,
+  parseProposalConstraints,
+  type ProposalConstraints,
+} from "../intent/proposal-constraints";
+import { validateMusicalProposal } from "../intent/validate-musical-proposal";
+import { deepEqualRef } from "../commands/docDelta";
+import { snapshot } from "../commands/core";
 
 /**
  * kyx_mix_idea PREVIEW — the auto-rendered before/after A/B.
@@ -62,6 +70,7 @@ export interface MixPreviewLane {
   afterDoc: ProjectDocument;
   /** The ONE-undo command the Apply button executes. */
   command: Command;
+  constraints?: ProposalConstraints;
   stats: MixPreviewStats;
   /** Null means whole-project preview; a range is measured and auditioned in isolation. */
   window?: MixPreviewWindow | null;
@@ -106,11 +115,13 @@ export function mixPreviewProposal(lane: MixPreviewLane): MusicalProposalV1 {
     },
     scope: {
       audition: lane.window ? { startTick: lane.window.startTick, endTick: lane.window.endTick } : null,
-      writeScope: "unrestricted",
+      writeScope: lane.constraints ? "declared" : "unrestricted",
       targetTrackIds: [...new Set(lane.steps.map((step) => step.trackId))],
     },
     intent: { label: lane.label, goals: [...lane.goals], interpreter: lane.interpreter },
-    constraints: { status: "not_declared", items: [] },
+    constraints: lane.constraints
+      ? { status: "declared", rules: structuredClone(lane.constraints) }
+      : { status: "not_declared", items: [] },
     candidates: [
       {
         id: lane.id,
@@ -160,6 +171,7 @@ export type MixPreviewListener = (lane: MixPreviewLane | null) => void;
 let currentLane: MixPreviewLane | null = null;
 let latestVerification: MixPreviewVerification | null = null;
 let verificationGeneration = 0;
+const previewConstraints = new WeakMap<MixPreviewLane, ProposalConstraints | null>();
 const listeners = new Set<MixPreviewListener>();
 
 export function armMixPreviewLane(lane: MixPreviewLane): void {
@@ -206,14 +218,45 @@ export function hasMixPreviewListener(): boolean {
 export async function applyAndVerifyMixPreview(
   services: Services,
   lane: MixPreviewLane,
-): Promise<{ applied: boolean; verification?: MixPreviewVerification }> {
+): Promise<{ applied: boolean; verification?: MixPreviewVerification; reason?: string }> {
   const beforeApply = structuredClone(services.store.getDoc());
   const revisionBeforeApply = storeRevision(services.store);
-  if (!mixPreviewMatchesProject(lane, beforeApply, revisionBeforeApply)) return { applied: false };
+  if (previewConstraints.has(lane) && !deepEqualRef(previewConstraints.get(lane), lane.constraints ?? null)) {
+    return { applied: false, reason: "Preview constraints changed; create a new preview." };
+  }
+  if (lane.freshness === "stale") return { applied: false, reason: "Preview is stale; create a new preview." };
+  if (!mixPreviewMatchesProject(lane, beforeApply, revisionBeforeApply))
+    return { applied: false, reason: "Project changed after preview; create a new preview." };
+  const validation = validateMusicalProposal(mixPreviewProposal(lane), {
+    projectId: beforeApply.id,
+    revision: revisionBeforeApply,
+    trackIds: beforeApply.tracks.map((track) => track.id),
+  });
+  if (!validation.ok) return { applied: false, reason: validation.reason };
+  const candidate = normalizeProject(lane.command.execute(structuredClone(beforeApply)));
+  if (!deepEqualRef(candidate, lane.afterDoc))
+    return { applied: false, reason: "The command no longer produces the previewed project." };
+  if (lane.constraints) {
+    const checked = checkProposalConstraints(beforeApply, candidate, lane.constraints);
+    if (!checked.ok)
+      return {
+        applied: false,
+        reason: checked.reason ?? `Constraint violation: ${checked.violations.map((v) => v.path).join(", ")}`,
+      };
+  }
 
   const generation = ++verificationGeneration;
   latestVerification = null;
-  services.store.execute(lane.command);
+  // Commit the exact checked candidate for constrained previews. Re-executing
+  // an arbitrary command after checking it could produce a different write.
+  const command = lane.constraints
+    ? {
+        ...snapshot(lane.command.type, lane.command.label, beforeApply, candidate),
+        detail: lane.command.detail,
+        clamps: lane.command.clamps,
+      }
+    : lane.command;
+  services.store.execute(command);
   clearMixPreviewLane();
   const appliedDoc = structuredClone(services.store.getDoc());
   const appliedRevision = storeRevision(services.store);
@@ -379,9 +422,18 @@ export async function buildMixPreview(
   doc: ProjectDocument,
   plan: Extract<MixIdeaPlan, { ok: true }>,
   renderDoc: (doc: ProjectDocument) => Promise<RenderedBufferLike>,
-  options: { window?: MixPreviewWindow | null; projectRevision?: number | null } = {},
+  options: {
+    window?: MixPreviewWindow | null;
+    projectRevision?: number | null;
+    constraints?: ProposalConstraints;
+  } = {},
 ): Promise<MixPreviewLane> {
-  const afterDoc = plan.command.execute(doc);
+  const afterDoc = normalizeProject(plan.command.execute(structuredClone(doc)));
+  if (options.constraints) {
+    const checked = checkProposalConstraints(doc, afterDoc, options.constraints);
+    if (!checked.ok)
+      throw new Error(checked.reason ?? `Constraint violation: ${checked.violations.map((v) => v.path).join(", ")}`);
+  }
   const [beforeBuffer, afterBuffer] = await Promise.all([renderDoc(doc), renderDoc(afterDoc)]);
   if (options.window) {
     assertPreviewWindow(beforeBuffer, options.window, "before");
@@ -389,7 +441,7 @@ export async function buildMixPreview(
   }
   const beforeLufs = await measureLufs(beforeBuffer, options.window);
   const afterLufs = await measureLufs(afterBuffer, options.window);
-  return {
+  const lane: MixPreviewLane = {
     id: `mixprev-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     idea: "",
     label: plan.label,
@@ -401,6 +453,7 @@ export async function buildMixPreview(
     beforeDoc: structuredClone(doc),
     afterDoc,
     command: plan.command,
+    ...(options.constraints ? { constraints: structuredClone(options.constraints) } : {}),
     stats: {
       beforeLufs,
       afterLufs,
@@ -413,6 +466,8 @@ export async function buildMixPreview(
     freshness: options.projectRevision === undefined || options.projectRevision === null ? "unknown" : "current",
     createdAt: new Date().toISOString(),
   };
+  previewConstraints.set(lane, options.constraints ? structuredClone(options.constraints) : null);
+  return lane;
 }
 
 /**
@@ -421,11 +476,25 @@ export async function buildMixPreview(
  */
 export async function previewMixIdea(
   services: Services,
-  request: { idea: string; target?: string; startTick?: number; endTick?: number },
+  request: { idea: string; target?: string; startTick?: number; endTick?: number; constraints?: ProposalConstraints },
   signal?: AbortSignal,
 ): Promise<MixPreviewOutcome> {
   const doc = structuredClone(services.store.getDoc());
   const projectRevision = storeRevision(services.store);
+  const constraints = request.constraints === undefined ? undefined : parseProposalConstraints(request.constraints);
+  if (constraints === null) return { ok: false, reason: "Invalid constraint declaration." };
+  for (const path of [...(constraints?.allow ?? []), ...(constraints?.protect ?? [])]) {
+    if (path[0] === "tracks" && path.length > 1 && typeof path[1] !== "object") {
+      return { ok: false, reason: "Track constraints must use a stable {id} selector." };
+    }
+    if (
+      path[0] === "tracks" &&
+      typeof path[1] === "object" &&
+      !doc.tracks.some((track) => track.id === (path[1] as { id: string }).id)
+    ) {
+      return { ok: false, reason: `Unknown track in constraint: ${(path[1] as { id: string }).id}` };
+    }
+  }
   const hasStartTick = request.startTick !== undefined;
   const hasEndTick = request.endTick !== undefined;
   if (hasStartTick !== hasEndTick) return { ok: false, reason: "range preview needs both startTick and endTick" };
@@ -499,7 +568,7 @@ export async function previewMixIdea(
         ...(previewWindow ? { minimumDurationTicks: previewWindow.endTick, arrangementOnly: true } : {}),
         signal,
       }),
-    { window: previewWindow, projectRevision },
+    { window: previewWindow, projectRevision, ...(constraints ? { constraints } : {}) },
   );
   const revisionAfterRender = storeRevision(services.store);
   lane.revisionAfterRender = revisionAfterRender;
@@ -516,6 +585,12 @@ export async function previewMixIdea(
     return { ok: false, reason: "project changed while the before/after preview rendered; nothing was armed" };
   }
   lane.idea = request.idea;
+  const validation = validateMusicalProposal(mixPreviewProposal(lane), {
+    projectId: doc.id,
+    revision: revisionAfterRender,
+    trackIds: doc.tracks.map((track) => track.id),
+  });
+  if (!validation.ok) return { ok: false, reason: validation.reason };
   armMixPreviewLane(lane);
   return { ok: true, lane, studioBound: hasMixPreviewListener() };
 }
@@ -526,6 +601,7 @@ export function mixPreviewMatchesProject(
   currentDoc: ProjectDocument,
   currentRevision: number | null,
 ): boolean {
+  if (currentDoc.id !== lane.beforeDoc.id) return false;
   if (lane.revisionAfterRender != null && currentRevision != null) {
     return lane.revisionAfterRender === currentRevision;
   }

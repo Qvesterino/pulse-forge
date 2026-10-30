@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mixPreviewProposal, type MixPreviewLane } from "../src/mcp/mix-preview";
 import { executeMcpToolAsync } from "../src/mcp/tools";
 import { withAgentWriter } from "./helpers/mcpAgentWriter";
@@ -97,5 +97,37 @@ describe("musical proposal from mix preview", () => {
     expect(result.data).toMatchObject({
       proposal: { schema: "kyx.musical-proposal", version: 1, constraints: { status: "not_declared" } },
     });
+  });
+
+  it("passes declared constraints to the preview and rejects them on direct apply", async () => {
+    const source = lane();
+    source.constraints = { protect: [["tracks", { id: "kick" }]] };
+    const preview = vi.fn(async () => ({ ok: true as const, lane: source, studioBound: true }));
+    const ctx = withAgentWriter({
+      getDoc: () => source.beforeDoc,
+      execute: () => undefined,
+      undo: () => undefined,
+      redo: () => undefined,
+      undoStackLength: () => 0,
+      historyLabels: () => [],
+      isMicRecordingActive: () => false,
+      transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
+      mixPreview: preview,
+    });
+    const rules = { protect: [["tracks", { id: "kick" }]] };
+    const result = await executeMcpToolAsync(ctx, "kyx_mix_idea", {
+      idea: "tighten bass",
+      preview: true,
+      constraints: rules,
+    });
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ constraints: rules }), expect.anything());
+    expect(result.data).toMatchObject({ proposal: { constraints: { status: "declared", rules } } });
+    const refusal = await executeMcpToolAsync(ctx, "kyx_mix_idea", {
+      idea: "tighten bass",
+      apply: true,
+      constraints: rules,
+    });
+    expect(refusal.isError).toBe(true);
+    expect(refusal.text).toContain("constraints require preview");
   });
 });
