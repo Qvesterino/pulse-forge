@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../../src/ui/App";
 import { ServicesContext } from "../../src/ui/context";
@@ -486,5 +486,60 @@ describe("App — the cut tool is registry-owned and its chip is pinned (CF-15)"
     expect(container.querySelector(".statusbar-hint")?.textContent).toContain("Channel fader");
     expect(container.querySelector(".statusbar-tool-chip")?.textContent).toBe("TOOL CUT (V = select)");
     hinted.remove();
+  });
+});
+
+describe("App — dock focus keeper (CF-22)", () => {
+  afterEach(() => {
+    resetPadKeys();
+  });
+
+  it("closing a dock panel whose control held focus hands focus to that panel's dock tab", async () => {
+    const services = mockServices();
+    const { container } = renderWithContext(
+      <App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+      { services },
+    );
+    // Open the MIXER through its dock tab (the harness layout may boot with
+    // any slot), then wait for the panel's content and focus a control in it.
+    fireEvent.click(document.querySelector('[data-dock-tab="mixer"]')!);
+    const mixerPanel = container.querySelector("#dock-panel-mixer");
+    expect(mixerPanel, "the mixer dock panel must render after the tab opens it").not.toBeNull();
+    await waitFor(() => expect(mixerPanel!.querySelector("button")).not.toBeNull());
+    const inside = mixerPanel!.querySelector<HTMLElement>("button");
+    inside!.focus();
+    expect(document.activeElement).toBe(inside);
+
+    // Toggle the mixer off through its dock tab (the real switch).
+    fireEvent.click(document.querySelector('[data-dock-tab="mixer"]')!);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+
+    // The focused control was removed — instead of dropping to <body>, the
+    // panel's OWN dock tab holds focus and Tab continues from the strip.
+    expect(document.querySelector("#dock-panel-mixer")).toBeNull();
+    expect(document.activeElement?.getAttribute("data-dock-tab")).toBe("mixer");
+  });
+
+  it("NEGATIVE: closing a panel does not steal focus from outside it", async () => {
+    const services = mockServices();
+    const { container } = renderWithContext(
+      <App services={services} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+      { services },
+    );
+    // Make sure the mixer is OPEN (the harness layout may boot without it),
+    // then hold focus OUTSIDE the dock.
+    if (!container.querySelector("#dock-panel-mixer")) {
+      fireEvent.click(document.querySelector('[data-dock-tab="mixer"]')!);
+    }
+    await waitFor(() => expect(container.querySelector("#dock-panel-mixer")).not.toBeNull());
+    const outside = screen.getByLabelText("Project name");
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    fireEvent.click(document.querySelector('[data-dock-tab="mixer"]')!);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+
+    expect(document.querySelector("#dock-panel-mixer")).toBeNull();
+    expect(document.activeElement).toBe(outside);
   });
 });

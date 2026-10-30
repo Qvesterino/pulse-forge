@@ -1,7 +1,32 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { BottomPanel, DockState } from "./dockLayout";
 import type { ShortcutKey } from "./shortcuts";
 import { useShortcutHints } from "./useShortcutHints";
+
+/**
+ * CF-22 — dock focus keeper. The panel inside a slot unmounts when its tab
+ * toggles it off (or the slot swaps), and a focused element removed from the
+ * DOM drops focus to <body>: the keyboard user loses their place and the
+ * next Tab starts from the document top. The cleanup defers one turn, then
+ * — only if focus is still orphaned — hands it back to the panel's OWN dock
+ * tab: always mounted (the strip never unmounts), and the very switch that
+ * closed the panel. A tab CLICK already focuses the tab in the browser, so
+ * the pointer path is untouched; the restore fires for the keyboard and
+ * programmatic closes that used to leak.
+ */
+export function DockSlotFocusBoundary({ panelId, children }: { panelId: BottomPanel; children: ReactNode }) {
+  useEffect(() => {
+    return () => {
+      window.setTimeout(() => {
+        const active = document.activeElement;
+        const orphaned = !active || active === document.body || active === document.documentElement;
+        if (!orphaned) return;
+        document.querySelector<HTMLElement>(`[data-dock-tab="${panelId}"]`)?.focus();
+      }, 0);
+    };
+  }, [panelId]);
+  return <>{children}</>;
+}
 
 /**
  * Bottom dock chrome — the always-visible tab strip + resize grip

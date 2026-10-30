@@ -201,6 +201,15 @@
       "negativeSpec": "THE PIN: the CUT chip survives a data-hint hover"
     },
     {
+      "id": "dock-focus-restore",
+      "status": "COVERED",
+      "entryPoint": "src/ui/DockChrome.tsx DockSlotFocusBoundary ← App dock slots; restore target = [data-dock-tab]",
+      "note": "CF-22: closing a dock panel whose control held focus used to drop focus to <body> — the keyboard user lost their place. The slot boundary defers one turn after unmount and, only if focus is still orphaned, hands it to the panel's OWN dock tab (always mounted, the switch that closed it). A tab click already focuses the tab, so the pointer path is unchanged; a focused element OUTSIDE the panel is never stolen.",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "data-dock-tab",
+      "negativeSpec": "NEGATIVE: closing a panel does not steal focus from outside it"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

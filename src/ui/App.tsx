@@ -119,7 +119,7 @@ import {
   type BottomPanel,
   type DockState,
 } from "./dockLayout";
-import { DockChrome } from "./DockChrome";
+import { DockChrome, DockSlotFocusBoundary } from "./DockChrome";
 import { ResizeGrip } from "./ResizeGrip";
 import { BrowserStrip } from "./BrowserStrip";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
@@ -2009,7 +2009,7 @@ export function App({
                     aria-labelledby={`dock-tab-${dock.slotA}`}
                   >
                     <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
-                      {renderDockSlot(dock.slotA)}
+                      <DockSlotFocusBoundary panelId={dock.slotA}>{renderDockSlot(dock.slotA)}</DockSlotFocusBoundary>
                     </Suspense>
                   </div>
                 )}
@@ -2028,7 +2028,7 @@ export function App({
                     aria-labelledby={`dock-tab-${dock.slotB}`}
                   >
                     <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
-                      {renderDockSlot(dock.slotB)}
+                      <DockSlotFocusBoundary panelId={dock.slotB}>{renderDockSlot(dock.slotB)}</DockSlotFocusBoundary>
                     </Suspense>
                   </div>
                 )}
