@@ -19,7 +19,15 @@ const hook = `#!/bin/sh
 # DISABLED 2026-09-19 on request: the typecheck gate blocked commits whenever
 # another agent's in-flight work had type errors. Typecheck still runs in CI
 # and manually via "npm run typecheck:clean". Prettier stays as a warning.
+#
+# 2026-10-30 (owner decision): a WARNING — never a block — that the spec-file
+# pin no longer matches the tree being committed. The guard counts from the
+# INDEX (the tree as it will be committed), so another session's uncommitted
+# work can never trip it, and it always exits 0.
 echo "[pre-commit] skipped (typecheck gate off) — run npm run typecheck:clean manually"
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+node "$root/scripts/drift-pin-warning.mjs" "$root" || true
+exit 0
 `;
 
 if (!existsSync(hookDir)) mkdirSync(hookDir, { recursive: true });
