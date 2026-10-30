@@ -442,28 +442,69 @@ export async function auditFxExpansion(bank: SampleBank): Promise<CheckResult> {
 }
 
 /**
+ * Heartbeat-jitter budget for the realtime gate.
+ *
+ * The realtime budget asks the device's heartbeat to arrive near its expected
+ * cadence (one report every `reportEveryBlocks` quanta). A graph that misses
+ * its deadline makes the heartbeat late or bursty. 1.5× is the headroom: the
+ * heartbeat may be half a cadence late and still be a healthy device.
+ */
+const RT_JITTER_LIMIT = 1.5;
+
+/**
  * Audio-thread budget (release-gate hardening).
  *
  * The offline render budget above proves the EXPORT path is fast. This proves
  * the REALTIME path stays inside the per-quantum deadline: a synthetic
  * N-track × M-effect project plays on a live AudioContext while the engine's
- * `rt-monitor` worklet measures how long the audio thread spends per render
- * quantum and how often quanta are dropped (the xrun proxy). A regression
- * that makes the graph too heavy shows up as a rising `loadPercent` / xrun
- * count long before a user hears a click.
+ * `rt-monitor` worklet reports how often quanta are dropped (the xrun proxy).
+ * A regression that makes the graph too heavy shows up as a rising xrun count
+ * long before a user hears a click.
  *
  * `informationalOnly` is the same shared-machine guard the render budget uses:
  * when the runner is co-tenanted the numbers are printed, not gated.
+ *
+ * ── WHY THIS CHECK MEASURES ITS OWN DEVICE FLOOR ────────────────────────
+ * The gate asks an ABSOLUTE question: "did the audio thread drop a single
+ * quantum?". An absolute question needs a device that can answer it, and the
+ * guard that demotes this check cannot see the answer: `machineLoaded` spins
+ * the MAIN thread (a CPU-bound busy loop on the harness thread), while the
+ * signal that trips this gate lives on the AUDIO thread — the device clock
+ * advancing by more than one render quantum. Two different subsystems, so the
+ * guard can report `environment=measurable` while the thing it guards is
+ * unmeasurable. Measured 2026-10-30 on a 2-vCPU CI runner: `environment=
+ * measurable` and `xruns=7` in the SAME run.
+ *
+ * So the floor is measured HERE, ON THIS DEVICE, BY THIS PROBE: the same
+ * context, the same rt-monitor, the same window — one track and NO effects.
+ *   - floor clean  → the device can hold a graph → the graph's xrun count is
+ *     the graph's cost → the gate stays strict, exactly as before.
+ *   - floor dirty → this device cannot hold ANY graph → the absolute
+ *     criterion cannot discriminate between "the machine" and "the graph" →
+ *     the numbers are printed, not gated. The device explains the verdict; it
+ *     never gets to fake one.
+ *
+ * The floor is measured TWICE (cold, then warm on the same graph): the first
+ * window can carry the context's cold start, and the device's ability is the
+ * BETTER of the two readings.
+ *
+ * ── WHY EVERY NUMBER IS A DELTA ──────────────────────────────────────────
+ * The monitor's own counters are CUMULATIVE for the life of the processor:
+ * `resetRtLoad()` resets the host-side MIRROR (so the heartbeat jitter IS
+ * scoped to the window) but the processor's `blocks` / `droppedQuanta` keep
+ * counting from the moment the processor was created. Every count below is
+ * therefore a DELTA between two reads, never a raw counter.
  */
 export async function auditRtBudget(bank: SampleBank, informationalOnly = false, calibNote = ""): Promise<CheckResult> {
   const TRACKS = 12;
   const EFFECTS_PER_TRACK = 4;
   const seconds = 2.5;
+  const NAME = "rt budget: 12 tracks × 4 effects realtime";
   let ctx: AudioContext | null = null;
   try {
     const template = createProjectFromTemplate("house");
     const source = template.tracks.find((t): t is DrumTrack => t.kind === "drum");
-    if (!source) return { name: "rt budget: N×M realtime", ok: false, message: "no drum track in template" };
+    if (!source) return { name: NAME, ok: false, message: "no drum track in template" };
 
     // N tracks, each carrying M effects (a spread across the catalogue so the
     // measurement covers different DSP costs rather than M copies of one).
@@ -479,61 +520,122 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       })),
     }));
     const doc: ProjectDocument = { ...template, bpm: 120, tracks };
+    // The DEVICE FLOOR: the same context, the same rt-monitor, the same
+    // window — one track, no effects.
+    const floorDoc: ProjectDocument = {
+      ...template,
+      bpm: 120,
+      tracks: [{ ...source, id: "rt-budget-floor", effects: [] }],
+    };
 
     ctx = new AudioContext();
+    const audioCtx = ctx;
     if (ctx.state === "suspended") await ctx.resume();
     await loadCoreWorklets(ctx);
     const engine = new AudioEngine();
     engine.attachBank(bank);
     engine.useContext(ctx);
-    engine.setProject(doc);
-    for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-    engine.resetRtLoad();
 
-    // Play the whole project: every track's kick on a simple pulse so the
-    // graph is genuinely pulled for the whole measurement window.
     const stepSec = 0.25;
     const steps = Math.floor(seconds / stepSec);
-    for (let s = 0; s < steps; s++) {
-      const at = ctx.currentTime + 0.1 + s * stepSec;
-      for (const track of tracks) {
-        engine.trigger(
-          track.id,
-          (track as DrumTrack).pads[(s + track.id.length) % (track as DrumTrack).pads.length],
-          at,
-          0.8,
-        );
+    // One measurement window: build the graph, let it settle, open the window,
+    // play the same pulse on every track, read the monitor.
+    const measureWindow = async (target: ProjectDocument) => {
+      engine.setProject(target);
+      // The graph must be WHOLE before the window opens: a measurement that
+      // overlaps the build measures the construction, not the graph.
+      await engine.whenProjectSettled();
+      for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+      // Read BEFORE the reset — the reset zeroes the mirror, and the mirror is
+      // the only place the processor's cumulative counters survive.
+      const pre = engine.getRtLoad();
+      engine.resetRtLoad();
+      for (let s = 0; s < steps; s++) {
+        const at = audioCtx.currentTime + 0.1 + s * stepSec;
+        for (const track of target.tracks) {
+          const drum = track as DrumTrack;
+          engine.trigger(track.id, drum.pads[(s + track.id.length) % drum.pads.length], at, 0.8);
+        }
       }
-    }
-    await new Promise((resolve) => setTimeout(resolve, seconds * 1000 + 250));
+      await new Promise((resolve) => setTimeout(resolve, seconds * 1000 + 250));
+      return { pre, post: engine.getRtLoad() };
+    };
 
-    const rt = engine.getRtLoad();
+    const floorCold = await measureWindow(floorDoc);
+    const floorWarm = await measureWindow(floorDoc);
+    const graph = await measureWindow(doc);
+
+    // Deltas: the processor's counters never reset, so every count is the
+    // difference between two reads.
+    const dropped = (from: { xruns: number } | null, to: { xruns: number } | null) =>
+      (to?.xruns ?? 0) - (from?.xruns ?? 0);
+    // The heartbeat cadence a snapshot is judged against: one report every
+    // `reportEveryBlocks` quanta.
+    const jitterOf = (snap: { avgGapMs: number; sampleRate: number } | null) => {
+      const expected = snap && snap.sampleRate > 0 ? (64 * 128 * 1000) / snap.sampleRate : 0;
+      return expected > 0 && snap ? snap.avgGapMs / expected : 0;
+    };
+    const floorColdDrops = dropped(floorCold.pre, floorCold.post);
+    const floorWarmDrops = dropped(floorWarm.pre, floorWarm.post);
+    const deviceFloor = Math.min(floorColdDrops, floorWarmDrops);
+    const floorColdJitter = jitterOf(floorCold.post);
+    const floorWarmJitter = jitterOf(floorWarm.post);
+    const deviceFloorJitter = Math.min(floorColdJitter, floorWarmJitter);
+    // A floor with no heartbeat at all cannot arbitrate anything: it is
+    // UNKNOWN, not clean. An unknown floor must not demote the gate.
+    const floorKnown = (floorCold.post?.blocks ?? 0) > 0 && (floorWarm.post?.blocks ?? 0) > 0;
+    const graphBuildDrops = dropped(floorWarm.post, graph.pre);
+    const graphSteadyDrops = dropped(graph.pre, graph.post);
+    const graphDrops = graphBuildDrops + graphSteadyDrops;
+
+    const rt = graph.post;
     if (!rt || rt.blocks === 0) {
       return {
-        name: "rt budget: 12 tracks × 4 effects realtime",
+        name: NAME,
         ok: informationalOnly,
         message: "rt-monitor produced no heartbeat (worklet module unavailable on this context)",
       };
     }
-    // Expected heartbeat cadence: one report per `reportEveryBlocks` quanta.
-    const expectedGapMs = (64 * 128 * 1000) / rt.sampleRate;
-    const jitterRatio = expectedGapMs > 0 ? rt.avgGapMs / expectedGapMs : 0;
+    const jitterRatio = jitterOf(rt);
+    const windowBlocks = Math.max(0, rt.blocks - (graph.pre?.blocks ?? 0));
     const detail =
-      `blocks=${rt.blocks} xruns=${rt.xruns} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
-      `max=${rt.maxGapMs.toFixed(2)}ms (expected≈${expectedGapMs.toFixed(2)}ms, ${jitterRatio.toFixed(2)}×) ` +
+      `blocks=${windowBlocks} xruns=${graphDrops} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
+      `max=${rt.maxGapMs.toFixed(2)}ms (expected≈${((64 * 128 * 1000) / rt.sampleRate).toFixed(2)}ms, ${jitterRatio.toFixed(2)}×) ` +
       `quantum=${rt.quantumMs.toFixed(3)}ms` +
-      (informationalOnly ? ` — machine loaded${calibNote ? ` (${calibNote})` : ""}, informational run` : "");
+      ` · device floor xruns=${deviceFloor} jitter=${deviceFloorJitter.toFixed(2)}× ` +
+      `(1 track, no effects; cold ${floorColdDrops}/${floorColdJitter.toFixed(2)}× / warm ${floorWarmDrops}/${floorWarmJitter.toFixed(2)}×)` +
+      ` · graph build=${graphBuildDrops} steady=${graphSteadyDrops}`;
     // The gate: the device must not drop quanta, and the heartbeat must
     // arrive near its expected cadence (a graph that misses its deadline
     // makes the heartbeat late or bursty).
-    const ok = rt.xruns === 0 && jitterRatio < 1.5;
+    const ok = graphDrops === 0 && jitterRatio < RT_JITTER_LIMIT;
+    // A device that drops quanta on an EMPTY graph, or that cannot deliver a
+    // heartbeat on time even on an empty graph, cannot answer an absolute
+    // question about a heavy one. That verdict is informational, and it says
+    // so with the numbers attached.
+    const reasons: string[] = [];
+    if (floorKnown && deviceFloor > 0) {
+      reasons.push(
+        `device floor dropped ${deviceFloor} quantum(s) on an EMPTY graph — this device cannot hold any graph, ` +
+          `so the absolute criterion cannot discriminate between the machine and the graph`,
+      );
+    }
+    if (floorKnown && deviceFloorJitter >= RT_JITTER_LIMIT) {
+      reasons.push(
+        `device floor heartbeat jitter ${deviceFloorJitter.toFixed(2)}× on an EMPTY graph — this device cannot deliver a ` +
+          `heartbeat on time even with nothing to play, so the jitter criterion cannot discriminate either`,
+      );
+    }
+    if (informationalOnly) reasons.push(`machine loaded${calibNote ? ` (${calibNote})` : ""}`);
+    const informational = reasons.length > 0;
+    const tail = informational ? ` — ${reasons.join("; ")}, informational run` : "";
     return {
-      name: "rt budget: 12 tracks × 4 effects realtime",
-      ok: informationalOnly || ok,
-      message: informationalOnly ? detail : ok ? detail : `OVER BUDGET — ${detail}`,
+      name: NAME,
+      ok: informational || ok,
+      message: informational ? `${detail}${tail}` : ok ? detail : `OVER BUDGET — ${detail}`,
     };
   } catch (error) {
-    return { name: "rt budget: 12 tracks × 4 effects realtime", ok: false, message: String(error) };
+    return { name: NAME, ok: false, message: String(error) };
   } finally {
     await ctx?.close().catch(() => undefined);
   }
