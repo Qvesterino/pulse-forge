@@ -2265,14 +2265,26 @@ because its numbers do not resemble the runner's. **Update (2026-10-29):** the d
 the parallel session's later local run reports the corpus **green at 77/77** — while the runner sits at **17/77 red** with one
 case unjudgeable. **The split that matters is therefore not desktop-vs-runner but Windows-vs-Linux** (§10.16.6).
 
-**Update (2026-10-30): the 77/77 claim now has an artifact in the repository.** The parallel session committed its desktop run
-at `74a1d8dd` — `docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c-loaded.log`, whose line reads
+**Update (2026-10-30): the 77/77 claim has an artifact in the repository — and this session's search for it was wrong twice.**
+The artifact is `docs/audits/2026-10-29-browser-audit/browser-audit-head-82f59555.log`, committed at `64d3a798` on
+**2026-10-29 10:46** — a full day before this session's own search — and its lines 13 and 445 read
 `PASS live↔offline null test: same engine + events on both contexts — passed=77/77 — environment=measurable … not measurable=0`.
-Until that commit, "the desktop is 77/77" was a claim with provenance but no artifact, and this report treated it as such.
-**One caveat, recorded where the instrument is described (§10.16.9): that log was produced against a working tree that also
-contained this session's uncommitted `src/browser-checks.ts`, so its name says one commit and its bytes came from another.** The
-77/77 line itself is unaffected by that — the parity corpus does not touch the realtime budget — but the artifact's provenance is
-now written down instead of assumed.
+**This session's earlier note that the claim had "no artifact in the repository" was false**, and the peer session corrected it:
+the search that produced "not found" ran against a **stale snapshot** of the tree, not against the repository. **The report
+never carried that false claim** — the original §10.16.4 text recorded the 77/77 figure as the parallel session's _report_,
+which it was — but the working notes behind it did, and a note that says "it is not in the repository" is a **measurement**,
+and it was wrong in exactly the way a measurement can be wrong: by looking at the wrong copy of the thing.
+
+**The rule this earns: "I searched and found nothing" is a claim that needs the same care as "I found it".** The first is
+about the **absence** of a thing, and absence is not observable by a failed lookup — it is observable only by a lookup that
+was pointed at the right place. This session's lookup was pointed at a stale copy, produced a confident "0 hits", and that
+confidence is what carried into the notes. The repair is the same as for any other measurement: **name the place you looked,
+and let the other side say whether it was the right place.**
+
+**One caveat about a second artifact, recorded where the instrument is described (§10.16.9):** the parallel session's
+`74a1d8dd` log (`browser-audit-head-3328668c-loaded.log`) also reads `passed=77/77`, but it was produced against a working tree
+that also contained this session's uncommitted `src/browser-checks.ts`, so its name says one commit and its bytes came from
+another. The `64d3a798` artifact has no such caveat — it was taken at its own HEAD.
 
 **This is the number §10.14 was waiting for — and the number did not survive the reading §10.14 gave it.** On the CI
 runner the same corpus reported **21/67** _(that annotation; the corpus has since moved to **18/67** at `ae372bf4` and
@@ -2938,6 +2950,35 @@ checks: each environment fails exactly what the other passes.** A budget that fl
 environment. Neither machine is a measuring environment for these gates, and the reason is now measured rather than guessed:
 **the run's accumulated weight moves the numbers** (the corpus grew 67 → 77 items), and **the realtime scenario is at the edge
 on every device measured**.
+
+**And then the third environment said the last word: the desktop flips too.** The parallel session committed a fresh run at HEAD
+`3328668c` (`d5480075`, `docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c.log`), on this same machine:
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=896 xruns=1 heartbeat avg=197.32ms
+max=221.70ms (expected≈170.67ms, 1.16×) quantum=2.667ms · device floor xruns=0 jitter=1.00×
+(1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=1
+FAIL perf: 8 tracks × 4 effects render stays within baseline + headroom — 20701ms vs 3604ms single-track
+baseline for 16500ms audio (budget 15604ms, 5.74× baseline)
+```
+
+**Three environments, one shape:**
+
+| environment                                | device floor   | realtime verdict | offline verdict |
+| ------------------------------------------ | -------------- | ---------------- | --------------- |
+| desktop, this session (`calib=12.0ms`)     | 0 xruns, 1.00× | ✅ **0** xruns   | ❌ 3 red        |
+| desktop, parallel session (`calib=13.3ms`) | 0 xruns, 1.00× | ❌ **1** xruns   | ❌ 1 red        |
+| CI runner, 2-vCPU Linux                    | 0 xruns, 1.00× | ❌ **1** xruns   | ✅ 3 green      |
+
+**The floor is clean in every single one.** The device is never the excuse — not on the runner, not on the desktop. And the
+number the graph drops is **exactly one quantum** in two of the three runs, on two different operating systems and two different
+CPU budgets. **The 12×4 realtime graph sits precisely on the boundary: it either makes it or misses by one quantum.** The run
+that passed did so by a single quantum of luck, not by margin.
+
+**That is the finding, stated as a property of the product rather than of a machine: the realtime path for a 12-track,
+4-effects-per-track project has no headroom.** The jitter tells the same story from the continuous side — **1.16×, 1.27× and
+1.48×** against a 1.5× limit across three runs of one tree, i.e. the criterion's own number varies threefold while the product
+does not change at all.
 
 **So the gate is right and the scenario is wrong — or the DSP is.** The check's own claim is that it catches "a regression that
 makes the graph too heavy". It cannot do that: it compares the graph against **zero**, which is a **capacity test**, not a

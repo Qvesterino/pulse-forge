@@ -101,17 +101,37 @@ failing checks: 1 FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGE
 
 ---
 
-## 4. The two environments fail each other's checks
+## 4. The environments fail each other's checks
 
-| check                   | 2026-10-29 tree (desktop) | current tree (desktop)       | current tree (runner) |
-| ----------------------- | ------------------------- | ---------------------------- | --------------------- |
-| realtime budget         | ✅ 1.05×                  | ✅ 1.27× / 1.48×             | ❌ `xruns=1`          |
-| `perf: techno`          | ✅ 10509 ms               | ❌ 13839 / 13641 / 21964 ms  | ✅                    |
-| `perf: 8-bar average`   | ✅ avg 5197 ms            | ❌ avg 8624 / 8346 / 9118 ms | ✅                    |
-| `perf: 8×4 vs baseline` | ✅ 13915 ms (5.45×)       | ❌ 17944 / 16624 / 17996 ms  | ✅                    |
+| check                   | 2026-10-29 tree (desktop) | current tree (desktop)                           | current tree (runner) |
+| ----------------------- | ------------------------- | ------------------------------------------------ | --------------------- |
+| realtime budget         | ✅ 1.05×                  | ✅ **0** xruns / ❌ **1** xruns / ❌ **1** xruns | ❌ `xruns=1`          |
+| `perf: techno`          | ✅ 10509 ms               | ❌ 13839 / 13641 / 21964 ms                      | ✅                    |
+| `perf: 8-bar average`   | ✅ avg 5197 ms            | ❌ avg 8624 / 8346 / 9118 ms                     | ✅                    |
+| `perf: 8×4 vs baseline` | ✅ 13915 ms (5.45×)       | ❌ 17944 / 16624 / 20701 ms                      | ✅                    |
 
-The runner's job reported **`failing checks: 1`** — only the realtime budget. On the desktop the realtime budget **passes** and
-the three offline budgets **fail**. **Same tree, same checks: each environment fails exactly what the other passes.**
+The runner's job reported **`failing checks: 1`** — only the realtime budget. On the desktop the three offline budgets **fail**.
+**Same tree, same checks: each environment fails exactly what the other passes.**
+
+**And the device floor is clean in every environment — the device is never the excuse:**
+
+| environment                    | device floor   | realtime verdict | offline verdict |
+| ------------------------------ | -------------- | ---------------- | --------------- |
+| desktop, this session (12.0ms) | 0 xruns, 1.00× | ✅ **0** xruns   | ❌ 3 red        |
+| desktop, parallel (13.3ms)     | 0 xruns, 1.00× | ❌ **1** xruns   | ❌ 1 red        |
+| CI runner, 2-vCPU Linux        | 0 xruns, 1.00× | ❌ **1** xruns   | ✅ 3 green      |
+
+The parallel session's fresh run at HEAD `3328668c` (`d5480075`,
+`docs/audits/2026-10-29-browser-audit/browser-audit-head-3328668c.log`):
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=896 xruns=1 heartbeat avg=197.32ms max=221.70ms (expected≈170.67ms, 1.16×) quantum=2.667ms · device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=1
+FAIL perf: 8 tracks × 4 effects render stays within baseline + headroom — 20701ms vs 3604ms single-track baseline for 16500ms audio (budget 15604ms, 5.74× baseline)
+```
+
+**The graph drops exactly one quantum in two of the three runs**, on two operating systems and two CPU budgets. The 12×4 realtime
+graph sits **on** the boundary — it either makes it or misses by one quantum. The jitter tells the same story from the continuous
+side: **1.16×, 1.27× and 1.48×** against a 1.5× limit across three runs of one tree.
 
 **And the render path did not change.** Between the 2026-10-29 tree and the current tree:
 
