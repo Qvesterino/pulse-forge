@@ -2960,6 +2960,33 @@ report the same three failures —
 | `perf: 8-bar average`   | avg 5197 ms      | avg 8624 / 8346 / 9118 ms                        | ❌ (limit 7000)   |
 | `perf: 8×4 vs baseline` | 13915 ms (5.45×) | 17944 / 16624 / 17996 ms (6.11× / 6.49× / 6.02×) | ❌ (limit ≈ 5.0×) |
 
+**IN PLACE (2026-10-30, later the same day): the absolute form is still red, and the RELATIVE form in the same run is green.**
+The parallel session re-calibrated the absolute budget to **9000 ms** from a measured band of **4579–6379 ms** (`4bc8a224`), and
+this session's three later runs on the same desktop read the absolute average at **16544 / 19032 / 19049 ms** — **2.1× over the
+budget, three times out of three** — while the **relative** sibling (`auditDenseRender`, "budget is RELATIVE to the same-machine
+baseline") read **4.11× / 4.78× / 4.78×** against its **7.5×** limit and was **green in all three runs, on the same tree, in the
+same minute**:
+
+| run (this session, same tree) | `calib` | absolute 8-bar average | verdict | single-track baseline | 8×4 render | **ratio** | verdict |
+| ----------------------------- | ------- | ---------------------- | ------- | --------------------- | ---------- | --------- | ------- |
+| run A (corpus in front)       | 15.3 ms | 16544 ms               | ❌      | 8568 ms               | 35175 ms   | **4.11×** | ✅      |
+| run B (contended box)         | 13.8 ms | 19032 ms               | ❌      | 9133 ms               | 43651 ms   | **4.78×** | ✅      |
+| run C ("quiet" box)           | 17.3 ms | 19049 ms               | ❌      | 8267 ms               | 39556 ms   | **4.78×** | ✅      |
+
+**This is the argument for the relative form, measured on one tree rather than argued.** The absolute threshold of **9000 ms**
+sits **INSIDE** the day's observed spread (the parallel session's idle run read **4708 ms**; these three read **16544–19049 ms**
+— a **4.05×** spread), so it is a **coin flip** by construction, exactly as the gate's own comment says of a budget inside the band.
+The relative threshold of **7.5×** sits **ABOVE** the whole observed band of the ratio (**4.11–4.78×**), so it follows the code
+instead of the weather. **And the guard cannot close the gap, because the guard's own proxy does not move with the thing it
+guards**: `calib` moved only **12.0 → 17.3 ms** (1.44×) while the average moved **4.05×** — and within these three runs the two
+are not even correlated (the **lowest** `calib` of the three, 13.8 ms, produced the **highest** average). **A stricter guard
+would not have demoted these three runs; a looser budget would only have moved the coin flip.** The fix is the **form**: the
+per-template perf gate should judge a heavy render against a **light baseline measured in the same process, adjacent in time** —
+the shape `auditDenseRender` already has and the shape the realtime gate now has after §10.16.11's adjacent floor.
+**The aggregate wall-clock-to-audio ratio that the check already prints is NOT that shape**: it is proportional to the millisecond
+average, so it moved with it — **0.29× / 0.53× / 1.02× / 1.18× / 1.18×** across the same five runs — and a criterion that moves
+4× with the machine is not machine-independent either.
+
 — while the machine's own calibration is unchanged (`calib=12.0–15.5ms` against `12.3ms`) and **nothing in the render path moved**:
 `git log --since=2026-10-29 07:00 -- src/rendering src/audio-engine src/project-model src/effects src/audio-worklets` returns
 **no commits**, and the two parity fixes touched only `src/testing/live-offline-parity.ts` and test files. What _did_ change is
