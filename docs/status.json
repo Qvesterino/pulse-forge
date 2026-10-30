@@ -5,7 +5,7 @@
       "claim": "Every user-facing seam is declared with an entry-point spec and a negative assertion",
       "command": "node scripts/check-seam-coverage.mjs",
       "state": "pass",
-      "summary": "1 check(s), 102 seams",
+      "summary": "1 check(s), 104 seams",
       "freshness": "drift-checked"
     },
     {
