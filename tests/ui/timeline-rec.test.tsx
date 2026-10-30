@@ -1007,7 +1007,11 @@ describe("arrangement REC wiring", () => {
 
   it("REC with a browser lacking capture support keeps the store untouched", async () => {
     const doc = createDocWithTracks();
-    const services = mockServices(doc);
+    // The armed track is a PROJECT FACT (schema v41), so this spec sets it in
+    // the DOCUMENT instead of driving the select: arming through the UI now
+    // issues a command, and what this spec asserts is that a capture failure
+    // writes NOTHING to the store.
+    const services = mockServices({ ...doc, recording: { armedTrackId: doc.tracks[0].id } });
     const executeSpy = services.store.execute as ReturnType<typeof vi.fn>;
     (services.engine as { ensureContext: () => unknown }).ensureContext = vi.fn();
     (services.engine as { getLiveAudioContext: () => unknown }).getLiveAudioContext = vi.fn(() => ({
@@ -1015,9 +1019,6 @@ describe("arrangement REC wiring", () => {
     }));
 
     renderWithContext(<ArrangementPanel />, { services });
-    fireEvent.change(screen.getByLabelText("Arm track for recording"), {
-      target: { value: doc.tracks[0].id },
-    });
     fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
     await screen.findByRole("alert");
 
@@ -1129,25 +1130,34 @@ describe("arrangement REC wiring", () => {
             projectId: doc.id,
             trackId: doc.tracks[0].id,
           },
-          buffer: { duration: 1, sampleRate: 48_000, numberOfChannels: 1 } as AudioBuffer,
+          buffer: {
+            duration: 1,
+            sampleRate: 48_000,
+            numberOfChannels: 1,
+            // The panel reads the placed take's channels unguarded while it
+            // warms the warp onsets, so the stub has to carry the surface —
+            // the same shape the other recorder stubs in this file use.
+            getChannelData: () => new Float32Array(48_000),
+          } as unknown as AudioBuffer,
         };
       }
       cancel() {}
     };
 
     try {
-      const services = mockServices(doc);
+      const services = mockServices({ ...doc, recording: { armedTrackId: doc.tracks[0].id } });
       (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
       services.recordingRecovery.finalize = vi.fn(async () => {
         throw new Error("quota exceeded");
       });
 
       renderWithContext(<ArrangementPanel />, { services });
-      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
-        target: { value: doc.tracks[0].id },
-      });
+      // The armed track is set in the DOCUMENT (schema v41), not through the
+      // select: arming through the UI would add a command of its own, and
+      // this spec counts the commands the CAPTURE writes.
       fireEvent.click(screen.getByRole("button", { name: "Record audio input onto the armed track" }));
       fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
+      await new Promise((resolve) => setTimeout(resolve, 120));
       expect(await screen.findByRole("alert")).toHaveTextContent(/committed PCM blocks remain in recovery storage/i);
       expect(services.recordingRecovery.finalize).toHaveBeenCalledOnce();
       expect(services.bank.add).toHaveBeenCalledOnce();

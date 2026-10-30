@@ -167,7 +167,21 @@ export function mockServices(doc?: ProjectDocument): Services {
         listeners.add(cb);
         return () => listeners.delete(cb);
       },
-      execute: vi.fn<(c: Command) => void>(),
+      // A command handed to the store is APPLIED there. The real
+      // `ProjectStore.execute` mutates the document and emits
+      // (`ProjectStore.ts:326` -> `applyCommand` -> `afterMutation` -> `emit`),
+      // so every panel that reads the document re-renders because of it. A
+      // mock that only RECORDED the call left every command-driven surface
+      // looking frozen: the arrangement panel's ARM select issued
+      // `setRecordingArm` and the REC button stayed disabled forever
+      // (measured 2026-10-30: 10 red specs in `tests/ui/timeline-rec.test.tsx`
+      // after the arm target became a project fact). The mock now applies the
+      // command to the document and notifies the listeners, exactly as the
+      // store does.
+      execute: vi.fn<(c: Command) => void>((command) => {
+        project = command.execute(project);
+        listeners.forEach((listener) => listener());
+      }),
       replaceDoc: vi.fn<(doc: ProjectDocument) => void>(),
       beginUndoFrame: vi.fn<(label?: string) => void>(),
       endUndoFrame: vi.fn(),

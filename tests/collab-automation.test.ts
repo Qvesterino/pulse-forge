@@ -257,7 +257,7 @@ describe("linked arrangement automation targets", () => {
       },
     });
     expect(normalized.arrangement.automationClips![0]!.linkedTargets).toEqual([pan]);
-    expect(SCHEMA_VERSION).toBe(40);
+    expect(SCHEMA_VERSION).toBe(41);
     const oldClip = { ...clip };
     delete oldClip.linkedTargets;
     const migrated = migrateProject({
