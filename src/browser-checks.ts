@@ -625,7 +625,14 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     // scenario, so a degradation that hits the empty graph and the loaded
     // one alike cancels in the RATIO, and what is left is the graph's own
     // cost, expressed in the device's heartbeat budget at that moment.
-    const ladder: Array<{ label: string; drops: number; jitter: number; floorJitter: number; ratio: number }> = [];
+    const ladder: Array<{
+      label: string;
+      drops: number;
+      floorDrops: number;
+      jitter: number;
+      floorJitter: number;
+      ratio: number;
+    }> = [];
     for (const [trackCount, effectsPerTrack] of LADDER) {
       const adjacent = await measureWindow(floorDoc);
       const step = await measureWindow(ladderDoc(trackCount, effectsPerTrack));
@@ -633,7 +640,14 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       const scenarioJitter = jitterOf(step.post);
       ladder.push({
         label: `${trackCount}×${effectsPerTrack}`,
-        drops: dropped(step.pre, step.post) - dropped(adjacent.pre, adjacent.post),
+        // The scenario's OWN drops and the adjacent floor's drops, both raw.
+        // A net difference was tried first and it reads as nonsense: the
+        // floor's window can drop a quantum the scenario's window does not,
+        // so the net goes negative — and a negative count of dropped quanta
+        // is not a number a reader can believe. Two raw numbers say the same
+        // thing without lying about either.
+        drops: dropped(step.pre, step.post),
+        floorDrops: dropped(adjacent.pre, adjacent.post),
         jitter: scenarioJitter,
         floorJitter,
         // The ratio cancels a degradation that hits the empty graph and the
@@ -675,7 +689,8 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       ` · ladder ${ladder
         .map(
           (r) =>
-            `${r.label} xruns=${r.drops} jitter=${r.jitter.toFixed(2)}× floor=${r.floorJitter.toFixed(2)}× ratio=${r.ratio.toFixed(2)}×`,
+            `${r.label} xruns=${r.drops} (floor ${r.floorDrops}) jitter=${r.jitter.toFixed(2)}× ` +
+            `floor=${r.floorJitter.toFixed(2)}× ratio=${r.ratio.toFixed(2)}×`,
         )
         .join(" · ")}`;
     // The gate: the device must not drop quanta, and the heartbeat must
