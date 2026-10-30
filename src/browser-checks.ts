@@ -556,10 +556,28 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
         })),
       })),
     });
+    // The grid spans BELOW **and ABOVE** the gated 12×4, because a boundary is
+    // a place the curve CROSSES the limit: a grid that stops at the gated
+    // scenario can only ever say "it fits", never where it stops fitting.
+    // Measured 2026-10-30, the gated 12×4 (48 chains) still ran at 100 % of
+    // real time on the runner — so the edge is ABOVE it, and a grid ending at
+    // 12×4 is asking the wrong half of the question.
+    //
+    // ASCENDING by total chain count, so the measurement-position confound and
+    // the weight axis do not run the same way: a position effect then biases
+    // the curve in the OPPOSITE direction from the weight effect. The gated
+    // 12×4 window is measured first, before this grid — a free second reading
+    // of the same scenario at a different position, which is the position
+    // check this ladder needs.
     const LADDER: Array<[number, number]> = [
-      [12, 3],
-      [8, 4],
-      [12, 2],
+      [8, 2], //  16 chains
+      [12, 2], //  24
+      [8, 4], //  32
+      [12, 3], //  36
+      [12, 4], //  48 — the gated scenario, re-measured here as the position check
+      [16, 4], //  64
+      [20, 4], //  80
+      [24, 4], //  96
     ];
 
     ctx = new AudioContext();
@@ -625,8 +643,21 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     // scenario, so a degradation that hits the empty graph and the loaded
     // one alike cancels in the RATIO, and what is left is the graph's own
     // cost, expressed in the device's heartbeat budget at that moment.
+    // The device renders at ITS OWN rate, so the number of render quanta the
+    // processor handled inside the window is the machine-independent answer to
+    // "does this graph fit in realtime": a graph that cannot keep up produces
+    // FEWER quanta in the same wall-clock window, because the audio thread
+    // falls behind the device clock. Measured against the ADJACENT floor's
+    // quanta — the floor is the same device at full speed — the ratio is "how
+    // much of real time the device actually managed with this graph". It needs
+    // no assumption about the machine's speed, which is exactly what the
+    // millisecond-based readings could not give.
+    const blocksOf = (snap: { blocks: number } | null) => snap?.blocks ?? 0;
+
     const ladder: Array<{
       label: string;
+      chains: number;
+      fit: number;
       drops: number;
       floorDrops: number;
       jitter: number;
@@ -638,8 +669,11 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       const step = await measureWindow(ladderDoc(trackCount, effectsPerTrack));
       const floorJitter = jitterOf(adjacent.post);
       const scenarioJitter = jitterOf(step.post);
+      const floorBlocks = blocksOf(adjacent.post);
       ladder.push({
         label: `${trackCount}×${effectsPerTrack}`,
+        chains: trackCount * effectsPerTrack,
+        fit: floorBlocks > 0 ? blocksOf(step.post) / floorBlocks : 0,
         // The scenario's OWN drops and the adjacent floor's drops, both raw.
         // A net difference was tried first and it reads as nonsense: the
         // floor's window can drop a quantum the scenario's window does not,
@@ -679,8 +713,13 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
     }
     const jitterRatio = jitterOf(rt);
     const windowBlocks = Math.max(0, rt.blocks - (graph.pre?.blocks ?? 0));
+    // The gated window's own fit fraction, against the floor measured right
+    // before it: "how much of real time the device actually managed". The
+    // ladder's re-measurement of the same 12×4 is the position check.
+    const floorWarmBlocks = blocksOf(floorWarm.post);
+    const gatedFit = floorWarmBlocks > 0 ? windowBlocks / floorWarmBlocks : 0;
     const detail =
-      `blocks=${windowBlocks} xruns=${graphDrops} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
+      `blocks=${windowBlocks} fit=${gatedFit.toFixed(2)} xruns=${graphDrops} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
       `max=${rt.maxGapMs.toFixed(2)}ms (expected≈${((64 * 128 * 1000) / rt.sampleRate).toFixed(2)}ms, ${jitterRatio.toFixed(2)}×) ` +
       `quantum=${rt.quantumMs.toFixed(3)}ms` +
       ` · device floor xruns=${deviceFloor} jitter=${deviceFloorJitter.toFixed(2)}× ` +
@@ -689,8 +728,8 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false,
       ` · ladder ${ladder
         .map(
           (r) =>
-            `${r.label} xruns=${r.drops} (floor ${r.floorDrops}) jitter=${r.jitter.toFixed(2)}× ` +
-            `floor=${r.floorJitter.toFixed(2)}× ratio=${r.ratio.toFixed(2)}×`,
+            `${r.label}(${r.chains}c) fit=${r.fit.toFixed(2)} xruns=${r.drops} (floor ${r.floorDrops}) ` +
+            `jitter=${r.jitter.toFixed(2)}× floor=${r.floorJitter.toFixed(2)}× ratio=${r.ratio.toFixed(2)}×`,
         )
         .join(" · ")}`;
     // The gate: the device must not drop quanta, and the heartbeat must
