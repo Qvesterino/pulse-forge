@@ -10,7 +10,7 @@
 
 - [ ] **GitHub repo popis + topics**: `Browser DAW with a native MCP server — your AI co-producer, everything undoable` + topics: `mcp`, `daw`, `webaudio`, `claude`, `ai-agents`, `music-production`
 - [ ] **LICENSE súbor** — bez neho HN prvé upvote pôjde na "it's closed source?" — rozhodni: MIT/Apache-2.0 ak chceš komunitu, alebo "source-available" písomne v README
-- [ ] **Deployed URL živý** — `[DEPLOYED-URL]` musí otvoriť štúdio v mobile aj desktope (testuj cez 4G, nie len WiFi)
+- [ ] **Deployed URL živý** — `https://kyx-d40.pages.dev` musí otvoriť štúdio v mobile aj desktope (testuj cez 4G, nie len WiFi) — nasadené 2026-10-30 (Cloudflare Pages, projekt `kyx`); záznam: `docs/RELEASE-2026-10-30-first-public-deploy.md`
 - [ ] **`npm run mcp:demo` behne na čerstvom clone** — to je tvoj "it works" dôkaz keď niekto spamuje
 - [ ] **Claude Desktop connect** prejdený na čerstvom stroji podľa `/agents` stránky — presne ako návštevník, žiadne skratky
 - [ ] **Video na YouTube** (unlisted-ok, ale nie private): horizontálne + vertikálne — HN komentáre chcú link ktorý sa dá pozrieť bez build-u
@@ -69,7 +69,7 @@ locally and deterministically — no cloud model in the audio path. The
 being my own model vendor. Think of it as a studio that speaks an open
 protocol, not an AI wrapper.
 
-Try it: [DEPLOYED-URL] (browser, no install) — and /agents has the
+Try it: https://kyx-d40.pages.dev (browser, no install) — and /agents has the
 2-minute Claude Desktop setup. Desktop build for Windows is here:
 https://github.com/Qvesterino/pulse-forge/releases/latest
 

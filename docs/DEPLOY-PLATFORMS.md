@@ -6,6 +6,19 @@
 
 ---
 
+## Live instances
+
+| URL                         | Host                            | Built from | Notes                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `https://kyx-d40.pages.dev` | Cloudflare Pages, project `kyx` | `fa4184ab` | The first public KYX Web deployment (2026-10-30). 88.6 MB as deployed — the piano sample pack and two unused ONNX wasm variants do not fit the deploy limits. See `docs/RELEASE-2026-10-30-first-public-deploy.md`. |
+
+The collab / gallery server is NOT deployed with the static app — it is a Node
+websocket app and needs its own host (see below). Multiplayer and the public gallery
+are therefore off on the deployed instance until one exists; the app reports that
+honestly instead of pretending.
+
+---
+
 ## Cloudflare Pages (recommended)
 
 Free tier covers the static app; PWA + service worker + worklets work
