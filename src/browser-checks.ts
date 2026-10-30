@@ -962,9 +962,14 @@ export async function auditDenseRender(bank: SampleBank): Promise<CheckResult> {
       message:
         `${ms.toFixed(0)}ms vs ${baselineMs.toFixed(0)}ms single-track baseline for ` +
         `${audioMs.toFixed(0)}ms audio (${ratio.toFixed(2)}× baseline, budget ${BUDGET_BASELINE_RATIO}×; ` +
-        `baseline bracketed ${baselineBefore.ms.toFixed(0)}–${baselineAfter.ms.toFixed(0)}ms, spread ${spread.toFixed(
+        `baseline bracketed ${Math.min(baselineBefore.ms, baselineAfter.ms).toFixed(0)}–${Math.max(
+          baselineBefore.ms,
+          baselineAfter.ms,
+        ).toFixed(0)}ms (before ${baselineBefore.ms.toFixed(0)}, after ${baselineAfter.ms.toFixed(
+          0,
+        )}), spread ${spread.toFixed(2)}× → the same measurement reads ${verdict.best.toFixed(
           2,
-        )}× → the same measurement reads ${verdict.best.toFixed(2)}×–${verdict.worst.toFixed(2)}×)` +
+        )}×–${verdict.worst.toFixed(2)}×)` +
         (recovered ? " — the first sample missed, the retry came in under budget" : "") +
         (verdict.verdict === "informational"
           ? " — the machine moved during the measurement, informational run"
