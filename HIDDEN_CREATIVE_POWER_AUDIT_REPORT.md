@@ -3339,6 +3339,36 @@ _derivation_ rather than as another hand-written tool.
 > `80940176`, before this wave**); `tests/mcp-targeting-benchmark.test.ts` and `tests/ui/IntentPanelProducerBrief.test.tsx` (the
 > intent/MCP lane; the second is a race in the spec itself: it asserts on a remembered generation whose `docId` already matches,
 > so it can read the OLD intent). **A red that is real is reported, not re-pinned.**
+>
+> **— IN PLACE (2026-10-31, 07:10): one of those three is FIXED, and how it was fixed changes what this entry says.** The parallel
+> session shipped `01cc7f3f` ("the corpus teacher may protect more than the parser found"), and `tests/creative-task-contract.test.ts`
+> is **37/37** — re-verified locally, not taken on report. **Two of this entry's claims were therefore wrong, and the correction is
+> worth more than the fix:**
+>
+> 1. **"The corpus cannot be regenerated" was a fact about the generator, not about the corpus** — and the generator's check was
+>    **stricter than its own stated rule and its own data**: it compared the teacher's protected roles with the request's for
+>    **equality**, while its own comment says protected roles "may never be DROPPED or changed". Equality also forbids **adding** —
+>    and adding a protection is what the corpus exists to teach, because the teacher corrects the lossy parser. **The committed
+>    corpus said so in its own bytes: of 64 rows, 10 protect a role the request did not declare, 4 prohibit one the request did not
+>    declare, and ZERO rows drop or change a protection.** The implementation contradicted both the rule and the data.
+> 2. **"The pin was wrong" was wrong too — it was OVERTAKEN.** The manifest's hash for `src/intent/text-parser.ts` matches
+>    `a3ccf290` and **no later version** of that file: the pin was correct when it was made, and a later merge moved the file
+>    under it. **A stale pin and a wrong pin are different defects, and they have different owners.**
+>
+> The regenerated corpus differs in **five rows**, all in the same direction (the parser now understands "akordy nechaj
+> nedotknuté" and moves the role out of the generation targets into the protections). **The held-out golden set is untouched** —
+> the evaluation set did not move.
+>
+> **One hole the fix made visible is still open, and it is in the intent layer's call, not this wave's:** "bicie ani akordy
+> nemeň" protects only "chords", because `ani` is not in `PRESERVE_CONJUNCTIONS` and the preceding-word rule therefore finds only
+> the adjacent "akordy" and misses "bicie"; the teacher protects both, so the corpus and the parser now disagree about what the
+> user asked. The same hole shows in the SK variants ("Nechaj rovnakú aranžáciu, bicie aj akordy…" reports **no** protection at
+> all, because the clause scan stops at "rovnakú"). **A conjunction set that knows "ani", plus a walk-back over it in the
+> preceding-word rule, would close it.** Recorded here because a disagreement between the corpus and the parser is a fact about
+> the product, not about a test.
+>
+> **What is left red after `01cc7f3f` is the intent/MCP lane** — `tests/mcp-targeting-benchmark.test.ts` and
+> `tests/ui/IntentPanelProducerBrief.test.tsx` — both inside the parallel session's live work.
 
 #### 10.16.11 The scenario ladder — measuring the boundary, and finding that the instrument was measuring the run
 
