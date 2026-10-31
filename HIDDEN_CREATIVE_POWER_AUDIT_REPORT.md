@@ -1426,6 +1426,26 @@ The count is a **whole-tree measurement**: it belongs to nobody's wave. This aud
 is the ritual the artifact rule in `AGENTS.md` now names, and the fast check enforces it in the unit suite
 rather than in someone else's CI.
 
+> **IN PLACE (2026-10-31, 07:25): one drift section is observable only as a red job — and the repo keeps no trace of what
+> moved.** The parallel session found it while regenerating the stale MCP mirrors (`edb8ada8`), and the shape is worth
+> recording here because it is the same class of defect this section is about. Verified in the artifacts:
+>
+> - `docs/status.json` has three arrays, and they do three different jobs. **`claims` (5 entries)** carries what the status
+>   artifact actually asserts — seams, the spec-file count, the taste benchmark, the master verification, VLYX sound
+>   identity. **`manualGates` (4)** carries the human-run smokes. **`runByCi`** carries **command pointers**, and the MCP
+>   mirrors appear only there — as the string `All derivable artifacts (mirrors, goldens, counts)` → `npm run drift:check`
+>   (`docs/status.json:84`).
+> - **So the mirrors are pointed at, not claimed.** A pointer says _which command_ checks them; it says nothing about _which
+>   artifact_ went stale or _what_ in it moved. The drift annotation names the file (`desktop/mcp-tool-defs.cjs: committed
+artifact is stale`) and stops there — **no diff, no hash, no expected value anywhere in the repo.**
+> - **The counter-example is in this same repo.** The creative-task corpus carries `scripts/data/creative-task-sft/manifest.json`
+>   — a manifest of hashes for every source it was built from. **A stale pin there says what changed; a stale mirror here says
+>   only that something did.** (And that difference is what made the corpus bug diagnosable at all — see §10.16.10.)
+>
+> **The fix shape is small and is not this audit's to ship: give the generated mirrors the same thing the corpus has — a hash
+> manifest** — so a stale mirror names the change instead of the file. Until then, the mirrors' staleness is **visible only in
+> CI**, which means it is invisible to the one place a reader would look for it.
+
 ### 10.11 The fourth instance — a coverage claim landed without its source
 
 The three drift instances above are the same shape: a **number** moved and the artifact that carries it did
