@@ -237,6 +237,15 @@
       "negativeSpec": "NEGATIVE: with no native endpoint the toolbar says nothing about NATIVE INPUT"
     },
     {
+      "id": "pattern-mode-audition-offer",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx auditionAudioTake mode gate → auditionModeOffer → SWITCH TO SONG action",
+      "note": "CF-16: take-lane live audition during Pattern playback used to be a dead-end error. The gate now leaves an OFFER bound to the exact groupId/takeId the user asked to hear; the SWITCH TO SONG button flips the playback mode and RETRIES the audition — the mode-gate error does not survive the click. Song mode shows no offer (the gate stays silent).",
+      "spec": "tests/ui/timeline-rec.test.tsx",
+      "seamEvent": "SWITCH TO SONG",
+      "negativeSpec": "NEGATIVE: auditioning in Song mode shows no offer (the gate stays silent)"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

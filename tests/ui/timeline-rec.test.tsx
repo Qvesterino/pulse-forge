@@ -1467,3 +1467,72 @@ describe("CF-21 — the native capture source is disclosed BEFORE REC", () => {
     }
   });
 });
+
+describe("CF-16 — the Pattern-mode audition gate offers the switch", () => {
+  function takeGroupDoc() {
+    let doc = createDocWithTracks();
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addAudioTakeClip(doc, "grp-cf16", "take-1", track.id, "buf-a", 0, 8).execute(doc);
+    doc = addAudioTakeClip(doc, "grp-cf16", "take-2", track.id, "buf-b", 0, 8).execute(doc);
+    return doc;
+  }
+
+  async function openTakeLanesWithPlayingTransport() {
+    const doc = takeGroupDoc();
+    const store = new ProjectStore(doc);
+    const services = { ...mockServices(doc), store } as unknown as Services;
+    // Playing + Pattern mode — the exact state the gate rejects.
+    vi.spyOn(services.transport, "playing", "get").mockReturnValue(true);
+    (services.playback as { mode: string }).mode = "pattern";
+    (services.playback as { setMode: (m: string) => void }).setMode = vi.fn((mode: string) => {
+      (services.playback as { mode: string }).mode = mode;
+    });
+    const laneBuffer = {
+      duration: 2,
+      sampleRate: 48_000,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array(96_000),
+    } as unknown as AudioBuffer;
+    services.bank.add("buf-a", laneBuffer);
+    services.bank.add("buf-b", laneBuffer);
+
+    // Seed the panel-local clip focus (CF-11) so the take-lane surface shows.
+    const clipId = (doc.arrangement.audioClips ?? [])[0]!.id;
+    window.localStorage.setItem(`pf:arr-view:${doc.id}`, JSON.stringify({ selectedAudioClipId: clipId }));
+    renderWithContext(<ArrangementPanel />, { services });
+    fireEvent.click(screen.getByRole("button", { name: /audio take lanes/ }));
+    return { services };
+  }
+
+  afterEach(() => {
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith("pf:arr-view:")) window.localStorage.removeItem(key);
+    }
+  });
+
+  it("auditioning during Pattern playback shows the error AND a SWITCH TO SONG offer; one click switches and retries", async () => {
+    const { services } = await openTakeLanesWithPlayingTransport();
+
+    fireEvent.click(screen.getByRole("button", { name: /Live solo TAKE 1|Audition TAKE 1/ }));
+    expect(await screen.findByText(/Switch to Song mode to audition/)).toBeTruthy();
+    const offer = screen.getByRole("button", { name: "SWITCH TO SONG" });
+
+    fireEvent.click(offer);
+    // The offer's action flips the mode and RETRIES the audition the user
+    // asked for — the mode-gate error does not survive the click.
+    expect(services.playback.setMode).toHaveBeenCalledWith("song");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(screen.queryByText(/Switch to Song mode to audition/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "SWITCH TO SONG" })).toBeNull();
+  });
+
+  it("NEGATIVE: auditioning in Song mode shows no offer (the gate stays silent)", async () => {
+    const { services } = await openTakeLanesWithPlayingTransport();
+    (services.playback as { mode: string }).mode = "song";
+
+    fireEvent.click(screen.getByRole("button", { name: /Live solo TAKE 1|Audition TAKE 1/ }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(screen.queryByText(/Switch to Song mode to audition/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "SWITCH TO SONG" })).toBeNull();
+  });
+});

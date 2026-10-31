@@ -702,6 +702,10 @@ export function ArrangementPanel() {
     cueAssetId: "",
   });
   const [actionError, setActionError] = useState<string | null>(null);
+  // CF-16: the take audition's mode gate leaves an offer — the groupId/takeId
+  // the user asked to hear, retried by the SWITCH TO SONG action after the
+  // mode flip. Cleared by any successful audition or a different error.
+  const [auditionModeOffer, setAuditionModeOffer] = useState<{ groupId: string; takeId: string } | null>(null);
   // App-level shortcuts that edit this panel's clips (Ctrl+E split at
   // playhead) surface their failures here — the error strip renders next to
   // the clips the user is editing, instead of a silent catch.
@@ -2856,8 +2860,12 @@ export function ArrangementPanel() {
     }
     if (services.transport.playing && services.playback.mode !== "song") {
       setActionError("Switch to Song mode to audition a take lane during playback");
+      // CF-16: Pattern mode gets an OFFER, not a dead end — one click switches
+      // the mode and retries the audition the user just asked for.
+      setAuditionModeOffer({ groupId, takeId });
       return;
     }
+    setAuditionModeOffer(null);
     stopAudioTakeAudition();
     const request: AudioTakeAuditionRequest = {
       groupId,
@@ -2939,6 +2947,17 @@ export function ArrangementPanel() {
         setAudioTakeAudition(null);
       }
     }
+  };
+
+  // CF-16: the offer's action — flip to Song mode and retry the audition the
+  // user just asked for, so Pattern mode is a turn, not a dead end.
+  const acceptAuditionModeOffer = (): void => {
+    const offer = auditionModeOffer;
+    if (!offer) return;
+    setAuditionModeOffer(null);
+    setActionError(null);
+    services.playback.setMode("song");
+    void auditionAudioTake(offer.groupId, offer.takeId);
   };
 
   useEffect(() => {
@@ -7348,6 +7367,16 @@ export function ArrangementPanel() {
         {actionError && (
           <div className="arr-error" role="status">
             {actionError}
+            {auditionModeOffer && (
+              <button
+                type="button"
+                className="btn btn-small"
+                title="Switch playback to Song mode and audition this take lane now"
+                onClick={acceptAuditionModeOffer}
+              >
+                SWITCH TO SONG
+              </button>
+            )}
           </div>
         )}
         {spectralEditClipId &&
