@@ -3843,11 +3843,16 @@ because CI measures the CI-faithful shape.
 build shapes).
 
 **Provenance of the two changes in this section.** The `IN PLACE` addendum above and the change to
-`scripts/audit-dead-weight.mjs` were written by this audit, but they reached `main` inside the peer session's
-commit `23966e9c` ("okay"), whose `git add .` swept them in alongside that session's own files
-(`src/generative/variationShelf.ts`, `src/ui/Inspector.tsx`, `tests/generative-variation-shelf.test.ts`,
-`tests/ui/Inspector.test.tsx` — that session's work, untouched here). The content is this audit's and was
-verified by it; **the commit message is not a durable place for that**, so this paragraph is the record.
+`scripts/audit-dead-weight.mjs` were written by this audit, but they reached `main` inside commit `23966e9c`
+("okay", 09:12:14) — a broad `git add` that swept them in alongside that session's own files:
+`src/generative/variationShelf.ts`, `src/ui/Inspector.tsx`, `tests/generative-variation-shelf.test.ts`,
+`tests/ui/Inspector.test.tsx` — a generative/Inspector wave that is **neither this audit's nor the gates
+session's**. The attribution is checkable, and it was corrected here after the gates session produced the
+counter-evidence: its own two commits are `575fed78` (08:52:34, the bundle diet) and `b181c514` (08:55:46, the
+status refresh), **both sixteen minutes earlier and both containing only their own paths** — the swept commit
+contains none of them; and a **third** agent session is listed against this same workspace (_Audit and improve
+Intent Engine precision_), alongside the Codex and Kilo worktrees. **The content is this audit's and was
+verified by it; the commit message is not a durable place for that, so this paragraph is the record.**
 
 ---
 
