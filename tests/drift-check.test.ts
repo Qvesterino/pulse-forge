@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  changeSummary,
   collectCountChecks,
   comparable,
   countSpecFiles,
@@ -65,6 +66,39 @@ describe("countSpecFiles", () => {
     expect(count).toBeGreaterThan(800);
     // e2e specs live under tests/e2e and are Playwright-owned — not counted.
     expect(count).not.toBe(0);
+  });
+});
+
+/**
+ * A STALE ARTIFACT MUST SAY WHAT CHANGED.
+ *
+ * The gate used to report a stale artifact by its FILE NAME only, and the
+ * reader had to reconstruct which input moved from git history — the corpus
+ * carries a manifest of source hashes, so its stale pin names the change; a
+ * mirror had no such trace. The summary closes that gap, and it is short on
+ * purpose: the CI annotation is capped at 4096 bytes and carries up to twenty
+ * stale lines, so a long summary would push the last cases out of view.
+ */
+describe("changeSummary", () => {
+  it("names the first differing line of the regenerated content", () => {
+    const summary = changeSummary("a\nb\nc\n", "a\nb\nplanId: {}\n");
+    expect(summary).toContain("line 3");
+    expect(summary).toContain("planId");
+  });
+
+  it("reports an insertion at the end of the file", () => {
+    const summary = changeSummary("a\nb\n", "a\nb\nc\n");
+    expect(summary).toContain("line 3");
+    expect(summary).toContain('"c"');
+  });
+
+  it("stays short enough that twenty findings still fit the CI annotation", () => {
+    const long = "x".repeat(400);
+    expect(changeSummary("a\n", `a\n${long}\n`).length).toBeLessThan(120);
+  });
+
+  it("says something honest when the difference is a blank line", () => {
+    expect(changeSummary("a\nb\n", "a\n\n")).toContain("(blank)");
   });
 });
 

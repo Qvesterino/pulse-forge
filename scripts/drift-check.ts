@@ -184,6 +184,41 @@ export function comparable(text: string, section: GeneratorSection): string {
   return (section.ignoreCompareLines ?? []).reduce((acc, line) => acc.replace(line, ""), text);
 }
 
+/**
+ * WHAT changed between the committed artifact and the regenerated one.
+ *
+ * A stale artifact used to be reported by its FILE NAME only. The annotation
+ * said "desktop/mcp-tool-defs.cjs: committed artifact is stale" and stopped
+ * there — the reader had to guess WHICH input moved, and the only way to find
+ * out was to reconstruct it from git history. That is the gap this closes: the
+ * corpus carries a manifest of source hashes, so ITS stale pin names the
+ * change; a mirror had no such trace.
+ *
+ * No diff algorithm: the first differing line names the change, and it is
+ * taken from the REGENERATED text — the new content is what the reader wants
+ * to see ("planId", the new tool, the new count). The summary is short on
+ * purpose: the CI annotation is capped at 4096 BYTES and carries up to twenty
+ * stale lines, so a long summary would push the last cases out of view.
+ */
+export function changeSummary(head: string, worktree: string): string {
+  const headLines = head.split("\n");
+  const workLines = worktree.split("\n");
+  const limit = Math.min(headLines.length, workLines.length);
+  let first = limit;
+  for (let i = 0; i < limit; i++) {
+    if (headLines[i] !== workLines[i]) {
+      first = i;
+      break;
+    }
+  }
+  const snippet = (line: string | undefined) => {
+    const trimmed = (line ?? "").trim();
+    if (!trimmed) return "(blank)";
+    return trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
+  };
+  return `first change at line ${first + 1}: regenerated "${snippet(workLines[first])}"`;
+}
+
 export const GENERATORS: GeneratorSection[] = [
   {
     name: "mcp-mirrors",
@@ -244,6 +279,9 @@ export function evaluateGeneratorSection(section: GeneratorSection, bless: boole
   const findings: DriftFinding[] = [];
   const cleanPaths: string[] = [];
   const driftedPaths: string[] = [];
+  // What changed, per path — the report says WHICH input moved, not only
+  // WHICH file went stale.
+  const summaries = new Map<string, string>();
   for (const path of section.ownedPaths) {
     if (dirtyBefore.has(path)) {
       findings.push({
@@ -257,7 +295,10 @@ export function evaluateGeneratorSection(section: GeneratorSection, bless: boole
     cleanPaths.push(path);
     const worktree = readFileSync(join(REPO_ROOT, path), "utf8");
     const head = gitContent(path);
-    if (head !== null && comparable(head, section) !== comparable(worktree, section)) driftedPaths.push(path);
+    if (head !== null && comparable(head, section) !== comparable(worktree, section)) {
+      driftedPaths.push(path);
+      summaries.set(path, changeSummary(comparable(head, section), comparable(worktree, section)));
+    }
   }
 
   // Stability re-verification: a real drift survives a second regeneration;
@@ -285,19 +326,23 @@ export function evaluateGeneratorSection(section: GeneratorSection, bless: boole
   }
 
   for (const path of confirmedPaths) {
+    // The summary is what changed, so the reader does not have to reconstruct
+    // it from git history: "the artifact is stale" plus the first changed
+    // line names the input that moved.
+    const summary = summaries.get(path) ?? "content differs from the committed artifact";
     findings.push(
       bless
         ? {
             section: section.name,
             path,
             kind: "stale-artifact",
-            detail: "regenerated in place (--bless) — review the diff, then commit",
+            detail: `regenerated in place (--bless) — ${summary} — review the diff, then commit`,
           }
         : {
             section: section.name,
             path,
             kind: "stale-artifact",
-            detail: "committed artifact is stale — run `npm run drift:bless`, review, commit",
+            detail: `committed artifact is stale — ${summary} — run \`npm run drift:bless\`, review, commit`,
           },
     );
   }
