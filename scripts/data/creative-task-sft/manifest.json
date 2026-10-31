@@ -23,7 +23,7 @@
         "revision-mood-preserves-arrangement",
         "two-step-garage-chord-preservation"
       ],
-      "sha256": "a057c5a9678d5fbbbe88a8939e7beff9571fa34d185ffaa5610e334ddd864cb2"
+      "sha256": "ad2051b635f70d012665568913aeb6f59143c00d46d0f34f66a20672f88e1489"
     },
     "validation": {
       "path": "validation.jsonl",
@@ -38,7 +38,7 @@
         "press-release-out-of-scope",
         "underspecified-contemporary-style"
       ],
-      "sha256": "c739de0a2d708fa793ca9cb6a4f69da8b55d6c73a425cdc94185d724a5b5c0e0"
+      "sha256": "7cf539605cac9d3e88f511405e2e14f5f1ae2e9ff0ffc750391072aebf696f57"
     }
   },
   "heldOutGolden": {
@@ -49,14 +49,14 @@
     "exactPromptOverlap": false
   },
   "sourceHashes": {
-    "scripts/generate-creative-task-sft.mts": "1f69ce8a9b70485c7d69f27fe354df6ea2b6ee6c31b44da236fe57f62f308568",
+    "scripts/generate-creative-task-sft.mts": "43c55f75bbbacb342b9ee332b8efffd1f07c4032e22b5cc80e7e7a40410f01a9",
     "scripts/run-creative-task-sft.mjs": "d8e8b9e74696771e66ebd76ede8175c50bba057ecda3416a35898a5ebc98be26",
     "scripts/train-creative-task-sft.py": "d73430e0c3687361f96f2f53d975288dee7f342e516b30daf74c36e4d154030c",
     "src/ai/types.ts": "c59c12589f4cfa6b00e1fed7aa0826545dbf7d6b3252ed9cd7e5f5d5f70b534a",
     "src/intent/creative-task-contract.ts": "0b9c33d2250bbba260ceb18b50131837840ea87ab8a019d7c8343caec7af4f61",
     "src/intent/creative-task-ollama.ts": "b2411211ce95b95e427e66acbed1b378f13d8cb4315277acd7c7fd882d7e4601",
     "src/intent/brief-contract.ts": "af7d12d6654e008e2d9bbd2504075eb5f662f265a47abd169c3158944a95c3d8",
-    "src/intent/text-parser.ts": "f4caa9ed0a6756bd389113bc5dd1d3ab6752a39b4d33547b5cd9d7c4d259658c",
+    "src/intent/text-parser.ts": "02dead6659e7756336c2641e54d1cb56438c31d9b1a1a3c775eb72781f827aab",
     "src/project-model/types.ts": "ae019a1cae875631def2c19fdb71f646fa46c0a350a1359b19c5f1885e5ad1fd"
   }
 }

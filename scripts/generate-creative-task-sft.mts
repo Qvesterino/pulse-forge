@@ -483,21 +483,43 @@ function validateTeacherAgreement(scenario: Scenario, request: ReturnType<typeof
     ["bpmRange", required.bpmRange, suggestions.bpmRange],
     ["key", required.key, suggestions.key],
     ["lengthSteps", required.lengthSteps, suggestions.lengthSteps],
-    ["preserveRoles", request.preserveRoles.length > 0 ? request.preserveRoles : null, suggestions.preserveRoles],
-    [
-      "prohibitedRoles",
-      request.prohibitedRoles.length > 0 ? request.prohibitedRoles : null,
-      suggestions.prohibitedRoles,
-    ],
   ];
   // Genre/style/mood are semantic labels: the model may correct a parser
-  // misclassification, while tempo/key/length and protected-role facts may
-  // never be dropped or changed.
+  // misclassification, while tempo/key/length may never be dropped or
+  // changed — but only where the request states them at all. A request that
+  // does not declare a length leaves the teacher free to propose one.
   for (const [field, explicit, target] of exactPairs) {
     if (explicit !== null && stableJson(explicit) !== stableJson(target)) {
       throw new Error(
         `Target for ${scenario.id} drops or changes explicit ${field}: ${stableJson(explicit)} != ${stableJson(target)}.`,
       );
+    }
+  }
+  // Protected roles are DIRECTIONAL, not equal. The teacher may protect MORE
+  // than the parser found — that correction is what this corpus exists to
+  // teach — but it may never DROP or change a protection the request
+  // declares.
+  //
+  // The committed corpus says the same thing in its own bytes: of the 64
+  // rows, 10 protect a role the request did not declare and 4 prohibit one
+  // the request did not declare, and ZERO rows drop or change a protection.
+  // The equality check rejected exactly that correction — and with it the
+  // regeneration of the corpus. The parser now reports one protected role
+  // for "bicie ani akordy nemeň" (the Slovak "ani" is not a conjunction to
+  // it), so the request declared a protection the teacher also carried, the
+  // sets were not equal, and the generator threw. A corpus that cannot be
+  // regenerated cannot be refreshed at all, and a stale corpus cannot be
+  // re-pinned: the manifest's source hash for src/intent/text-parser.ts had
+  // already moved on, and the contract test was red on both counts.
+  for (const [field, explicit, target] of [
+    ["preserveRoles", request.preserveRoles, suggestions.preserveRoles],
+    ["prohibitedRoles", request.prohibitedRoles, suggestions.prohibitedRoles],
+  ] as const) {
+    const declared = new Set<string>(target ?? []);
+    for (const role of explicit) {
+      if (!declared.has(role)) {
+        throw new Error(`Target for ${scenario.id} drops explicit ${field}: ${role}.`);
+      }
     }
   }
   if (request.preserveRoles.some((role) => suggestions.targetRoles?.includes(role))) {
