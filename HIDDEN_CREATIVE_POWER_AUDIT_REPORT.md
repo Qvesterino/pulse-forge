@@ -1445,6 +1445,37 @@ artifact is stale`) and stops there — **no diff, no hash, no expected value an
 > **The fix shape is small and is not this audit's to ship: give the generated mirrors the same thing the corpus has — a hash
 > manifest** — so a stale mirror names the change instead of the file. Until then, the mirrors' staleness is **visible only in
 > CI**, which means it is invisible to the one place a reader would look for it.
+>
+> **— IN PLACE (2026-10-31, 07:56): the "hash manifest" half above is WITHDRAWN — it was the weaker half, and the parallel session
+> measured why.** The mirrors' input set is **not one file**: `src/mcp/tools.ts` imports from the project model, the store, the
+> commands and the intent layer, and the tool definitions embed **values** that land in the JSON the mirror carries. A manifest
+> would therefore have had to name the **transitive local import graph** — a mini dependency tracer, with approximation risk
+> (dynamic imports, re-exports) sitting inside the repo's central gate. **A manifest that claims a source set which is not exactly
+> true is the very defect class this audit exists to catch** (a claim without its source), so it is withdrawn rather than shipped.
+>
+> **What shipped instead is the cheap and exact half** (`fe9675c8`, `ca8e7583` — `scripts/drift-check.ts` + four locks in
+> `tests/drift-check.test.ts`; no new artifact, no new owned path, and **no verdict changed**): a stale artifact now says **WHAT
+> CHANGED IN IT**, not only which file went stale. `changeSummary()` compares the two **comparable** (normalized) texts and reports
+> the first differing line with the regenerated snippet (`scripts/drift-check.ts:203-219`):
+>
+> ```text
+> ✗ DRIFT [mcp-mirrors] desktop/mcp-tool-defs.cjs: committed artifact is stale
+>   — first change at line 12: regenerated 'name: "kyx_intent",' — run `npm run drift:bless`, review, commit
+> ```
+>
+> **Measured end to end in an isolated worktree** (a mirror was made deliberately stale and the gate was run against it) — which
+> matters, because the alternative was to reconstruct the same fact from git history, exactly the reconstruction the corpus pin
+> cost this morning (`a3ccf290` vs `dd37c743`).
+>
+> **Two deliberate limits, recorded as deliberate.** **No diff algorithm**: the first differing line names the change, and it is
+> taken from the **regenerated** text — the new content is what the reader wants to see. **The summary is one line**, because the CI
+> annotation is capped at **4096 bytes** and carries up to twenty stale lines: the identifying information has to stay first, or the
+> last cases fall off the end.
+>
+> **The deeper half — naming the INPUT that moved — stays open, and it is a design question, not a guess.** The non-approximating
+> route would be to let the **generator record what it consumed** (the corpus's own generator declares its inputs in
+> `SOURCE_PATHS` and hashes them, which is exact by declaration), rather than to infer the input set with a tracer. **Not shipped,
+> and not this audit's to ship.**
 
 ### 10.11 The fourth instance — a coverage claim landed without its source
 
