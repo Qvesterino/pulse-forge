@@ -48,6 +48,10 @@ function svfCoeffs(f, q, sr) {
 const UNISON_MAX = 8;
 const VOICES_MAX = 8;
 const GOLDEN = 2.399963; // golden-angle spread for per-voice phase decorrelation
+// sampleRate is constant for a worklet's lifetime; the per-sample loop used to
+// re-derive `1 / sr` every block and recompute several block/voice-invariant
+// rates per sample. Cached increments use this DT — same value, same math.
+const DT = 1 / (globalThis.sampleRate || 44100);
 
 function noteReleaseSeconds(baseSeconds, value) {
   const base = Number.isFinite(baseSeconds) ? Math.max(0.005, baseSeconds) : 0.25;
@@ -121,7 +125,18 @@ class WtVoice {
     this.copyLevel = new Float32Array(UNISON_MAX + 2);
     this.panL = new Float32Array(UNISON_MAX + 2);
     this.panR = new Float32Array(UNISON_MAX + 2);
+    // Per-copy PHASE INCREMENT (audit 2026-10-30): `f0 * pow(2, detune/1200) * dt`
+    // was recomputed per copy per SAMPLE (a Math.pow per copy per sample).
+    // copyDetune only changes here in refreshCopies, so the increment is
+    // derived at the same site — bit-identical (same expression, copyDetune
+    // read back from the Float32Array exactly like the render loop did).
+    this.copyInc = new Float64Array(UNISON_MAX + 2);
     this.copyCount = 0;
+    // Per-voice invariants the render loop used to recompute per sample.
+    this.f0Ratio = this.f0 / 261.63 - 1;
+    this.relCoef = 1 - Math.exp(-DT / (this.releaseSeconds / 3));
+    this.subInc = this.f0 * 0.5 * DT;
+    this.lfoPhase2pi = this.lfoPhase * 2 * Math.PI;
   }
 
   noteOn(pitch, velocity, releaseVelocity, pan) {
@@ -141,6 +156,9 @@ class WtVoice {
     this.scanPos = this.morphBase * (this.p.tableFrames - 1);
     this.levelIndex = this.p.pickLevel(this.f0);
     this.lfoPhase = (this.index * GOLDEN) % 1;
+    this.f0Ratio = this.f0 / 261.63 - 1;
+    this.relCoef = 1 - Math.exp(-DT / (this.releaseSeconds / 3));
+    this.lfoPhase2pi = this.lfoPhase * 2 * Math.PI;
     this.refreshCopies();
     this.lastCutoff = -1;
   }
@@ -170,12 +188,19 @@ class WtVoice {
         this.copyCount++;
       }
     }
+    // Copy increments derive from the just-written (Float32-rounded) detune
+    // values — the same values the per-sample loop used to read back.
+    for (let u = 0; u < this.copyCount; u++) {
+      this.copyInc[u] = this.f0 * Math.pow(2, this.copyDetune[u] / 1200) * DT;
+    }
+    this.subInc = this.f0 * 0.5 * DT;
   }
 
   release() {
     this.gate = false;
     this.stage = "release";
     this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.25, this.releaseVelocity);
+    this.relCoef = 1 - Math.exp(-DT / (this.releaseSeconds / 3));
   }
 }
 
@@ -221,6 +246,18 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
     this.dueOn = [];
     this.dueOff = [];
     this.dueParam = [];
+    // Derived k-rate caches (audit 2026-10-30): the render loop used to
+    // recompute these per sample/per voice although their sources only move
+    // on `param` / `tables` messages. They are recomputed exactly WHERE a
+    // source value changes (applyParam / tables handler), so a queued param
+    // event landing MID-BLOCK retargets the cache at its own sample — the
+    // samples stay bit-identical to the old per-sample recomputation.
+    this.dB = 1;
+    this.lfoRateK = 0;
+    this.morphRateK = 0;
+    this.attCoef = 0;
+    this.modeRounded = 0;
+    this.scanInc = 0;
     this.port.onmessage = (e) => this.handleMessage(e.data);
     const init = options?.processorOptions;
     if (init) {
@@ -230,6 +267,31 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         for (const event of init.events) this.handleMessage(event);
       }
     }
+    this.initParamCaches();
+  }
+
+  initParamCaches() {
+    const p = this.params;
+    this.dB = Math.pow(10, p.level / 20);
+    this.lfoRateK = 2 * Math.PI * p.modLfoRate;
+    this.morphRateK = 2 * Math.PI * p.morphRate;
+    this.attCoef = 1 - Math.exp(-DT / (Math.max(0.002, p.attack) / 3));
+    this.modeRounded = Math.round(p.mode);
+    this.scanInc = Math.max(1, p.tableFrames - 1) * p.scanRate * DT;
+  }
+
+  /**
+   * The ONLY path that writes a param (immediate or drained from the event
+   * queue): assignment + the derived-cache recompute for that one name.
+   */
+  applyParam(name, value) {
+    this.params[name] = value;
+    if (name === "level") this.dB = Math.pow(10, value / 20);
+    else if (name === "modLfoRate") this.lfoRateK = 2 * Math.PI * value;
+    else if (name === "morphRate") this.morphRateK = 2 * Math.PI * value;
+    else if (name === "attack") this.attCoef = 1 - Math.exp(-DT / (Math.max(0.002, value) / 3));
+    else if (name === "mode") this.modeRounded = Math.round(value);
+    else if (name === "scanRate") this.scanInc = Math.max(1, this.params.tableFrames - 1) * value * DT;
   }
 
   handleMessage(msg) {
@@ -239,6 +301,8 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         this.tables.set(msg);
         this.params.tableFrames = this.tables.frameCount();
         this.params.pickLevel = (f0) => this.tables.pickLevel(f0);
+        // tableFrames moved → the scan increment's tN1 factor moved with it.
+        this.scanInc = Math.max(1, this.params.tableFrames - 1) * this.params.scanRate * DT;
         break;
       case "noteOn": {
         // Boundary validation: a NaN `when` would survive `??` and wedge the
@@ -281,7 +345,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
             const when = Math.max(msg.when, currentTime);
             this.queueEvent({ when, kind: "param", name: msg.name, value: msg.value });
           } else {
-            this.params[msg.name] = msg.value;
+            this.applyParam(msg.name, msg.value);
           }
         }
         break;
@@ -357,7 +421,6 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
     const outR = outputs[0].length > 1 ? outputs[0][1] : null;
     if (!outL) return true;
     const sr = globalThis.sampleRate || 44100;
-    const dt = 1 / sr;
     const blockStart = currentTime;
     // Reused per-block dispatch bags (fresh literals here put two short-lived
     // arrays on the GC nursery every render quantum).
@@ -373,12 +436,12 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
     const frameLen = this.tables.frameLength();
 
     for (let i = 0; i < outL.length; i++) {
-      const t = blockStart + i * dt;
+      const t = blockStart + i * DT;
       dueOn.length = 0;
       dueOff.length = 0;
       dueParam.length = 0;
       this.drainDue(t, dueOn, dueOff, dueParam);
-      for (const ev of dueParam) this.params[ev.name] = ev.value;
+      for (const ev of dueParam) this.applyParam(ev.name, ev.value);
       for (const ev of dueOn) this.triggerOn(ev);
       for (const ev of dueOff) this.triggerOff(ev.pitch);
 
@@ -390,13 +453,13 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         // Amp envelope: exponential attack / release (one-pole per sample).
         // Sustain HOLDS the env at 1 — only release targets zero. (A previous
         // draft decayed during sustain, killing every note after ~50 ms.)
+        // Coefficients are event-sited caches (applyParam / noteOn / release)
+        // — a param event landing mid-block retargets them at its sample.
         if (v.stage === "attack") {
-          const tau = Math.max(0.002, p.attack) / 3;
-          v.env += (1 - v.env) * (1 - Math.exp(-dt / tau));
+          v.env += (1 - v.env) * this.attCoef;
           if (v.env > 0.985) v.stage = "sustain";
         } else if (v.stage === "release") {
-          const tauR = v.releaseSeconds / 3;
-          v.env += (0 - v.env) * (1 - Math.exp(-dt / tauR));
+          v.env += (0 - v.env) * v.relCoef;
           if (v.env < 0.0004) {
             v.dead = true;
             v.active = false;
@@ -406,22 +469,18 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
 
         // ── Modulation sources (per voice, per sample) ──
         const srcEnv = v.env;
-        const srcLfo = 0.5 + 0.5 * Math.sin(2 * Math.PI * p.modLfoRate * t + v.lfoPhase * 2 * Math.PI);
+        const srcLfo = 0.5 + 0.5 * Math.sin(this.lfoRateK * t + v.lfoPhase2pi);
         const srcVel = v.vel;
         const srcPress = v.pressure;
         const srcA = p.modASrc === 0 ? srcEnv : p.modASrc === 1 ? srcLfo : p.modASrc === 2 ? srcVel : srcPress;
         const srcB = p.modBSrc === 0 ? srcEnv : p.modBSrc === 1 ? srcLfo : p.modBSrc === 2 ? srcVel : srcPress;
 
         // ── Morph / scan position (pair units, wrapping over the table) ──
-        v.scanPos += tN1 * p.scanRate * dt;
+        v.scanPos += this.scanInc;
         let pairPos = v.morphBase * tN1 + v.scanPos;
         // M RATE / M DEPTH crossfade wobble, room-clamped like the main thread
         const frac = pairPos - Math.floor(pairPos);
-        pairPos +=
-          Math.sin(2 * Math.PI * p.morphRate * t + v.lfoPhase * 2 * Math.PI) *
-          p.morphDepth *
-          Math.min(frac, 1 - frac) *
-          0.9;
+        pairPos += Math.sin(this.morphRateK * t + v.lfoPhase2pi) * p.morphDepth * Math.min(frac, 1 - frac) * 0.9;
         // Mod routes -> morph (±2 pair units at full amount)
         pairPos += srcA * p.modAAmt * 2 * (p.modADst === 0 ? 1 : 0);
         pairPos += srcB * p.modBAmt * 2 * (p.modBDst === 0 ? 1 : 0);
@@ -431,7 +490,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         const ib = (ia + 1) % N;
 
         // ── Per-voice cutoff: keytrack + mod routes, stability-clamped SVF ──
-        const keytr = 1 + p.keytrack * (v.f0 / 261.63 - 1);
+        const keytr = 1 + p.keytrack * v.f0Ratio;
         const modCut =
           srcA * p.modAAmt * 2 * (p.modADst === 1 ? 1 : 0) + srcB * p.modBAmt * 2 * (p.modBDst === 1 ? 1 : 0);
         const cutoff = Math.min(18000, Math.max(60, p.cutoff * keytr * (1 + Math.max(-0.9, modCut))));
@@ -441,19 +500,18 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
           v.svfF = c.f;
           v.svfQ = c.q;
         }
-        const mode = Math.round(p.mode);
+        const mode = this.modeRounded;
 
         const frames = this.tables.levels ? this.tables.levels[v.levelIndex] : null;
         if (!frames || frameLen === 0) continue;
 
-        const dB = Math.pow(10, p.level / 20);
-        const amp = v.env * v.vel * dB;
+        const amp = v.env * v.vel * this.dB;
         let voiceL = 0;
         let voiceR = 0;
 
         // ── Unison oscillator bank: lerped frame read at the morph position ──
         for (let cI = 0; cI < v.copyCount; cI++) {
-          v.copyPhase[cI] += v.f0 * Math.pow(2, v.copyDetune[cI] / 1200) * dt;
+          v.copyPhase[cI] += v.copyInc[cI];
           if (v.copyPhase[cI] >= 1) v.copyPhase[cI] -= Math.floor(v.copyPhase[cI]);
           const posA = v.copyPhase[cI] * frameLen;
           const i0 = posA | 0;
@@ -471,7 +529,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
 
         // ── Sub oscillator, one octave down, centred ──
         if (p.sub > 0.005) {
-          v.subPhase += v.f0 * 0.5 * dt;
+          v.subPhase += v.subInc;
           if (v.subPhase >= 1) v.subPhase -= Math.floor(v.subPhase);
           const sub = Math.sin(2 * Math.PI * v.subPhase) * p.sub * 0.7;
           voiceL += sub;

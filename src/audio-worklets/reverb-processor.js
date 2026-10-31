@@ -48,6 +48,35 @@ class ReverbProcessor extends AudioWorkletProcessor {
     this.outLpR = 0;
     // Modulation phase (sample counter — deterministic, no RNG).
     this.modPhase = 0;
+    // Per-comb block-invariant geometry (audit 2026-10-30): the sample loop
+    // used to recompute the delay length, the stereo detune bases and the
+    // drift rate/phase operands for every sample — 4 divides + ~20 mul/adds
+    // per sample whose operands never move. The drift SINS stay per-sample
+    // (they ride modPhase); only their constant operands are hoisted.
+    // sampleRate is constant for the processor's lifetime, so this matches
+    // the old per-sample values bit-exactly (same expressions, same order).
+    const sr = globalThis.sampleRate || 44100;
+    this.combDelay = new Float64Array(4);
+    this.combBaseL = new Float64Array(4);
+    this.combBaseR = new Float64Array(4);
+    this.driftRateL = new Float64Array(4);
+    this.driftPhaseL = new Float64Array(4);
+    this.driftRateR = new Float64Array(4);
+    this.driftPhaseR = new Float64Array(4);
+    for (let c = 0; c < 4; c++) {
+      this.combDelay[c] = (REVERB_COMB_DELAYS[c] * sr) / 48000;
+      const sign = c % 2 === 0 ? 1 : -1;
+      const detuneL = 1 - 0.01 * sign * 0.5;
+      const detuneR = 1 + 0.01 * sign * 0.5;
+      // The read argument was `delaySamples * detune * drift` (left-assoc), so
+      // the base product hoists exactly; drift multiplies it per sample.
+      this.combBaseL[c] = this.combDelay[c] * detuneL;
+      this.combBaseR[c] = this.combDelay[c] * detuneR;
+      this.driftRateL[c] = 1 + c * 0.13;
+      this.driftPhaseL[c] = c * 1.7;
+      this.driftRateR[c] = 1.21 + c * 0.11;
+      this.driftPhaseR[c] = c * 2.3 + 1.1;
+    }
   }
 
   static get parameterDescriptors() {
@@ -126,16 +155,15 @@ class ReverbProcessor extends AudioWorkletProcessor {
       this.modPhase += modRateRad;
       if (this.modPhase > 2 * Math.PI) this.modPhase -= 2 * Math.PI;
       for (let c = 0; c < 4; c++) {
-        const delaySamples = (REVERB_COMB_DELAYS[c] * sr) / 48000;
         const fb = combFeedback[c];
         // Read with linear interp, ±1% stereo detune + slow per-comb drift
         // (modulation kills the metallic fixed-mode ring on long decays).
-        const detuneL = 1 - 0.01 * (c % 2 === 0 ? 1 : -1) * 0.5;
-        const detuneR = 1 + 0.01 * (c % 2 === 0 ? 1 : -1) * 0.5;
-        const driftL = 1 + modDepth * Math.sin(this.modPhase * (1 + c * 0.13) + c * 1.7);
-        const driftR = 1 + modDepth * Math.sin(this.modPhase * (1.21 + c * 0.11) + c * 2.3 + 1.1);
-        const readL = this.readComb(c, 0, delaySamples * detuneL * driftL);
-        const readR = this.readComb(c, 1, delaySamples * detuneR * driftR);
+        // Geometry base and drift operands are constructor-hoisted — only the
+        // modPhase-dependent sin runs per sample.
+        const driftL = 1 + modDepth * Math.sin(this.modPhase * this.driftRateL[c] + this.driftPhaseL[c]);
+        const driftR = 1 + modDepth * Math.sin(this.modPhase * this.driftRateR[c] + this.driftPhaseR[c]);
+        const readL = this.readComb(c, 0, this.combBaseL[c] * driftL);
+        const readR = this.readComb(c, 1, this.combBaseR[c] * driftR);
         // Damping LP in feedback loop
         this.combDampL[c] += dampAlpha * (readL - this.combDampL[c]);
         this.combDampR[c] += dampAlpha * (readR - this.combDampR[c]);
