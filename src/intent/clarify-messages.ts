@@ -69,6 +69,27 @@ export const CLARIFY_MESSAGES: Readonly<Record<string, string>> = {
   "preset-bank-cold":
     "The preset bank is still loading, so I couldn't read it. Nothing was changed — try again in a moment.",
   "preset-target": "Which track should the preset land on? I didn't change anything — name the track.",
+  // MIX-LANGUAGE CONSTRAINTS (the "only change X / keep Y" surface).
+  //
+  // These used to be Slovak sentences produced inline by
+  // src/intent/mix-language-constraints.ts, which meant the vocabulary had
+  // TWO homes: this catalog (English) and the resolver (Slovak). The MCP
+  // surface is an AGENT surface - it hands the refusal to a program, not to
+  // a reader - and every other refusal it emits is English, so a Slovak
+  // sentence there was an anomaly, not a dialect. The panel reads the same
+  // catalog (clarifyMessage(route.reason)), so one vocabulary, one language,
+  // one home.
+  "mix-constraint-scope-unclear":
+    "I couldn't read which track or pad you meant to protect, so I didn't change anything. Name one track or pad in its own sentence.",
+  "mix-constraint-ambiguous-target":
+    "That name matches more than one track or pad, so I didn't change anything. Name the exact one.",
+  "mix-constraint-target-unknown":
+    "I couldn't find that track or pad in this project, so I didn't change anything. Name an existing one.",
+  "mix-constraint-target-conflict":
+    "The same target is both allowed and protected, so I didn't change anything. Say which of the two may change.",
+  "mix-constraint-missing-target":
+    "The constraints are clear, but there's no mix target, so I didn't change anything. Say what should change.",
+  "mix-constraint-target": "Which track or pad did you mean? Name one.",
 };
 
 /**

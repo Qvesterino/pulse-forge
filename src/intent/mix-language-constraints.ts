@@ -19,6 +19,24 @@ export type MixLanguageConstraints =
   | { status: "clarify"; reason: string; choices: string[]; retries?: string[] }
   | { status: "ready"; plannerText: string; constraints: ProposalConstraints; selections: MixConstraintSelection[] };
 
+/**
+ * The clarify reasons this resolver produces are SLUGS, not sentences.
+ *
+ * The reason is the machine key: the SFT teacher compacts it into the
+ * training data and the mining log groups by it, so it must be stable and
+ * must never be reworded. The sentence the producer reads lives in
+ * CLARIFY_MESSAGES (src/intent/clarify-messages.ts) and is resolved with
+ * `clarifyMessage(reason)` - on the panel AND on the MCP surface, which is
+ * an agent surface and speaks English like every other refusal it emits.
+ */
+export const MIX_CONSTRAINT_CLARIFY = {
+  scopeUnclear: "mix-constraint-scope-unclear",
+  ambiguousTarget: "mix-constraint-ambiguous-target",
+  targetUnknown: "mix-constraint-target-unknown",
+  targetConflict: "mix-constraint-target-conflict",
+  missingTarget: "mix-constraint-missing-target",
+} as const;
+
 const normalized = (value: string): string =>
   value
     .normalize("NFD")
@@ -170,7 +188,7 @@ export function resolveMixLanguageConstraints(doc: ProjectDocument, text: string
       ) {
         return {
           status: "clarify",
-          reason: `Nerozumiem presnému rozsahu obmedzenia: "${clause}". Pomenuj jednu stopu alebo pad v samostatnej vete.`,
+          reason: MIX_CONSTRAINT_CLARIFY.scopeUnclear,
           choices: [],
         };
       }
@@ -191,9 +209,7 @@ export function resolveMixLanguageConstraints(doc: ProjectDocument, text: string
       });
       return {
         status: "clarify",
-        reason: matches.length
-          ? `"${target}" má viac možností. Vyber presnú stopu alebo pad.`
-          : `Nenašiel som jednoznačný cieľ "${target}". Pomenuj stopu alebo pad.`,
+        reason: matches.length > 0 ? MIX_CONSTRAINT_CLARIFY.ambiguousTarget : MIX_CONSTRAINT_CLARIFY.targetUnknown,
         choices: matches.map((item) => `${item.label} [${item.padId ?? item.trackId}]`),
         ...(retries.length ? { retries } : {}),
       };
@@ -218,7 +234,7 @@ export function resolveMixLanguageConstraints(doc: ProjectDocument, text: string
   ) {
     return {
       status: "clarify",
-      reason: "Rovnaký cieľ je povolený aj chránený. Vyber, čo sa môže zmeniť.",
+      reason: MIX_CONSTRAINT_CLARIFY.targetConflict,
       choices: [],
     };
   }
@@ -226,8 +242,7 @@ export function resolveMixLanguageConstraints(doc: ProjectDocument, text: string
   if (plannerText.length < 3)
     return {
       status: "clarify",
-      reason:
-        "Obmedzenia sú jasné, ale chýba hudobný cieľ. Povedz napríklad, či má byť basa teplejšia alebo údernejšia.",
+      reason: MIX_CONSTRAINT_CLARIFY.missingTarget,
       choices: [],
     };
   return { status: "ready", plannerText, constraints, selections };

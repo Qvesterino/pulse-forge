@@ -16,6 +16,7 @@ import { validateMusicalProposal } from "../intent/validate-musical-proposal";
 import { deepEqualRef } from "../commands/docDelta";
 import { snapshot } from "../commands/core";
 import type { MixConstraintSelection } from "../intent/mix-language-constraints";
+import { clarifyMessage } from "../intent/clarify-messages";
 
 /**
  * kyx_mix_idea PREVIEW — the auto-rendered before/after A/B.
@@ -494,7 +495,8 @@ export async function previewMixIdea(
   const { mergeProposalConstraints, resolveMixLanguageConstraints } =
     await import("../intent/mix-language-constraints");
   const language = resolveMixLanguageConstraints(doc, request.idea);
-  if (language.status === "clarify") return { ok: false, reason: [language.reason, ...language.choices].join("\n") };
+  if (language.status === "clarify")
+    return { ok: false, reason: [clarifyMessage(language.reason), ...language.choices].join("\n") };
   const constraints =
     language.status === "ready"
       ? explicitConstraints

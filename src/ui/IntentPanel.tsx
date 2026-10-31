@@ -1482,12 +1482,12 @@ export function IntentPanel() {
       if (resolved.retries?.length) {
         setClarify({
           reason: "mix-constraint-target",
-          message: resolved.reason,
+          message: clarifyMessage(resolved.reason),
           executable: resolved.retries,
           advice: resolved.choices,
           prompt,
         });
-      } else setError([resolved.reason, ...resolved.choices].join(" · "));
+      } else setError([clarifyMessage(resolved.reason), ...resolved.choices].join(" · "));
       return true;
     }
     if (!isMixRequest) {

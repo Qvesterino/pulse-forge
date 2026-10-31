@@ -15571,7 +15571,7 @@ function refuseUnguardedMixConstraint(doc: ProjectDocument, route: RoutedIntent,
   if (route.kind === "pattern" || route.kind === "revise") return null;
   const resolution = resolveMixLanguageConstraints(doc, text);
   if (resolution.status === "clarify")
-    return mcpError("POLICY_REFUSED", [resolution.reason, ...resolution.choices].join("\n"));
+    return mcpError("POLICY_REFUSED", [clarifyMessage(resolution.reason), ...resolution.choices].join("\n"));
   if (resolution.status === "ready")
     return mcpError(
       "POLICY_REFUSED",
