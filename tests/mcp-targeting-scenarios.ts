@@ -158,7 +158,7 @@ export const TARGETING_SCENARIOS: readonly TargetingScenario[] = [
       mutated: false,
       errorCode: "POLICY_REFUSED",
       changedDocFields: [],
-      textContains: ["Send the change on its own"],
+      textContains: ["Pomenuj jednu stopu alebo pad v samostatnej vete"],
     },
   },
   {

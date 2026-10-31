@@ -69,7 +69,10 @@ describe("IntentPanel — project Producer Brief", () => {
     fireEvent.click(memoryToggle);
     fireEvent.click(screen.getByRole("button", { name: "GENERATE" }));
 
-    await waitFor(() => expect(lastGeneration()?.docId).toBe(doc.id), { timeout: 20000 });
+    // The seed above carries `at: 0`, so waiting on `at > 0` waits for the NEW
+    // generation. Waiting on the docId instead would be satisfied by the seed
+    // itself, and the assertion would read the seed instead of the result.
+    await waitFor(() => expect(lastGeneration()?.at ?? 0).toBeGreaterThan(0), { timeout: 20000 });
     expect(lastGeneration()?.intent.genre).toBe("trap");
     expect(lastGeneration()?.intent.bpmRange).toEqual([140, 140]);
     expect(lastGeneration()?.intent.mood).toBe("dark");

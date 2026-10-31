@@ -172,9 +172,31 @@ function evaluate(
   };
 }
 
+/**
+ * The planId a reviewed dry run handed back, if it handed one back.
+ *
+ * `data` is `unknown` on the wire, so it is narrowed here rather than cast.
+ */
+function reviewedPlanId(result: McpToolResult): string | null {
+  const data = result.data;
+  if (data == null || typeof data !== "object" || Array.isArray(data)) return null;
+  const planId = (data as Record<string, unknown>).planId;
+  return typeof planId === "string" && planId.trim() !== "" ? planId.trim() : null;
+}
+
 async function executeCall(host: HeadlessHost, scenario: TargetingScenario): Promise<McpToolResult> {
   if (scenario.call.kind === "intent") {
-    return host.call("kyx_intent", { instruction: scenario.call.instruction });
+    const instruction = scenario.call.instruction;
+    // MCP document edits require the REVIEWED two-step flow: a dry run returns a
+    // reviewable plan plus a planId, and the same instruction with that planId
+    // applies the exact proposal against the same project state. This benchmark
+    // measures GROUNDING, so it speaks the protocol an external agent must
+    // speak — the review step is transport, not grounding. A refusal, a clarify
+    // or a no-op carries no planId and IS the answer.
+    const preview = await host.call("kyx_intent", { instruction, dry_run: true });
+    const planId = reviewedPlanId(preview);
+    if (planId == null) return preview;
+    return host.call("kyx_intent", { instruction, planId });
   }
   return host.call(scenario.call.name, scenario.call.args);
 }

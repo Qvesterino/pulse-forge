@@ -3856,6 +3856,74 @@ verified by it; the commit message is not a durable place for that, so this para
 
 ---
 
+#### 10.16.14 Two reds that were not "stale" — and one of them was a shipped feature that could not run
+
+The gates session handed over two red specs with the note that they were _"stale"_ and in _"your lane"_.
+**Both halves of that framing were wrong, and checking them is the finding.** One spec was a stale pin whose
+cause is a real product inconsistency; the other was a **product defect that had been silently blocking a
+shipped feature for days**, and it had nothing to do with the wave that was being blamed for it.
+
+**First, the attribution — measured, not assumed.** The two reds were re-run against the **pre-wave** tree
+(`82495d24`, detached worktree, same node_modules):
+
+| spec                                         | at `ca8e7583` (current) | at `82495d24` (pre-wave)       | verdict                            |
+| -------------------------------------------- | ----------------------- | ------------------------------ | ---------------------------------- |
+| `tests/mcp-targeting-benchmark.test.ts`      | 18 of 23 scenarios      | 22 of 23                       | **the wave's fault** (5 scenarios) |
+| `tests/ui/IntentPanelProducerBrief.test.tsx` | 1 of 6 failed           | **1 of 6 failed, identically** | **not the wave's fault**           |
+
+So one red was caused by the reviewed-plans wave and the other was already broken before it. A red that
+predates the change people blame is the most expensive kind of red to leave alone, because it looks like
+collateral damage of the current work.
+
+**1 · The MCP targeting benchmark did not speak the reviewed-plan protocol (IN PLACE).**
+The reviewed-plans wave made an external agent's mutating intent require two steps: `kyx_intent { instruction,
+dry_run: true }` returns a reviewable plan **plus a `planId`**, and the same instruction with that `planId`
+applies the exact proposal (`src/mcp/tools.ts:5855-5860`). The benchmark harness called `kyx_intent` directly
+(`src/mcp/targeting-benchmark.ts:176`), so five scenarios received `CONFIRMATION_REQUIRED` instead of an edit
+— the harness was measuring a protocol the product no longer speaks. **IN PLACE:** the harness now speaks the
+protocol an external agent must speak — a dry run, then the apply **only when the preview carries a `planId`**;
+a refusal, a clarify or a no-op carries none and **is** the answer. The benchmark still measures what it exists
+to measure (**grounding**, per its own docstring) — the review step is transport, not grounding. **Measured:
+18 of 23 → 22 of 23**, and the last one below.
+
+**2 · A1's pin was stale — and the reason it was stale is itself a finding (IN PLACE, one open decision).**
+The scenario pinned the English clarify sentence _"Send the change on its own."_ — the `negated-mutation-command`
+entry of the clarify catalogue (`src/intent/clarify-messages.ts:33-34`). The intent now routes "a change **and**
+an exception" through `resolveMixLanguageConstraints`, which returns a raw sentence **outside** the catalogue
+(`src/intent/mix-language-constraints.ts:173`) — and in Slovak, while every other clarify goes through
+`CLARIFY_MESSAGES` with a stable slug. The refusal itself is intact: the scenario still sees **no mutation,
+`POLICY_REFUSED`, no changed fields**; only the sentence differs. **IN PLACE:** the pin now names the sentence
+the product says — pinning the sentence is the point of the pin, and weakening it to a substring of the echoed
+instruction would have turned a guard off to make it green. **Still open (a product decision, not a patch):**
+that path is the one clarify sentence that bypasses the catalogue, and the only Slovak one on an otherwise
+English clarify surface. It belongs in the catalogue with a slug, and **which language the clarify surface
+speaks is the owner's call** — the app's panel is Slovak-first and the MCP tool descriptions are English, so
+both answers are defensible and only one can be chosen.
+
+**3 · The Producer Brief's flagship flow could not run at all (IN PLACE — this was a real defect).**
+The panel refused the generation with **`Pattern preservation refused: Protected project element changed: bpm,
+bpm`** — and the red was not a stale expectation, it was a **shipped feature that could not be used**.
+**Root cause, measured:** `patternProtectionScope` protected `bpm`, `timeSignature` and `groove` whenever the
+intent preserved **any** role (`src/intent/pattern-proposal.ts:44`, before this change). The saved Producer
+Brief holds _both_ "keep my bass" (**preserve**) and "140 BPM" (**hard fact**) — so the guard protected exactly
+the tempo that the user's own confirmed fact asks to change, and refused the edit with a message that names the
+tempo and not the collision. The feature is exposed in the UI — the toggle, the save button, the brief chips —
+and its headline use case, _generate from saved facts with no prompt_, could not run at all. **IN PLACE:** an
+explicit tempo request is no longer treated as a violation of tempo protection; the protection still holds
+whenever the intent names no tempo. **Measured:** `tests/ui/IntentPanelProducerBrief.test.tsx` goes from 1 of 6
+failing to **6 of 6 passing**, and the generation now lands instead of being refused.
+
+**4 · A guard whose wait condition its own seed satisfies reports the wrong cause (IN PLACE).**
+That test seeded a previous generation with `docId: doc.id` and then waited for
+`lastGeneration()?.docId === doc.id` — a condition **the seed itself satisfies**. The wait therefore resolved
+before the new generation existed, and the assertion read the seed: the failure said _"expected 'house' to be
+'trap'"_, which points at the genre merge and says nothing about the refusal that actually stopped it. The
+audit found the real cause only by rendering the panel in a probe and reading its error text. **IN PLACE:** the
+wait now keys on `at > 0` (the seed carries `at: 0`), so it waits for the new generation — and if the
+generation never lands, the failure says so instead of naming the wrong field.
+
+---
+
 ## 11. Strategic proposals requiring explicit approval
 
 None of these is implemented. Each needs a product decision, not a patch.

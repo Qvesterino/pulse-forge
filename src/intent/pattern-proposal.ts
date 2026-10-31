@@ -41,7 +41,16 @@ type Result<T> = { ok: true; value: T } | { ok: false; reason: string };
  * one of several possible user-owned tracks. */
 export function patternProtectionScope(doc: ProjectDocument, plan: GenerationPlan): Result<ProposalConstraints> {
   const protect: ProposalConstraints["protect"] = [];
-  if (plan.intent.preserve?.length) protect.push(["bpm"], ["timeSignature"], ["groove"]);
+  // A PRESERVE rule protects the project's tempo, meter and groove — the
+  // generated pattern must not silently move them. But an EXPLICIT tempo
+  // request is not a violation of that protection: it IS the request. The
+  // saved Producer Brief can hold both at once ("keep my bass" AND "140 bpm"),
+  // and protecting the tempo there refuses the very edit the user confirmed.
+  const explicitTempo = plan.intent.bpmRange != null;
+  if (plan.intent.preserve?.length) {
+    if (!explicitTempo) protect.push(["bpm"]);
+    protect.push(["timeSignature"], ["groove"]);
+  }
   for (const role of plan.intent.preserve ?? []) {
     if (role === "drums") {
       const drums = doc.tracks.filter((track) => track.kind === "drum");
