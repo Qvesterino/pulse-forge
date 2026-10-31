@@ -952,15 +952,24 @@ describe("scheduler realtime loop wrap", () => {
     h.scheduler.stop();
   });
 
-  it("pattern mode: scheduler rebases to loopStart when position reaches loopEnd", () => {
+  it("pattern mode: the wrap re-anchors the playhead at the loop boundary", () => {
     // 16-step default pattern is 16 * STEP_TICKS = 1920 ticks. Loop over the
-    // first 8 steps (0..960) so position wraps to 0 after a long advance.
+    // first 8 steps (0..960) so the playhead crosses the loop end.
     const doc = createDefaultProject();
     const h = makeHarness(doc, "pattern");
     h.transport.setLoop(true, 0, 8 * STEP_TICKS);
     h.transport.play(0);
     h.advance(2);
+    // The wrap ARMS on the tick that crosses the boundary and COMMITS on the
+    // next one. This harness drives the scheduler by hand and runs no 5 ms seam
+    // committer, so the tick fallback does the commit.
     h.scheduler["tick"]();
+    h.scheduler["tick"]();
+    // The playhead does not run away past the loop end: it is re-anchored at
+    // the boundary. It is the OVERSHOOT past loopStart — the playhead is
+    // continuous across the seam (no time lost or gained), so it is not 0 —
+    // and it is not the runaway past loopEnd.
+    expect(h.transport.position).toBeGreaterThan(0);
     expect(h.transport.position).toBeLessThan(8 * STEP_TICKS);
     h.scheduler.stop();
   });
