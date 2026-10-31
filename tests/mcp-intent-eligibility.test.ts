@@ -46,9 +46,16 @@ describe("MCP intent eligibility table (AS-014)", () => {
 
   it("a mix ask now executes over MCP as ONE undo step with the profile summary", async () => {
     const h = host();
-    // An external agent's document edit is a REVIEWED plan: preview, then apply
-    // that planId. The receipt is unchanged in substance — the label still names
-    // the mix profile, the read-back still names what moved.
+    // An external agent's document edit is a REVIEWED plan: the direct call is
+    // refused, the preview hands out a planId, and that plan is what lands.
+    // The refusal is the seam's entry point — without it the spec would prove
+    // nothing about the gate that stands in front of the mutation.
+    const direct = await h.call("kyx_intent", { instruction: "make the mix darker" });
+    expect(direct.isError, direct.text).toBe(true);
+    expect(direct.errorCode).toBe("CONFIRMATION_REQUIRED");
+    expect(direct.mutated).toBe(false);
+    // The receipt is unchanged in substance — the label still names the mix
+    // profile, the read-back still names what moved.
     const result = await applyIntent(h, "make the mix darker");
     expect(result.isError, result.text).not.toBe(true);
     expect(result.mutated, result.text).toBe(true);
