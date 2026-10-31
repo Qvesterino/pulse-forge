@@ -89,7 +89,7 @@ describe("changeSummary", () => {
   it("reports an insertion at the end of the file", () => {
     const summary = changeSummary("a\nb\n", "a\nb\nc\n");
     expect(summary).toContain("line 3");
-    expect(summary).toContain('"c"');
+    expect(summary).toContain("'c'");
   });
 
   it("stays short enough that twenty findings still fit the CI annotation", () => {

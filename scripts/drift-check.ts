@@ -216,7 +216,7 @@ export function changeSummary(head: string, worktree: string): string {
     if (!trimmed) return "(blank)";
     return trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
   };
-  return `first change at line ${first + 1}: regenerated "${snippet(workLines[first])}"`;
+  return `first change at line ${first + 1}: regenerated '${snippet(workLines[first])}'`;
 }
 
 export const GENERATORS: GeneratorSection[] = [
