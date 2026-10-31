@@ -109,3 +109,35 @@ describe("MixPreviewChip", () => {
     expect(screen.queryByText("MIX PREVIEW")).toBeNull();
   });
 });
+
+describe("MixPreviewChip — staleness guard (CF-19)", () => {
+  it("NEGATIVE: APPLY after the project moved under the preview refuses and runs nothing", async () => {
+    clearMixPreviewLane();
+    const doc = createProjectFromTemplate("house");
+    const services = mountedServices(doc);
+    render(
+      <ServicesContext.Provider value={services}>
+        <MixPreviewChip />
+      </ServicesContext.Provider>,
+    );
+
+    // The lane froze the doc the user auditioned…
+    const lane = fakeLane(doc);
+    act(() => armMixPreviewLane(lane));
+    expect(screen.getByText("MIX PREVIEW")).toBeTruthy();
+
+    // …and the project moved since: a different document is live now.
+    const moved = { ...doc, bpm: 172 };
+    (services.store as { getDoc: () => ProjectDocument }).getDoc = () => moved;
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("APPLY"));
+    });
+
+    // What was heard must not land: the command never runs and the chip says
+    // how to get a fresh preview instead of applying a stale one.
+    expect(services.store.execute).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Project changed after this preview/)).toBeTruthy();
+    expect(currentMixPreviewLane()).not.toBeNull();
+  });
+});

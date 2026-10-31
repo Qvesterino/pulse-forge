@@ -219,6 +219,15 @@
       "negativeSpec": "NEGATIVE: a STORED active slot still reads ACTIVE · STORED (no armed wording)"
     },
     {
+      "id": "mix-preview-staleness",
+      "status": "COVERED",
+      "entryPoint": "src/ui/MixPreviewChipLazy.tsx applyAndVerify — revision check + mixPreviewMatchesProject before the store executes",
+      "note": "CF-19: what the user auditioned must be what lands, or nothing lands. APPLY first compares the lane's frozen revision/doc against the LIVE store: a moved project refuses with 'Project changed after this preview…' and the command never executes. Beyond the audit's ask, a peer commit (b75eae4b) added a post-apply VERIFY RENDER — the applied result is measured against the preview's promise, not assumed.",
+      "spec": "tests/ui/MixPreviewChip.test.tsx",
+      "seamEvent": "Project changed after this preview",
+      "negativeSpec": "NEGATIVE: APPLY after the project moved under the preview refuses and runs nothing"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
