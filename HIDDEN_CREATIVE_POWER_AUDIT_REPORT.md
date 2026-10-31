@@ -3922,6 +3922,79 @@ audit found the real cause only by rendering the panel in a probe and reading it
 wait now keys on `at > 0` (the seed carries `at: 0`), so it waits for the new generation — and if the
 generation never lands, the failure says so instead of naming the wrong field.
 
+#### 10.16.15 The CI verdict on `ba56058d`: fifteen reds, and an annotation that could only show twelve of them
+
+The `Unit tests (vitest)` job on `ba56058d` is **red** (check-run `124571431657`, run `41212906589`).
+Its own ratchet line reads:
+
+```
+suite run: 1351 files · 14812 passed · 15 failed · 148 skipped | ledger: 0 entries (against 0215d6dc)
+✗ NEW REDS (15) — fix, or classify in suite-expectations.json with owner + reason
+```
+
+**The annotation on that job shows only twelve of the fifteen, and that is a property of the CI script,
+not of the failures.** The failure text is grepped with `head -24` lines (`.github/workflows/ci.yml:125`)
+and the whole annotation is written through `head -c 4096` characters
+(`.github/workflows/ci.yml:128`) — the ledger list is cut mid-entry. So the visible twelve are the
+**first** twelve, and the three hiding behind the cap are still there. An annotation is a pointer, not a
+census, and here the difference is not academic: the three missing specs are exactly the ones the
+handover list did not name.
+
+**The census, measured on the subject the gate rejects.** Detached worktree at `ba56058d`, the same
+`node_modules`, the repo's own ratchet (`npm run test:expectations`): `1351 files · 14810 passed ·
+**17 failed** · 148 skipped` → 17 NEW REDS. Two more than CI — and both extras are **load-induced, not
+code**: `tests/stress.test.ts` asserts `elapsed < 100 ms` and measured `110.46 ms` under the full-suite
+load, and `tests/bridge-rate-limit.test.ts` is a token-bucket timing spec. Re-running just those five
+candidate specs in isolation: **3 failed / 2 passed**, and the two that pass alone are exactly the two
+the load tipped over.
+
+**The reconciliation closes with no residue:**
+
+| subject                | count  | composition                                                  |
+| ---------------------- | ------ | ------------------------------------------------------------ |
+| CI runner (`ba56058d`) | **15** | 12 visible in the annotation + 3 hidden by the 4096-char cap |
+| my machine, full suite | **17** | 15 + 2 load-induced (`bridge-rate-limit`, `stress`)          |
+
+**The fifteen, by file** (specs in parentheses):
+
+| file                                              | specs | what it is                                                             |
+| ------------------------------------------------- | ----- | ---------------------------------------------------------------------- |
+| `tests/audit-observation-contract.test.ts`        | 1     | ratchet: `'atomic'` is no longer read without a declaration            |
+| `tests/intent-e2e-audit.test.ts`                  | 1     | readback form: `trackId=…` vs `mix landed at …`                        |
+| `tests/mcp-ai-control-hardening.test.ts`          | 2     | reviewed-plans fallout — the tool answers `CONFIRMATION_REQUIRED`      |
+| `tests/mcp-ai-control-request-regression.test.ts` | 1     | reviewed-plans fallout — same                                          |
+| `tests/mcp-error-codes.test.ts`                   | 1     | **a real hole, not fallout**: an `isError:true` with no `errorCode`    |
+| `tests/mcp-flagship-control.test.ts`              | 2     | KOREŇ routing + lazy-bank warm-up                                      |
+| `tests/mcp-instrument-control.test.ts`            | 1     | KOPA/TSAR track creation through intent                                |
+| `tests/mcp-intent-eligibility.test.ts`            | 2     | reviewed-plans fallout — same                                          |
+| `tests/mcp-intent-param-readback.test.ts`         | 1     | the readback string names the track, not the param                     |
+| `tests/mcp-paramintent-readback.test.ts`          | 1     | **hidden by the cap** — `paramIntent` read-back (F-18)                 |
+| `tests/mcp-web-host.test.ts`                      | 1     | **hidden by the cap** — the relay socket round-trip                    |
+| `tests/reaction-bridge.test.ts`                   | 1     | **hidden by the cap** — source-pin on `delegatedToNestedRoute = true;` |
+
+**Correction to the handover list.** The expected set named nine files; the real set is **twelve files /
+fifteen specs**. `reaction-bridge` was in the expected set and is real — it fails deterministically in
+isolation too, not only under load. Three files were missing from it: `mcp-intent-param-readback`,
+`mcp-paramintent-readback`, `mcp-web-host`.
+
+**What is green, measured in both subjects.** `tests/mcp-targeting-benchmark.test.ts` and
+`tests/ui/IntentPanelProducerBrief.test.tsx` appear in **neither** failure set — the benchmark and the
+Producer Brief are green in CI and locally, which is the pair §10.16.14 went after.
+
+**The 17 → 15 comparison is not a delta anyone should quote.** 17 failed / 14810 passed was measured at
+`3e05eaaa`; 15 failed / 14812 passed at `ba56058d`. The reviewed-plans wave landed **between** those two
+commits and moved the MCP contract underneath those specs, so the two numbers do not describe the same
+subject. The benchmark's five scenarios and the Producer Brief's one are gone; what is left is the
+wave's fallout.
+
+**Ownership.** Thirteen of the fifteen sit in MCP/intent specs owned by the reviewed-plans wave; the one
+genuine hole is `mcp-error-codes` — an error result an agent cannot branch on. The ledger
+(`suite-expectations.json`) holds **0 entries** against `0215d6dc`, so the ratchet wants either fixes or
+classified entries with owner + reason. This is the ratchet working as designed, not the ratchet
+breaking.
+
+**Evidence:** `docs/audits/2026-10-27-hidden-creative-power/ci-unit-tests-census-ba56058d.log`.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval

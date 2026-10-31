@@ -1,0 +1,65 @@
+CI VERDICT - Unit tests (vitest) on ba56058d
+============================================
+check-run 124571431657 | run 41212906589 | job: failed | measured 2026-10-31
+
+[1] THE JOB'S OWN RATCHET LINE (job annotation, .github/workflows/ci.yml:122-128)
+suite run: 1351 files | 14812 passed | 15 failed | 148 skipped | ledger: 0 entries (against 0215d6dc)
+x NEW REDS (15) - fix, or classify in suite-expectations.json with owner + reason
+
+[2] THE ANNOTATION IS TRUNCATED BY THE CI SCRIPT, NOT BY GITHUB
+.github/workflows/ci.yml:125   grep -aE 'AssertionError|...|FAIL ' /tmp/vitest.plain.log | head -24
+.github/workflows/ci.yml:128   ... | tr -d '\r' | tr '\n' ' ' | ... | head -c 4096
+=> the annotation carries 12 of the 15 FAIL entries; the ledger list is cut mid-entry.
+=> "12 visible" + "15 failed" => the missing 3 are BEYOND the cap, not absent.
+
+[3] FULL CENSUS - MEASURED ON THE SUBJECT THE GATE REJECTS
+detached worktree at ba56058d, same node_modules, the repo's own ratchet:
+    npm run test:expectations
+suite run: 1351 files | 14810 passed | 17 failed | 148 skipped | ledger: 0 entries (against 0215d6dc)
+x NEW REDS (17) - fix, or classify in suite-expectations.json with owner + reason:
+    - tests/audit-observation-contract.test.ts > audit-observation-contract RATCHET - the known undeclared-input list is not stale
+    - tests/bridge-rate-limit.test.ts > bridge rate limiter keeps independent token buckets for separate bridge instances
+    - tests/intent-e2e-audit.test.ts > E2E readback verification loop effect readback shows the knob landing; set-mode shows the clamped value
+    - tests/mcp-ai-control-hardening.test.ts > AI control hardening - truthful intent receipts reads back the changed value for a non-param route
+    - tests/mcp-ai-control-hardening.test.ts > AI control hardening - truthful intent receipts reports a no-op intent as not mutated, with no undo claim
+    - tests/mcp-ai-control-request-regression.test.ts > AI control safety regression reports a repeated mute as a no-op without claiming an undo step
+    - tests/mcp-error-codes.test.ts > mcp typed error codes (P2-B, GAP-08) GATE: every error result is constructed through mcpError - no un-coded literals
+    - tests/mcp-flagship-control.test.ts > KOREŇ flagship MCP and Intent control keeps an explicit KOREŇ edit routed as an effect when a genre is also named
+    - tests/mcp-flagship-control.test.ts > KOREŇ flagship MCP and Intent control warms the lazy bank and verifies a KOPA preset on the first MCP Intent request
+    - tests/mcp-instrument-control.test.ts > flagship instrument intent and MCP control routes explicit KOPA and TSAR track creation through deterministic intent
+    - tests/mcp-intent-eligibility.test.ts > MCP intent eligibility table (AS-014) a complaint ask returns the READ-ONLY diagnosis with verified next asks
+    - tests/mcp-intent-eligibility.test.ts > MCP intent eligibility table (AS-014) a mix ask now executes over MCP as ONE undo step with the profile summary
+    - tests/mcp-intent-param-readback.test.ts > the MCP param branch reads the value back reports the value that landed, not the bare claim that it did
+    - tests/mcp-paramintent-readback.test.ts > kyx_intent paramIntent read-back F-18: an add-case entry names the landed param and value, not just the track
+    - tests/mcp-web-host.test.ts > web mcp bridge lifecycle opt-in + token opens the relay socket with the tokened URL; mcp-call round-trips to the store
+    - tests/reaction-bridge.test.ts > F1 glue - the panel wiring the local-model re-entry hands the proposal to the nested call
+    - tests/stress.test.ts > Stress tests - large projects normalizes a large project without error
+
+[4] ISOLATION SPLIT OF THE FIVE CANDIDATES NOT VISIBLE IN THE ANNOTATION
+    npx vitest run tests/stress.test.ts tests/bridge-rate-limit.test.ts tests/mcp-web-host.test.ts \
+                   tests/mcp-paramintent-readback.test.ts tests/reaction-bridge.test.ts
+  FAILED: tests/mcp-paramintent-readback.test.ts
+          tests/mcp-web-host.test.ts
+          tests/reaction-bridge.test.ts
+  PASSED: tests/bridge-rate-limit.test.ts
+          tests/stress.test.ts
+  stress.test.ts failure text under full-suite load:
+      AssertionError: expected 110.45950000000084 to be less than 100
+      at tests/stress.test.ts:143  (expect(elapsed).toBeLessThan(100))
+  => the two that pass alone are exactly the two the full-suite load tipped over.
+
+[5] RECONCILIATION - THE ARITHMETIC CLOSES WITH NO RESIDUE
+  CI    15 = 12 visible in the annotation
+             + 3 hidden by the 4096-char cap (mcp-paramintent-readback, mcp-web-host, reaction-bridge)
+  local 17 = 15
+             + 2 load-induced (bridge-rate-limit, stress) - red on a busy machine, green on the idle CI runner
+
+[6] GREEN IN BOTH SUBJECTS (absent from the failure set)
+  tests/mcp-targeting-benchmark.test.ts
+  tests/ui/IntentPanelProducerBrief.test.tsx
+
+[7] NOTE ON THE 17 -> 15 COMPARISON
+  17 failed / 14810 passed was measured at 3e05eaaa; 15 failed / 14812 passed at ba56058d.
+  The reviewed-plans wave landed BETWEEN those two commits and moved the MCP contract
+  under those specs, so the two numbers do not describe the same subject and the
+  difference is not a clean delta for anyone.
