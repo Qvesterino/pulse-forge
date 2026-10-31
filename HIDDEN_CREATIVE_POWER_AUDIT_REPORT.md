@@ -3804,7 +3804,41 @@ Both clauses were measured, not assumed:
 
 **Not verified — and deliberately not attempted here:** whether the 20 KB can be offset by a diet. The file names the diet targets ("the App/commands eager anchors, and the VSCO generated layer tables", `check-bundle-size.mjs:164-166`), and the `App` chunk did grow 1.5 KB in this wave — but that is a peer's wave, and a diet is real work, not a measurement. What **is** measured is that the growth is **not** dead weight, so an offset, if the owner wants one, has to come out of shipped product.
 
-**Artifacts:** `docs/audits/2026-10-27-hidden-creative-power/bundle-gate-baseline-82495d24-ci-config.log`, `bundle-gate-current-ca8e7583-ci-config.log`, `bundle-gate-chunk-delta-and-dead-weight-audit.log`.
+**IN PLACE (2026-10-31) — the wave was paid back by the diet, not by a cap raise.** While this section was
+being written, the peer session paid the growth back through the **second** clause of the rule:
+`src/intent/favorites.ts` — the favorites ledger, whose module-level import in `src/ui/DiceContext.tsx`
+hoisted the dice/favorites shared chunk onto the studio boot graph for every session, whether or not anyone
+ever stars a roll — now loads on first need, and `tests/boot-path-seams.test.ts` pins it as `MUST_STAY_OUT`.
+**Independently measured by the audit, in the CI-equivalent shape, on `b507d264` + that diff: DAW JS sum
+6005 KB, boot path 2143 KB** (from 2164 KB) — the boot path came down by 21 KB, which is exactly the clause
+the rule names, and the ceiling was raised to **6071 = 6005 + the same 66 KB margin** the 2026-10-21 wave
+took, with the **2200 KB boot-path cap unchanged**.
+
+**Verified independently:** the audit re-measured the peer's numbers from its own detached worktree, and they
+agree **to the kilobyte** — DAW sum 6005 KB, boot path 2143 KB. The ceiling also holds for the *other* shape:
+with the sibling present the same tree measures **DAW JS sum 6025 KB** (also measured by the audit), so
+**6071 holds for both** — 66 KB of headroom on the CI-faithful build, 46 KB on the with-sibling one.
+
+**So the rule was not broken: it had a legal path, and it was taken.** The finding that survives this wave is
+narrower, and it is about the **instrument**, not the rule: **the dead-weight audit's reachability question
+cannot fail in a production build** — rollup only emits a chunk that something imports — so the answer the
+2026-10-28 entry cited as its evidence ("211 of 211 chunks reachable") was never *able* to say "there is dead
+weight"; it could only ever say "no". The full audit answers the question the rule actually cares about, and
+still finds nothing to delete: **214 of 214** chunks reachable, **0** modules duplicated in the main graph, and
+the absent source files are worker entries, `.d.ts` declarations and dev-only tooling. **IN PLACE:** the audit
+now prints **the scope of its own answer** on the same screen as the answer — a reachability-only run says so
+in the very line where it says "NONE", names the two questions it skipped, and closes with a `SCOPE` line that
+says in plain words that this answer *cannot* establish that there is no dead weight.
+
+**One measured wrinkle worth recording, because it means the boot-path figure is not one fixed quantity.** The
+boot path is 2143 KB / 20 chunks in the **CI-faithful** shape and **2029 KB / 19 chunks** with the sibling
+present — one chunk, and 114 KB, further out of the static closure. The sibling was at the same commit with a
+clean `packages/` for every measurement in this section, so this is the chunk graph itself, not drift in the
+sibling. The practical consequence is benign and worth knowing: **the cap that bites is the stricter one**,
+because CI measures the CI-faithful shape.
+
+**Artifacts:** `docs/audits/2026-10-27-hidden-creative-power/bundle-gate-baseline-82495d24-ci-config.log`,
+`bundle-gate-current-ca8e7583-ci-config.log`, `bundle-gate-chunk-delta-and-dead-weight-audit.log`.
 
 ---
 

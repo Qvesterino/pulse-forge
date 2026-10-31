@@ -22,6 +22,7 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { PAD_MOD_RATE_HZ_MAX, ticksPerBar } from "../project-model/schema";
 import type { GenerativeVariation } from "../generative/resample";
+import { shelfVariations, takeShelvedVariations } from "../generative/variationShelf";
 import { GENERATIVE_MACRO_NAMES } from "../generative/types";
 import { createUnavailableGenerativeProvider } from "../generative/registry";
 import { runSfzInstrumentImport } from "../sample-library/sfz-import-run";
@@ -126,6 +127,15 @@ export function Inspector({
     "idle" | "generating" | "committing" | "error"
   >("idle");
   const [generativeVariations, setGenerativeVariations] = useState<GenerativeVariation[]>([]);
+  // CF-20: the resample A/B/C/D takes are PREVIEW-ONLY work, and the
+  // per-track reset effect used to wipe them on every TRACK SWITCH — the one
+  // way to lose four uncommitted takes silently. They now shelf per track
+  // (session scope — the PCM is not serializable) and return when the track
+  // is selected again; the notice says what came back.
+  const [generativeShelfNotice, setGenerativeShelfNotice] = useState<string | null>(null);
+  const generativeVariationsRef = useRef(generativeVariations);
+  generativeVariationsRef.current = generativeVariations;
+  const prevGenerativeTrackIdRef = useRef<string | null>(null);
   const [mrt2CompanionUrl, setMrt2CompanionUrl] = useState("ws://127.0.0.1:8765");
   const [mrt2CompanionToken, setMrt2CompanionToken] = useState("");
   const [mrt2CompanionState, setMrt2CompanionState] = useState<"idle" | "starting" | "configured" | "error">("idle");
@@ -167,7 +177,26 @@ export function Inspector({
     }
     setGenerativeResampleSourceId("");
     setGenerativeResampleState("idle");
-    setGenerativeVariations([]);
+    // CF-20: a TRACK SWITCH shelves the current takes and restores that
+    // track's own shelf; a same-track reset (style edit) still discards —
+    // the old takes belong to the old style.
+    const prevTrackId = prevGenerativeTrackIdRef.current;
+    prevGenerativeTrackIdRef.current = track.id;
+    if (prevTrackId !== null && prevTrackId !== track.id) {
+      if (generativeVariationsRef.current.length > 0) {
+        shelfVariations(prevTrackId, generativeVariationsRef.current);
+      }
+      const restored = takeShelvedVariations(track.id);
+      setGenerativeVariations(restored ?? []);
+      setGenerativeShelfNotice(
+        restored
+          ? "Restored " + restored.length + " uncommitted variation" + (restored.length === 1 ? "" : "s") + " from this track earlier session."
+          : null,
+      );
+    } else {
+      setGenerativeVariations([]);
+      setGenerativeShelfNotice(null);
+    }
   }, [
     track.id,
     track.kind,
@@ -552,6 +581,8 @@ export function Inspector({
         })
         .then((variations) => {
           setGenerativeVariations(variations);
+          shelfVariations(track.id, variations);
+          setGenerativeShelfNotice(null);
           setGenerativeResampleState("idle");
         })
         .catch(() => setGenerativeResampleState("error"));
@@ -809,6 +840,11 @@ export function Inspector({
         >
           {generativeResampleState === "generating" ? "GENERATING…" : "GENERATE A / B / C / D"}
         </button>
+        {generativeShelfNotice && (
+          <span className="inspector-subtitle" role="status">
+            {generativeShelfNotice}
+          </span>
+        )}
         {generativeVariations.length > 0 && (
           <div className="inspector-subtitle" aria-label="Generative resample variations">
             {generativeVariations.map((variation) => (

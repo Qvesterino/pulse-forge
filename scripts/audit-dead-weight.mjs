@@ -185,6 +185,12 @@ if (orphans.length) {
   console.log(`[dead-weight] unreachable weight: ${total.toFixed(1)} KB`);
 } else {
   console.log("[dead-weight] unreachable chunks: NONE — every chunk is reachable.");
+  console.log(
+    "             NOTE: that is a REACHABILITY answer, and reachability cannot fail in a\n" +
+      "             production build - rollup only emits a chunk that something imports.\n" +
+      "             It is NOT by itself evidence that there is no dead weight. Read the\n" +
+      "             SCOPE line at the end of this report before citing it.",
+  );
 }
 
 if (moduleChunks.size) {
@@ -203,6 +209,12 @@ if (moduleChunks.size) {
     console.log(`    ${relative(repo, mod).split(sep).join("/")}  <- ${chunks.join(", ")}`);
   }
   console.log(`  inside WORKER bundles (structural, a worker owns its copy): ${dupWorker.length}`);
+} else {
+  console.log("\n[dead-weight] modules shipped in >1 chunk: SKIPPED — no sourcemap build found.");
+  console.log(
+    "             This is the second of the three questions, and the only one that can find\n" +
+      "             DUPLICATED weight. Run: npx vite build --sourcemap --outDir dist-sm",
+  );
 }
 
 const notBuilt = srcFiles.filter((f) => !inGraph.has(f));
@@ -235,3 +247,25 @@ if (!haveSourcemaps) {
     }
   }
 }
+
+// ── the scope of THIS answer ─────────────────────────────────────────────
+// The rule in scripts/check-bundle-size.mjs cites this audit as evidence
+// that a growth is weight rather than headroom. That citation is only
+// sound when the audit could actually have answered "there is dead weight"
+// — and reachability alone cannot answer it, because rollup only emits a
+// chunk that something imports. Print the scope on the same screen as the
+// answer, so the two are never separated.
+//
+// FULL means BOTH remaining questions ran: the duplication census needs
+// `moduleChunks` (a sourcemap build) and the source census needs `inGraph`
+// (the same build, resolved from a candidate root).
+const fullAudit = moduleChunks.size > 0 && haveSourcemaps;
+console.log(
+  fullAudit
+    ? "\n[dead-weight] SCOPE OF THIS ANSWER: FULL — reachability, duplication and the source census.\n" +
+        "             'No unreachable chunks' now means the audit looked and found nothing to delete."
+    : "\n[dead-weight] SCOPE OF THIS ANSWER: REACHABILITY ONLY — duplication and the source census were\n" +
+        "             SKIPPED (no sourcemap build). This answer CANNOT establish that there is no\n" +
+        "             dead weight. For the full answer run:\n" +
+        "               npx vite build --sourcemap --outDir dist-sm",
+);
