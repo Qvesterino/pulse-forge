@@ -11,13 +11,20 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_intent",
     description:
-      'Drive the KYX DAW with a natural-language producer instruction (EN/SK): "mute the drums", "zníž basu", "set tempo to 140", "more reverb send on the lead", "more swing in the drop". Executes through the deterministic command layer (one undo step) and returns a verification read-back of the resulting state. Generation requests are refused (candidates need in-app auditioning).',
+      'Drive the KYX DAW with a natural-language producer instruction (EN/SK): "mute the drums", "zníž basu", "set tempo to 140", "more reverb send on the lead", "more swing in the drop". dry_run:true returns a reviewable plan and a planId for executable edits; send it back with the same instruction and caller identity to apply the exact proposal against the same project state. MCP document edits require this two-step flow. Generation requests are refused (candidates need in-app auditioning).',
     inputSchema: {
       type: "object",
       properties: {
         instruction: {
           type: "string",
           description: "Producer instruction, EN or SK",
+        },
+        planId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description:
+            "The planId returned by kyx_intent dry_run; applies that exact reviewed route if the project is unchanged.",
         },
         dry_run: {
           type: "boolean",
@@ -67,6 +74,87 @@ const MCP_TOOL_DEFS = [
         },
         route: {
           type: "string",
+        },
+        routeKind: {
+          type: "string",
+        },
+        planId: {
+          type: "string",
+        },
+        dryRun: {
+          type: "boolean",
+        },
+        executable: {
+          type: "boolean",
+        },
+        mutates: {
+          type: "boolean",
+        },
+        warnings: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          maxItems: 64,
+        },
+        steps: {
+          type: "array",
+          maxItems: 49,
+          items: {
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              kind: {
+                type: "string",
+                enum: ["number", "state", "command"],
+              },
+              target: {
+                type: "string",
+              },
+              trackId: {
+                type: "string",
+              },
+              fxId: {
+                type: "string",
+              },
+              paramId: {
+                type: "string",
+              },
+              clipId: {
+                type: "string",
+              },
+              entityId: {
+                type: "string",
+              },
+              returnId: {
+                type: "string",
+              },
+              padId: {
+                type: "string",
+              },
+              parameter: {
+                type: "string",
+              },
+              before: {
+                type: ["number", "string"],
+              },
+              beforeValue: {
+                type: "number",
+              },
+              proposedValue: {
+                type: "number",
+              },
+              next: {
+                type: ["number", "string"],
+              },
+              nextValue: {
+                type: "number",
+              },
+              note: {
+                type: "string",
+              },
+            },
+          },
         },
         moved: {
           type: "array",
@@ -4479,10 +4567,15 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_batch",
     description:
-      "Run up to 10 tool calls in ONE submitted batch: calls: [{tool, args}…]. When the host supports undo frames, every mutation folds into a SINGLE undo entry (the result reports which contract applied); each call still returns its own read-back, and per-call failures never abort the batch. Async tools (kyx_export, kyx_loudness) and nested batches are refused — run those standalone.",
+      "Run up to 10 tool calls in ONE submitted batch: calls: [{tool, args}…]. When the host supports undo frames, mutations fold into one undo entry. Results include child read-backs and recovery advice. Default atomic:false continues after recoverable failures and keeps successful calls. atomic:true stops at the first failure but does not roll back the committed prefix; use the reported undo guidance to recover. Async tools (kyx_export, kyx_loudness) and nested batches are refused.",
     inputSchema: {
       type: "object",
       properties: {
+        atomic: {
+          type: "boolean",
+          description:
+            "Stop after the first failed child call. Earlier successful calls remain committed. Use the result's recovery field (undo once when singleUndo:true; otherwise inspect history and undo committed calls). Default false continues after recoverable failures.",
+        },
         calls: {
           type: "array",
           minItems: 1,
@@ -4538,8 +4631,26 @@ const MCP_TOOL_DEFS = [
         failures: {
           type: "number",
         },
+        skipped: {
+          type: "number",
+        },
         singleUndo: {
           type: "boolean",
+        },
+        atomic: {
+          type: "boolean",
+        },
+        cancelled: {
+          type: "boolean",
+        },
+        interruptedByConflict: {
+          type: "boolean",
+        },
+        status: {
+          type: "string",
+        },
+        recovery: {
+          type: "string",
         },
       },
       required: ["results", "mutations", "failures", "singleUndo"],
