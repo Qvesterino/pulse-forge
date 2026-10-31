@@ -3301,6 +3301,45 @@ as open rather than done**: the palette route ships, the MCP route does not, and
 the MCP surface and the intent router all read) is the structural reason the MCP route will need to exist as a
 _derivation_ rather than as another hand-written tool.
 
+> **IN PLACE (2026-10-30, night): the P-2 wave put `main` RED, and the suite is what caught it — this is the entry that says so.**
+> Ten specs in `tests/ui/timeline-rec.test.tsx` failed on the CI runner at `b982337e`, and the cause was **this wave**, not the
+> parallel session's work. Measured, not assumed:
+>
+> - `tests/ui/timeline-rec.test.tsx` at **`80940176`** (the commit before P-2): **38/38 green**.
+> - the same spec at **`b982337e`**: **28/38, ten red**.
+> - after the fix (`9fc69221`): **38/38 green**.
+>
+> **The mechanism was the harness, not the feature.** `tests/helpers.tsx` mocked `store.execute` as a **no-op spy**, so a command
+> the panel issued never reached the document and every command-driven surface looked frozen — a defect the arm target was the
+> first thing to expose, because it is the first command the arrangement panel issues on its own. The mock now applies the command
+> and notifies its listeners, exactly as `ProjectStore.execute` does (`ProjectStore.ts:326` → `applyCommand` → `afterMutation` →
+> `emit`); the product path was always correct, because `App.tsx:369` subscribes to the whole document and re-renders on the
+> store's notification.
+>
+> Two of the ten needed the peer's own spec adjusted rather than the mock: they asserted "the store was never written", which was
+> true while arming was local state and is false now that arming is a command — so they now arm the track **in the document**, and
+> their own assertions stay intact. One recorder stub gained `getChannelData`, because with a faithful store the placed take
+> reaches the document and the panel reads its channels while warming the warp onsets.
+>
+> **The generalisable part: a mock that records a command without applying it is a landmine, and it hides exactly the defect it
+> would catch.** It stayed armed for a year because every UI surface that read its state from the document had no test that could
+> fail.
+>
+> **What the suite says now, from the CI runner itself** (the authoritative number, one annotation per run):
+>
+> | commit     | what changed                                   | suite run                                 |
+> | ---------- | ---------------------------------------------- | ----------------------------------------- |
+> | `b982337e` | —                                              | 1347 files · 14760 passed · **14 failed** |
+> | `9fc69221` | the mock became faithful (`tests/helpers.tsx`) | 1348 files · 14783 passed · **5 failed**  |
+> | `82495d24` | two under-specified specs made honest          | 1348 files · 14785 passed · **3 failed**  |
+>
+> The **three that remain are not this wave's** and are recorded as open, with the owner named:
+> `tests/creative-task-contract.test.ts` (the parallel session's `dd37c743` changed `src/intent/text-parser.ts`, whose source hash
+> the manifest still pins — and the corpus cannot be regenerated because the generator itself throws, a defect **measured at
+> `80940176`, before this wave**); `tests/mcp-targeting-benchmark.test.ts` and `tests/ui/IntentPanelProducerBrief.test.tsx` (the
+> intent/MCP lane; the second is a race in the spec itself: it asserts on a remembered generation whose `docId` already matches,
+> so it can read the OLD intent). **A red that is real is reported, not re-pinned.**
+
 #### 10.16.11 The scenario ladder — measuring the boundary, and finding that the instrument was measuring the run
 
 **The owner asked for the boundary** (§10.16.9's open question: is 12×4 the promise the product makes, or a worst case that
@@ -3382,12 +3421,24 @@ in this commit** — the ladder is a diagnostic, and its remaining defect does n
 environment, and a **weaker** machine than this desktop — the 12×4 graph ran at **896 of 896 possible quanta**: **100 % of real
 time**, heartbeat at **1.10×** its expected cadence against a limit of 1.5×, and **exactly one dropped quantum in the window**. So
 the promise the product makes — twelve tracks with four effects each, 48 effect chains — **fits in realtime on modest hardware**,
-and the only thing the gate objects to is that single quantum. On this desktop the same scenario rendered **384–448** quanta in
-the same 2.5 s window — **41–48 % of real time** — with a 2.3× heartbeat; but this desktop's own calibration drifted across the
-day from **12.0 ms** (the parallel session's run) to **17.3 ms** in the "quiet" run, a **44 %** swing with no heavy job of this
-session's running, and ~35 `node.exe` processes (eight Playwright MCP servers, several Vite dev servers, other sessions) were
-resident throughout. **A desktop whose own calibration moves 44 % is not a measuring environment for absolute realtime numbers** —
-and its number says more about the box than about the product.
+and the only thing the gate objects to is that single quantum.
+
+> **IN PLACE (2026-10-30, night): "896 of 896 possible quanta" is WITHDRAWN — the denominator was never in an artifact, and the
+> instrument's own code makes it impossible.** The measurement window is `seconds + 250 ms` = **2.75 s**
+> (`src/browser-checks.ts:612`; `seconds = 2.5` at `:501`), and it is **at least** that long — a `setTimeout` fires late, never
+> early — so the device **demanded at least** 947 quanta at the runner's 44.1 kHz (`quantum=2.902ms` in the runner's own line) and
+> at least 1031 at 48 kHz. **896 blocks therefore cannot be the whole window's demand** — and the runner's own heartbeat (1.10×)
+> says the graph was running late, in the same direction. **The exact fraction is not computable from the artifacts** (the window's
+> exact length is unknown), so this report prints the **counts** and the **heartbeat**, not a percentage of real time. What is
+> certain: **"100 % of real time" was the one claim in this paragraph that no artifact carried, and the two artifacts that do speak
+> — the block count and the heartbeat — both say "behind", not "at real time".** Everything else here survives unchanged: one
+> dropped quantum, a heartbeat inside the 1.5× limit, and a promise that fits.
+> On this desktop the same scenario rendered **384–448** quanta in
+> the same 2.5 s window — **41–48 % of real time** — with a 2.3× heartbeat; but this desktop's own calibration drifted across the
+> day from **12.0 ms** (the parallel session's run) to **17.3 ms** in the "quiet" run, a **44 %** swing with no heavy job of this
+> session's running, and ~35 `node.exe` processes (eight Playwright MCP servers, several Vite dev servers, other sessions) were
+> resident throughout. **A desktop whose own calibration moves 44 % is not a measuring environment for absolute realtime numbers** —
+> and its number says more about the box than about the product.
 
 **— IN PLACE (2026-10-30, evening): the parallel session's clean desktop run CONFIRMS this reading, and the two environments now
 agree.** In the isolation-experiment run (`perf-isolation-experiment.log`, commit `9f0f6c1c`) the desktop's own realtime line
@@ -3405,6 +3456,24 @@ graph costs about **1.1–1.2×** the empty graph's heartbeat budget on both, an
 of 896** in both. The **41–48 % of real time** readings in this session's three runs were **the contaminated ones** — a loaded box,
 not a different product. That is the third time this audit has had to separate _the box_ from _the graph_, and the third time the
 floor is what does it.
+
+> **IN PLACE (2026-10-30, night): this block quoted the WRONG LINE of the right artifact — and the line it should have quoted
+> is GREEN.** `perf-isolation-experiment.log` carries **two** realtime lines: the contended one quoted above
+> (`blocks=896 … xruns=2 … 1.17×`, the `FAIL`), and the isolated one this block was supposed to cite:
+>
+> ```text
+> [PASS] isolated: rt budget: 12 tracks × 4 effects realtime — blocks=1024 xruns=0 heartbeat avg=170.77ms
+> max=174.30ms (expected≈170.67ms, 1.00×) quantum=2.667ms · device floor xruns=0 jitter=1.00×
+> (1 track, no effects; cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=0
+> ```
+>
+> **On the isolated desktop the same 48-chain graph ran 1024 quanta — exactly as many as the empty graph did in the same window —
+> the heartbeat at 1.00×, and it dropped NOTHING: the gate was GREEN.** The quoted 896/1.17×/2-drops line is the contended run
+> **in the same log** — it is the contaminated one this block's own last sentence identifies. So "the desktop and the runner
+> measure the same thing" is **half true and half wrong**: the contended desktop and the runner both sit near 1.1–1.7× of the empty
+> graph's heartbeat budget, but the **isolated** desktop sits at **1.00× with zero drops** — the 48-chain graph is
+> indistinguishable from an empty graph there. The conclusion of this section survives and gets sharper: **what fails this gate is
+> not the graph** (§10.16.12 measures that directly, on one machine, between two runs).
 
 **And the owner-facing consequence is now measured on both machines, not one:** the promise fits, at full real time, with roughly
 **1.1–1.2×** of the heartbeat budget used against a **1.5×** limit — and the gate's red is **a handful of dropped quanta**, which
@@ -3437,6 +3506,167 @@ request; the job log itself requires repository admin rights and answers **403**
 detached worktree** at `37ff58c0`, because the parallel session's in-flight audio-hardening refactor edits the playback path and
 the two DSP processors the ladder's effect stack uses: **measuring on a tree another session is editing would have measured their
 work-in-progress.**
+
+#### 10.16.12 The boundary, measured with the position check — and the verdict that flips on one dropped quantum
+
+**The owner's instruction was "measure the boundary, then decide" (§10.16.9).** This section is the measurement. The instrument
+is the one committed in `b982337e`: the boundary grid now measures every scenario **twice, in opposite order**, and reports the
+mean ± the spread; every count is a **delta** of the processor's cumulative counters, and each scenario is measured against a floor
+taken **immediately before it**.
+
+**The run** — this desktop, quiet box, `calib=10.7 ms`, `npm run test:browser`, one line of the corpus log:
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=1024 fit=1.00 xruns=1
+heartbeat avg=169.75ms max=177.60ms (expected≈170.67ms, 0.99×) quantum=2.667ms
+· device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 0/1.00×)
+· graph build=0 steady=1
+· ladder 8×2(16c) fit=1.00±0.00 jitter=3.47±4.93× ratio=1.02× xruns=0
+· 12×2(24c) fit=0.86±0.40 jitter=3.50±5.00× ratio=1.05× xruns=0
+· 8×4(32c) fit=0.88±0.25 jitter=3.72±4.78× ratio=1.25× xruns=1
+· 12×3(36c) fit=0.80±0.40 jitter=3.77±3.83× ratio=1.45× xruns=1
+· 12×4(48c) fit=0.64±0.21 jitter=4.15±3.33× ratio=1.62× xruns=0
+· 16×4(64c) fit=0.68±0.15 jitter=4.08±2.81× ratio=1.46× xruns=0
+· 20×4(80c) fit=0.69±0.13 jitter=4.36±1.71× ratio=1.52× xruns=0
+· 24×4(96c) fit=0.63±0.07 jitter=4.73±0.49× ratio=1.62× xruns=1
+```
+
+**Reading 1 — in the gated window the 48-chain promise HELD, and the gate is red on a single quantum.** `blocks=1024` against a
+floor that delivered the same **1024** (**fit=1.00**), the heartbeat at **0.99×** its expected cadence against a **1.5×** limit,
+a clean floor on **both** the cold and the warm pass (0 drops, 1.00×), and **exactly one dropped quantum in the steady phase**
+(`graph build=0 steady=1`). The gate's criterion is `graphDrops === 0 && jitterRatio < 1.5` (`src/browser-checks.ts:763`) — so the
+heartbeat passed with a **0.5× margin** and the verdict was decided by **one quantum out of 1024**.
+
+**Reading 2 — the position check works, and it is what disqualifies the grid's absolute numbers.** The **same** 48-chain graph,
+in the **same** run, reads **fit=1.00** as the gated window (the third window of the page) and **fit=0.64±0.21** inside the grid
+— the fifth scenario of the ascending pass and the fourth of the descending one, which are **windows 13 and 27** of the page.
+The spread the crossover measures (0.21) is **smaller than the gap between the two readings** (0.36): two opposite positions do
+**not** cancel the state the earlier windows left behind. So the grid's absolute `fit` column is a reading of **the page**, not of
+the graph, and must not be quoted as capacity. **That is the position check doing its job: it caught the grid misreading itself,
+and the gate's own window stayed the trustworthy reading.**
+
+**Reading 3 — the SHAPE survives the contamination, and the shape is the boundary.** The **ratio** (the scenario's heartbeat
+jitter ÷ its **adjacent** floor's jitter — a degradation that hits the empty graph and the loaded one alike cancels in it) is
+monotone in weight from the lightest scenario up to the gated one, and then **stops**:
+
+| scenario            | chains | ratio (grid) | reading                               |
+| ------------------- | ------ | ------------ | ------------------------------------- |
+| 8×2                 | 16     | 1.02×        | indistinguishable from an empty graph |
+| 12×2                | 24     | 1.05×        | …                                     |
+| 8×4                 | 32     | 1.25×        | the graph's own cost starts to show   |
+| 12×3                | 36     | 1.45×        | just inside the 1.5× line             |
+| **12×4 (the gate)** | **48** | **1.62×**    | **the knee**                          |
+| 16×4                | 64     | 1.46×        | **no worse than 48**                  |
+| 20×4                | 80     | 1.52×        | no worse                              |
+| 24×4                | 96     | 1.62×        | no worse                              |
+
+**The graph's own cost grows up to 48 chains and then plateaus** — 64, 80 and 96 chains are no more expensive (in ratio) than 48. **The knee of the realtime path is at ~48 chains, which is exactly the gated scenario**; above it the device degrades, not
+the graph. A grid that stopped at 12×4 could only ever have said "it fits". This one says **where the knee is**, and the knee
+**is** the promise.
+
+**Reading 4 — the verdict flips on one dropped quantum, on the SAME machine.** Two independent pairs of runs:
+
+- **The CI runner.** The browser job **passed** on `b982337e` (run `41108078709`, job "Browser audio checks (Chromium)", 698 s,
+  check-run `124243980378`) and **failed** on `37ff58c0` with `blocks=896 xruns=1 … 1.10×`. The gate's logic is **byte-identical**
+  between those two commits — `git diff 37ff58c0..b982337e -- src/browser-checks.ts` touches only the ladder and the detail
+  string. Same scenario, same machine, same criterion, **two opposite verdicts**. (Why the passing one passed is **Inferred**:
+  either that run dropped no quantum, or the run's own load guard demoted the check to informational — `machineLoaded` is
+  decided by a MAIN-thread probe (`src/browser-checks.ts:5205`) that cannot see the AUDIO thread. **Both branches lead to the
+  same conclusion: the criterion's verdict is not deterministic on a shared machine.**)
+- **This desktop, no machine difference at all.** The parallel session's isolated run (`perf-isolation-experiment.log`) is
+  **GREEN** — `blocks=1024 xruns=0 … 1.00×` — while this session's run of the same scenario, on the same desktop, is **RED** on
+  `xruns=1`.
+
+**One dropped quantum in ~1000 separates green from red.** The gate is measuring a coin, not a capacity.
+
+**Reading 5 — the continuous criterion does not even SEE the failure; only the discrete counter does.** The parallel session
+brought a third runner measurement, quoted here verbatim from the CI error annotation on `99838d0b`:
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=960 xruns=1
+heartbeat avg=185.23ms max=188.30ms (expected≈185.76ms, 1.00×) quantum=2.902ms
+· device floor xruns=0 jitter=1.00× (cold 0/1.00× / warm 0/1.00×) · graph build=0 steady=1
+```
+
+**The heartbeat was exactly on cadence — 1.00× — and the gate still failed.** Averaging a gap over 960 quanta does not move for one
+dropped quantum, so the continuous criterion reports "the graph is perfect" in a run where the discrete counter says "one quantum
+was lost". Put the four measurements side by side and the shape is unmistakable:
+
+| environment         | drops | heartbeat | verdict |
+| ------------------- | ----- | --------- | ------- |
+| runner (`99838d0b`) | 1     | **1.00×** | red     |
+| runner (`37ff58c0`) | 1     | 1.10×     | red     |
+| desktop, isolated   | 0     | 1.00×     | green   |
+| desktop, contended  | 2     | 1.17×     | red     |
+
+**The verdict is decided by the drop count alone, and the jitter never sees it** — neither from the graph's side (the runner's
+1.00×) nor from the floor's (the runner's floor is also 1.00×, so the _ratio_ is 1.00 too). **That has a direct consequence for
+the recommendation: the baseline of this gate must be a drop COUNT, not a jitter ratio.** A ratio baseline would be blind to exactly
+the thing the gate rejects.
+
+**So — where is the boundary, and is 12×4 a promise or a worst case?**
+
+**It is a promise, and the promise it can keep is the heartbeat budget — not "lossless real time".**
+
+| reference hardware               | quanta delivered | against the empty graph, same window | heartbeat | drops | verdict |
+| -------------------------------- | ---------------- | ------------------------------------ | --------- | ----- | ------- |
+| this desktop, isolated run       | 1024             | **identical** (fit 1.00)             | 1.00×     | 0     | green   |
+| this desktop, this run           | 1024             | **identical** (fit 1.00)             | 0.99×     | 1     | red     |
+| this desktop, contended          | 896              | —                                    | 1.17×     | 2     | red     |
+| 2-vCPU Linux runner (`99838d0b`) | 960              | —                                    | 1.00×     | 1     | red     |
+| 2-vCPU Linux runner (`37ff58c0`) | 896              | —                                    | 1.10×     | 1     | red     |
+
+_What the artifacts carry, and what they do not._ The measurement window is **at least** 2.75 s (`seconds + 250 ms`,
+`src/browser-checks.ts:612`) — a `setTimeout` fires late, never early — so the device **demanded at least** 1031 quanta at 48 kHz
+and 947 at 44.1 kHz over it, and the exact demand **cannot be computed from the artifacts**. **Every percentage of "real time"
+this section used to print is therefore withdrawn**: the 1024 and 896 are counts, not fractions of a known denominator. What needs no
+denominator at all is the **fit against the adjacent floor** — and that is the strongest line in the table: **the 48-chain graph
+delivered exactly as many quanta as an empty graph did in the same window.** The remaining shortfall is small and bounded: even the
+green run was short of the clock's demand by at least 7 quanta (≤1 %), and the heartbeat said 1.00× — the two disagree by about the
+size of the measurement's own edges (the first heartbeat interval after the counter reset is short; **Not verified**).*
+
+- **The heartbeat budget held on every machine**: 0.99×–1.17× against a **1.5×** limit.
+- **The graph's cost plateaus at 48 chains** — 96 chains cost no more than 48. A promise that bigger hardware must rescue does
+  not look like that; a promise that is already at the knee does.
+- **But "48 chains are lossless real time on the weakest CI runner" is a promise the runner's own numbers do not support**: the
+  runner delivered **fewer quanta than its window's demand** (896 against a demand of at least 947 at 44.1 kHz) and its heartbeat
+  was 10 % late; and the runner that read **960 quanta at a 1.00× heartbeat still dropped one**. **On the runner, the 48-chain
+  graph is at the edge — not past it, and not a promise of lossless real time.** That claim is the one this section withdraws (see
+  the IN PLACE note above).
+
+**The recommendation for the owner's decision** (the decision itself is the owner's; this is what the measurement supports):
+
+1. **Do not loosen the 1.5× limit.** Both reference machines measured 0.99× and 1.10× — the limit did its job. **The
+   criterion's FORM is what is wrong, not its number**, which is the same conclusion §10.16.9 reached for the offline budget and
+   that the perf sibling implemented in relative form (`d4df9e8d`).
+2. **Turn the gate into a regression test with a baseline, in the form its offline sibling got — and make the baseline a drop
+   COUNT, not a jitter ratio.** Reading 5 is the reason: the runner's graph and the runner's floor both sat at 1.00× while the gate
+   failed on one quantum, so a ratio of the two would be 1.00 and would wave the failure through. The baseline has to measure **what
+   the gate rejects** — the number of dropped quanta — against **the same device**, taken next to the measurement. In the instrument
+   that already exists, that means the ladder must print **the adjacent floor's drops next to each scenario's drops**, so the owner
+   can see where the graph crosses from "0 quanta" into "1 quantum" relative to what the device itself loses. **The grid as it
+   stands today reports each scenario's own drop count but NOT the floor's per scenario**, and that is the one measurement the
+   promise-vs-worst-case decision still lacks. **It is the next instrument step, and it is not in this commit.**
+3. **State the promise in the form the product can keep:** _"48 effect chains hold the heartbeat budget (≤1.5×) on the reference
+   hardware"_ — not _"48 chains are lossless real time on the weakest runner"_.
+4. **One quantum is still a quantum.** The single steady-phase drop is worth **locating** rather than tolerating: the rt-monitor
+   already forwards the dropped frames (`src/audio-worklets/rt-monitor-processor.js:44-47`), so reporting **where** in the window
+   the drop happened would separate a startup artifact from a capacity limit. **Not verified — it is the next instrument step,
+   and it is not in this commit.**
+5. **The cost of leaving the red is not only the red.** The browser job is a **dependency of the macOS release gate** (the
+   `macOS arm64 Electron package (MRT2)` job is skipped while the browser audit is red), so one quantum in 960 blocks a release
+   artefact. That is the strongest argument for fixing the criterion's FORM — and the weakest argument for loosening its number.
+
+**The raw artifacts behind this section** are committed next to it, in
+`docs/audits/2026-10-27-hidden-creative-power/`: `rt-boundary-run1-single-pass.log` (the first pass, with the cumulative-counter
+defect still in it) and `rt-boundary-run2-crossover.log` (the run quoted above, 440 checks, **three** reds). Only one of the three
+is KYX's to answer here — the realtime gate. The other two are the arrangement panel's boot and device-chain specs, and the log
+names the cause itself: the app imports a module **outside this repository**
+(`http://127.0.0.1:5223/@fs/D:/QVESTER_LANDING_PAGE/packages/qmr-hud/src/qmr-mini-chip-mount.tsx`), the Vite dev server answers
+that request with a 500 (its dependency `zod` does not resolve on this machine), and the `vite-error-overlay` then intercepts the
+clicks. That is a **cross-repository dependency**, not a defect in the measured path — and it is recorded here because a red in
+this corpus has to be attributed before it is counted. The runner's green job is the check-run `124243980378`; the runner's red
+line is quoted from the error annotation on `37ff58c0`.
 
 ---
 
@@ -3491,6 +3721,19 @@ and a new undo boundary.
 Every production call site passes `mode="devices"`; the legacy branch survives only because ~20 specs render
 the default. Deleting it is a real simplification — but it is a deletion, and the brief forbids removing
 features without approval.
+
+**P-8 · The realtime gate gets a baseline instead of a zero. — NEEDS THE OWNER'S DECISION (§10.16.12).**
+The gate asks an absolute question ("did the audio thread drop a single quantum?") on a shared machine, and the
+measurement shows the verdict turns on **one quantum in ~1000**: the same scenario, the same criterion and the
+same machine read green in one run and red in the next, and on the runner the heartbeat sat at **1.00×** — exactly
+on cadence — in a run the gate rejected. **The measurement says the 48-chain promise is real** (the heartbeat
+budget held on every machine, and the graph's cost plateaus at 48 chains), **and that the criterion's FORM is
+what is wrong, not its number**: **the 1.5× limit should not be loosened.** What is being asked of the owner is
+which of two promises the gate should enforce — _"48 chains hold the heartbeat budget"_ (true today, measured on
+both machines) or _"48 chains never drop a quantum"_ (not true today on the runner, and not distinguishable from
+a machine hiccup by the current instrument). **The owner's answer decides the criterion's shape; the audit's
+measurement is in §10.16.12 and the one measurement still missing — the adjacent floor's drop count next to each
+scenario's — is named there as the next instrument step.**
 
 ---
 
