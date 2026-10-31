@@ -83,18 +83,20 @@ const KNOWN_TOOLS_WITHOUT_OUTPUT_SCHEMA = ["kyx_separate"];
 
 /**
  * The behaviour-changing inputs the MCP layer reads but NO tool schema
- * declares, as measured at c8729057. 9 of them.
+ * declares, as measured at c8729057. 8 of them.
  *
  * - force            : the envelope escape hatch — bypasses the stale-write
  *                      guard AND the scope guard together (OBS-04)
  * - scope            : the path-confinement declaration (OBS-08)
  * - projectRevision  : the compare-and-set precondition (OBS-09)
  * - autofix          : kyx_export mutates the document through it
- * - atomic           : kyx_batch flips partial-commit vs PARTIAL_FAILURE
  * - target*          : the four kyx_master iterate targets
+ *
+ * `atomic` left this list when kyx_batch declared it in its input schema —
+ * a declared input is no longer an undeclared one, and the ratchet below
+ * fails on a stale entry so the list cannot keep a solved problem.
  */
 const KNOWN_UNDECLARED_INPUTS = [
-  "atomic",
   "autofix",
   "force",
   "projectRevision",

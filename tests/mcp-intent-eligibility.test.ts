@@ -3,6 +3,7 @@ import { createHeadlessMcpHost } from "../src/mcp/headless-host";
 import { MCP_INTENT_ELIGIBILITY, mcpIntentEligibilitySnapshot } from "../src/intent/mcp-eligibility";
 import { routeIntentText } from "../src/intent/route";
 import { createDefaultProject } from "../src/project-model/schema";
+import { applyIntent } from "./helpers/intentProtocol";
 
 /**
  * AS-014 — per-kind MCP eligibility for NL routes. One data table drives the
@@ -45,10 +46,14 @@ describe("MCP intent eligibility table (AS-014)", () => {
 
   it("a mix ask now executes over MCP as ONE undo step with the profile summary", async () => {
     const h = host();
-    const result = await h.call("kyx_intent", { instruction: "make the mix darker" });
+    // An external agent's document edit is a REVIEWED plan: preview, then apply
+    // that planId. The receipt is unchanged in substance — the label still names
+    // the mix profile, the read-back still names what moved.
+    const result = await applyIntent(h, "make the mix darker");
     expect(result.isError, result.text).not.toBe(true);
     expect(result.mutated, result.text).toBe(true);
-    expect(result.text).toContain("⚡ mix:");
+    expect(result.text).toMatch(/^Mix: \S/);
+    expect(result.text).toContain("read-back:");
     expect(result.text).toContain("one undo step");
     const depth = h.store.undoStackLength;
     expect(depth).toBeGreaterThanOrEqual(1);
@@ -71,8 +76,9 @@ describe("MCP intent eligibility table (AS-014)", () => {
     const data = result.data as { status: string; verifiedAsks: string[] };
     expect(data.status).toBe("diagnosis");
     expect(data.verifiedAsks.length).toBeGreaterThan(0);
-    // The verified asks are executable: re-sending one actually mutates.
-    const followUp = await h.call("kyx_intent", { instruction: data.verifiedAsks[0] });
+    // The verified asks are executable: re-sending one actually mutates —
+    // through the reviewed flow an external agent must speak.
+    const followUp = await applyIntent(h, data.verifiedAsks[0]);
     expect(followUp.mutated, followUp.text).toBe(true);
   });
 

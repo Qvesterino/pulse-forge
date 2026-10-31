@@ -6,6 +6,7 @@ import { createDefaultProject } from "../src/project-model/schema";
 import { isFactoryPresetsWarm } from "../src/presets/factory-loader";
 import { buildIntentProjectContext } from "../src/intent/model-context";
 import { getEffectCatalogEntry, listEffectCatalogEntries, listInstrumentCatalogEntries } from "../src/plugin-catalog";
+import { applyIntent } from "./helpers/intentProtocol";
 
 function bassTrack(host: ReturnType<typeof createHeadlessMcpHost>) {
   const track = host.store.doc.tracks.find(
@@ -22,14 +23,17 @@ describe("KOREŇ flagship MCP and Intent control", () => {
 
     expect(routeIntentText(instruction, host.store.doc).kind).toBe("effectIntent");
 
-    const result = await host.call("kyx_intent", { instruction });
+    const result = await applyIntent(host, instruction);
     expect(result.isError).not.toBe(true);
     expect(result.mutated).toBe(true);
     const bass = bassTrack(host);
     const grow = bass.effects.find((effect) => effect.type === "bassHarmonic");
     expect(grow).toBeDefined();
-    expect(result.text).toContain(`drive `);
-    expect(result.text).toContain(`on ${bass.name}`);
+    // The knob landed on the bass track — the read-back names the track, and
+    // the drive value is visible in the document it wrote.
+    expect(grow?.params.drive ?? 0).toBeGreaterThan(0);
+    expect(result.text).toContain(`track ${bass.name}`);
+    expect(result.text).toContain("added bassHarmonic");
 
     host.store.undo();
     expect(host.store.doc.tracks.find((track) => track.id === bass.id)?.effects).not.toContainEqual(
@@ -206,15 +210,16 @@ describe("KOREŇ flagship MCP and Intent control", () => {
     const withKopa = createInstrumentTrack(base, "kopa").execute(base);
     const host = createHeadlessMcpHost({ document: withKopa });
 
-    const result = await host.call("kyx_intent", {
-      instruction: "load the Trap Long preset on the drums",
-    });
+    const result = await applyIntent(host, "load the Trap Long preset on the drums");
 
     expect(isFactoryPresetsWarm()).toBe(true);
     expect(result.isError).not.toBe(true);
     expect(result.mutated).toBe(true);
     expect(result.text).toContain("Trap Long");
-    expect(result.text).toContain("Kopa ✓");
+    // The read-back names the track that took the preset and the preset id it
+    // took — a receipt that said only "Trap Long" would not say WHERE it landed.
+    expect(result.text).toContain("factory.kopa.trap.long");
+    expect(result.text).toContain('"Kopa"');
     const kopa = host.store.doc.tracks.find((track) => track.kind === "instrument" && track.instrument === "kopa");
     expect(kopa?.kind).toBe("instrument");
     if (kopa?.kind !== "instrument") throw new Error("missing KOPA fixture track");

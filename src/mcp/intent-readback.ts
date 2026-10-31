@@ -94,7 +94,7 @@ function effectChangeLines(
       if (from === to) continue;
       detailed = true;
       lines.push(
-        `track ${track.name} (${track.id}) ${effect.type} fxId=${fxId}.${paramId} ${from ?? "default"} -> ${to ?? "default"}`,
+        `track ${track.name} (${track.id}) ${effect.type}.${paramId} ${from ?? "default"} -> ${to ?? "default"} (fxId=${fxId})`,
       );
     }
     if (!detailed && previous !== effect) {
@@ -139,6 +139,25 @@ export function summarizeDocumentChange(before: ProjectDocument, after: ProjectD
     if (previous.pan !== track.pan) lines.push(`track ${trackLabel(track)} pan ${previous.pan} -> ${track.pan}`);
     if (previous.mute !== track.mute) lines.push(`track ${trackLabel(track)} mute ${previous.mute} -> ${track.mute}`);
     if (previous.solo !== track.solo) lines.push(`track ${trackLabel(track)} solo ${previous.solo} -> ${track.solo}`);
+    // The preset and the instrument's own knobs are the change a PRESET route
+    // makes. Without them the summary said "document metadata changed" for an
+    // edit that wrote thirteen parameters — a read-back that names no track and
+    // no knob cannot be acted on.
+    const previousPresetId = "presetId" in previous ? previous.presetId : undefined;
+    const trackPresetId = "presetId" in track ? track.presetId : undefined;
+    if (previousPresetId !== trackPresetId) {
+      lines.push(`track ${trackLabel(track)} preset ${previousPresetId ?? "Custom"} -> ${trackPresetId ?? "Custom"}`);
+    }
+    const previousParams = "params" in previous ? previous.params : null;
+    const trackParams = "params" in track ? track.params : null;
+    if (previousParams != null && trackParams != null) {
+      for (const paramId of new Set([...Object.keys(previousParams), ...Object.keys(trackParams)])) {
+        const from = previousParams[paramId];
+        const to = trackParams[paramId];
+        if (from === to) continue;
+        lines.push(`track ${trackLabel(track)} params.${paramId} ${from ?? "default"} -> ${to ?? "default"}`);
+      }
+    }
     if (!sameRef(previous.effects, track.effects)) {
       const effectLines = effectChangeLines(track, previous.effects, track.effects);
       if (effectLines.length > 0) lines.push(...effectLines);

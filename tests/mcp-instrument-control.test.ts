@@ -6,6 +6,7 @@ import { MCP_TOOLS } from "../src/mcp/tools";
 import { createDefaultProject } from "../src/project-model/schema";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER } from "../src/instruments/registry";
 import type { InstrumentKind } from "../src/project-model/types";
+import { applyIntent } from "./helpers/intentProtocol";
 
 function documentWithInstrument(kind: InstrumentKind) {
   const doc = createDefaultProject();
@@ -54,7 +55,7 @@ describe("flagship instrument intent and MCP control", () => {
     for (const instrument of ["kopa", "tsar"] as const) {
       expect(routeIntentText(`add a ${instrument} track`, createDefaultProject()).kind).toBe("exact");
       const host = createHeadlessMcpHost({ document: createDefaultProject() });
-      const result = await host.call("kyx_intent", { instruction: `add a ${instrument} track` });
+      const result = await applyIntent(host, `add a ${instrument} track`);
 
       expect(result.isError).not.toBe(true);
       expect(result.mutated).toBe(true);

@@ -1224,7 +1224,7 @@ export function paramReadbackReport(
       // agent WHICH param came to exist and at WHICH value.
       if (!beforeInstance && afterInstance) {
         report.added.push(
-          `${entry.trackName} (trackId=${trackId}) ${intent.effectType} fxId=${afterInstance!.id}.${intent.paramId}=${fmt(afterValue)}`,
+          `${entry.trackName} (trackId=${trackId}) ${intent.effectType}.${intent.paramId}=${fmt(afterValue)} (fxId=${afterInstance!.id})`,
         );
       } else {
         report.unchanged.push(entry.trackName);
@@ -1235,7 +1235,7 @@ export function paramReadbackReport(
     // delay, and a read-back that says only "decay" leaves the reader
     // guessing which knob moved.
     report.moved.push(
-      `${entry.trackName} (trackId=${trackId}) ${intent.effectType} fxId=${afterInstance!.id}.${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`,
+      `${entry.trackName} (trackId=${trackId}) ${intent.effectType}.${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)} (fxId=${afterInstance!.id})`,
     );
   }
   return report;

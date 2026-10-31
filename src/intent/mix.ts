@@ -1272,8 +1272,8 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
         .filter((entry): entry is string => entry !== null);
       entries.push(
         landed.length > 0
-          ? `added ${intent.effectType} on ${track.name} (trackId=${trackId}, fxId=${fx.id}; ${landed.join(", ")})`
-          : `added ${intent.effectType} on ${track.name} (trackId=${trackId}, fxId=${fx.id})`,
+          ? `added ${intent.effectType} on ${track.name} (${landed.join(", ")}) [trackId=${trackId}, fxId=${fx.id}]`
+          : `added ${intent.effectType} on ${track.name} [trackId=${trackId}, fxId=${fx.id}]`,
       );
       continue;
     }
@@ -1287,7 +1287,7 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
         return `${paramId} ${fmt(prev)}→${fmt(next ?? prev)}`;
       })
       .filter((entry): entry is string => entry !== null);
-    if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name} (trackId=${trackId}, fxId=${fx.id})`);
+    if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name} [trackId=${trackId}, fxId=${fx.id}]`);
   }
   if (entries.length > 3) return `${entries.slice(0, 3).join(", ")} +${entries.length - 3}`;
   return entries.join(", ");

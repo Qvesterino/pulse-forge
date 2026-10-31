@@ -342,8 +342,18 @@ describe("F1 glue — the panel wiring", () => {
   });
 
   it("the local-model re-entry hands the proposal to the nested call", () => {
-    expect(source).toMatch(/delegatedToNestedRoute = true;/);
-    expect(source).toMatch(/if \(executedRoute && !delegatedToNestedRoute\)/);
+    // The hand-off is a ONE-SHOT REF, not a flag: the caller plants the
+    // adapted route and the nested invocation CONSUMES it, so the dispatch
+    // chain runs exactly once and the proposal is registered once - by the
+    // nested call, whose `executedRoute` is the one that owns it.
+    // (Before the reviewed-plan refactor this was a `delegatedToNestedRoute`
+    // boolean; the contract is the same, the mechanism is not.)
+    expect(source).toMatch(/preRoutedRef\.current = proposal\.route;/);
+    // The planted route is read from the ref and the ref is cleared right
+    // after - so a second invocation cannot pick the same route up again.
+    expect(source).toMatch(
+      /const route =\s*approvedPlan\?\.route\s*\?\?\s*preRoutedRef\.current\s*\?\?[\s\S]{0,400}?preRoutedRef\.current = null;/,
+    );
   });
 
   it("the kill switch and the export chip are on this surface", () => {

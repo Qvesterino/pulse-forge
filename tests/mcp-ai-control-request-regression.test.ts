@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHeadlessMcpHost } from "../src/mcp/headless-host";
 import { createDefaultProject } from "../src/project-model/schema";
+import { applyIntent, previewIntent } from "./helpers/intentProtocol";
 
 describe("AI control safety regression", () => {
   it("refuses pattern replacement while the destructive unlock is off", async () => {
@@ -35,17 +36,18 @@ describe("AI control safety regression", () => {
   it("reports a repeated mute as a no-op without claiming an undo step", async () => {
     const host = createHeadlessMcpHost({ document: createDefaultProject() });
 
-    const first = await host.call("kyx_intent", { instruction: "mute the drums" });
+    const first = await applyIntent(host, "mute the drums");
     expect(first.isError, first.text).not.toBe(true);
     expect(first.mutated).toBe(true);
     const depthAfterFirst = host.store.undoStackLength;
 
-    const second = await host.call("kyx_intent", { instruction: "mute the drums" });
+    // The repeat is reviewed: the plan says nothing would change, so there is
+    // no planId to apply — and no undo step to claim.
+    const second = await previewIntent(host, "mute the drums");
 
     expect(second.isError, second.text).not.toBe(true);
     expect(second.mutated).toBe(false);
-    expect(second.stage).toBe("noop");
-    expect(second.text).toContain("nothing changed");
+    expect(second.data).toMatchObject({ status: "preview", mutates: false });
     expect(second.text).not.toContain("one undo step");
     expect(host.store.undoStackLength).toBe(depthAfterFirst);
   });

@@ -11856,6 +11856,7 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
           tool,
           mutated: false,
           isError: true,
+          errorCode: "EXECUTION_FAILED",
           text: `crashed: ${error instanceof Error ? error.message : String(error)}`,
         });
         failures += 1;

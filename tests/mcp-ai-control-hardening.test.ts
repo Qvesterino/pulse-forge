@@ -4,6 +4,7 @@ import { MCP_TOOLS, executeMcpTool, type McpToolContext } from "../src/mcp/tools
 import { createDefaultProject } from "../src/project-model/schema";
 import { addAudioClip } from "../src/commands/audioClips";
 import type { ProjectDocument } from "../src/project-model/types";
+import { applyIntent, previewIntent } from "./helpers/intentProtocol";
 
 function docWithoutArrangement(): ProjectDocument {
   const doc = createDefaultProject();
@@ -131,21 +132,26 @@ describe("AI control hardening — destructive generation gate", () => {
 describe("AI control hardening — truthful intent receipts", () => {
   it("reports a no-op intent as not mutated, with no undo claim", async () => {
     const host = createHeadlessMcpHost({ document: createDefaultProject() });
-    const first = await host.call("kyx_intent", { instruction: "mute the drums" });
+    const first = await applyIntent(host, "mute the drums");
     expect(first.mutated).toBe(true);
     expect(first.stage).toBe("applied");
     const depth = host.store.undoStackLength;
-    const second = await host.call("kyx_intent", { instruction: "mute the drums" });
+    // The repeat asks for a review; the REVIEW says nothing would change and
+    // hands back no planId — there is nothing to apply and no undo step to
+    // claim. A plan that would change nothing is not a failed mutation.
+    const second = await previewIntent(host, "mute the drums");
     expect(second.mutated).toBe(false);
-    expect(second.stage).toBe("noop");
-    expect(second.text).toContain("nothing changed");
+    expect(second.stage).toBe("dry-run");
+    expect(second.text).toContain("no document change would occur");
+    expect(second.data).toMatchObject({ status: "preview", mutates: false });
+    expect((second.data as { planId?: string }).planId).toBeUndefined();
     expect(second.text).not.toContain("one undo step");
     expect(host.store.undoStackLength).toBe(depth);
   });
 
   it("reads back the changed value for a non-param route", async () => {
     const host = createHeadlessMcpHost({ document: createDefaultProject() });
-    const result = await host.call("kyx_intent", { instruction: "set the tempo to 140 bpm" });
+    const result = await applyIntent(host, "set the tempo to 140 bpm");
     expect(result.isError, result.text).not.toBe(true);
     expect(result.mutated).toBe(true);
     expect(host.store.doc.bpm).toBe(140);
