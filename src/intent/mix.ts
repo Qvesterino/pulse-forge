@@ -1046,6 +1046,21 @@ function parseEffectIntentCore(text: string): EffectIntent | null {
   };
 }
 
+/** Effect-type language cannot identify one of several same-type inserts on
+ * a target track. Refuse those asks instead of silently editing the first. */
+export function ambiguousEffectInstance(
+  doc: ProjectDocument,
+  intent: EffectIntent,
+): { trackId: string; trackName: string; count: number } | null {
+  for (const trackId of targetTrackIds(doc, intent.targets, intent.trackIds, intent.trackOrdinal)) {
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track) continue;
+    const count = track.effects.filter((effect) => effect.type === intent.effectType).length;
+    if (count > 1) return { trackId, trackName: track.name, count };
+  }
+  return null;
+}
+
 const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medium: 1, huge: 1.75 };
 
 /** The knob delta for one targeted adjustment (pre-clamp). Moves are
@@ -1073,6 +1088,12 @@ const TARGETED_KNOB_DELTA: Partial<Record<EffectType, number>> = {
  * "remove". Effects whose knob the intent does not know are skipped.
  */
 export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): ReturnType<typeof snapshot> {
+  const ambiguous = ambiguousEffectInstance(doc, intent);
+  if (ambiguous) {
+    throw new Error(
+      `ambiguous ${intent.effectType} instance on ${ambiguous.trackName} (${ambiguous.count} inserts); name one exact insert`,
+    );
+  }
   const knob = EFFECT_PRIMARY_KNOB[intent.effectType];
   // The knob is needed only where the knob is the thing that MOVES: a
   // "more"/"less" ask turns it, an absolute "set" places it. "remove" takes
@@ -1204,15 +1225,22 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
     : knob
       ? [knob]
       : [];
-  if (readbackIds.length === 0) return "";
+  if (readbackIds.length === 0 && intent.direction !== "remove") return "";
   const fmt = (value: number): number => Math.round(value * 100) / 100;
   const entries: string[] = [];
   for (const trackId of targetTrackIds(after, intent.targets, intent.trackIds, intent.trackOrdinal)) {
     const track = after.tracks.find((candidate) => candidate.id === trackId);
     if (!track) continue;
     if (intent.direction === "remove") {
-      if (!track.effects.some((fx) => fx.type === intent.effectType)) {
-        entries.push(`−${intent.effectType} on ${track.name}`);
+      const removed =
+        before.tracks
+          .find((candidate) => candidate.id === trackId)
+          ?.effects.filter((fx) => fx.type === intent.effectType) ?? [];
+      const stillPresent = track.effects.filter((fx) => fx.type === intent.effectType);
+      if (removed.length > 0 && stillPresent.length === 0) {
+        entries.push(
+          ...removed.map((fx) => `−${intent.effectType} on ${track.name} (trackId=${trackId}, fxId=${fx.id})`),
+        );
       }
       continue;
     }
@@ -1244,8 +1272,8 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
         .filter((entry): entry is string => entry !== null);
       entries.push(
         landed.length > 0
-          ? `added ${intent.effectType} on ${track.name} (${landed.join(", ")})`
-          : `added ${intent.effectType} on ${track.name}`,
+          ? `added ${intent.effectType} on ${track.name} (trackId=${trackId}, fxId=${fx.id}; ${landed.join(", ")})`
+          : `added ${intent.effectType} on ${track.name} (trackId=${trackId}, fxId=${fx.id})`,
       );
       continue;
     }
@@ -1259,7 +1287,7 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
         return `${paramId} ${fmt(prev)}→${fmt(next ?? prev)}`;
       })
       .filter((entry): entry is string => entry !== null);
-    if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name}`);
+    if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name} (trackId=${trackId}, fxId=${fx.id})`);
   }
   if (entries.length > 3) return `${entries.slice(0, 3).join(", ")} +${entries.length - 3}`;
   return entries.join(", ");

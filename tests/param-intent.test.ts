@@ -15,6 +15,7 @@ import { defaultParamsOf, EFFECT_META } from "../src/effects/definitions";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
+import { summarizeDocumentChange } from "../src/mcp/intent-readback";
 
 /**
  * PARAM-LEVEL INTENT (param wave P1) — the producer names a KNOB. Every case
@@ -178,6 +179,53 @@ describe("router priority", () => {
     expect(routeIntentText("more delay on the lead", doc).kind).toBe("effectIntent");
     expect(routeIntentText("viac kompresie", doc).kind).toBe("mix");
   });
+
+  it("clarifies when a target track has duplicate instances of a named effect", () => {
+    const base = testDoc();
+    const bass = base.tracks.find(
+      (track): track is InstrumentTrack => track.kind === "instrument" && track.name === "808",
+    )!;
+    const instance = (id: string) => ({
+      id,
+      type: "reverb" as const,
+      bypassed: false,
+      params: defaultParamsOf("reverb"),
+    });
+    const doc: ProjectDocument = {
+      ...base,
+      tracks: base.tracks.map((track) =>
+        track.id === bass.id
+          ? {
+              ...bass,
+              effects: [
+                ...bass.effects.filter((effect) => effect.type !== "reverb"),
+                instance("reverb-one"),
+                instance("reverb-two"),
+              ],
+            }
+          : track,
+      ),
+    };
+    const instruction = "set reverb decay to 2.5 s on the 808";
+    const route = routeIntentText(instruction, doc);
+    expect(route).toMatchObject({ kind: "clarify", reason: "ambiguous-effect-instance" });
+    expect(routeIntentText("more reverb on the 808", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "ambiguous-effect-instance",
+    });
+    expect(() => applyParamIntent(doc, mustParse(instruction))).toThrow(/ambiguous reverb instance/);
+  });
+
+  it("shows document fields for an executable route without a specialized step builder", () => {
+    const doc = testDoc();
+    const route = routeIntentText("add marker at bar 8", doc);
+    expect(route.kind).toBe("markerIntent");
+    const plan = planIntent(doc, route);
+    expect(plan.executable).toBe(true);
+    expect(plan.mutates).toBe(true);
+    expect(plan.steps.length).toBeGreaterThan(0);
+    expect(formatPlan(plan)).toContain("marker");
+  });
 });
 
 describe("applyParamIntent", () => {
@@ -253,6 +301,28 @@ describe("applyParamIntent", () => {
     const readback = paramReadback(doc, after, intent);
     expect(readback).toMatch(/decay/);
     expect(readback).toMatch(/s/);
+    expect(readback).toContain("trackId=");
+    expect(readback).toContain("fxId=");
+    expect(summarizeDocumentChange(doc, after).lines.join("; ")).toContain("fxId=");
+  });
+});
+
+describe("MCP intent read-back entity ids", () => {
+  it("names the exact track and arrangement clip that changed", () => {
+    const before = testDoc();
+    const target = before.tracks.find((track) => track.kind !== "group") as InstrumentTrack;
+    const after = {
+      ...before,
+      tracks: before.tracks.map((track) => (track.id === target.id ? { ...target, gain: target.gain + 0.1 } : track)),
+      arrangement: {
+        ...before.arrangement,
+        clips: [{ id: "audit-clip-1", sceneId: before.scenes[0]!.id, startBar: 0, lengthBars: 4 }],
+      },
+    };
+
+    const readback = summarizeDocumentChange(before, after).lines.join("; ");
+    expect(readback).toContain(`trackId=${target.id}`);
+    expect(readback).toContain("scene clip id=audit-clip-1");
   });
 });
 

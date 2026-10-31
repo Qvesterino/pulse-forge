@@ -1,5 +1,6 @@
 import { Suspense, lazy, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useSelectionStore, useServices } from "./context";
+import { useSelection, useSelectionStore, useServices } from "./context";
+import type { Services } from "../services";
 import { useShortcutHints } from "./useShortcutHints";
 import { StatusLine } from "./intent/StatusLine";
 import { VoiceIdeaControls } from "./intent/VoiceIdeaControls";
@@ -207,6 +208,7 @@ import {
   type ReviseAttribute,
   type RoutedIntent,
 } from "../intent/route";
+import type { SelectionState } from "../store/SelectionStore";
 import { destructiveCheckpointName, routeIsDestructive } from "../intent/route-guard";
 import { restoreIntentCheckpoint, saveIntentCheckpoint } from "../intent/checkpoints";
 import { snapshot } from "../commands/core";
@@ -526,11 +528,42 @@ const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
   error: "Lokálny intent model zlyhal. Klikni pre opätovný pokus.",
 };
 
+interface PendingModelIntentProposal {
+  source: string;
+  route: RoutedIntent;
+  doc: ProjectDocument;
+  revision: number | null;
+  selection: SelectionState;
+  plan: string;
+}
+
+function intentStoreRevision(store: Services["store"]): number | null {
+  return "getRevision" in store && typeof store.getRevision === "function" ? store.getRevision() : null;
+}
+
+function copySelectionState(state: SelectionState): SelectionState {
+  return {
+    trackIds: [...state.trackIds],
+    clipIds: [...state.clipIds],
+    noteSelections: state.noteSelections.map((item) => ({ trackId: item.trackId, noteIds: [...item.noteIds] })),
+    stepSelection:
+      state.stepSelection == null ? null : { ...state.stepSelection, padIds: [...state.stepSelection.padIds] },
+    timeRange: state.timeRange == null ? null : { ...state.timeRange },
+  };
+}
+
+function sameSelectionState(a: SelectionState, b: SelectionState): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function IntentPanel() {
   const services = useServices();
   const shortcutHints = useShortcutHints();
   const selection = useSelectionStore();
+  const selectionState = useSelection();
   const doc = services.store.getDoc();
+  const [pendingModelProposal, setPendingModelProposal] = useState<PendingModelIntentProposal | null>(null);
+  const reviewedModelProposalRef = useRef<PendingModelIntentProposal | null>(null);
   const [text, setText] = useState("");
   const [useProjectBrief, setUseProjectBrief] = useState(() => Boolean(doc.producerBrief));
   const [status, setStatus] = useState<string | null>(null);
@@ -1019,11 +1052,27 @@ export function IntentPanel() {
     // A genre brief is a GENERATION prompt; showing a knob plan under it would
     // be noise (and the submit path takes the generation lane first).
     if (parsed?.input.genre) return null;
-    const route = routeIntentText(prompt, doc);
+    const isAutomationRequest = /^\s*(?:please\s+)?(?:automate|automatizuj|automatizovat)\b/i.test(prompt);
+    const routedText = isAutomationRequest
+      ? prompt
+      : rewriteSelectedTrackReference(prompt, doc, selectionState.trackIds[0] ?? null).text;
+    const route = routeIntentText(routedText, doc, {
+      hasSelectedStepSelection: Boolean(selectionState.stepSelection),
+      selectedClipId: selectionState.clipIds.length === 1 ? selectionState.clipIds[0] : null,
+      selectedRange: selectionState.timeRange,
+      selectedTrackId: selectionState.trackIds.length === 1 ? selectionState.trackIds[0] : null,
+    });
     if (route.kind === "clarify" || route.kind === "pattern" || route.kind === "revise") return null;
-    const plan = planIntent(doc, route);
+    const plan = planIntent(doc, route, routedText);
     return plan.executable ? formatPlan(plan) : null;
-  }, [deferredPrompt, doc, parsed]);
+  }, [deferredPrompt, doc, parsed, selectionState]);
+
+  const pendingModelProposalIsFresh =
+    pendingModelProposal != null &&
+    pendingModelProposal.source === text.trim() &&
+    services.store.getDoc() === pendingModelProposal.doc &&
+    (pendingModelProposal.revision == null || intentStoreRevision(services.store) === pendingModelProposal.revision) &&
+    sameSelectionState(selectionState, pendingModelProposal.selection);
 
   useEffect(() => {
     if (parsed?.input.genre) setPreferredStyleGenre(parsed.input.genre);
@@ -4397,6 +4446,28 @@ export function IntentPanel() {
   const routeAndExecute = async (override?: string) => {
     const source = (override ?? text).trim();
     if (!source || routeBusy || busy || songBusy || theatreBusy || mutateBusy) return;
+    const requestDoc = services.store.getDoc();
+    const requestRevision = intentStoreRevision(services.store);
+    const requestSelection = copySelectionState(selection.getState());
+    const requestSnapshotIsCurrent = () =>
+      services.store.getDoc() === requestDoc &&
+      (requestRevision == null || intentStoreRevision(services.store) === requestRevision) &&
+      sameSelectionState(selection.getState(), requestSelection);
+    const reviewedProposal = reviewedModelProposalRef.current;
+    const reviewedProposalIsCurrent = () =>
+      reviewedProposal == null ||
+      (source === reviewedProposal.source &&
+        services.store.getDoc() === reviewedProposal.doc &&
+        (reviewedProposal.revision == null || intentStoreRevision(services.store) === reviewedProposal.revision) &&
+        sameSelectionState(selection.getState(), reviewedProposal.selection) &&
+        requestSnapshotIsCurrent());
+    if (!reviewedProposalIsCurrent()) {
+      reviewedModelProposalRef.current = null;
+      preRoutedRef.current = null;
+      setPendingModelProposal(null);
+      setStatus("Návrh už nezodpovedá projektu alebo výberu. Znovu spusti požiadavku na vytvorenie aktuálneho návrhu.");
+      return;
+    }
     setRouteBusy(true);
     setSelectedStepPreview(null);
     if (rangeBouncePreview) {
@@ -4428,10 +4499,14 @@ export function IntentPanel() {
     const docBeforeRoute = doc;
     const undoDepthBeforeRoute = services.store.undoStackLength;
     let executedRoute: RoutedIntent | null = null;
-    let delegatedToNestedRoute = false;
     try {
       const promptParsed = source === text.trim() ? parsed : parseIntentText(source);
-      if (await tryConstrainedMix(source, promptParsed)) return;
+      if (reviewedProposal == null && (await tryConstrainedMix(source, promptParsed))) return;
+      if (!reviewedProposalIsCurrent()) {
+        setPendingModelProposal(null);
+        setStatus("Projekt alebo výber sa zmenil počas prípravy. Návrh nebol aplikovaný; vytvor nový návrh.");
+        return;
+      }
       // Pre-routed entry: the local-model fallback (below) re-enters with an
       // adapted route so the big dispatch chain runs exactly once.
       const routeSelection = selection.getState();
@@ -4477,6 +4552,11 @@ export function IntentPanel() {
         const cpName = destructiveCheckpointName(route);
         await saveIntentCheckpoint(cpName, doc);
         checkpointNote = ` · 🛟 checkpoint '${cpName}'`;
+      }
+      if (!reviewedProposalIsCurrent()) {
+        setPendingModelProposal(null);
+        setStatus("Projekt alebo výber sa zmenil pred aplikovaním. Návrh nebol vykonaný; vytvor nový návrh.");
+        return;
       }
       if (route.kind === "transport") {
         // Bare-word transport commands — runtime SERVICE state, not document
@@ -5235,6 +5315,10 @@ export function IntentPanel() {
           await ollama.ensureOllamaIntentProvider().catch(() => null);
         }
         const modelRoute = await tryModelRoute(source, doc, route);
+        if (!requestSnapshotIsCurrent()) {
+          setStatus("Projekt alebo výber sa zmenil počas analýzy. Modelový návrh bol zahodený.");
+          return;
+        }
         if (modelRoute) {
           // DETERMINISTIC GATE: the model may not overrule a specific rule
           // route, turn a description into a mutation, or propose a mutation
@@ -5253,16 +5337,24 @@ export function IntentPanel() {
             });
             return;
           }
-          preRoutedRef.current = gated;
-          // The nested call owns the proposal from here: its route is the one
-          // that executes, so THIS invocation must not register a row for a
-          // route that never ran.
-          delegatedToNestedRoute = true;
+          const modelPlan = planIntent(doc, gated, source);
+          if (!modelPlan.executable || !modelPlan.mutates) {
+            logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: "model-route-rejected" });
+            setStatus("Modelový návrh nemá overiteľnú operáciu a nebude aplikovaný.");
+            return;
+          }
           // MINING: what the model caught (kind drift monitoring — a kind
           // takeover here that users keep undoing is a wrongKind in hiding)
           logIntentMiningEvent({ prompt: source, outcome: "model-hit", routeKind: gated.kind });
-          setStatus(gated === modelRoute ? "🤖 lokálny model — akcia rozpoznaná" : "🎯 deterministická akcia");
-          void routeAndExecute();
+          setPendingModelProposal({
+            source,
+            route: gated,
+            doc,
+            revision: requestRevision,
+            selection: requestSelection,
+            plan: formatPlan(modelPlan),
+          });
+          setStatus("🤖 Model pripravil návrh. Skontroluj plán a potvrď jeho aplikovanie.");
           return;
         }
         // MINING: no provider answered or nothing validated. P0-A fail-closed
@@ -5288,7 +5380,9 @@ export function IntentPanel() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRouteBusy(false);
-      if (executedRoute && !delegatedToNestedRoute) {
+      if (reviewedProposal != null && reviewedModelProposalRef.current === reviewedProposal)
+        reviewedModelProposalRef.current = null;
+      if (executedRoute) {
         // ONE mutation boundary: record a fader move, or invalidate the
         // remembered move for any other mutation. A no-op (unchanged document
         // identity) leaves the reference valid.
@@ -5319,6 +5413,21 @@ export function IntentPanel() {
         refreshReaction();
       }
     }
+  };
+
+  const applyModelProposal = () => {
+    const proposal = pendingModelProposal;
+    if (proposal == null) return;
+    if (!pendingModelProposalIsFresh) {
+      setPendingModelProposal(null);
+      setStatus("Projekt, revízia alebo výber sa zmenil. Návrh bol zahodený; spusti požiadavku znova.");
+      return;
+    }
+    reviewedModelProposalRef.current = proposal;
+    preRoutedRef.current = proposal.route;
+    setPendingModelProposal(null);
+    setStatus("Kontrolujem aktuálny projekt a výber pred aplikovaním…");
+    void routeAndExecute(proposal.source);
   };
 
   const detectedText = parsed?.detected.length ? parsed.detected.map((d) => `● ${d}`).join("  ") : null;
@@ -5723,6 +5832,28 @@ export function IntentPanel() {
       {intentPlanPreview && (
         <div className="intent-detected" role="status" aria-label="Intent plan">
           🔧 {intentPlanPreview}
+        </div>
+      )}
+      {pendingModelProposal && (
+        <div className="intent-detected" role="status" aria-label="Model intent proposal">
+          <strong>🤖 Návrh lokálneho modelu · {pendingModelProposal.route.kind}</strong>
+          <div>🔧 {pendingModelProposal.plan}</div>
+          <div>
+            {pendingModelProposalIsFresh
+              ? "Skontroluj plán. Potvrď ho tlačidlom APPLY PLAN."
+              : "Projekt, revízia, text alebo výber sa zmenil. Návrh už nie je aktuálny."}
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setPendingModelProposal(null);
+              preRoutedRef.current = null;
+              setStatus("Návrh bol zahodený.");
+            }}
+          >
+            Zahodiť návrh
+          </button>
         </div>
       )}
       {(() => {
@@ -6167,11 +6298,23 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-route-btn"
-          disabled={!text.trim() || routeBusy || busy || songBusy || theatreBusy || mutateBusy}
-          onClick={() => void routeAndExecute()}
-          title="Smart route: arrange words → arrangement · mix words → mix · everything else → generate candidates"
+          disabled={
+            !text.trim() ||
+            routeBusy ||
+            busy ||
+            songBusy ||
+            theatreBusy ||
+            mutateBusy ||
+            (pendingModelProposal != null && !pendingModelProposalIsFresh)
+          }
+          onClick={() => (pendingModelProposal ? applyModelProposal() : void routeAndExecute())}
+          title={
+            pendingModelProposal
+              ? "Apply the reviewed model proposal if the project and selection are still unchanged"
+              : "Smart route: arrange words → arrangement · mix words → mix · everything else → generate candidates"
+          }
         >
-          {routeBusy ? "…" : "⚡ DO IT"}
+          {routeBusy ? "…" : pendingModelProposal ? "⚡ APPLY PLAN" : "⚡ DO IT"}
         </button>
         <button
           type="button"

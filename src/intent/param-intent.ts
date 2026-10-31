@@ -539,6 +539,30 @@ export function trackIdsForMixTarget(doc: Parameters<typeof applyMixIntent>[0], 
   return trackIdsForTarget(doc, target);
 }
 
+/** A natural-language param intent names an effect type, not an insert id.
+ * Refuse duplicate instances on the same resolved track instead of silently
+ * editing the first matching insert. Exact instance edits use kyx_plugin_param.
+ */
+export function ambiguousParamEffectInstance(
+  doc: Parameters<typeof applyMixIntent>[0],
+  intent: ParamIntent,
+): { trackId: string; trackName: string; count: number } | null {
+  const trackIds = new Set<string>();
+  for (const target of intent.targets) for (const id of trackIdsForMixTarget(doc, target)) trackIds.add(id);
+  for (const id of intent.trackIds ?? []) trackIds.add(id);
+  if (intent.trackOrdinal != null) {
+    const track = doc.tracks.filter((candidate) => candidate.kind !== "group")[intent.trackOrdinal];
+    if (track) trackIds.add(track.id);
+  }
+  for (const trackId of trackIds) {
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || !("effects" in track)) continue;
+    const count = track.effects.filter((effect) => effect.type === intent.effectType).length;
+    if (count > 1) return { trackId, trackName: track.name, count };
+  }
+  return null;
+}
+
 /**
  * INSPECTABLE MOVE — the arithmetic the command is about to perform.
  *
@@ -673,6 +697,9 @@ export interface ParamPlanLine {
   target: MixTarget | string;
   /** The resolved track name (the label the producer sees), or the family. */
   trackName: string;
+  /** Exact project entity ids used by the plan when the target resolved. */
+  trackId: string | null;
+  fxId: string | null;
   effectType: EffectType;
   paramId: string;
   domain: "log" | "linear";
@@ -917,6 +944,8 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
       lines.push({
         target: entry.target,
         trackName: entry.trackName,
+        trackId: null,
+        fxId: null,
         effectType: intent.effectType,
         paramId: intent.paramId,
         domain,
@@ -961,6 +990,8 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
     lines.push({
       target: entry.target,
       trackName,
+      trackId,
+      fxId: effect?.id ?? null,
       effectType: intent.effectType,
       paramId: intent.paramId,
       domain,
@@ -988,6 +1019,12 @@ export function paramPlanLines(intent: ParamIntent, doc: Parameters<typeof apply
  * add-if-missing, clamping and idempotency; "changed nothing" propagates).
  */
 export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], intent: ParamIntent): Command {
+  const ambiguous = ambiguousParamEffectInstance(doc, intent);
+  if (ambiguous) {
+    throw new Error(
+      `ambiguous ${intent.effectType} instance on ${ambiguous.trackName} (${ambiguous.count} inserts); use an exact effect instance`,
+    );
+  }
   const decisions: MixDecision[] = [];
   const groups: Array<{ target: MixTarget; trackIds?: string[]; label?: string; currentTrackId?: string }> = [];
   const covered = new Set<string>();
@@ -1186,7 +1223,9 @@ export function paramReadbackReport(
       // the registry default (delay.time IS 375 ms) must still tell the
       // agent WHICH param came to exist and at WHICH value.
       if (!beforeInstance && afterInstance) {
-        report.added.push(`${entry.trackName} ${intent.effectType}.${intent.paramId}=${fmt(afterValue)}`);
+        report.added.push(
+          `${entry.trackName} (trackId=${trackId}) ${intent.effectType} fxId=${afterInstance!.id}.${intent.paramId}=${fmt(afterValue)}`,
+        );
       } else {
         report.unchanged.push(entry.trackName);
       }
@@ -1196,7 +1235,7 @@ export function paramReadbackReport(
     // delay, and a read-back that says only "decay" leaves the reader
     // guessing which knob moved.
     report.moved.push(
-      `${entry.trackName} ${intent.effectType}.${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`,
+      `${entry.trackName} (trackId=${trackId}) ${intent.effectType} fxId=${afterInstance!.id}.${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`,
     );
   }
   return report;

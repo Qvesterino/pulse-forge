@@ -19,8 +19,9 @@ import { routeIntentText } from "./route";
 import { planIntent } from "./semantics/intent-plan";
 import { isDescriptiveStatement } from "./declarative";
 import { installedEffectTrackIds } from "../plugin-catalog";
-import type { EffectIntent, BypassIntent } from "./mix";
+import { ambiguousEffectInstance, type EffectIntent, type BypassIntent } from "./mix";
 import type { ParamIntent } from "./param-intent";
+import { ambiguousParamEffectInstance } from "./param-intent";
 import type { CompoundPart } from "./compound";
 
 /** Route kinds that change the project and therefore need a plan. */
@@ -158,9 +159,11 @@ export function gateModelRoute(source: string, modelRoute: RoutedIntent, doc: Pr
 
   const boundRoute = bindInstalledPluginTargets(doc, modelRoute, source);
   if (!boundRoute) return null;
+  if (boundRoute.kind === "effectIntent" && ambiguousEffectInstance(doc, boundRoute.intent)) return null;
+  if (boundRoute.kind === "paramIntent" && ambiguousParamEffectInstance(doc, boundRoute.intent)) return null;
 
   // 4. A model mutation must build an executable, actually-changing plan.
-  const plan = planIntent(doc, boundRoute);
+  const plan = planIntent(doc, boundRoute, source);
   if (!plan.executable || !plan.mutates) return null;
   return boundRoute;
 }

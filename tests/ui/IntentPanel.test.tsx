@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, fireEvent, waitFor, within, render } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within, render, act } from "@testing-library/react";
 import { IntentPanel } from "../../src/ui/IntentPanel";
 import { mockServices, renderWithContext } from "../helpers";
 import { SelectionContext, ServicesContext } from "../../src/ui/context";
@@ -305,6 +305,64 @@ describe("IntentPanel", () => {
     expect(plan.textContent).toContain("+10% (time)");
     // The preview is a PLAN: typing must not apply anything.
     expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
+  it("requires a second explicit apply for a model-backed intent proposal", async () => {
+    const project = createProjectFromTemplate("house");
+    const services = mockServices(project);
+    const generate = vi.fn(async () =>
+      JSON.stringify({ kind: "fader", targets: ["bass"], pads: [], direction: "down", amount: "subtle" }),
+    );
+    setIntentModelProvider({ id: "test-action-model", version: "1", generate });
+    try {
+      renderWithContext(<IntentPanel />, { services });
+      fireEvent.change(screen.getByLabelText(/Intent description/i), {
+        target: { value: "make the low end feel like a warm blanket" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+      const proposal = await screen.findByLabelText("Model intent proposal");
+      expect(proposal).toHaveTextContent(/fader/i);
+      expect(services.store.execute).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: /APPLY PLAN/i }));
+      await waitFor(() => expect(services.store.execute).toHaveBeenCalledTimes(1));
+    } finally {
+      setIntentModelProvider(null);
+    }
+  });
+
+  it("refuses a model proposal after the selection changes", async () => {
+    const project = createProjectFromTemplate("house");
+    const services = mockServices(project);
+    const selection = new SelectionStore();
+    const selectedTrack = project.tracks.find((track) => track.kind !== "group");
+    const generate = vi.fn(async () =>
+      JSON.stringify({ kind: "fader", targets: ["bass"], pads: [], direction: "down", amount: "subtle" }),
+    );
+    setIntentModelProvider({ id: "test-action-model", version: "1", generate });
+    try {
+      render(
+        <ServicesContext.Provider value={services}>
+          <SelectionContext.Provider value={selection}>
+            <IntentPanel />
+          </SelectionContext.Provider>
+        </ServicesContext.Provider>,
+      );
+      fireEvent.change(screen.getByLabelText(/Intent description/i), {
+        target: { value: "make the low end feel like a warm blanket" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+      await screen.findByLabelText("Model intent proposal");
+
+      if (selectedTrack) act(() => selection.setTracks([selectedTrack.id]));
+      const apply = screen.getByRole("button", { name: /APPLY PLAN/i });
+      expect(apply).toBeDisabled();
+      expect(screen.getByLabelText("Model intent proposal")).toHaveTextContent(/výber sa zmenil/i);
+      expect(services.store.execute).not.toHaveBeenCalled();
+    } finally {
+      setIntentModelProvider(null);
+    }
   });
 
   it("routes a creative DO IT brief to generation without consulting the action model", async () => {

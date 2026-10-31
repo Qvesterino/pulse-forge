@@ -12,6 +12,7 @@ import {
 } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import {
+  ambiguousEffectInstance,
   canApplySendIntent,
   effectWordIn,
   parseEffectIntent,
@@ -19,7 +20,12 @@ import {
   parseBypassIntent,
   TARGET_WORDS,
 } from "./mix";
-import { declinedParamIntentClarification, parseParamIntent, type ParamIntent } from "./param-intent";
+import {
+  ambiguousParamEffectInstance,
+  declinedParamIntentClarification,
+  parseParamIntent,
+  type ParamIntent,
+} from "./param-intent";
 import { parseLoudnessIntent } from "./loudness";
 import {
   parseFaderIntent,
@@ -920,6 +926,17 @@ export function routeIntentText(
   const paramIntent = parseParamIntent(text);
   if (paramIntent) {
     if (outOfRangeOrdinal(paramIntent.trackOrdinal, doc)) return clarifyOrdinalTarget(doc);
+    const ambiguous = ambiguousParamEffectInstance(doc, paramIntent);
+    if (ambiguous) {
+      return {
+        kind: "clarify",
+        reason: "ambiguous-effect-instance",
+        suggestions: [],
+        advice: [
+          `${ambiguous.trackName} has ${ambiguous.count} ${paramIntent.effectType} inserts. Name one exact insert; the param request was not applied.`,
+        ],
+      };
+    }
     return { kind: "paramIntent", intent: paramIntent };
   }
   // A non-structural request that says the arrangement needs more or less
@@ -1130,6 +1147,17 @@ export function routeIntentText(
   // tempo/fader/send on the way here.
   const effectIntent = parseEffectIntent(text);
   if (outOfRangeOrdinal(effectIntent?.trackOrdinal, doc)) return clarifyOrdinalTarget(doc);
+  const ambiguousEffect = effectIntent ? ambiguousEffectInstance(doc, effectIntent) : null;
+  if (ambiguousEffect) {
+    return {
+      kind: "clarify",
+      reason: "ambiguous-effect-instance",
+      suggestions: [],
+      advice: [
+        `${ambiguousEffect.trackName} has ${ambiguousEffect.count} ${effectIntent!.effectType} inserts. Name one exact insert; the request was not applied.`,
+      ],
+    };
+  }
   const normalizedEffectText = deaccent(text).toLowerCase();
   const hasExplicitEffectVerb =
     /\b(?:add|apply|insert|remove|take out|less|more|reduce|ease off|pull|turn down|bypass|disable|increase|decrease|set)\b.{0,32}\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq|bass.?harmon|koren|harmonik)\b/.test(

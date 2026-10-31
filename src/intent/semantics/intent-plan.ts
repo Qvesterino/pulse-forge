@@ -27,12 +27,17 @@ import { EFFECT_META, EFFECT_PRIMARY_KNOB } from "../../effects/definitions";
 import type { ParamDef } from "../../effects/types";
 import { trackIdsForTarget } from "../conversation";
 import { targetTrackIds } from "./target-resolution";
+import { parseIntentText } from "../text-parser";
+import { normalizeIntent } from "../normalize";
+import { applyMixIntent, planMixProfile } from "../mix";
 
 export type PlanDomain = "linear" | "log" | "db" | "normalized" | "boolean" | "none";
 
 export interface NumberPlanStep {
   kind: "number";
   target: string;
+  trackId?: string;
+  fxId?: string;
   parameter: string;
   before: number;
   proposed: number;
@@ -205,18 +210,21 @@ function paramSteps(
     }
     if (line.adding) noteParts.push("add effect");
     if (line.automationWarning) noteParts.push(line.automationWarning);
-    steps.push(
-      numberStep(
-        line.trackName,
-        `${line.effectType}.${line.paramId}`,
-        line.current,
-        line.proposed,
-        line.next,
-        paramFormat(def),
-        domainOf(def),
-        noteParts.join(" · ") || undefined,
-      ),
+    const step = numberStep(
+      line.trackName,
+      `${line.effectType}.${line.paramId}`,
+      line.current,
+      line.proposed,
+      line.next,
+      paramFormat(def),
+      domainOf(def),
+      noteParts.join(" · ") || undefined,
     );
+    steps.push({
+      ...step,
+      ...(line.trackId ? { trackId: line.trackId } : {}),
+      ...(line.fxId ? { fxId: line.fxId } : {}),
+    });
   }
   return steps;
 }
@@ -448,6 +456,96 @@ function compoundSteps(doc: ProjectDocument, route: Extract<RoutedIntent, { kind
   return steps;
 }
 
+const MAX_GENERIC_PLAN_STEPS = 48;
+
+function describeValue(value: unknown): string {
+  if (typeof value === "string") return value.length > 96 ? `${value.slice(0, 93)}…` : value;
+  if (typeof value === "number") return fmt(value);
+  if (typeof value === "boolean" || value == null) return String(value);
+  return Array.isArray(value) ? `${value.length} item(s)` : "object";
+}
+
+function genericDiffSteps(before: ProjectDocument, after: ProjectDocument): PlanStep[] {
+  const steps: PlanStep[] = [];
+  let omitted = 0;
+  const add = (step: PlanStep): void => {
+    if (steps.length >= MAX_GENERIC_PLAN_STEPS) {
+      omitted += 1;
+      return;
+    }
+    steps.push(step);
+  };
+  const visit = (left: unknown, right: unknown, path: string, depth = 0): void => {
+    if (Object.is(left, right)) return;
+    if (depth > 20) {
+      add({ kind: "command", target: path, note: "changed (nested detail limit reached)" });
+      return;
+    }
+    if (Array.isArray(left) && Array.isArray(right)) {
+      const leftIds = left.map((item) =>
+        item != null && typeof item === "object" && "id" in item ? String(item.id) : null,
+      );
+      const rightIds = right.map((item) =>
+        item != null && typeof item === "object" && "id" in item ? String(item.id) : null,
+      );
+      if (leftIds.every((id) => id != null) && rightIds.every((id) => id != null)) {
+        const leftById = new Map(left.map((item, index) => [leftIds[index]!, item]));
+        const rightById = new Map(right.map((item, index) => [rightIds[index]!, item]));
+        for (const [id, item] of leftById) {
+          if (!rightById.has(id))
+            add({ kind: "command", target: `${path}[${id}]`, note: `remove ${describeValue(item)}` });
+        }
+        for (const [id, item] of rightById) {
+          if (!leftById.has(id)) add({ kind: "command", target: `${path}[${id}]`, note: `add ${describeValue(item)}` });
+          else visit(leftById.get(id), item, `${path}[${id}]`, depth + 1);
+        }
+        if (leftIds.join("\u0000") !== rightIds.join("\u0000") && leftById.size === rightById.size) {
+          add({ kind: "command", target: path, note: "item order changed" });
+        }
+        return;
+      }
+      if (left.length === right.length) {
+        left.forEach((item, index) => visit(item, right[index], `${path}[${index}]`, depth + 1));
+      } else {
+        add({ kind: "command", target: path, note: `${left.length} item(s) → ${right.length} item(s)` });
+      }
+      return;
+    }
+    if (isPlainRecord(left) && isPlainRecord(right)) {
+      for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+        if (!(key in right))
+          add({ kind: "command", target: `${path}.${key}`, note: `removed (${describeValue(left[key])})` });
+        else if (!(key in left))
+          add({ kind: "command", target: `${path}.${key}`, note: `added (${describeValue(right[key])})` });
+        else visit(left[key], right[key], `${path}.${key}`, depth + 1);
+      }
+      return;
+    }
+    const lastDot = path.lastIndexOf(".");
+    const target = lastDot < 0 ? "project" : path.slice(0, lastDot);
+    const parameter = lastDot < 0 ? path : path.slice(lastDot + 1);
+    if (typeof left === "number" && typeof right === "number") {
+      add(numberStep(target, parameter, left, right, right, (value) => fmt(value), "linear"));
+    } else {
+      add({
+        kind: "state",
+        target,
+        parameter,
+        beforeLabel: describeValue(left),
+        afterLabel: describeValue(right),
+      });
+    }
+  };
+  visit(before, after, "project");
+  if (omitted > 0)
+    steps.push({ kind: "command", target: "project", note: `+${omitted} additional changed field(s) omitted` });
+  return steps;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function stepsFor(doc: ProjectDocument, after: ProjectDocument, route: RoutedIntent): PlanStep[] {
   switch (route.kind) {
     case "fader":
@@ -465,7 +563,7 @@ function stepsFor(doc: ProjectDocument, after: ProjectDocument, route: RoutedInt
     case "compound":
       return compoundSteps(doc, route);
     default:
-      return [];
+      return genericDiffSteps(doc, after);
   }
 }
 
@@ -486,10 +584,16 @@ function unavailable(doc: ProjectDocument, route: RoutedIntent, warning: string)
  * command is executed on the document VALUE (snapshot semantics), never on the
  * store.
  */
-export function planIntent(doc: ProjectDocument, route: RoutedIntent): IntentPlan {
+export function planIntent(doc: ProjectDocument, route: RoutedIntent, sourceText?: string): IntentPlan {
   let command: ReturnType<typeof buildIntentCommand>;
   try {
-    command = buildIntentCommand(doc, route);
+    if (route.kind === "mix") {
+      if (sourceText == null) return unavailable(doc, route, "mix preview needs the original instruction text");
+      const profile = planMixProfile(normalizeIntent(parseIntentText(sourceText).input, doc), route.overrides);
+      command = profile.decisions.length > 0 ? applyMixIntent(doc, profile) : null;
+    } else {
+      command = buildIntentCommand(doc, route);
+    }
   } catch (error) {
     return unavailable(doc, route, error instanceof Error ? error.message : String(error));
   }

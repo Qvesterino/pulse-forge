@@ -26,9 +26,12 @@ function fakeProvider(responses: Record<string, unknown>): IntentModelProvider {
   };
 }
 
-function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
+function makeCtx(
+  doc: ProjectDocument,
+  options: { allowDestructive?: boolean; allowMutations?: boolean } = {},
+): McpToolContext & { replaceDoc(next: ProjectDocument): void } {
   let current = doc;
-  return withAgentWriter({
+  const ctx = withAgentWriter({
     getDoc: () => current,
     execute: (command) => {
       current = command.execute(current);
@@ -40,7 +43,9 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
+    ...(options.allowMutations ? { allowMutations: () => true } : {}),
   });
+  return Object.assign(ctx, { replaceDoc: (next: ProjectDocument) => (current = next) });
 }
 
 afterEach(() => {
@@ -60,14 +65,19 @@ describe("kyx_intent model fallback over MCP", () => {
       },
     });
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const r = await executeMcpToolAsync(ctx, "kyx_intent", { instruction: "mute the drums" });
+    const preview = await executeMcpToolAsync(ctx, "kyx_intent", { instruction: "mute the drums", dry_run: true });
+    expect(consulted).toBe(false);
+    expect(preview.mutated).toBe(false);
+    const planId = (preview.data as { planId?: string }).planId;
+    expect(planId).toEqual(expect.any(String));
+    const r = await executeMcpToolAsync(ctx, "kyx_intent", { instruction: "mute the drums", planId });
     expect(consulted).toBe(false);
     expect(r.mutated).toBe(true);
     expect(r.text).not.toContain("🤖");
     expect(readIntentMiningLog()).toHaveLength(0);
   });
 
-  it("deterministic miss + model hit → executes the model route with the 🤖 marker", async () => {
+  it("deterministic miss + model hit → proposes first, then applies the reviewed route", async () => {
     setIntentModelProvider(
       fakeProvider({
         "make the low end feel like a warm blanket": {
@@ -80,15 +90,97 @@ describe("kyx_intent model fallback over MCP", () => {
       }),
     );
     const ctx = makeCtx(createProjectFromTemplate("house"));
+    const preview = await executeMcpToolAsync(ctx, "kyx_intent", {
+      instruction: "make the low end feel like a warm blanket",
+      dry_run: true,
+    });
+    expect(preview.mutated).toBe(false);
+    expect(preview.text).toContain("🤖 local model");
+    const planId = (preview.data as { planId?: string }).planId;
+    expect(planId).toEqual(expect.any(String));
     const r = await executeMcpToolAsync(ctx, "kyx_intent", {
       instruction: "make the low end feel like a warm blanket",
+      planId,
     });
     expect(r.mutated).toBe(true);
-    expect(r.text).toContain("🤖 local model");
     // mining: the hit + what kind it mapped to
     const events = readIntentMiningLog();
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ outcome: "model-hit", routeKind: "fader" });
+  });
+
+  it("model-backed dry_run only proposes, then applies the same planId", async () => {
+    setIntentModelProvider(
+      fakeProvider({
+        "make the low end feel like a warm blanket": {
+          kind: "fader",
+          targets: ["bass"],
+          pads: [],
+          direction: "down",
+          amount: "subtle",
+        },
+      }),
+    );
+    const ctx = makeCtx(createProjectFromTemplate("house"), { allowMutations: true });
+    const before = ctx.getDoc();
+    const preview = await executeMcpToolAsync(ctx, "kyx_intent", {
+      instruction: "make the low end feel like a warm blanket",
+      dry_run: true,
+      agentId: "intent-auditor",
+    });
+
+    expect(preview.mutated).toBe(false);
+    expect(preview.data).toMatchObject({ dryRun: true, status: "proposal", routeKind: "fader" });
+    const planId = (preview.data as { planId?: string }).planId;
+    expect(planId).toEqual(expect.any(String));
+    expect(ctx.getDoc()).toBe(before);
+
+    const applied = await executeMcpToolAsync(ctx, "kyx_intent", {
+      instruction: "make the low end feel like a warm blanket",
+      planId,
+      agentId: "intent-auditor",
+    });
+    expect(applied.mutated).toBe(true);
+    expect(ctx.getDoc()).not.toBe(before);
+  });
+
+  it("external model edits require a preview and stale plans are refused", async () => {
+    setIntentModelProvider(
+      fakeProvider({
+        "make the low end feel like a warm blanket": {
+          kind: "fader",
+          targets: ["bass"],
+          pads: [],
+          direction: "down",
+          amount: "subtle",
+        },
+      }),
+    );
+    const ctx = makeCtx(createProjectFromTemplate("house"), { allowMutations: true });
+    const before = ctx.getDoc();
+    const refused = await executeMcpToolAsync(ctx, "kyx_intent", {
+      instruction: "make the low end feel like a warm blanket",
+      agentId: "intent-auditor",
+    });
+    expect(refused.errorCode).toBe("CONFIRMATION_REQUIRED");
+    expect(ctx.getDoc()).toBe(before);
+
+    const preview = await executeMcpToolAsync(ctx, "kyx_intent", {
+      instruction: "make the low end feel like a warm blanket",
+      dry_run: true,
+      agentId: "intent-auditor",
+    });
+    const planId = (preview.data as { planId?: string }).planId;
+    expect(planId).toEqual(expect.any(String));
+    ctx.replaceDoc({ ...ctx.getDoc(), name: `${ctx.getDoc().name} changed` });
+
+    const stale = await executeMcpToolAsync(ctx, "kyx_intent", {
+      instruction: "make the low end feel like a warm blanket",
+      planId,
+      agentId: "intent-auditor",
+    });
+    expect(stale.errorCode).toBe("WRITE_CONFLICT");
+    expect(ctx.getDoc().name).toContain("changed");
   });
 
   it("a creative beat brief bypasses the command model", async () => {
@@ -135,16 +227,39 @@ describe("kyx_intent model fallback over MCP", () => {
         },
       }),
     );
-    const gated = makeCtx(createProjectFromTemplate("house"));
+    const gated = makeCtx(createProjectFromTemplate("house"), { allowMutations: true });
     const refused = await executeMcpToolAsync(gated, "kyx_intent", {
       instruction: "delete the chords track entirely",
+      agentId: "intent-auditor",
     });
     expect(refused.mutated).toBe(false);
-    expect(refused.text.toLowerCase()).toContain("destructive");
+    expect(refused.errorCode).toBe("CONFIRMATION_REQUIRED");
+    const gatedPreview = await executeMcpToolAsync(gated, "kyx_intent", {
+      instruction: "delete the chords track entirely",
+      dry_run: true,
+      agentId: "intent-auditor",
+    });
+    const gatedPlanId = (gatedPreview.data as { planId?: string }).planId;
+    expect(gatedPlanId).toEqual(expect.any(String));
+    const destructiveRefusal = await executeMcpToolAsync(gated, "kyx_intent", {
+      instruction: "delete the chords track entirely",
+      planId: gatedPlanId,
+      agentId: "intent-auditor",
+    });
+    expect(destructiveRefusal.mutated).toBe(false);
+    expect(destructiveRefusal.text.toLowerCase()).toContain("destructive");
 
-    const allowed = makeCtx(createProjectFromTemplate("house"), { allowDestructive: true });
+    const allowed = makeCtx(createProjectFromTemplate("house"), { allowDestructive: true, allowMutations: true });
+    const preview = await executeMcpToolAsync(allowed, "kyx_intent", {
+      instruction: "delete the chords track entirely",
+      dry_run: true,
+      agentId: "intent-auditor",
+    });
+    const planId = (preview.data as { planId?: string }).planId;
     const executed = await executeMcpToolAsync(allowed, "kyx_intent", {
       instruction: "delete the chords track entirely",
+      planId,
+      agentId: "intent-auditor",
     });
     expect(executed.mutated).toBe(true);
   });

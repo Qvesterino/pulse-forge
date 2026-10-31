@@ -64,6 +64,8 @@ export const CLARIFY_MESSAGES: Readonly<Record<string, string>> = {
   "missing-effect-value": "I need a number for that effect — a percentage. I didn't change anything.",
   "ambiguous-send-return":
     "That's either the track's send or the effect's return channel — I didn't change anything. Pick which one.",
+  "ambiguous-effect-instance":
+    "That track has multiple inserts of this effect type, so I didn't change anything. Name one exact FX insert; MCP callers can read its fxId with kyx_state and target it with kyx_plugin_param.",
   "preset-bank-cold":
     "The preset bank is still loading, so I couldn't read it. Nothing was changed — try again in a moment.",
   "preset-target": "Which track should the preset land on? I didn't change anything — name the track.",

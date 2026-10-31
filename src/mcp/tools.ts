@@ -57,7 +57,7 @@ import type { Command } from "../commands/types";
 import { UndoFrameConflictError, type UndoFrameToken } from "../store/undoFrame";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { clarifyMessage } from "../intent/clarify-messages";
-import { gateModelRoute } from "../intent/model-route-gate";
+import { gateModelRoute, isModelMutation } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { summarizeDocumentChange } from "./intent-readback";
 import type { AudibleVerificationRequest, AudibleVerificationResult } from "./audible-verification";
@@ -102,6 +102,7 @@ import { buildIntentCommand as intentCommand, INTENT_COMMAND_ROUTE_KINDS } from 
 import { paramAutomationControls, paramReadbackReport, paramReadbackReportText } from "../intent/param-intent";
 import type { ParamAutomationControl } from "../intent/param-intent";
 import { formatPlan, planIntent } from "../intent/semantics/intent-plan";
+import { uid } from "../shared/ids";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
 import { restyleCommand } from "../reference/restyle";
@@ -432,7 +433,13 @@ const OUTPUT_BATCH: McpOutputSchema = {
     results: { type: "array", items: { type: "object" } },
     mutations: { type: "number" },
     failures: { type: "number" },
+    skipped: { type: "number" },
     singleUndo: { type: "boolean" },
+    atomic: { type: "boolean" },
+    cancelled: { type: "boolean" },
+    interruptedByConflict: { type: "boolean" },
+    status: { type: "string" },
+    recovery: { type: "string" },
   },
   required: ["results", "mutations", "failures", "singleUndo"],
 };
@@ -1729,6 +1736,7 @@ const OUTPUT_STATE: McpOutputSchema = {
 };
 const OUTPUT_INTENT = receiptSchema({
   route: { type: "string" },
+  planId: { type: "string" },
   moved: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
   added: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
   unchanged: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
@@ -1859,13 +1867,22 @@ export const MCP_TOOLS: McpToolDef[] = [
       "Drive the KYX DAW with a natural-language producer instruction " +
       '(EN/SK): "mute the drums", "zníž basu", "set tempo to 140", ' +
       '"more reverb send on the lead", "more swing in the drop". ' +
-      "Executes through the deterministic command layer (one undo step) " +
-      "and returns a verification read-back of the resulting state. " +
+      "dry_run:true returns a reviewable plan and a planId for executable " +
+      "edits; send it back with the same instruction and caller identity to " +
+      "apply the exact proposal against the same project state. MCP document " +
+      "edits require this two-step flow. " +
       "Generation requests are refused (candidates need in-app auditioning).",
     inputSchema: {
       type: "object",
       properties: {
         instruction: { type: "string", description: "Producer instruction, EN or SK" },
+        planId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description:
+            "The planId returned by kyx_intent dry_run; applies that exact reviewed route if the project is unchanged.",
+        },
         dry_run: {
           type: "boolean",
           description:
@@ -3065,14 +3082,20 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_batch",
     description:
       "Run up to 10 tool calls in ONE submitted batch: calls: [{tool, args}…" +
-      "]. When the host supports undo frames, every mutation folds into a " +
-      "SINGLE undo entry (the result reports which contract applied); each " +
-      "call still returns its own read-back, and per-call failures never " +
-      "abort the batch. Async tools (kyx_export, kyx_loudness) and nested " +
-      "batches are refused — run those standalone.",
+      "]. When the host supports undo frames, mutations fold into one undo " +
+      "entry. Results include child read-backs and recovery advice. Default " +
+      "atomic:false continues after recoverable failures and keeps successful " +
+      "calls. atomic:true stops at the first failure but does not roll back " +
+      "the committed prefix; use the reported undo guidance to recover. Async " +
+      "tools (kyx_export, kyx_loudness) and nested batches are refused.",
     inputSchema: {
       type: "object",
       properties: {
+        atomic: {
+          type: "boolean",
+          description:
+            "Stop after the first failed child call. Earlier successful calls remain committed. Use the result's recovery field (undo once when singleUndo:true; otherwise inspect history and undo committed calls). Default false continues after recoverable failures.",
+        },
         calls: {
           type: "array",
           minItems: 1,
@@ -4084,6 +4107,8 @@ export interface McpToolContext {
   /** C6 attribution: which automation surface drives this context (absent
    * for the human working the UI directly / headless tests). */
   agentId?: string;
+  /** Set by the trusted host wrapper; cannot be downgraded by caller labels. */
+  isExternalAgent?: boolean;
   /**
    * ADR 0065: the current document revision. Absent on bare test fakes —
    * the permission lattice then SKIPS the staleness rule rather than
@@ -5362,7 +5387,7 @@ async function executeMcpToolCore(
   // The result reports what WOULD have applied (the exact command labels
   // the real run would commit). Runtime/export-side tools are refused: a
   // dry-run cannot un-play a note or un-write a file.
-  if (envelope.dryRun === true) {
+  if (envelope.dryRun === true || (name === "kyx_intent" && envelope.dry_run === true)) {
     const refusal = dryRunPolicyRefusal(name, envelope);
     if (refusal != null) {
       return mcpError("POLICY_REFUSED", refusal);
@@ -5786,6 +5811,7 @@ ${preview.text}`,
 }
 
 async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
+  const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   // THE INTENT MODEL SERVES MCP TOO — the deterministic layer answers
   // first; exactly the asks it cannot execute (generation asks, parser
   // declines) fall to the registered local model, the same fallback point
@@ -5793,16 +5819,23 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
   // warms the bridge on first ask). Every hit/miss/clarify feeds the
   // failure-mining log — agent asks grow the next corpus round.
   if (name === "kyx_intent") {
-    const instruction = String(
-      (args != null && typeof args === "object" ? (args as Record<string, unknown>).instruction : "") ?? "",
-    );
+    const instruction = String(record.instruction ?? "");
     const trimmed = instruction.trim();
+    if (typeof record.planId === "string" && record.planId.trim() !== "") {
+      if (record.dry_run === true || record.dryRun === true)
+        return mcpError("INVALID_ARGUMENTS", "planId applies a proposal; omit dry_run/dryRun");
+      return executeIntentProposal(ctx, record.planId.trim(), trimmed);
+    }
+    const proposalPreview = record.dry_run === true;
+    const sandboxPreview = record.dryRun === true;
+    if (sandboxPreview) return executeIntentTool(ctx, trimmed, true, false);
     if (trimmed !== "") {
       // Preset parsing synchronously reads the lazy factory bank. Warm it
       // before either deterministic routing or the local-model fallback so
       // the first MCP preset request is executable in a panel-less host.
       if (/\bpresets?\b/i.test(trimmed) && !isFactoryPresetsWarm()) await warmFactoryPresets();
-      const deterministic = routeIntentText(trimmed, ctx.getDoc());
+      const doc = ctx.getDoc();
+      const deterministic = routeIntentText(trimmed, doc);
       if (
         !isCreativeBriefRoute(trimmed, deterministic) &&
         (deterministic.kind === "pattern" || deterministic.kind === "clarify")
@@ -5821,6 +5854,9 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             return mcpError("POLICY_REFUSED", clarifyMessage("model-route-rejected"));
           }
           logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: gated.kind });
+          if (proposalPreview) return intentPlanProposalResult(ctx, doc, gated, trimmed, "local model");
+          if (sandboxPreview) return executeRoutedIntent(ctx, gated, trimmed);
+          if (requiresIntentPlan(ctx, gated)) return proposalRequiredResult(trimmed);
           const result = executeRoutedIntent(ctx, gated, trimmed);
           return { ...result, text: `🤖 local model — ${result.text}` };
         }
@@ -5831,9 +5867,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
       }
     }
+    if (proposalPreview) return executeIntentTool(ctx, trimmed, true);
+    if (sandboxPreview) return executeIntentTool(ctx, trimmed, true, false);
     // no model hit — fall through to the deterministic intent case below
   }
-  const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   // Self-healing lazy-bank gate: kyx_state(mixer) and kyx_tracks(preset ops)
   // read the factory bank, which is a separate chunk. Warm it here so the
   // tool surface is a complete entry point on its own — a headless host, a
@@ -6127,7 +6164,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return dispatchTransport(ctx, action);
     }
     case "kyx_intent":
-      return executeIntentTool(ctx, String(record.instruction ?? ""), record.dry_run === true);
+      return executeIntentTool(ctx, String(record.instruction ?? ""), false);
     case "kyx_generate": {
       const doc = ctx.getDoc();
       if (record.replaceMode !== undefined && record.replaceMode !== "new" && record.replaceMode !== "replace") {
@@ -11704,7 +11741,14 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
   const frameToken = openedFrame ?? undefined;
   const framed = frameToken !== undefined;
   const childContext = framed ? { ...ctx, undoFrameToken: frameToken } : ctx;
-  const results: Array<{ tool: string; mutated: boolean; text: string }> = [];
+  const results: Array<{
+    tool: string;
+    mutated: boolean;
+    text: string;
+    isError?: boolean;
+    errorCode?: string;
+    data?: unknown;
+  }> = [];
   let mutations = 0;
   let failures = 0;
   let skipped = 0;
@@ -11751,7 +11795,14 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
       }
       try {
         const result = await executeMcpTool(childContext, tool, item.args ?? {});
-        results.push({ tool, mutated: result.mutated, text: result.text });
+        results.push({
+          tool,
+          mutated: result.mutated,
+          text: result.text,
+          ...(result.isError ? { isError: true } : {}),
+          ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+          ...(result.data !== undefined ? { data: result.data } : {}),
+        });
         if (result.mutated) mutations += 1;
         if (ctx.signal?.aborted && result.errorCode !== "CANCELLED") {
           halted = true;
@@ -11773,6 +11824,7 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
         results.push({
           tool,
           mutated: false,
+          isError: true,
           text: `crashed: ${error instanceof Error ? error.message : String(error)}`,
         });
         failures += 1;
@@ -11806,25 +11858,53 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
       : atomic
         ? "atomic mode — stopped at the first failure"
         : "partial-commit (pass atomic:true to stop at the first failure)";
+  const singleUndo = framed && mutations > 0 && !frameOwnershipLost;
+  const recovery = mutations === 0 ? "none" : singleUndo ? "undo-once" : "inspect-history-and-undo-committed-calls";
+  const status = cancelled
+    ? "cancelled"
+    : interruptedByConflict
+      ? "interrupted"
+      : failures > 0
+        ? mutations > 0
+          ? "partial"
+          : "failed"
+        : "complete";
+  const undoSummary = frameOwnershipLost
+    ? "undo-frame ownership lost; inspect project history before undoing"
+    : singleUndo
+      ? "ONE undo step for the whole batch"
+      : mutations > 0
+        ? "no batch undo frame — inspect history and undo committed calls separately"
+        : "no undo step (no document changes)";
   const summary = [
     `${calls.length} call(s): ${mutations} mutated, ${failures} failed${skipped > 0 ? `, ${skipped} skipped` : ""}`,
     stopReason,
-    framed
-      ? "ONE undo step for the whole batch"
-      : "no undo-frame support on this host — each call is its own undo step",
+    undoSummary,
   ].join(" · ");
   const text = `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`;
+  const data = {
+    results,
+    mutations,
+    failures,
+    skipped,
+    singleUndo,
+    atomic,
+    cancelled,
+    interruptedByConflict,
+    status,
+    recovery,
+  };
   if ((atomic && failures > 0) || cancelled || interruptedByConflict) {
     return mcpError("PARTIAL_FAILURE", text, {
       mutated: mutations > 0,
-      data: { results, mutations, failures, skipped, singleUndo: framed, atomic, cancelled, interruptedByConflict },
+      data,
     });
   }
   return {
     text,
     mutated: mutations > 0,
     stage: mutations > 0 ? "applied" : "noop",
-    data: { results, mutations, failures, skipped, singleUndo: framed, atomic },
+    data,
   };
 }
 
@@ -15206,44 +15286,197 @@ function automationPlanProposalResult(route: Extract<RoutedIntent, { kind: "auto
   };
 }
 
-function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = false): McpToolResult {
+interface StoredIntentProposal {
+  id: string;
+  instruction: string;
+  owner: string;
+  doc: ProjectDocument;
+  docId: string;
+  revision: number | null;
+  route: RoutedIntent;
+  expectedAfter: ProjectDocument;
+  proposalSource?: string;
+  createdAt: number;
+}
+
+const intentProposals = new Map<string, StoredIntentProposal>();
+const INTENT_PROPOSAL_TTL_MS = 10 * 60_000;
+const INTENT_PROPOSAL_LIMIT = 128;
+
+function intentProposalOwner(ctx: McpToolContext): string {
+  return ctx.agentId?.trim() || "local";
+}
+
+function pruneIntentProposals(now = Date.now()): void {
+  for (const [id, proposal] of intentProposals) {
+    if (now - proposal.createdAt > INTENT_PROPOSAL_TTL_MS) intentProposals.delete(id);
+  }
+  while (intentProposals.size >= INTENT_PROPOSAL_LIMIT) {
+    const oldest = intentProposals.keys().next().value as string | undefined;
+    if (oldest == null) break;
+    intentProposals.delete(oldest);
+  }
+}
+
+function requiresIntentPlan(ctx: McpToolContext, route: RoutedIntent): boolean {
+  // Trusted external-agent hosts require preview → planId. The host sets this
+  // capability before applying any per-call attribution label, so a caller
+  // cannot bypass review by declaring agentId:"local".
+  // Undo remains direct because its operation is explicit session control;
+  // read-only/runtime and in-app-only routes keep their own contracts.
+  return ctx.isExternalAgent === true && route.kind !== "undoIntent" && isModelMutation(route);
+}
+
+function proposalRequiredResult(instruction: string): McpToolResult {
+  return mcpError(
+    "CONFIRMATION_REQUIRED",
+    `Review this request first with kyx_intent { instruction: ${JSON.stringify(instruction)}, dry_run: true }; apply the returned planId with the same instruction after reviewing it.`,
+    { data: { status: "review-required", changed: false, route: "intent", readback: [] } },
+  );
+}
+
+function intentPlanProposalResult(
+  ctx: McpToolContext,
+  doc: ProjectDocument,
+  route: RoutedIntent,
+  instruction: string,
+  source?: string,
+  storeProposal = true,
+): McpToolResult {
+  if (route.kind === "automationPlan") return automationPlanProposalResult(route);
+  const plan = planIntent(doc, route, instruction);
+  const planId = storeProposal && plan.executable && plan.mutates ? uid("intent-plan") : undefined;
+  if (planId != null) {
+    pruneIntentProposals();
+    intentProposals.set(planId, {
+      id: planId,
+      instruction,
+      owner: intentProposalOwner(ctx),
+      doc,
+      docId: doc.id,
+      revision: ctx.getRevision?.() ?? null,
+      route,
+      expectedAfter: plan.after,
+      ...(source ? { proposalSource: source } : {}),
+      createdAt: Date.now(),
+    });
+  }
+  const text = plan.executable
+    ? `Plan (dry run): ${formatPlan(plan)}${planId != null ? ` Apply this reviewed plan with planId ${planId}.` : ""}`
+    : `Plan (dry run): ${plan.warnings[0] ?? "nothing to execute"}`;
+  return {
+    text: source == null ? text : `🤖 ${source} — ${text}`,
+    mutated: false,
+    stage: "dry-run",
+    dryRun: true,
+    data: {
+      dryRun: true,
+      status: planId == null ? "preview" : "proposal",
+      planId,
+      routeKind: route.kind,
+      executable: plan.executable,
+      mutates: plan.mutates,
+      warnings: plan.warnings,
+      steps: plan.steps.map((step) => ({
+        kind: step.kind,
+        target: step.target,
+        trackId: "trackId" in step ? step.trackId : undefined,
+        fxId: "fxId" in step ? step.fxId : undefined,
+        parameter: "parameter" in step ? step.parameter : undefined,
+        next: "nextLabel" in step ? step.nextLabel : undefined,
+        note: step.note,
+      })),
+    },
+  };
+}
+
+function executeIntentProposal(ctx: McpToolContext, id: string, instruction: string): McpToolResult {
+  const proposal = intentProposals.get(id);
+  if (proposal == null) return mcpError("WRITE_CONFLICT", "intent plan is missing or expired; request a fresh dry_run");
+  const doc = ctx.getDoc();
+  const revision = ctx.getRevision?.() ?? null;
+  if (
+    proposal.owner !== intentProposalOwner(ctx) ||
+    proposal.instruction !== instruction ||
+    proposal.docId !== doc.id ||
+    proposal.doc !== doc ||
+    (proposal.revision != null && revision !== proposal.revision)
+  ) {
+    intentProposals.delete(id);
+    return mcpError(
+      "WRITE_CONFLICT",
+      "project, revision, caller, or instruction changed after preview; request a fresh dry_run",
+    );
+  }
+  const result = executeRoutedIntent(ctx, proposal.route, proposal.instruction);
+  const after = ctx.getDoc();
+  const resultData =
+    result.data != null && typeof result.data === "object" && !Array.isArray(result.data)
+      ? (result.data as Record<string, unknown>)
+      : {};
+  if (result.isError && after !== doc) {
+    intentProposals.delete(id);
+    return mcpError(
+      "PARTIAL_FAILURE",
+      `${result.text} The project changed before the failure was reported; inspect the read-back and undo if needed.`,
+      {
+        mutated: true,
+        data: {
+          status: "failed-after-change",
+          planId: id,
+          routeKind: proposal.route.kind,
+          originalError: result.errorCode ?? "EXECUTION_FAILED",
+          readback: summarizeDocumentChange(doc, after).lines,
+        },
+      },
+    );
+  }
+  if (!result.isError && !deepEqualRef(after, proposal.expectedAfter)) {
+    intentProposals.delete(id);
+    return mcpError(
+      "PARTIAL_FAILURE",
+      "the operation completed but the committed document differs from the reviewed plan; inspect the project and undo if needed",
+      {
+        mutated: after !== doc,
+        data: {
+          ...resultData,
+          status: "plan-mismatch",
+          routeKind: proposal.route.kind,
+          expectedDocId: proposal.docId,
+          actualDocId: after.id,
+          readback: [summarizeDocumentChange(doc, after)],
+        },
+      },
+    );
+  }
+  if (!result.isError) intentProposals.delete(id);
+  return {
+    ...result,
+    text: proposal.proposalSource ? `🤖 reviewed ${proposal.proposalSource} proposal — ${result.text}` : result.text,
+    data: { ...resultData, planId: id, routeKind: proposal.route.kind, verifiedAgainstPlan: !result.isError },
+  };
+}
+
+function executeIntentTool(
+  ctx: McpToolContext,
+  instruction: string,
+  dryRun = false,
+  storeProposal = true,
+): McpToolResult {
   const trimmed = instruction.trim();
   if (trimmed.length === 0) return mcpError("INVALID_ARGUMENTS", "empty instruction");
+  const doc = ctx.getDoc();
+  const route = routeIntentText(trimmed, doc);
   if (dryRun) {
-    // DRY RUN — the same route and the same canonical command the executor
-    // would build, applied to the document VALUE only. Nothing is committed,
-    // and a model fallback is deliberately not consulted: a plan must be
-    // deterministic and inspectable.
-    const doc = ctx.getDoc();
-    const route = routeIntentText(trimmed, doc);
+    // The dispatcher resolves the model route before arriving here. This
+    // deterministic route still uses the same proposal builder and never
+    // commits the projected document.
     const protectionRefusal = refuseUnguardedMixConstraint(doc, route, trimmed);
     if (protectionRefusal) return protectionRefusal;
-    if (route.kind === "automationPlan") return automationPlanProposalResult(route);
-    const plan = planIntent(doc, route);
-    const text = plan.executable
-      ? `Plan (dry run): ${formatPlan(plan)}`
-      : `Plan (dry run): ${plan.warnings[0] ?? "nothing to execute"}`;
-    return {
-      text,
-      mutated: false,
-      stage: "dry-run",
-      data: {
-        dryRun: true,
-        routeKind: route.kind,
-        executable: plan.executable,
-        mutates: plan.mutates,
-        warnings: plan.warnings,
-        steps: plan.steps.map((step) => ({
-          kind: step.kind,
-          target: step.target,
-          parameter: "parameter" in step ? step.parameter : undefined,
-          next: "nextLabel" in step ? step.nextLabel : undefined,
-          note: step.note,
-        })),
-      },
-    };
+    return intentPlanProposalResult(ctx, doc, route, trimmed, undefined, storeProposal);
   }
-  return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()), trimmed);
+  if (requiresIntentPlan(ctx, route)) return proposalRequiredResult(trimmed);
+  return executeRoutedIntent(ctx, route, trimmed);
 }
 
 /** A dry run must not advertise a different, unprotected plan from the one
@@ -15430,15 +15663,22 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent, text: str
     }
     const before = ctx.getDoc();
     ctx.execute(applyMixIntent(before, profile));
-    const changed = ctx.getDoc() !== before;
+    const after = ctx.getDoc();
+    const changed = after !== before;
+    const readback = changed ? summarizeDocumentChange(before, after).lines : [];
     return {
-      text: `⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}${changed ? " — one undo step in KYX" : " (nothing changed)"}`,
+      text:
+        `⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}` +
+        (changed
+          ? ` — read-back: ${readback.join("; ") || "document changed"} — one undo step in KYX`
+          : " (nothing changed)"),
       mutated: changed,
       data: {
         status: changed ? "applied" : "unchanged",
         changed,
         summary: profile.summary,
         decisions: profile.decisions.length,
+        readback,
       },
     };
   }

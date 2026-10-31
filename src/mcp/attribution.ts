@@ -47,10 +47,13 @@ export function attributeLabel(command: Command, agentId: McpAgentId | string): 
 /** Wrap a context so every mutation it executes is attributed. Reads,
  * undo/redo and undoStackLength pass through untouched. */
 export function withAgentAttribution(ctx: McpToolContext, agentId: McpAgentId | string): McpToolContext {
-  if (agentId === "local") return ctx;
+  if (agentId === "local" && ctx.isExternalAgent === undefined) return ctx;
+  const isExternalAgent = ctx.isExternalAgent ?? agentId !== "local";
+  if (agentId === "local") return { ...ctx, isExternalAgent };
   return {
     ...ctx,
     agentId,
+    isExternalAgent,
     execute: (command) => ctx.execute(attributeLabel(command, agentId)),
     ...(ctx.executeAgentCommand
       ? {

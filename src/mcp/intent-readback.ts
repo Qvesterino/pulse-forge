@@ -32,11 +32,82 @@ function collectionLine(label: string, before: readonly unknown[], after: readon
 }
 
 function trackLabel(track: ProjectDocument["tracks"][number]): string {
-  return `"${track.name}"`;
+  return `"${track.name}" (trackId=${track.id})`;
+}
+
+function entityChangeLines<T extends { id: string }>(
+  label: string,
+  before: readonly T[],
+  after: readonly T[],
+): string[] {
+  const lines: string[] = [];
+  const beforeById = new Map(before.map((item) => [item.id, item]));
+  const afterById = new Map(after.map((item) => [item.id, item]));
+  for (const id of beforeById.keys()) {
+    if (!afterById.has(id)) lines.push(`removed ${label} id=${id}`);
+  }
+  for (const [id, item] of afterById) {
+    const previous = beforeById.get(id);
+    if (previous == null) lines.push(`added ${label} id=${id}`);
+    else if (previous !== item) lines.push(`changed ${label} id=${id}`);
+  }
+  if (
+    before.map((item) => item.id).join("\u0000") !== after.map((item) => item.id).join("\u0000") &&
+    before.length === after.length &&
+    before.every((item) => afterById.has(item.id))
+  ) {
+    lines.push(`${label} order changed`);
+  }
+  return lines;
 }
 
 function fxTypes(track: ProjectDocument["tracks"][number]): string[] {
   return track.effects.map((fx) => `${fx.type}${fx.bypassed ? " (bypassed)" : ""}`);
+}
+
+function effectChangeLines(
+  track: ProjectDocument["tracks"][number],
+  before: ProjectDocument["tracks"][number]["effects"],
+  after: ProjectDocument["tracks"][number]["effects"],
+): string[] {
+  const lines: string[] = [];
+  const beforeById = new Map(before.map((effect) => [effect.id, effect]));
+  const afterById = new Map(after.map((effect) => [effect.id, effect]));
+  for (const [fxId, effect] of beforeById) {
+    if (!afterById.has(fxId)) lines.push(`track ${track.name} (${track.id}) removed ${effect.type} fxId=${fxId}`);
+  }
+  for (const [fxId, effect] of afterById) {
+    const previous = beforeById.get(fxId);
+    if (!previous) {
+      lines.push(`track ${track.name} (${track.id}) added ${effect.type} fxId=${fxId}`);
+      continue;
+    }
+    if (previous.bypassed !== effect.bypassed) {
+      lines.push(
+        `track ${track.name} (${track.id}) ${effect.type} fxId=${fxId} bypass ${previous.bypassed} -> ${effect.bypassed}`,
+      );
+    }
+    let detailed = previous.bypassed !== effect.bypassed;
+    for (const paramId of new Set([...Object.keys(previous.params), ...Object.keys(effect.params)])) {
+      const from = previous.params[paramId];
+      const to = effect.params[paramId];
+      if (from === to) continue;
+      detailed = true;
+      lines.push(
+        `track ${track.name} (${track.id}) ${effect.type} fxId=${fxId}.${paramId} ${from ?? "default"} -> ${to ?? "default"}`,
+      );
+    }
+    if (!detailed && previous !== effect) {
+      lines.push(`track ${track.name} (${track.id}) ${effect.type} fxId=${fxId} configuration changed`);
+    }
+  }
+  if (
+    before.map((fx) => fx.id).join("\u0000") !== after.map((fx) => fx.id).join("\u0000") &&
+    before.length === after.length
+  ) {
+    lines.push(`track ${track.name} (${track.id}) FX insert order changed`);
+  }
+  return lines;
 }
 
 export function summarizeDocumentChange(before: ProjectDocument, after: ProjectDocument): DocumentChangeSummary {
@@ -61,79 +132,41 @@ export function summarizeDocumentChange(before: ProjectDocument, after: ProjectD
       continue;
     }
     if (previous === track) continue;
-    if (previous.name !== track.name) lines.push(`renamed track "${previous.name}" -> "${track.name}"`);
+    if (previous.name !== track.name)
+      lines.push(`renamed track trackId=${track.id} "${previous.name}" -> "${track.name}"`);
     if (previous.kind !== track.kind) lines.push(`track ${trackLabel(track)} kind ${previous.kind} -> ${track.kind}`);
     if (previous.gain !== track.gain) lines.push(`track ${trackLabel(track)} gain ${previous.gain} -> ${track.gain}`);
     if (previous.pan !== track.pan) lines.push(`track ${trackLabel(track)} pan ${previous.pan} -> ${track.pan}`);
     if (previous.mute !== track.mute) lines.push(`track ${trackLabel(track)} mute ${previous.mute} -> ${track.mute}`);
     if (previous.solo !== track.solo) lines.push(`track ${trackLabel(track)} solo ${previous.solo} -> ${track.solo}`);
     if (!sameRef(previous.effects, track.effects)) {
-      const a = fxTypes(previous);
-      const b = fxTypes(track);
-      if (a.join(",") !== b.join(","))
+      const effectLines = effectChangeLines(track, previous.effects, track.effects);
+      if (effectLines.length > 0) lines.push(...effectLines);
+      else {
+        const a = fxTypes(previous);
+        const b = fxTypes(track);
         lines.push(`track ${trackLabel(track)} FX [${a.join(", ")}] -> [${b.join(", ")}]`);
-      else lines.push(`track ${trackLabel(track)} FX parameters changed`);
+      }
     }
   }
   for (const [id, track] of beforeTracks) {
     if (!afterTracks.has(id)) lines.push(`removed track ${trackLabel(track)}`);
   }
 
-  if (before.patterns.length !== after.patterns.length) {
-    lines.push(`patterns ${before.patterns.length} -> ${after.patterns.length}`);
-  } else if (!sameRef(before.patterns, after.patterns)) {
-    const beforeById = new Map(before.patterns.map((pattern) => [pattern.id, pattern]));
-    for (const pattern of after.patterns) {
-      const previous = beforeById.get(pattern.id);
-      if (previous == null) continue;
-      if (previous === pattern) continue;
-      if (previous.name !== pattern.name) lines.push(`renamed pattern "${previous.name}" -> "${pattern.name}"`);
-      if (previous.stepCount !== pattern.stepCount) {
-        lines.push(`pattern "${pattern.name}" steps ${previous.stepCount} -> ${pattern.stepCount}`);
-      }
-      if (
-        !sameRef(previous.rows, pattern.rows) ||
-        !sameRef(previous.notes, pattern.notes) ||
-        !sameRef(previous.stepMeta, pattern.stepMeta)
-      ) {
-        lines.push(`pattern "${pattern.name}" content changed`);
-      }
-    }
-  }
+  lines.push(...entityChangeLines("pattern", before.patterns, after.patterns));
   if (before.activePatternId !== after.activePatternId) {
     const active = after.patterns.find((pattern) => pattern.id === after.activePatternId);
     lines.push(`active pattern -> "${active?.name ?? after.activePatternId}"`);
   }
 
-  if (before.scenes.length !== after.scenes.length) {
-    lines.push(`scenes ${before.scenes.length} -> ${after.scenes.length}`);
-  } else if (!sameRef(before.scenes, after.scenes)) {
-    const beforeById = new Map(before.scenes.map((scene) => [scene.id, scene]));
-    for (const scene of after.scenes) {
-      const previous = beforeById.get(scene.id);
-      if (previous == null || previous === scene) continue;
-      if (previous.name !== scene.name) lines.push(`renamed scene "${previous.name}" -> "${scene.name}"`);
-      else if (previous.intensity !== scene.intensity)
-        lines.push(`scene "${scene.name}" intensity -> ${scene.intensity}`);
-    }
-  }
+  lines.push(...entityChangeLines("scene", before.scenes, after.scenes));
 
   const clipsBefore = before.arrangement.clips;
   const clipsAfter = after.arrangement.clips;
-  if (clipsBefore.length !== clipsAfter.length) {
-    lines.push(`scene clips ${clipsBefore.length} -> ${clipsAfter.length}`);
-  } else if (!sameRef(clipsBefore, clipsAfter)) {
-    const changed = clipsAfter.filter((clip, index) => clip !== clipsBefore[index]).length;
-    if (changed > 0) lines.push(`${changed} scene clip(s) changed`);
-  }
+  lines.push(...entityChangeLines("scene clip", clipsBefore, clipsAfter));
   const audioBefore = before.arrangement.audioClips ?? [];
   const audioAfter = after.arrangement.audioClips ?? [];
-  if (audioBefore.length !== audioAfter.length) {
-    lines.push(`audio clips ${audioBefore.length} -> ${audioAfter.length}`);
-  } else if (!sameRef(audioBefore, audioAfter)) {
-    const changed = audioAfter.filter((clip, index) => clip !== audioBefore[index]).length;
-    if (changed > 0) lines.push(`${changed} audio clip(s) changed`);
-  }
+  lines.push(...entityChangeLines("audio clip", audioBefore, audioAfter));
 
   if (before.markers.length !== after.markers.length) {
     lines.push(`markers ${before.markers.length} -> ${after.markers.length}`);
@@ -157,9 +190,9 @@ export function summarizeDocumentChange(before: ProjectDocument, after: ProjectD
     collectionLine("macros", before.macros, after.macros),
     collectionLine("LFOs", before.lfos, after.lfos),
     collectionLine("live sets", before.liveSets ?? [], after.liveSets ?? []),
-    collectionLine("midi clips", before.arrangement.midiClips ?? [], after.arrangement.midiClips ?? []),
-    collectionLine(
-      "automation clips",
+    ...entityChangeLines("MIDI clip", before.arrangement.midiClips ?? [], after.arrangement.midiClips ?? []),
+    ...entityChangeLines(
+      "automation clip",
       before.arrangement.automationClips ?? [],
       after.arrangement.automationClips ?? [],
     ),

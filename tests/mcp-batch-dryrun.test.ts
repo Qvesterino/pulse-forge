@@ -55,7 +55,18 @@ describe("P2-C atomic kyx_batch", () => {
     });
     expect(result.isError).toBe(true);
     expect(result.errorCode).toBe("PARTIAL_FAILURE");
-    expect(result.data).toMatchObject({ mutations: 1, failures: 1, skipped: 1, atomic: true });
+    expect(result.data).toMatchObject({
+      mutations: 1,
+      failures: 1,
+      skipped: 1,
+      atomic: true,
+      status: "partial",
+      recovery: "undo-once",
+      singleUndo: true,
+    });
+    const batchData = result.data as { results: Array<{ tool: string; data?: unknown }> };
+    expect(batchData.results[0]?.tool).toBe("kyx_markers");
+    expect(batchData.results[0]?.data).toMatchObject({ status: "created" });
     // executed prefix landed; the call after the failure never ran
     expect(doc().markers.some((m) => m.name === "first")).toBe(true);
     expect(doc().markers.some((m) => m.name === "never-runs")).toBe(false);
@@ -74,6 +85,7 @@ describe("P2-C atomic kyx_batch", () => {
     });
     expect(result.isError).toBeUndefined(); // partial-commit is not an error (documented design)
     expect(result.data).toMatchObject({ mutations: 2, failures: 1, skipped: 0 });
+    expect(result.data).toMatchObject({ status: "partial", recovery: "undo-once", singleUndo: true });
     expect(doc().markers.some((m) => m.name === "second")).toBe(true);
   });
 
