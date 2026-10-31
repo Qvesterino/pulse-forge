@@ -156,6 +156,36 @@ export class PcmRingReader {
     return available;
   }
 
+  /**
+   * Read directly into planar AudioWorklet output channels. This keeps the
+   * realtime consumer allocation-free: it does not need an interleaved
+   * scratch buffer or a per-quantum typed-array view before deinterleaving.
+   */
+  readIntoChannels(outputs: Float32Array[], wanted: number): number {
+    const channels = this.format.channels;
+    const outputChannels = Math.min(channels, outputs.length);
+    const capacity = this.format.capacityFrames;
+    const writeIndex = Atomics.load(this.header.words, 4);
+    const readIndex = Atomics.load(this.header.words, 5);
+    const available = Math.min(wanted, ringDistance(writeIndex, readIndex));
+    const base = readIndex % capacity;
+
+    for (let frame = 0; frame < available; frame++) {
+      const ringPos = (base + frame) % capacity;
+      const sourceOffset = ringPos * channels;
+      for (let channel = 0; channel < outputChannels; channel++) {
+        outputs[channel][frame] = this.data[sourceOffset + channel];
+      }
+    }
+    for (let channel = 0; channel < outputs.length; channel++) {
+      outputs[channel].fill(0, channel < outputChannels ? available : 0, wanted);
+    }
+
+    Atomics.store(this.header.words, 5, (readIndex + available) >>> 0);
+    if (available < wanted) Atomics.add(this.header.words, 7, 1);
+    return available;
+  }
+
   underruns(): number {
     return Atomics.load(this.header.words, 7);
   }

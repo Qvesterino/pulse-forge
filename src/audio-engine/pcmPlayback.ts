@@ -45,21 +45,35 @@ export function getSharedPcmPlayback(getContext: () => BaseAudioContext): PcmPla
 }
 
 function desktopSurface(): DesktopPcmSurface {
-  const surface = (globalThis as { kyxDesktop?: { pcm?: DesktopPcmSurface } }).kyxDesktop?.pcm;
+  const surface = optionalDesktopSurface();
   if (!surface) throw new PcmPlaybackUnavailableError();
   return surface;
 }
 
+function optionalDesktopSurface(): DesktopPcmSurface | null {
+  return (globalThis as { kyxDesktop?: { pcm?: DesktopPcmSurface } }).kyxDesktop?.pcm ?? null;
+}
+
 const RING_CAPACITY = 32768; // ≥ OS pipe buffer in frames (ADR 0018 sizing contract)
+
+function contextIsClosed(context: BaseAudioContext): boolean {
+  return context.state === "closed";
+}
 
 export type PcmPlaybackState = "off" | "starting" | "on";
 
 export class PcmPlaybackController {
   private node: AudioWorkletNode | null = null;
+  /** Node allocated for an async start that has not committed yet. */
+  private pendingNode: AudioWorkletNode | null = null;
   private sessionId: string | null = null;
   private moduleLoaded = new WeakSet<BaseAudioContext>();
   private state: PcmPlaybackState = "off";
   private readonly stateListeners = new Set<(state: PcmPlaybackState) => void>();
+  /** Invalidates in-flight starts when Stop or a newer Play arrives. */
+  private operation = 0;
+  /** Serializes native starts so stale sessions are stopped before a new one starts. */
+  private startTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly getContext: () => BaseAudioContext) {}
 
@@ -79,7 +93,13 @@ export class PcmPlaybackController {
 
   private setState(state: PcmPlaybackState): void {
     this.state = state;
-    for (const listener of this.stateListeners) listener(state);
+    for (const listener of this.stateListeners) {
+      try {
+        listener(state);
+      } catch (error) {
+        console.error("[pcm-playback] state listener failed:", error);
+      }
+    }
   }
 
   /**
@@ -87,55 +107,139 @@ export class PcmPlaybackController {
    * allowlisted kind ("pcm-gen" tone, "asio-host" for the ASIO fixture via
    * --dll); extra args ride the same validation as any other client.
    */
-  async start(host: "pcm-gen" | "asio-host" | "clap-player", args: string[] = []): Promise<void> {
-    const surface = desktopSurface();
-    if (this.node) await this.stop();
+  start(host: "pcm-gen" | "asio-host" | "clap-player", args: string[] = []): Promise<void> {
+    const operation = ++this.operation;
+    const pending = this.pendingNode;
+    this.pendingNode = null;
+    if (pending) this.releaseNode(pending);
+
+    // Keep the current session audible until its own serialized start turn,
+    // then stop it before opening the replacement. Concurrent starts queue
+    // behind the prior attempt, including cleanup of a late native session.
+    const task = this.startTail.catch(() => undefined).then(() => this.startCurrent(operation, host, args));
+    this.startTail = task.catch(() => undefined);
     this.setState("starting");
+    return task;
+  }
 
-    const context = this.getContext();
-    const rate = context.sampleRate;
-    const format = { channels: 2, capacityFrames: RING_CAPACITY, sampleRate: rate };
-    const sab = createPcmRingBuffer(format);
-    new PcmRingHeader(sab).init(format);
+  private async startCurrent(
+    operation: number,
+    host: "pcm-gen" | "asio-host" | "clap-player",
+    args: string[],
+  ): Promise<void> {
+    if (!this.isCurrent(operation)) return;
+    await this.stopCurrentSession();
+    if (!this.isCurrent(operation)) return;
 
-    await this.ensureModule(context);
-    const node = new AudioWorkletNode(context, "pcm-playback", {
-      numberOfInputs: 0,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-    node.port.postMessage({ type: "attach", sab });
+    let node: AudioWorkletNode | null = null;
+    let remoteStarted = false;
+    let remoteId: string | null = null;
+    let adopted = false;
+    let surface: DesktopPcmSurface | null = null;
 
-    const result = await surface.start({ sab, host, args: [...args, "--rate", String(rate)] });
-    if (!result.ok) {
-      node.disconnect();
-      this.setState("off");
-      throw new Error(result.error ?? "external source refused to start");
+    try {
+      surface = desktopSurface();
+      const context = this.getContext();
+      if (contextIsClosed(context)) throw new Error("Audio context closed during PCM playback startup");
+      const rate = context.sampleRate;
+      const format = { channels: 2, capacityFrames: RING_CAPACITY, sampleRate: rate };
+      const sab = createPcmRingBuffer(format);
+      new PcmRingHeader(sab).init(format);
+
+      await this.ensureModule(context);
+      if (!this.isCurrent(operation)) return;
+      if (context !== this.getContext() || contextIsClosed(context)) {
+        throw new Error("Audio context changed during PCM playback startup");
+      }
+
+      node = new AudioWorkletNode(context, "pcm-playback", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      this.pendingNode = node;
+      node.port.postMessage({ type: "attach", sab });
+
+      const result = await surface.start({ sab, host, args: [...args, "--rate", String(rate)] });
+      if (!result.ok) throw new Error(result.error ?? "external source refused to start");
+      remoteStarted = true;
+      remoteId = result.id ?? null;
+
+      // Stop may have happened while the desktop host was starting. The
+      // request cannot be cancelled, so discard the node and stop the late
+      // native session before allowing a queued replacement to proceed.
+      if (!this.isCurrent(operation)) return;
+      if (context !== this.getContext() || contextIsClosed(context)) {
+        throw new Error("Audio context changed during PCM playback startup");
+      }
+
+      node.connect(context.destination);
+      this.pendingNode = null;
+      this.node = node;
+      this.sessionId = remoteId;
+      this.setState("on");
+      adopted = true;
+    } finally {
+      if (!adopted) {
+        if (node && this.pendingNode === node) this.pendingNode = null;
+        if (node) this.releaseNode(node);
+        if (remoteStarted && remoteId && surface) await stopRemoteSession(surface, remoteId);
+        if (this.isCurrent(operation)) this.setState("off");
+      }
     }
-
-    node.connect(context.destination);
-    this.node = node;
-    this.sessionId = result.id ?? null;
-    this.setState("on");
   }
 
   async stop(): Promise<void> {
-    const surface = desktopSurface();
-    if (this.sessionId) {
-      await surface.stop(this.sessionId).catch(() => undefined);
-      this.sessionId = null;
-    }
-    if (this.node) {
-      this.node.port.postMessage({ type: "detach" });
-      this.node.disconnect();
-      this.node = null;
-    }
+    this.operation += 1;
+    const priorStart = this.startTail.catch(() => undefined);
+    const stopping = this.stopCurrentSession();
+    // A new Play after Stop must not race the old native stop request. Keep
+    // that shutdown in the same queue used by later start attempts.
+    this.startTail = Promise.all([priorStart, stopping]).then(() => undefined);
     this.setState("off");
+    await stopping;
+  }
+
+  private isCurrent(operation: number): boolean {
+    return this.operation === operation;
+  }
+
+  private async stopCurrentSession(): Promise<void> {
+    const id = this.sessionId;
+    this.sessionId = null;
+    const node = this.node ?? this.pendingNode;
+    this.node = null;
+    this.pendingNode = null;
+    if (node) this.releaseNode(node);
+
+    const surface = optionalDesktopSurface();
+    if (id && surface) await stopRemoteSession(surface, id);
+  }
+
+  private releaseNode(node: AudioWorkletNode): void {
+    try {
+      node.port.postMessage({ type: "detach" });
+    } catch {
+      /* worklet port may already be closed */
+    }
+    try {
+      node.disconnect();
+    } catch {
+      /* context may already be closed */
+    }
   }
 
   private async ensureModule(context: BaseAudioContext): Promise<void> {
     if (this.moduleLoaded.has(context)) return;
     await context.audioWorklet.addModule(new URL(assetUrl("/pcm-playback-worklet.js"), import.meta.url).href);
     this.moduleLoaded.add(context);
+  }
+}
+
+async function stopRemoteSession(surface: DesktopPcmSurface, id: string): Promise<void> {
+  try {
+    await surface.stop(id);
+  } catch {
+    /* a dead desktop bridge must not retain a connected playback node */
   }
 }

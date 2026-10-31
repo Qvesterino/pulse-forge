@@ -204,7 +204,12 @@ export interface SfzLibraryImportResult {
 export const SFZ_IMPORT_MAX_BYTES = 256 * 1024 * 1024;
 
 export interface SfzLibraryImportSinks {
-  bank: { has(id: string): boolean; add(id: string, buffer: AudioBuffer): void; remove(id: string): void };
+  bank: {
+    has(id: string): boolean;
+    get(id: string): AudioBuffer | undefined;
+    add(id: string, buffer: AudioBuffer): void;
+    remove(id: string): void;
+  };
   userSamples: {
     save(
       asset: {

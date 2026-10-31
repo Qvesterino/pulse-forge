@@ -52,4 +52,83 @@ describe("importAudioFile persistence rollback", () => {
     expect(bank.has(asset.id)).toBe(true);
     expect(bank.size).toBe(1);
   });
+
+  it("restores the previously playable buffer when a same-id re-import fails", async () => {
+    const id = "user.same-audio";
+    const previous = {
+      duration: 1,
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array([0.25]),
+    };
+    const replacement = {
+      ...previous,
+      getChannelData: () => new Float32Array([0.75]),
+    };
+    const bank = new SampleBank();
+    bank.add(id, previous as unknown as AudioBuffer);
+    const services = {
+      engine: { context: { decodeAudioData: async () => replacement } },
+      bank,
+      userSamples: {
+        save: async () => {
+          throw new Error("write failed");
+        },
+      },
+    } as unknown as Services;
+
+    await expect(importAudioFile(services, wav("same.wav"), { id, detectBpm: false })).rejects.toThrow("write failed");
+
+    expect(bank.get(id)).toBe(previous);
+  });
+
+  it("serializes concurrent imports with the same id so rollback cannot remove the later buffer", async () => {
+    const id = "user.same-audio";
+    const firstBuffer = {
+      duration: 1,
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array([0.25]),
+    };
+    const secondBuffer = {
+      ...firstBuffer,
+      getChannelData: () => new Float32Array([0.75]),
+    };
+    const bank = new SampleBank();
+    const firstSave = deferred<void>();
+    let saveCount = 0;
+    const save = vi.fn(async () => {
+      if (saveCount++ === 0) await firstSave.promise;
+    });
+    let decoded = 0;
+    const services = {
+      engine: {
+        context: {
+          decodeAudioData: async () => (decoded++ === 0 ? firstBuffer : secondBuffer),
+        },
+      },
+      bank,
+      userSamples: { save },
+    } as unknown as Services;
+
+    const first = importAudioFile(services, wav("same.wav"), { id, detectBpm: false });
+    const second = importAudioFile(services, wav("same.wav"), { id, detectBpm: false });
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+    firstSave.reject(new Error("first write failed"));
+
+    await expect(first).rejects.toThrow("first write failed");
+    await expect(second).resolves.toMatchObject({ id });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(bank.get(id)).toBe(secondBuffer);
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}

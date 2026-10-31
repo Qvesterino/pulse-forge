@@ -262,7 +262,14 @@ function PcmChip({ services }: { services: Services }) {
     // The chip and the intent verbs share ONE controller — either surface
     // reflects the other's session.
     const controller = getSharedPcmPlayback(() => ctx);
-    return controller.subscribe(setState);
+    const unsubscribeState = controller.subscribe(setState);
+    const unsubscribeContext = services.engine.subscribeLiveContext((nextContext) => {
+      if (nextContext !== ctx) void controller.stop();
+    });
+    return () => {
+      unsubscribeState();
+      unsubscribeContext();
+    };
   }, [services, desktop]);
 
   if (!desktop) return null;

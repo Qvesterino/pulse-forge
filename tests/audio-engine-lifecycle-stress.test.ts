@@ -463,6 +463,31 @@ describe("engine lifecycle stress gate", () => {
     }
   });
 
+  it("counts a synchronous close throw without aborting context teardown", async () => {
+    const globals = globalThis as unknown as { AudioContext?: unknown };
+    const RealAudioContext = globals.AudioContext;
+    class ThrowingAudioContext {
+      close = vi.fn(() => {
+        throw new DOMException("already closing", "InvalidStateError");
+      });
+      constructor() {
+        Object.assign(this, makeCtx());
+      }
+    }
+    globals.AudioContext = ThrowingAudioContext;
+    try {
+      const engine = new AudioEngine();
+      engine.ensureContext();
+      expect(() => engine.dispose()).not.toThrow();
+      expect(engine.context).toBeNull();
+      expect(engine.getDiagnostics().contextCloseFailures).toBe(1);
+    } finally {
+      if (RealAudioContext === undefined) delete globals.AudioContext;
+      else globals.AudioContext = RealAudioContext;
+    }
+    await flush();
+  });
+
   it("dispose() releases the graph, closes only an owned context and stays reusable", async () => {
     const globals = globalThis as unknown as { AudioContext?: unknown };
     const RealAudioContext = globals.AudioContext;

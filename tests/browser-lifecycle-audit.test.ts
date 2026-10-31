@@ -81,6 +81,19 @@ describe("browser lifecycle invariants", () => {
     expect(body, "the visible edge must best-effort resume the AudioContext").toMatch(/ensureContext\(\)/);
   });
 
+  it("stops external PCM playback when the live audio context changes", () => {
+    const app = read("src/ui/App.tsx");
+    const start = app.indexOf("function PcmChip");
+    const end = app.indexOf("\nfunction MtcChip", start);
+    expect(start, "the external PCM control disappeared").toBeGreaterThan(-1);
+    expect(end, "the external PCM control boundary disappeared").toBeGreaterThan(start);
+    const pcmChip = app.slice(start, end);
+    expect(pcmChip, "the controller must release its old graph on context swap/loss").toMatch(
+      /subscribeLiveContext\([\s\S]*?nextContext\s*!==\s*ctx[\s\S]*?controller\.stop\(\)/,
+    );
+    expect(pcmChip, "the context listener must be released with the chip").toMatch(/unsubscribeContext\(\)/);
+  });
+
   it("the save lifecycle installs pagehide AND beforeunload safety nets", () => {
     const saveLifecycle = read("src/persistence/save-lifecycle.ts");
     expect(saveLifecycle).toMatch(/addEventListener\("pagehide"/);

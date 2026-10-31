@@ -144,12 +144,20 @@ describe("SFZ import — persistence rollback (ghost-sample guard)", () => {
   /** A bank stand-in that records exactly what is currently held. */
   function trackingBank() {
     const held = new Set<string>();
+    const buffers = new Map<string, AudioBuffer>();
     return {
       held,
       bank: {
         has: (id: string) => held.has(id),
-        add: (id: string) => void held.add(id),
-        remove: (id: string) => void held.delete(id),
+        get: (id: string) => buffers.get(id),
+        add: (id: string, buffer: AudioBuffer) => {
+          held.add(id);
+          buffers.set(id, buffer);
+        },
+        remove: (id: string) => {
+          held.delete(id);
+          buffers.delete(id);
+        },
       },
     };
   }

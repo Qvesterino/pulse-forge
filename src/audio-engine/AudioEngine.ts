@@ -776,9 +776,16 @@ export class AudioEngine {
   private closeOwnedContext(context: BaseAudioContext): void {
     const close = (context as AudioContext).close;
     if (typeof close !== "function") return;
-    void close.call(context).catch(() => {
+    try {
+      void Promise.resolve(close.call(context)).catch(() => {
+        this.contextCloseFailures += 1;
+      });
+    } catch {
+      // Browser implementations normally reject asynchronously, but host and
+      // test contexts can throw before returning a promise. Keep the lifecycle
+      // best-effort and the failure visible in either case.
       this.contextCloseFailures += 1;
-    });
+    }
   }
 
   /**

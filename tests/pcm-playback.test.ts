@@ -144,6 +144,22 @@ describe("PCM ring (TS, single producer single consumer)", () => {
     expect([...left]).toEqual([1, 2, 3]);
     expect([...right]).toEqual([-1, -2, -3]);
   });
+
+  it("reads directly into planar channels and zero-fills an underrun", () => {
+    const sab = createPcmRingBuffer(FORMAT);
+    new PcmRingHeader(sab).init(FORMAT);
+    const writer = new PcmRingWriter(sab);
+    const reader = new PcmRingReader(sab);
+    writer.writeBlock(new Float32Array([1, -1, 2, -2, 3, -3]));
+
+    const left = new Float32Array(4).fill(9);
+    const right = new Float32Array(4).fill(9);
+    expect(reader.readIntoChannels([left, right], 4)).toBe(3);
+
+    expect([...left]).toEqual([1, 2, 3, 0]);
+    expect([...right]).toEqual([-1, -2, -3, 0]);
+    expect(reader.underruns()).toBe(1);
+  });
 });
 
 describe("Node producer ↔ TS consumer interop (same SAB)", () => {
