@@ -5,10 +5,12 @@ import { mockServices, renderWithContext } from "../helpers";
 import { SelectionContext, ServicesContext } from "../../src/ui/context";
 import { SelectionStore } from "../../src/store/SelectionStore";
 import { normalizeIntent } from "../../src/intent/normalize";
+import { routeIntentText } from "../../src/intent/route";
 import { setIntentModelProvider } from "../../src/intent/model-resolver";
 import { lastGeneration, rememberGeneration } from "../../src/intent/session-context";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { snapshot } from "../../src/commands/core";
+import { defaultParamsOf } from "../../src/effects/definitions";
 import { BAR_TICKS, getActivePattern, getDrumTrack } from "../../src/project-model/types";
 import { classifyPads } from "../../src/assist/patternOps";
 import type { SongBuild } from "../../src/intent/song";
@@ -363,6 +365,79 @@ describe("IntentPanel", () => {
     } finally {
       setIntentModelProvider(null);
     }
+  });
+
+  it("applies the exact effect instance shown in a deterministic plan", async () => {
+    const project = createProjectFromTemplate("house");
+    const services = mockServices(project);
+    renderWithContext(<IntentPanel />, { services });
+    const prompt = "slightly longer reverb decay on the 808";
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: prompt } });
+
+    const preview = await screen.findByLabelText("Intent plan");
+    const previewText = preview.textContent ?? "";
+    const trackId = /trackId=([^,\]\s]+)/.exec(previewText)?.[1];
+    const fxId = /fxId=([^,\]\s]+)/.exec(previewText)?.[1];
+    expect(trackId).toBeTruthy();
+    expect(fxId).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await waitFor(() => expect(services.store.execute).toHaveBeenCalledTimes(1));
+    const landedTrack = services.store.getDoc().tracks.find((track) => track.id === trackId);
+    const landedEffect =
+      landedTrack && "effects" in landedTrack ? landedTrack.effects.find((effect) => effect.id === fxId) : null;
+    expect(landedEffect).toMatchObject({
+      id: fxId,
+      type: "reverb",
+      params: expect.objectContaining({ decay: expect.any(Number) }),
+    });
+    expect(screen.getByText(/verified against the reviewed plan/i)).toBeInTheDocument();
+  });
+
+  it("keeps a deterministic automation command through its second confirmation", async () => {
+    const project = createProjectFromTemplate("house");
+    const target = project.tracks.find((track) => track.name === "808");
+    expect(target?.kind).toBe("instrument");
+    if (!target || target.kind !== "instrument") return;
+    const doc = {
+      ...project,
+      tracks: project.tracks.map((track) =>
+        track.id === target.id
+          ? {
+              ...track,
+              effects: [
+                ...track.effects,
+                {
+                  id: "fx-automation-reverb",
+                  type: "reverb" as const,
+                  bypassed: false,
+                  params: defaultParamsOf("reverb"),
+                },
+              ],
+            }
+          : track,
+      ),
+    };
+    const prompt = "automate reverb decay on 808 from 1 to 2 between bars 1 and 4";
+    const route = routeIntentText(prompt, doc);
+    expect(route.kind).toBe("automationPlan");
+    if (route.kind === "automationPlan") {
+      expect("error" in route.result ? route.result.error : null).toBeNull();
+    }
+    const services = mockServices(doc);
+    renderWithContext(<IntentPanel />, { services });
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: prompt },
+    });
+    await screen.findByLabelText("Intent plan");
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await screen.findByText(/Automation preview ready/i);
+    fireEvent.click(screen.getByRole("button", { name: /APPLY · ONE UNDO STEP/i }));
+
+    await waitFor(() => expect(services.store.execute).toHaveBeenCalledTimes(1));
+    expect(services.store.getDoc().automation).toHaveLength(1);
+    expect(services.store.getDoc().automation[0]?.points).toHaveLength(2);
+    expect(screen.getByText(/2 points verified/i)).toBeInTheDocument();
   });
 
   it("refuses a model proposal after the selection changes", async () => {

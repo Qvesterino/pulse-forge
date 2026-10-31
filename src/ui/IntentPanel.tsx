@@ -50,7 +50,6 @@ import {
   type SessionGeneration,
 } from "../intent/session-context";
 import { setMasterConfig, duplicateTimeRange, setSceneIntensity } from "../commands/commands";
-import { addAutomationRamp } from "../commands/automation";
 import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../commands/intentRouting";
 import { applyGenerationResultCommand, applyGenerationResultWithFxCommand } from "../commands/aiPattern";
 import {
@@ -530,7 +529,7 @@ const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
   error: "Lokálny intent model zlyhal. Klikni pre opätovný pokus.",
 };
 
-interface PendingModelIntentProposal {
+interface IntentCommandPlanSnapshot {
   source: string;
   route: RoutedIntent;
   command: Command;
@@ -539,6 +538,13 @@ interface PendingModelIntentProposal {
   revision: number | null;
   selection: SelectionState;
   plan: string;
+}
+
+interface PendingModelIntentProposal extends IntentCommandPlanSnapshot {}
+
+interface IntentPlanPreview {
+  text: string;
+  action: IntentCommandPlanSnapshot | null;
 }
 
 function intentStoreRevision(store: Services["store"]): number | null {
@@ -1050,7 +1056,7 @@ export function IntentPanel() {
    * typing responsive on long prompts.
    */
   const deferredPrompt = useDeferredValue(text);
-  const intentPlanPreview = useMemo(() => {
+  const intentPlanPreview = useMemo<IntentPlanPreview | null>(() => {
     const prompt = deferredPrompt.trim();
     if (!prompt) return null;
     // A genre brief is a GENERATION prompt; showing a knob plan under it would
@@ -1068,8 +1074,33 @@ export function IntentPanel() {
     });
     if (route.kind === "clarify" || route.kind === "pattern" || route.kind === "revise") return null;
     const plan = planIntent(doc, route, routedText);
-    return plan.executable ? formatPlan(plan) : null;
-  }, [deferredPrompt, doc, parsed, selectionState]);
+    if (!plan.executable) return null;
+    const formatted = formatPlan(plan);
+    return {
+      text: formatted,
+      action:
+        plan.command && plan.mutates
+          ? {
+              source: prompt,
+              route,
+              command: plan.command,
+              expectedAfter: plan.after,
+              doc,
+              revision: intentStoreRevision(services.store),
+              selection: copySelectionState(selectionState),
+              plan: formatted,
+            }
+          : null,
+    };
+  }, [deferredPrompt, doc, parsed, selectionState, services.store]);
+
+  const intentPlanPreviewIsFresh =
+    intentPlanPreview?.action == null ||
+    (intentPlanPreview.action.source === text.trim() &&
+      services.store.getDoc() === intentPlanPreview.action.doc &&
+      (intentPlanPreview.action.revision == null ||
+        intentStoreRevision(services.store) === intentPlanPreview.action.revision) &&
+      sameSelectionState(selectionState, intentPlanPreview.action.selection));
 
   const pendingModelProposalIsFresh =
     pendingModelProposal != null &&
@@ -4035,6 +4066,8 @@ export function IntentPanel() {
     source: string;
     plan: PluginAutomationPlan;
     baseDoc: ProjectDocument;
+    command: Command;
+    expectedAfter: ProjectDocument;
   } | null>(null);
   const [rangeConsolidating, setRangeConsolidating] = useState(false);
   const rangeConsolidatingRef = useRef(false);
@@ -4362,15 +4395,7 @@ export function IntentPanel() {
     }
 
     try {
-      const command = addAutomationRamp(
-        currentDoc,
-        proposal.plan.target,
-        proposal.plan.startTick,
-        proposal.plan.fromValue,
-        proposal.plan.endTick,
-        proposal.plan.toValue,
-      );
-      services.store.execute(command);
+      services.store.execute(proposal.command);
       const after = services.store.getDoc();
       const lane = after.automation.find(
         (candidate) =>
@@ -4382,6 +4407,7 @@ export function IntentPanel() {
       const startPoint = lane?.points.find((point) => point.tick === proposal.plan.startTick);
       const endPoint = lane?.points.find((point) => point.tick === proposal.plan.endTick);
       if (
+        !deepEqualRef(after, proposal.expectedAfter) ||
         !lane ||
         lane.points.length !== 2 ||
         startPoint?.value !== proposal.plan.fromValue ||
@@ -4447,7 +4473,7 @@ export function IntentPanel() {
   };
   // `override` lets the clarification chips re-run the router against a
   // suggested phrasing in the same tick (React state would still be stale).
-  const routeAndExecute = async (override?: string) => {
+  const routeAndExecute = async (override?: string, intentPlan?: IntentCommandPlanSnapshot) => {
     const source = (override ?? text).trim();
     if (!source || routeBusy || busy || songBusy || theatreBusy || mutateBusy) return;
     const requestDoc = services.store.getDoc();
@@ -4459,13 +4485,14 @@ export function IntentPanel() {
       (requestRevision == null || intentStoreRevision(services.store) === requestRevision) &&
       sameSelectionState(selection.getState(), requestSelection);
     const reviewedProposal = reviewedModelProposalRef.current;
+    const approvedPlan = reviewedProposal ?? intentPlan ?? null;
     const reviewedProposalIsCurrent = () =>
       requestSnapshotIsCurrent() &&
-      (reviewedProposal == null ||
-        (source === reviewedProposal.source &&
-          services.store.getDoc() === reviewedProposal.doc &&
-          (reviewedProposal.revision == null || intentStoreRevision(services.store) === reviewedProposal.revision) &&
-          sameSelectionState(selection.getState(), reviewedProposal.selection)));
+      (approvedPlan == null ||
+        (source === approvedPlan.source &&
+          services.store.getDoc() === approvedPlan.doc &&
+          (approvedPlan.revision == null || intentStoreRevision(services.store) === approvedPlan.revision) &&
+          sameSelectionState(selection.getState(), approvedPlan.selection)));
     if (!reviewedProposalIsCurrent()) {
       reviewedModelProposalRef.current = null;
       preRoutedRef.current = null;
@@ -4524,6 +4551,7 @@ export function IntentPanel() {
         ? source
         : rewriteSelectedTrackReference(source, doc, routeSelection.trackIds[0] ?? null).text;
       const route =
+        approvedPlan?.route ??
         preRoutedRef.current ??
         routeIntentText(routedText, doc, {
           hasSelectedStepSelection: Boolean(routeSelection.stepSelection),
@@ -4535,7 +4563,7 @@ export function IntentPanel() {
       executedRoute = route;
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (
-        reviewedProposal == null &&
+        approvedPlan == null &&
         lastGeneration() &&
         resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)
       ) {
@@ -4567,26 +4595,26 @@ export function IntentPanel() {
         setStatus("Projekt alebo výber sa zmenil pred aplikovaním. Návrh nebol vykonaný; vytvor nový návrh.");
         return;
       }
-      if (reviewedProposal != null) {
+      if (approvedPlan != null && approvedPlan.route.kind !== "automationPlan") {
         stopAudition();
         const before = services.store.getDoc();
-        services.store.execute(reviewedProposal.command);
+        services.store.execute(approvedPlan.command);
         const after = services.store.getDoc();
         selection.retainTracks(after.tracks.map((track) => track.id));
         const readback = summarizeDocumentChange(before, after).lines;
-        const matchesPlan = deepEqualRef(after, reviewedProposal.expectedAfter);
+        const matchesPlan = deepEqualRef(after, approvedPlan.expectedAfter);
         const landed = readback.length > 0 ? readback.join("; ") : "no project fields changed";
         if (matchesPlan && after !== before) {
           setStatus(
-            `✓ ${reviewedProposal.command.label} — verified against the reviewed plan: ${landed} (one undo step)${checkpointNote}`,
+            `✓ ${approvedPlan.command.label} — verified against the reviewed plan: ${landed} (one undo step)${checkpointNote}`,
           );
         } else {
           setError(
             `The applied document ${matchesPlan ? "did not change" : "differs from the reviewed plan"}: ${landed}. Inspect the project and undo if needed.`,
           );
         }
-        if (reviewedProposal.route.kind === "paramIntent" && after !== before) {
-          const paramIntent = reviewedProposal.route.intent;
+        if (approvedPlan.route.kind === "paramIntent" && after !== before) {
+          const paramIntent = approvedPlan.route.intent;
           void measureParamVerification(before, after, paramIntent, async (renderDoc, trackId) => {
             const { renderTrack } = await import("../rendering/track-renderer");
             try {
@@ -4955,10 +4983,25 @@ export function IntentPanel() {
           setError(route.result.error);
           return;
         }
+        const commandPlan =
+          approvedPlan?.route.kind === "automationPlan"
+            ? approvedPlan
+            : (() => {
+                const generatedPlan = planIntent(doc, route, source);
+                return generatedPlan.command && generatedPlan.mutates
+                  ? { command: generatedPlan.command, expectedAfter: generatedPlan.after }
+                  : null;
+              })();
+        if (!commandPlan) {
+          setError("The automation preview has no executable command. Nothing was applied.");
+          return;
+        }
         setAutomationProposal({
-          source: text.trim(),
+          source,
           plan: route.result.plan,
           baseDoc: doc,
+          command: commandPlan.command,
+          expectedAfter: commandPlan.expectedAfter,
         });
         const plan = route.result.plan;
         setStatus(
@@ -5880,7 +5923,7 @@ export function IntentPanel() {
       )}
       {intentPlanPreview && (
         <div className="intent-detected" role="status" aria-label="Intent plan">
-          🔧 {intentPlanPreview}
+          🔧 {intentPlanPreview.text}
         </div>
       )}
       {pendingModelProposal && (
@@ -6354,9 +6397,14 @@ export function IntentPanel() {
             songBusy ||
             theatreBusy ||
             mutateBusy ||
-            (pendingModelProposal != null && !pendingModelProposalIsFresh)
+            (pendingModelProposal != null && !pendingModelProposalIsFresh) ||
+            (!pendingModelProposal && !intentPlanPreviewIsFresh)
           }
-          onClick={() => (pendingModelProposal ? applyModelProposal() : void routeAndExecute())}
+          onClick={() =>
+            pendingModelProposal
+              ? applyModelProposal()
+              : void routeAndExecute(undefined, intentPlanPreview?.action ?? undefined)
+          }
           title={
             pendingModelProposal
               ? "Apply the reviewed model proposal if the project and selection are still unchanged"
