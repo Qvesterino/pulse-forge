@@ -16,6 +16,8 @@ import {
 } from "../src/mcp/web-host";
 import type { Services } from "../src/services";
 import { setMcpAllowMutations } from "../src/mcp/flags";
+import type { McpToolResult } from "../src/mcp/tools";
+import { applyIntent, type IntentCaller } from "./helpers/intentProtocol";
 
 /**
  * WEB MCP HOST (Phase D3 wiring) — URL derivation, persistence gates and
@@ -53,6 +55,37 @@ function fakeServices(): Services {
     store,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
   } as unknown as Services;
+}
+
+/**
+ * The relay seen as an MCP CALLER.
+ *
+ * The bridge answers asynchronously: a call goes out as an `mcp-call`, and the
+ * answer comes back as an `mcp-result` carrying the SAME id. That id round-trip
+ * IS the contract this file is about, so the adapter refuses to hand back an
+ * answer whose id does not match the call it sent — a mismatched id is a broken
+ * relay, not a test detail.
+ */
+function relayCaller(socket: FakeWebSocket): IntentCaller & { callIds: number[] } {
+  const callIds: number[] = [];
+  let nextId = 100;
+  return {
+    callIds,
+    async call(name: string, args?: unknown): Promise<McpToolResult> {
+      const id = nextId++;
+      callIds.push(id);
+      socket.onmessage?.({ data: JSON.stringify({ type: "mcp-call", id, tool: name, args }) });
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const answer = socket.sent
+          .map((raw) => JSON.parse(raw) as { type: string; id?: number; result?: McpToolResult })
+          .find((message) => message.type === "mcp-result" && message.id === id);
+        if (answer?.result) return answer.result;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      throw new Error(`the relay never answered the ${name} call (id ${id})`);
+    },
+  };
 }
 
 beforeEach(() => {
@@ -132,15 +165,25 @@ describe("web mcp bridge lifecycle", () => {
     expect(JSON.parse(socket.sent[0]!)).toEqual({ type: "mcp-hello" });
 
     // hub relays a tools call → the store mutates → mcp-result answers.
-    // The bridge answers ASYNC (awaited executor) — flush microtasks first.
-    socket.onmessage?.({
-      data: JSON.stringify({ type: "mcp-call", id: 7, tool: "kyx_intent", args: { instruction: "set tempo to 140" } }),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const result = socket.sent
+    //
+    // The relay is an EXTERNAL transport, so a mutating intent speaks the
+    // reviewed-plan protocol: the review first, then the apply of the planId
+    // it returned. A direct call would be refused with CONFIRMATION_REQUIRED
+    // and the project would never change — the protocol IS how the relay
+    // reaches the store.
+    const relay = relayCaller(socket);
+    const result = await applyIntent(relay, "set tempo to 140");
+    expect(result.isError, result.text).not.toBe(true);
+    expect(result.mutated).toBe(true);
+    // two calls — the review, then the apply — and each was answered with its
+    // OWN id. A relay that answered with the wrong id would leave the caller
+    // waiting for an answer that never arrives.
+    expect(relay.callIds).toHaveLength(2);
+    const answeredIds = socket.sent
       .map((raw) => JSON.parse(raw) as { type: string; id?: number })
-      .find((m) => m.type === "mcp-result");
-    expect(result?.id).toBe(7);
+      .filter((message) => message.type === "mcp-result")
+      .map((message) => message.id);
+    expect(answeredIds).toEqual(relay.callIds);
     expect(services.store.doc.bpm).toBe(140);
 
     stop();
@@ -165,9 +208,17 @@ describe("web mcp bridge lifecycle", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     const result = socket.sent
-      .map((raw) => JSON.parse(raw) as { type: string; id?: number })
+      .map((raw) => JSON.parse(raw) as { type: string; id?: number; result?: McpToolResult })
       .find((m) => m.type === "mcp-result");
     expect(result?.id).toBe(9);
+    // The refusal must be the CONSENT one. An external agent is refused here
+    // for two different reasons — the user has not consented, and the edit was
+    // never reviewed — and BOTH arrive as CONFIRMATION_REQUIRED. Naming the
+    // reason keeps this spec from going green because some other gate
+    // happened to block the call.
+    expect(result?.result?.isError).toBe(true);
+    expect(result?.result?.errorCode).toBe("CONFIRMATION_REQUIRED");
+    expect(result?.result?.text).toMatch(/not allowed agent-driven edits/);
     // the project is UNCHANGED — the relay asked, and the user did not say yes
     expect(services.store.doc.bpm).not.toBe(140);
     stop();

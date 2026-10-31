@@ -1,0 +1,41 @@
+RELAY PROTOCOL - MEASURED, NOT INFERRED
+========================================
+Subject: the web relay's kyx_intent path (tests/mcp-web-host.test.ts)
+Tree:    main @ 9f340061 (the gates session's wave landed)
+Probe:   .git/probe/mcp-probe.mts (untracked, deleted right after the run)
+Surface: createHeadlessMcpHost({ agentId: "web-relay" }) - the same tool surface
+         the relay drives, carrying the relay's external-agent attribution.
+
+[1] CONSENT ON, DIRECT CALL
+DIRECT  : {"text":"Review this request first with kyx_intent { instruction: \"set tempo to 140\", dry_run: true }; apply the returned planId with the same instruction after reviewing it.","mutated":false,"isError":true,"errorCode":"CONFIRMATION_REQUIRED","data":{"status":"review-required","changed":false,"route":"intent","readback":[]},"risk":"mutate"}
+bpm now : 124
+
+[2] CONSENT ON, THE PROTOCOL
+PREVIEW : {"text":"dry-run - nothing was applied\nno document change would occur\nPlan (dry run): project: bpm 124.00 -> 140.00 Apply this reviewed plan with planId intent-plan-67dcbf9d-4c54-450f-bef0-d6fd52c8dc88.","mutated":false,"stage":"dry-run","dryRun":true,"data":{"dryRun":true,"status":"proposal","planId":"intent-plan-67dcbf9d-4c54-450f-bef0-d6fd52c8dc88","routeKind":"exact","executable":true,"mutates":true,"warnings":[],"steps":[{"kind":"number","target":"project","parameter":"bpm","before":"124.00","beforeValue":124,"proposedValue":140,"next":"140.00","nextValue":140}]}}
+planId  : intent-plan-67dcbf9d-4c54-450f-bef0-d6fd52c8dc88
+APPLIED : {"text":"tempo 140 - read-back: tempo 124 -> 140 BPM - one undo step in KYX\nmutated on web-relay - document \"House Beat\" (id project-508b09ac-56f0-4568-9555-b5c16a92f455)","mutated":true,"stage":"applied","data":{"status":"applied","changed":true,"command":"tempo 140","readback":["tempo 124 -> 140 BPM"],"planId":"intent-plan-67dcbf9d-4c54-450f-bef0-d6fd52c8dc88","routeKind":"exact","verifiedAgainstPlan":true,"stage":"applied"},"risk":"mutate","docId":"project-508b09ac-56f0-4568-9555-b5c16a92f455","docName":"House Beat"}
+bpm now : 140
+
+[3] CONSENT OFF (probe 2)
+DIRECT (consent OFF): errorCode=CONFIRMATION_REQUIRED mutated=false
+   text: An external agent asked to change the project. The user has not allowed agent-driven edits yet - enable them in the KYX MCP panel, or ask the user to run this change.
+bpm: 124
+PREVIEW (consent OFF): errorCode=CONFIRMATION_REQUIRED mutated=false
+   text: An external agent asked to change the project. The user has not allowed agent-driven edits yet - enable them in the KYX MCP panel, or ask the user to run this change.
+planId: undefined
+=> with the consent off the LATTICE answers before the review gate could be reached.
+   The two refusals share the wire code CONFIRMATION_REQUIRED and differ only in
+   prose and in the payload: the review refusal carries data.status="review-required",
+   the consent refusal carries no data at all.  -> report P-10.
+
+[4] WHY THE SPEC FAILED
+tests/mcp-web-host.test.ts sent ONE direct call and expected bpm 140; the answer
+was CONFIRMATION_REQUIRED, so bpm stayed 124: "expected 124 to be 140".
+
+[5] THE FIX, MEASURED
+npx vitest run tests/mcp-web-host.test.ts tests/mcp-core.test.ts \
+                 tests/mcp-ai-control-hardening.test.ts tests/mcp-intent-eligibility.test.ts
+  Test Files  4 passed (4)
+       Tests  64 passed (64)
+npx tsc --noEmit --incremental false
+  exit 0

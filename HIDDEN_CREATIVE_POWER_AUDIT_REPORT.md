@@ -3886,19 +3886,25 @@ a refusal, a clarify or a no-op carries none and **is** the answer. The benchmar
 to measure (**grounding**, per its own docstring) — the review step is transport, not grounding. **Measured:
 18 of 23 → 22 of 23**, and the last one below.
 
-**2 · A1's pin was stale — and the reason it was stale is itself a finding (IN PLACE, one open decision).**
+**2 · A1's pin was stale — and the reason it was stale is itself a finding (IN PLACE — the open decision was answered).**
 The scenario pinned the English clarify sentence _"Send the change on its own."_ — the `negated-mutation-command`
 entry of the clarify catalogue (`src/intent/clarify-messages.ts:33-34`). The intent now routes "a change **and**
-an exception" through `resolveMixLanguageConstraints`, which returns a raw sentence **outside** the catalogue
+an exception" through `resolveMixLanguageConstraints`, which returned a raw sentence **outside** the catalogue
 (`src/intent/mix-language-constraints.ts:173`) — and in Slovak, while every other clarify goes through
 `CLARIFY_MESSAGES` with a stable slug. The refusal itself is intact: the scenario still sees **no mutation,
 `POLICY_REFUSED`, no changed fields**; only the sentence differs. **IN PLACE:** the pin now names the sentence
 the product says — pinning the sentence is the point of the pin, and weakening it to a substring of the echoed
-instruction would have turned a guard off to make it green. **Still open (a product decision, not a patch):**
-that path is the one clarify sentence that bypasses the catalogue, and the only Slovak one on an otherwise
-English clarify surface. It belongs in the catalogue with a slug, and **which language the clarify surface
-speaks is the owner's call** — the app's panel is Slovak-first and the MCP tool descriptions are English, so
-both answers are defensible and only one can be chosen.
+instruction would have turned a guard off to make it green. **DECIDED and IMPLEMENTED by the gates session
+(`ed7de86c`, 2026-10-31) — the clarify surface speaks ONE language from ONE catalogue.** The resolver now
+returns a **slug**, never a sentence (`src/intent/mix-language-constraints.ts:22-38`), the catalogue owns the
+English sentence (`src/intent/clarify-messages.ts`, six new `mix-constraint-*` slugs), and the panel and the
+MCP surface both render it through `clarifyMessage(reason)`. The reasoning is on the record: the MCP surface
+is an **agent** surface and every refusal it emits is English — the Slovak inline sentence was the one place
+that bypassed the catalogue, which is what made it an anomaly rather than a dialect. The A1 pin now names the
+catalogue's own sentence ("Name one track or pad in its own sentence") and still refuses to degrade into a
+substring of the echoed instruction. **Provenance: that decision and that implementation are the gates
+session's, not this audit's.** The paragraph above is the audit's measurement of the state it found; the
+sentence it pinned has since moved, and the pin moved with it — the way a pin should.
 
 **3 · The Producer Brief's flagship flow could not run at all (IN PLACE — this was a real defect).**
 The panel refused the generation with **`Pattern preservation refused: Protected project element changed: bpm,
@@ -3995,6 +4001,60 @@ breaking.
 
 **Evidence:** `docs/audits/2026-10-27-hidden-creative-power/ci-unit-tests-census-ba56058d.log`.
 
+#### 10.16.16 Three reds handed over — two were already green, and the third spoke a dead protocol
+
+The gates session closed its wave with three commits on `main` (`7e5bf8cf`, `ed7de86c`, `9f340061`) and
+handed over three reds that were **not** from its wave. They were re-measured on the tree that actually
+ships (`9f340061`), because a handover statement about a past tree is a claim about that tree:
+
+| spec                            | handover claim                                                | measured on `main` (`9f340061`) |
+| ------------------------------- | ------------------------------------------------------------- | ------------------------------- |
+| `tests/ui/DiceContext.test.tsx` | "gates the heavy preview on `active`" — red before their diet | **GREEN** — 6 of 6              |
+| `tests/desktop-mcp.test.ts`     | "renderer answer resolves an in-flight forwarded call"        | **GREEN** — 31 of 31            |
+| `tests/mcp-web-host.test.ts`    | "opt-in + token opens the relay socket"                       | **RED** — 1 of 9 → fixed below  |
+
+The first two were cured by the wave itself: the claim "red before our diet" was true on the tree they
+measured and false on the tree that shipped. The eleven MCP/intent files that were red at `ba56058d` are
+**green on `9f340061`** — 225 tests, measured.
+
+**The third one was real, and it was a spec speaking a protocol the product no longer speaks.**
+`tests/mcp-web-host.test.ts` asserts that an `mcp-call` over the web relay round-trips to the store and
+changes the tempo. It sent one direct call:
+
+```
+{ type: "mcp-call", id: 7, tool: "kyx_intent", args: { instruction: "set tempo to 140" } }
+```
+
+The relay is an **external** transport — `src/mcp/bridge.ts:203` attributes every relay call to
+`"web-relay"`, which makes `ctx.isExternalAgent` true — and an external agent's mutating intent must speak
+the reviewed-plan protocol (`src/mcp/tools.ts:15354-15360`). So the direct call is answered with
+`CONFIRMATION_REQUIRED` and the tempo never moves. **Measured, not inferred** (probe against the same tool
+surface, an external agent):
+
+| step                | answer                                                                                       | project         |
+| ------------------- | -------------------------------------------------------------------------------------------- | --------------- |
+| direct              | `CONFIRMATION_REQUIRED` — "Review this request first with `kyx_intent { …, dry_run: true }`" | unchanged (124) |
+| preview (`dry_run`) | `stage: "dry-run"`, `planId: intent-plan-…`, a readable plan (bpm 124.00 → 140.00)           | unchanged (124) |
+| apply (`planId`)    | `mutated: true`, `stage: "applied"`, `verifiedAgainstPlan: true`                             | **bpm 140**     |
+
+**The product was right; the spec was stale** — the same class of failure §10.16.14 found in the
+benchmark: a harness measuring a protocol the product no longer speaks. **IN PLACE:** the spec now speaks
+the protocol through the shared helper (`tests/helpers/intentProtocol.ts` — preview, then apply the plan
+that came back), and a small relay adapter (`relayCaller`) makes the bridge answerable as an MCP caller. The
+adapter **refuses an answer whose id does not match the call it sent**, so the id round-trip this file is
+about stays asserted — and the spec now pins that the relay answered **two** calls, each with its own id.
+
+**And a guard one line away from going green for the wrong reason.** The neighbouring spec — "the relay may
+NOT mutate the project without the user's standing consent" — asserted only that the project was unchanged.
+It is not vacuous today (the consent lattice answers before the review gate), but it was one line away
+from being: an external agent is refused for **two different reasons** here, and **both arrive as
+`CONFIRMATION_REQUIRED`** (measured: the consent refusal says "The user has not allowed agent-driven edits
+yet"; the review refusal says "Review this request first …"). A spec that only checks "the project did not
+change" cannot tell which gate fired. **IN PLACE:** the spec now names the reason, so it can only go green
+because the **consent** gate refused — not because some other gate happened to block the call.
+
+**Evidence:** `docs/audits/2026-10-27-hidden-creative-power/mcp-web-host-relay-protocol.log` (the three probe answers and the fix's measurement); `tests/mcp-web-host.test.ts` — 9 of 9 passing on `main` at `9f340061`.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
@@ -4084,6 +4144,27 @@ misreading it invited is closed.** **Still open (a product decision, not a patch
 `src/intent/arrangeWords.ts`, and **both consumers parse at render time**, so a lazy seam would make the
 context-menu preview arrive a tick late. That is a latency question for the product, not a bundle one, and the
 audit did not take it.
+
+**P-10 · Two refusals, one wire code — an agent cannot branch on "the user must consent".**
+An external agent over the relay (or the desktop stdio host) is refused for two different reasons, and
+**both arrive as `errorCode: "CONFIRMATION_REQUIRED"`**: the user's standing consent is missing
+(`src/mcp/permissionLattice.ts:152-158`, whose internal code is `MUTATIONS_NOT_ALLOWED`), and the edit was
+never reviewed (`src/mcp/tools.ts:15363-15368`). The lattice knows the difference — its `PermissionCode` has
+four members — but the tool layer collapses every `confirm` into one wire code (`src/mcp/tools.ts:5375`).
+**Measured:** with the consent off, the refusal reads "An external agent asked to change the project. The user
+has not allowed agent-driven edits yet…"; with the consent on and no review, it reads "Review this request
+first with `kyx_intent { …, dry_run: true }`". The two differ in prose, and in the payload (the review
+refusal carries `data.status = "review-required"`, the consent refusal carries no `data` at all) — but
+**not in the code**, and the code is what the repo's own contract says an agent branches on: _"Errors used to
+be free text — an agent had to substring-match to branch. Every `isError` result now carries a stable
+`errorCode` from the closed `McpErrorCode` set; **each code maps to ONE distinct recovery action**"_
+(`tests/mcp-error-codes.test.ts:8-11`). Two recovery actions share one code here, so the contract is broken
+at exactly the point where the agent must decide between **asking the user** and **reviewing the plan**.
+**Needs:** a decision — either add `MUTATIONS_NOT_ALLOWED` to the closed `McpErrorCode` set, or keep the code
+and make the discriminator an explicit, documented field. **Not implemented here:** the first changes the wire
+contract for every MCP client (the per-code dispatch table at `tests/mcp-error-codes.test.ts:50-73` drives one
+real call per code and needs a new case); the second changes the payload contract for every refusal. Both are
+cheap, and neither is the audit's to make.
 
 ---
 
