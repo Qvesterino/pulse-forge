@@ -59,6 +59,14 @@ const ENTRY = join(SRC, "ui", "App.tsx");
  *   checkpoints                      — the checkpoint reader behind the
  *     REVERT action.
  *   pipeline, song, aiPattern        — the intent engine's hot paths.
+ *   favorites                        — the favorites ledger (storage half +
+ *                                    the pure core it re-exports). It sat on a
+ *                                    module-level import in the dice context
+ *                                    and hoisted the dice/favorites shared
+ *                                    chunk onto the boot path for EVERY
+ *                                    session; it now loads on first need
+ *                                    (2026-10-31, measured boot path
+ *                                    2164 -> 2143 KB).
  */
 const MUST_STAY_OUT = [
   "src/ai/generator.ts",
@@ -79,6 +87,7 @@ const MUST_STAY_OUT = [
   "src/intent/pipeline.ts",
   "src/intent/song.ts",
   "src/commands/aiPattern.ts",
+  "src/intent/favorites.ts",
 ];
 
 /**

@@ -332,7 +332,52 @@ const ENTRY_BUDGET_KB = 1070;
 // regression of that size is a real event, a feature wave of that size is two
 // days of parallel work in this repository, and the boot path is where a
 // waiting user is protected.
-const TOTAL_BUDGET_KB = 5998;
+// 2026-10-31 (the four-day wave): this ceiling is raised a fourth time, and
+// the arithmetic is the same one the previous three raises used - the
+// measured value plus the same 66 KB margin, with the boot-path cap
+// UNCHANGED.
+//
+// MEASURED, same day, on a clean checkout of ca8e7583, in the CI-FAITHFUL
+// shape (no sibling checkout, so the QMR HUD falls back to the in-repo stub
+// exactly as it does on the runner):
+//   DAW JS SUM   5912 -> 6005 KB   (+93 KB)
+//   BOOT PATH    2164 -> 2143 KB   (-21 KB)
+// The 5912 KB baseline is the SAME subject (CI-faithful, no sibling) measured
+// at 5641f755, the commit that set the previous ceiling. The wave between
+// them is 231 files and +35 936 lines of shipped product.
+//
+// The trigger the 2026-10-28 entry named - "it must come with a dead-weight
+// audit that finds chunks nothing reaches, or with the boot path coming
+// down" - is satisfied by the second clause, and the dead-weight audit
+// agrees that there is nothing to delete: scripts/audit-dead-weight.mjs finds
+// 214 of 214 chunks reachable.
+//
+// THE DIET THAT PAID IT BACK: the favorites ledger (src/intent/favorites.ts)
+// sat on a module-level import in src/ui/DiceContext.tsx, which hoisted the
+// dice/favorites shared chunk onto the studio boot graph for EVERY session -
+// whether or not anyone ever stars a roll. It loads on first need now, the
+// same seam the dice heavy set above it already uses, and the studio boot
+// path drops 21 KB (2164 -> 2143 KB). The sum ticks +5 KB from lazy-chunk
+// wrapper overhead - the same overhead the 2026-10-28 entry already paid -
+// because this metric adds up every chunk and cannot see the seam.
+//
+// The 66 KB margin is unchanged for the same reason as before: a dead-weight
+// regression of that size is a real event, a feature wave of that size is two
+// days of parallel work in this repository, and the boot path is where a
+// waiting user is protected.
+//
+// THE DEBT THIS DOES NOT PAY: src/intent/effect-words.ts (~42 KB of word
+// tables) is still on the boot path, reached through
+// src/ui/ContextMenu.tsx -> src/intent/arrangeWords.ts. Both consumers parse
+// at RENDER time (useMemo), so moving that parse behind a dynamic import
+// would make the context-menu preview arrive a tick late - a product
+// decision, not a bundle one. It is the next seam.
+//
+// Both numbers matter, because the CI build is the one that gates: without
+// the sibling checkout the DAW sum measures 6005 KB (66 KB under this
+// ceiling), with it 6024 KB (47 KB under it). The cap must hold for BOTH,
+// and it does.
+const TOTAL_BUDGET_KB = 6071;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, ONNX Runtime for the
 // symbolic/ranker workers, and the mastering-ranker worker entry itself. Keep

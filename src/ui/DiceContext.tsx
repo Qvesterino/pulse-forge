@@ -31,13 +31,7 @@ import {
 import { nextSeed } from "../shared/dice";
 import { forkRandom } from "../shared/rng";
 import { normalizeIntent } from "../intent/normalize";
-import {
-  buildFavoritesPack,
-  MELODIC_NOTES_CAP,
-  recordFavoriteLedgerEntry,
-  roleForTrack,
-  type FavoriteLedgerEntry,
-} from "../intent/favorites";
+import type { FavoriteLedgerEntry } from "../intent/favorites";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES } from "../ai/types";
 
@@ -68,6 +62,23 @@ function loadDiceHeavy(): Promise<DiceHeavy> {
       return diceHeavy.current;
     },
   );
+}
+
+// F2 eager diet (the second wave): the favorites ledger — its storage half
+// and the pure core it re-exports — sat on a module-level import here, which
+// hoisted the whole dice/favorites shared chunk (~136 KB built) onto the
+// studio boot graph for EVERY session, whether or not anyone ever stars a
+// roll. The ledger is only touched when a roll is starred or the pack is
+// exported, so it loads on first need — the same seam the dice heavy set
+// above already uses.
+type FavoritesModule = typeof import("../intent/favorites");
+const favoritesModule: { current: FavoritesModule | null } = { current: null };
+function loadFavorites(): Promise<FavoritesModule> {
+  if (favoritesModule.current) return Promise.resolve(favoritesModule.current);
+  return import("../intent/favorites").then((mod) => {
+    favoritesModule.current = mod;
+    return mod;
+  });
 }
 
 export interface DicePreview {
@@ -478,7 +489,9 @@ export function DiceProvider({
   }, []);
 
   const toggleFav = useCallback(
-    (index: number) => {
+    async (index: number) => {
+      const favorites = await loadFavorites().catch(() => null);
+      if (!favorites) return;
       setSession((prev) => {
         const next = toggleFavorite(prev, index);
         // T2 v2 feedback loop: ★-ing a PREVIEWED roll records it in the local
@@ -501,10 +514,10 @@ export function DiceProvider({
             for (const [trackIndex, track] of instrumentTracks.entries()) {
               if (track.kind !== "instrument") continue;
               const notes = pattern.notes?.[track.id] ?? [];
-              if (notes.length === 0 || noteCount >= MELODIC_NOTES_CAP) continue;
-              const role = roleForTrack(track.name, trackIndex);
+              if (notes.length === 0 || noteCount >= favorites.MELODIC_NOTES_CAP) continue;
+              const role = favorites.roleForTrack(track.name, trackIndex);
               if (!role) continue;
-              const capped = notes.slice(0, MELODIC_NOTES_CAP - noteCount).map((note) => ({
+              const capped = notes.slice(0, favorites.MELODIC_NOTES_CAP - noteCount).map((note) => ({
                 pitch: note.pitch,
                 start: note.start,
                 duration: note.duration,
@@ -535,7 +548,7 @@ export function DiceProvider({
               key: doc.key ?? prev.intent.key ?? null,
               melodic,
             };
-            recordFavoriteLedgerEntry(entry);
+            favorites.recordFavoriteLedgerEntry(entry);
           }
         }
         return next;
@@ -545,14 +558,20 @@ export function DiceProvider({
   );
 
   const exportFavoritesPack = useCallback(() => {
-    try {
-      const pack = buildFavoritesPack();
-      const blob = new Blob([JSON.stringify(pack, null, 2)], { type: "application/json" });
-      const filename = `pulse-forge-favorites-${new Date(pack.exportedAt).toISOString().slice(0, 10)}.json`;
-      downloadBlob(blob, filename);
-    } catch {
-      /* download blocked — favorites stay in the local ledger */
-    }
+    void loadFavorites()
+      .then((favorites) => {
+        try {
+          const pack = favorites.buildFavoritesPack();
+          const blob = new Blob([JSON.stringify(pack, null, 2)], { type: "application/json" });
+          const filename = `pulse-forge-favorites-${new Date(pack.exportedAt).toISOString().slice(0, 10)}.json`;
+          downloadBlob(blob, filename);
+        } catch {
+          /* download blocked — favorites stay in the local ledger */
+        }
+      })
+      .catch(() => {
+        /* the ledger module failed to load — the pack stays unexported */
+      });
   }, []);
 
   const setMode = useCallback((mode: DiceMode) => {
