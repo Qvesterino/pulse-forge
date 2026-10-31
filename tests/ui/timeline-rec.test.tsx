@@ -1422,3 +1422,48 @@ describe("CF-08 — the record flow owns latency calibration", () => {
     expect(screen.getByText("NOT CALIBRATED")).toBeInTheDocument();
   });
 });
+
+describe("CF-21 — the native capture source is disclosed BEFORE REC", () => {
+  afterEach(() => {
+    vi.doUnmock("../../src/audio-engine/windowsAudioIoBridge");
+  });
+
+  it("NEGATIVE: with no native endpoint the toolbar says nothing about NATIVE INPUT", async () => {
+    const doc = createDocWithTracks();
+    const services = mockServices(doc);
+    (services.engine as any).getLiveAudioContext = vi.fn(() => ({ sampleRate: 48_000 }));
+    renderWithContext(<ArrangementPanel />, { services });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(screen.queryByText(/NATIVE INPUT/)).toBeNull();
+  });
+
+  it("the toolbar names the owning endpoint and its calibration slot before REC", async () => {
+    // The desktop bridge owns capture: the endpoint id is resolvable BEFORE
+    // the take, so the dropdown bypass and the endpoint's own calibration
+    // slot are disclosed up front instead of after the performance.
+    vi.doMock("../../src/audio-engine/windowsAudioIoBridge", () => ({
+      getWindowsAudioCaptureEndpointId: vi.fn(() => "endpoints/{spdif-in}"),
+    }));
+    try {
+      const doc = createDocWithTracks();
+      const services = mockServices(doc);
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ sampleRate: 48_000 }));
+      renderWithContext(<ArrangementPanel />, { services });
+
+      // Un-calibrated endpoint: the warning is honest about placement.
+      expect(await screen.findByText("NATIVE INPUT · NOT CALIBRATED")).toBeTruthy();
+
+      // A stored calibration for the ENDPOINT'S OWN slot flips the wording —
+      // the same per-source slots the takes are aligned with. The memo
+      // invalidates on any alignment change (the shared subscription), so
+      // the test kicks it the way a real calibration would.
+      act(() => {
+        window.localStorage.setItem("pulse-forge:recording-alignment:v2:wasapi:endpoints/{spdif-in}", "24");
+        recordingAlignment.setOffsetMs(24);
+      });
+      expect(screen.getByText("NATIVE INPUT · CALIBRATED")).toBeTruthy();
+    } finally {
+      window.localStorage.removeItem("pulse-forge:recording-alignment:v2:wasapi:endpoints/{spdif-in}");
+    }
+  });
+});

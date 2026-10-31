@@ -228,6 +228,15 @@
       "negativeSpec": "NEGATIVE: APPLY after the project moved under the preview refuses and runs nothing"
     },
     {
+      "id": "native-capture-pre-rec-disclosure",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx record toolbar — NATIVE INPUT chip ← windowsAudioIoBridge.getWindowsAudioCaptureEndpointId (pre-REC probe)",
+      "note": "CF-21: the WASAPI bypass of the input dropdown used to be disclosed only AFTER the take. The bridge is asked BEFORE REC (dynamic import, boot closure untouched): while a native endpoint owns capture, the toolbar names it (NATIVE INPUT) and discloses the ENDPOINT'S OWN calibration slot — NOT CALIBRATED (takes land where REC started) or CALIBRATED (aligned with the stored offset). No endpoint = the browser path owns capture and the dropdown is the truth; the post-take warning stays as the after-the-fact net.",
+      "spec": "tests/ui/timeline-rec.test.tsx",
+      "seamEvent": "NATIVE INPUT",
+      "negativeSpec": "NEGATIVE: with no native endpoint the toolbar says nothing about NATIVE INPUT"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",

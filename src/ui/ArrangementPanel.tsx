@@ -936,6 +936,42 @@ export function ArrangementPanel() {
       return false;
     }
   }, [alignmentOffsetMs, recordingInputDeviceId]);
+  // CF-21: when the NATIVE Windows audio path owns capture, the input
+  // dropdown is bypassed and takes come FROM the endpoint — the audit's
+  // post-take warning disclosed this only AFTER the performance. The bridge
+  // is asked BEFORE REC (dynamic import: the module is desktop-relevant and
+  // must not join the boot closure), refreshed when the record flow state or
+  // the chosen input changes. No endpoint = the browser path owns capture
+  // and the dropdown is the truth.
+  const [nativeCaptureEndpointId, setNativeCaptureEndpointId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const ctx = services.engine.getLiveAudioContext?.() ?? null;
+        if (!ctx) {
+          setNativeCaptureEndpointId(null);
+          return;
+        }
+        const bridge = await import("../audio-engine/windowsAudioIoBridge");
+        const endpointId = bridge.getWindowsAudioCaptureEndpointId(ctx as AudioContext);
+        if (!cancelled) setNativeCaptureEndpointId(endpointId);
+      } catch {
+        if (!cancelled) setNativeCaptureEndpointId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [services.engine, recState, recordingInputDeviceId]);
+  const nativeEndpointCalibrated = useMemo(() => {
+    if (nativeCaptureEndpointId === null) return null;
+    try {
+      return localStorage.getItem(recordingAlignmentStorageKey(`wasapi:${nativeCaptureEndpointId}`)) !== null;
+    } catch {
+      return false;
+    }
+  }, [nativeCaptureEndpointId, alignmentOffsetMs]);
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
   const independentInputTrackIds = [armedTrackId, ...independentInputRoutes.map((route) => route.trackId)];
@@ -4818,6 +4854,19 @@ export function ArrangementPanel() {
               >
                 CALIBRATE
               </button>
+              {nativeCaptureEndpointId !== null && (
+                <span
+                  className="btn btn-small active-solo"
+                  role="status"
+                  title={`The native Windows audio path OWNS capture while this endpoint is active — the input dropdown is bypassed and takes come from the endpoint. The endpoint's own calibration slot: ${
+                    nativeEndpointCalibrated
+                      ? "calibrated — takes are aligned with the stored offset."
+                      : "NOT calibrated — takes land where REC started; calibrate from the I/O panel's Windows Audio section with this endpoint active."
+                  } The post-take warning names any capture source that differed.`}
+                >
+                  {nativeEndpointCalibrated ? "NATIVE INPUT · CALIBRATED" : "NATIVE INPUT · NOT CALIBRATED"}
+                </span>
+              )}
               <label className="arr-arm-gain" aria-label="Audio input gain">
                 <span
                   className="arr-arm-gain-value"
