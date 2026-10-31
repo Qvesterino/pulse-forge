@@ -3751,6 +3751,63 @@ line is quoted from the error annotation on `37ff58c0`.
 
 ---
 
+#### 10.16.13 The build gate that fired on a feature wave — and the escape clause that cannot be satisfied
+
+**Observed.** `main` is red on **"Production build"**. The check-run is `124471187065` on `ca8e7583`, conclusion `failure`, and its error annotation carries the build step's exit code 1. The failing line is not a type error and not a test — it is the size budget:
+
+```
+[size-budget] DAW JS chunks: 6000 KB (budget 5998)
+[size-budget] FAIL — DAW JS over budget: 6000 > 5998 KB.
+```
+
+**Verified — and the first thing to get right: a local build does not measure what CI measures.** The QMR chip is mounted from the sibling monorepo (`vite.config.ts:17-35`), and a clean CI checkout has no sibling, so the alias falls back to the in-repo stub (`src/integrations/qmr-hud-stub/`). The sibling's real source lands in shared chunks, so a local build measures **20 KB more** than CI. Every number below is therefore measured **in the CI shape** — `QVESTER_SIBLING_ROOT` pointed at a directory with no sibling monorepo — and the sibling sat at `D:\QVESTER_LANDING_PAGE @ aa8188347` with `packages/` **clean** for both builds, so the two trees are compared like for like.
+
+| tree                        | DAW JS sum  | cap  | boot path | verdict                    |
+| --------------------------- | ----------- | ---- | --------- | -------------------------- |
+| `82495d24` (last green)     | **5980 KB** | 5998 | 2163 KB   | **OK** — 18 KB of headroom |
+| `ca8e7583` (current `main`) | **6000 KB** | 5998 | 2164 KB   | **FAIL by 2 KB**           |
+
+CI agrees with the local reproduction at both ends: "Production build" was `success` on `82495d24` and `failure` on `ca8e7583`.
+
+**Verified — the growth is 19.9 KB, and it is entirely positive.** Per chunk, between the two trees (`82495d24..ca8e7583` — 22 files under `src/`, +1507/−297 lines):
+
+| chunk              | before   | after    | delta    |
+| ------------------ | -------- | -------- | -------- |
+| `model-resolver`   | 123.1 KB | 133.0 KB | **+9.8** |
+| `IntentPanel`      | 288.3 KB | 293.5 KB | +5.2     |
+| `tools`            | 434.1 KB | 435.7 KB | +1.6     |
+| `App`              | 582.5 KB | 584.0 KB | +1.5     |
+| `ArrangementPanel` | 207.6 KB | 208.7 KB | +1.1     |
+| `mix`              | 104.8 KB | 105.5 KB | +0.7     |
+
+**Not one chunk shrank.** And **Verified — the boot path moved by 1 KB** (2163 → 2164 KB), keeping 36 KB under its unchanged 2200 KB cap. So the growth is 20 KB of shipped feature code, and the payload a waiting user parses grew by **one kilobyte**.
+
+**Now the part that matters: the rule that was supposed to authorise this growth cannot authorise it.**
+
+`scripts/check-bundle-size.mjs:299-304` (the 2026-10-23 entry, carried into the 2026-10-28 raise):
+
+> THE TIGHTENING TRIGGER HAS FIRED. … The next growth must therefore PAY IT BACK: it may not come with another raise of this number. It must come with **a dead-weight audit that finds chunks nothing reaches**, or **with the boot path coming down**.
+
+Both clauses were measured, not assumed:
+
+- **Boot path** — it went **up** by 1 KB, not down. Clause 2 is not satisfied.
+- **Dead-weight audit** — run in its **full** mode, i.e. with the sourcemap build it needs (`vite build --sourcemap --outDir dist-sm`), so that all three of its questions are answered instead of one:
+  - reachability: **214 of 214** chunks reachable — 0 orphans;
+  - duplication in the main graph: **0** modules shipped in more than one chunk;
+  - source census: 301 of 1376 `src/` files are absent from the build, and the ones "not built and referenced nowhere in tests/scripts" are worker entries, `.d.ts` declarations and dev-only tooling — **0 bytes** in the DAW graph.
+
+  **Clause 1 is not satisfied — and it cannot be.** The clause asks for "chunks nothing reaches", while the audit's reachability question is structurally near-vacuous: **rollup only emits a chunk because something imports it**, so a production build cannot be in that state. The two questions that _can_ find dead weight — duplication and the source census — were exactly the two the 2026-10-28 raise did not run: it recorded the reachability-only answer ("211 of 211 chunks reachable", `check-bundle-size.mjs:323`), which answers "no" by construction.
+
+**So the gate is right about the number and has no way to say what the number means.** Its stated purpose (`check-bundle-size.mjs:12-14`) is to catch **dead weight creeping into the DAW graph**. The full audit says there is none — and the gate still reads red, because a SUM cannot tell shipped product from shipped weight, and because the one instrument that could tell them was run in the mode that answers "no".
+
+**This is the same shape as the realtime gate (§10.16.12).** There, the criterion was a **ratio** that could not express the thing it rejected (one dropped quantum in ~1000), and the verdict flipped on that quantum. Here, the criterion is a **sum** that cannot express the thing it exists to protect against (weight, as opposed to value), and the verdict flipped on 20 KB of feature code whose user-facing cost was **1 KB of boot path**. Both gates ask a question their metric cannot answer, and in both cases an instrument that could answer it is sitting next to them unused — there, the ladder's adjacent floor; here, the dead-weight audit in its full mode.
+
+**Not verified — and deliberately not attempted here:** whether the 20 KB can be offset by a diet. The file names the diet targets ("the App/commands eager anchors, and the VSCO generated layer tables", `check-bundle-size.mjs:164-166`), and the `App` chunk did grow 1.5 KB in this wave — but that is a peer's wave, and a diet is real work, not a measurement. What **is** measured is that the growth is **not** dead weight, so an offset, if the owner wants one, has to come out of shipped product.
+
+**Artifacts:** `docs/audits/2026-10-27-hidden-creative-power/bundle-gate-baseline-82495d24-ci-config.log`, `bundle-gate-current-ca8e7583-ci-config.log`, `bundle-gate-chunk-delta-and-dead-weight-audit.log`.
+
+---
+
 ## 11. Strategic proposals requiring explicit approval
 
 None of these is implemented. Each needs a product decision, not a patch.
@@ -3815,6 +3872,28 @@ both machines) or _"48 chains never drop a quantum"_ (not true today on the runn
 a machine hiccup by the current instrument). **The owner's answer decides the criterion's shape; the audit's
 measurement is in §10.16.12 and the one measurement still missing — the adjacent floor's drop count next to each
 scenario's — is named there as the next instrument step.**
+
+**P-9 · The bundle gate gets an audit that can say "no". — NEEDS THE OWNER'S DECISION (§10.16.13).**
+The DAW-sum cap is red by 2 KB on a feature wave that the **full** dead-weight audit clears: 214 of 214 chunks
+reachable, **0** modules duplicated in the main graph, and a boot path that moved **1 KB**. The escape clause the rule
+names — _"a dead-weight audit that finds chunks nothing reaches"_ (`scripts/check-bundle-size.mjs:302-304`) — **cannot be
+satisfied by any production build**, because rollup only emits a chunk that something imports; and the two audit
+questions that _can_ find dead weight (duplication, source census) are precisely the two the reachability-only mode
+skips. **The defect is in the rule, not in the cap:** the rule demands evidence in a form the instrument cannot
+produce, so a feature wave whose user-facing cost was **1 KB of boot path** has no legal path to green.
+**The proposal:** the clause becomes _"a dead-weight audit **run in its full mode** (sourcemaps on) that finds
+nothing to delete — which makes the growth shipped product rather than weight — **or** the boot path coming down."_
+On that reading this wave takes the same **66 KB** margin the 2026-10-21 wave took, with the **2200 KB boot-path cap
+unchanged**: the ceiling becomes the with-sibling measurement plus 66 KB, which on the measured tree is
+**6020 + 66 = 6086 KB**, holding both builds (CI 6000 → 86 KB under; local 6020 → 66 KB under) by exactly the
+arithmetic of `scripts/check-bundle-size.mjs:327-334`. **The number must be re-measured at the moment the raise
+lands**, because the tree moves under a parallel wave. **The other legal path is the diet the file already names** (the
+App/commands eager anchors, the VSCO generated layer tables, `scripts/check-bundle-size.mjs:164-166`) — real work, in the
+wave's own lane, and not a measurement; this proposal is about what the rule is allowed to accept as evidence.
+**Needs:** the owner's approval of the clause's new form and of the number. **Rejected alternative:** raising the cap
+without the full audit — which is what the 2026-10-28 entry forbids and which would leave the guard unfalsifiable;
+and offsetting by deleting shipped features, which the 2026-10-21 entry already refused ("Bringing this line back
+under 5186 KB would mean deleting shipped features", `scripts/check-bundle-size.mjs:258`).
 
 ---
 

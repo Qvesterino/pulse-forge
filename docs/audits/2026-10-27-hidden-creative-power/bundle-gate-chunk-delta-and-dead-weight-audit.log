@@ -1,0 +1,99 @@
+# BUNDLE GATE - where the 20 KB went, and the full dead-weight audit
+#
+# PART 1 - the per-chunk delta between the two trees.
+# Build 82495d24 (before) vs ca8e7583 (after), both with the sibling monorepo
+# present, so the comparison is apples-to-apples: the sibling was at
+# D:\QVESTER_LANDING_PAGE @ aa8188347 with packages/ CLEAN for both builds.
+#
+# Read: the growth is 19.9 KB and it is ENTIRELY POSITIVE - not one chunk shrank.
+# A diet has no slack to absorb it; there is no negative side to net against.
+#
+# PART 2 - the dead-weight audit, run in its FULL mode.
+# The rule in scripts/check-bundle-size.mjs:299-304 demands "a dead-weight
+# audit that finds chunks nothing reaches". This is that audit, run with the
+# sourcemap build it needs (vite build --sourcemap --outDir dist-sm), so all
+# THREE of its questions are answered instead of one.
+#
+# READ THE AUDIT HONESTLY: it finds NOTHING to delete.
+#   - reachability: 214 of 214 chunks reachable -> 0 orphans
+#   - duplication in the MAIN graph: 0 modules shipped in more than one chunk
+#   - source census: 301 of 1376 src files are absent from the build, and the
+#     ones that are "not built AND referenced nowhere in tests/scripts" are
+#     worker entries, .d.ts type declarations and dev-only tooling - none of
+#     which ship as bundle bytes.
+#
+# The reachability question is structurally near-vacuous: rollup only emits a
+# chunk because something imports it, so "a chunk nothing reaches" is not a
+# state a production build can be in. The two questions that CAN find dead
+# weight (duplication, source census) were exactly the ones the 2026-10-28
+# note did not run - it recorded the reachability-only answer ("211 of 211
+# chunks reachable"), which answers "no" by construction.
+
+=== PART 1: per-chunk delta (KB, 82495d24 -> ca8e7583) ===
+
+
+Chunk            BeforeKB AfterKB DeltaKB
+-----            -------- ------- -------
+model-resolver     123.10  133.00    9.80
+IntentPanel        288.30  293.50    5.20
+tools              434.10  435.70    1.60
+App                582.50  584.00    1.50
+ArrangementPanel   207.60  208.70    1.10
+mix                104.80  105.50    0.70
+
+
+
+=== PART 2: full dead-weight audit on ca8e7583 ===
+
+[dead-weight] dist: D:\pf-build-check\dist
+[dead-weight] js chunks: 214, reachable from the entry: 214
+[dead-weight] unreachable chunks: NONE — every chunk is reachable.
+
+[dead-weight] modules shipped in >1 chunk:
+  inside the MAIN graph (removable): 0
+  inside WORKER bundles (structural, a worker owns its copy): 15
+
+[dead-weight] src files: 1376, not present in any built chunk: 301
+[dead-weight] NOTE: a file absent from the build is usually a WORKER entry, a type-only
+             declaration (.d.ts) or dev-only tooling — none of which ship as bundle bytes.
+
+[dead-weight] not built AND referenced nowhere in tests/scripts:
+       7.7 KB  src/ai/bridge/recipes/guitarRig.ts
+       6.1 KB  src/ai/bridge/recipes/punchierDrums.ts
+       7.1 KB  src/ai/bridge/recipes/spaciousBass.ts
+       0.7 KB  src/audio-engine/metering-types.ts
+       2.1 KB  src/audio-engine/synth-voices.ts
+       0.4 KB  src/audio-worklets/apeks-processor.d.ts
+       0.0 KB  src/audio-worklets/autowah-processor.d.ts
+       0.4 KB  src/audio-worklets/bass-harmonic-processor.d.ts
+       0.4 KB  src/audio-worklets/chorus-processor.d.ts
+       0.5 KB  src/audio-worklets/comb-processor.d.ts
+       0.5 KB  src/audio-worklets/compressor-processor.d.ts
+       0.5 KB  src/audio-worklets/ducking-delay-processor.d.ts
+       0.6 KB  src/audio-worklets/eq-processor.d.ts
+       0.5 KB  src/audio-worklets/flanger-processor.d.ts
+       0.4 KB  src/audio-worklets/freqshifter-processor.d.ts
+       1.0 KB  src/audio-worklets/kaskada-processor.d.ts
+       0.1 KB  src/audio-worklets/limiter-oversampler-constants.d.ts
+       0.4 KB  src/audio-worklets/limiter-oversampler.d.ts
+       0.5 KB  src/audio-worklets/limiter-processor.d.ts
+       0.5 KB  src/audio-worklets/multitap-processor.d.ts
+       0.4 KB  src/audio-worklets/prud-processor.d.ts
+       0.4 KB  src/audio-worklets/sirka-processor.d.ts
+       0.4 KB  src/audio-worklets/skrutka-processor.d.ts
+       0.4 KB  src/audio-worklets/stock-delay-processor.d.ts
+       0.6 KB  src/audio-worklets/tape-processor.d.ts
+       0.4 KB  src/audio-worklets/vinyl-processor.d.ts
+       0.8 KB  src/audio-worklets/wowflutter-processor.d.ts
+       5.0 KB  src/effects/morph-dynamics-core/dsp/dspUtils.ts
+       0.3 KB  src/effects/ozvena-worklet.entry.d.ts
+       0.3 KB  src/kopa-worklet.entry.d.ts
+       6.1 KB  src/mastering/analysisWorker.ts
+       3.6 KB  src/mastering/assistant-model-client.ts
+      12.4 KB  src/mastering/mp3AnalysisWorker.ts
+      15.2 KB  src/mastering/mp3PcmDecodeWorker.ts
+       6.8 KB  src/mastering/wavPcmDecodeWorker.ts
+       1.3 KB  src/shared/wowflutter-math.d.ts
+       0.3 KB  src/tsar-worklet.entry.d.ts
+       1.3 KB  src/types/qmr-hud-shim.d.ts
+       2.0 KB  src/vocal/analyzer-worker.ts

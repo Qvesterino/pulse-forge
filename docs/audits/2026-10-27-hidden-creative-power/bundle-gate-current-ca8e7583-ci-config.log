@@ -1,0 +1,43 @@
+# BUNDLE GATE - current main (ca8e7583), CI-EQUIVALENT configuration
+#
+# Same configuration as the baseline file: QVESTER_SIBLING_ROOT pointed at a
+# directory with no sibling monorepo -> the in-repo QMR stub -> the CI shape.
+#
+# HOW: detached worktree at ca8e7583 -> npm run build -> scripts/check-bundle-size.mjs
+# VERDICT: RED. DAW JS 6000 KB against the same 5998 KB cap - over by 2 KB.
+#
+# CI agrees, and names the job: check-run 124471187065 ("Production build")
+# conclusion=failure on ca8e7583; its error annotation carries the build step
+# exit code 1. The same job was SUCCESS on 82495d24 (check-run for that commit).
+#
+# COMMIT: ca8e7583  "fix(drift): the change summary quotes its snippet with apostrophes"
+# SIBLING: D:\QVESTER_LANDING_PAGE @ aa8188347 (packages/ clean)
+
+[size-budget] entry: 448 KB (budget 1070)
+[size-budget] DAW JS chunks: 6000 KB (budget 5998)
+[size-budget] optional on-demand runtimes: 647 KB (budget 650)
+[size-budget] optional stem separation runtime: 404 KB (budget 430)
+[size-budget] optional codecs: 167 KB (budget 170)
+[size-budget] optional FLAC codec: 570 KB (budget 600)
+[size-budget] optional Audiotool Nexus: 713 KB (budget 750)
+[size-budget] optional QMR HUD: 0 KB (budget 1600)
+[size-budget] shipped JS total: 8502 KB
+[size-budget] core worklets: 114 KB (budget 150)
+[size-budget] FX extras worklet (lazy): 50 KB (budget 64)
+[size-budget] generative player worklet: 3 KB (budget 4)
+[size-budget] TSAR worklet: 39 KB (budget 48)
+[size-budget] KOREŇ worklet: 12 KB (budget 24)
+[size-budget] KOPA worklet: 16 KB (budget 32)
+[size-budget] CHORÁL worklet: 18 KB (budget 48)
+[size-budget] LADIČ worklet: 12 KB (budget 48)
+[size-budget] HĽAS worklet: 13 KB (budget 32)
+[size-budget] ŠTRK worklet: 9 KB (budget 32)
+[size-budget] CINK worklet: 8 KB (budget 32)
+[size-budget] STRUNA worklet: 11 KB (budget 32)
+[size-budget] DYMKA worklet: 13 KB (budget 32)
+[size-budget] SKRUTKA worklet: 9 KB (budget 16)
+[size-budget] REZONANS worklet: 48 KB (budget 64)
+[size-budget] PORTAL worklet: 23 KB (budget 24)
+[size-budget] FAIL — DAW JS over budget: 6000 > 5998 KB.
+[size-budget] landing route: 169 KB on-demand across 5 chunks (budget 600)
+[size-budget] studio boot path: 2164 KB across 20 chunks (budget 2200)
