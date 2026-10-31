@@ -3815,20 +3815,20 @@ the rule names, and the ceiling was raised to **6071 = 6005 + the same 66 KB mar
 took, with the **2200 KB boot-path cap unchanged**.
 
 **Verified independently:** the audit re-measured the peer's numbers from its own detached worktree, and they
-agree **to the kilobyte** — DAW sum 6005 KB, boot path 2143 KB. The ceiling also holds for the *other* shape:
+agree **to the kilobyte** — DAW sum 6005 KB, boot path 2143 KB. The ceiling also holds for the _other_ shape:
 with the sibling present the same tree measures **DAW JS sum 6025 KB** (also measured by the audit), so
 **6071 holds for both** — 66 KB of headroom on the CI-faithful build, 46 KB on the with-sibling one.
 
 **So the rule was not broken: it had a legal path, and it was taken.** The finding that survives this wave is
 narrower, and it is about the **instrument**, not the rule: **the dead-weight audit's reachability question
 cannot fail in a production build** — rollup only emits a chunk that something imports — so the answer the
-2026-10-28 entry cited as its evidence ("211 of 211 chunks reachable") was never *able* to say "there is dead
+2026-10-28 entry cited as its evidence ("211 of 211 chunks reachable") was never _able_ to say "there is dead
 weight"; it could only ever say "no". The full audit answers the question the rule actually cares about, and
 still finds nothing to delete: **214 of 214** chunks reachable, **0** modules duplicated in the main graph, and
 the absent source files are worker entries, `.d.ts` declarations and dev-only tooling. **IN PLACE:** the audit
 now prints **the scope of its own answer** on the same screen as the answer — a reachability-only run says so
 in the very line where it says "NONE", names the two questions it skipped, and closes with a `SCOPE` line that
-says in plain words that this answer *cannot* establish that there is no dead weight.
+says in plain words that this answer _cannot_ establish that there is no dead weight.
 
 **One measured wrinkle worth recording, because it means the boot-path figure is not one fixed quantity.** The
 boot path is 2143 KB / 20 chunks in the **CI-faithful** shape and **2029 KB / 19 chunks** with the sibling
@@ -3838,7 +3838,16 @@ sibling. The practical consequence is benign and worth knowing: **the cap that b
 because CI measures the CI-faithful shape.
 
 **Artifacts:** `docs/audits/2026-10-27-hidden-creative-power/bundle-gate-baseline-82495d24-ci-config.log`,
-`bundle-gate-current-ca8e7583-ci-config.log`, `bundle-gate-chunk-delta-and-dead-weight-audit.log`.
+`bundle-gate-current-ca8e7583-ci-config.log`, `bundle-gate-chunk-delta-and-dead-weight-audit.log`, and
+`bundle-gate-diet-verification.log` (the audit's own independent measurement of the peer's diet, in both
+build shapes).
+
+**Provenance of the two changes in this section.** The `IN PLACE` addendum above and the change to
+`scripts/audit-dead-weight.mjs` were written by this audit, but they reached `main` inside the peer session's
+commit `23966e9c` ("okay"), whose `git add .` swept them in alongside that session's own files
+(`src/generative/variationShelf.ts`, `src/ui/Inspector.tsx`, `tests/generative-variation-shelf.test.ts`,
+`tests/ui/Inspector.test.tsx` — that session's work, untouched here). The content is this audit's and was
+verified by it; **the commit message is not a durable place for that**, so this paragraph is the record.
 
 ---
 
@@ -3907,27 +3916,28 @@ a machine hiccup by the current instrument). **The owner's answer decides the cr
 measurement is in §10.16.12 and the one measurement still missing — the adjacent floor's drop count next to each
 scenario's — is named there as the next instrument step.**
 
-**P-9 · The bundle gate gets an audit that can say "no". — NEEDS THE OWNER'S DECISION (§10.16.13).**
-The DAW-sum cap is red by 2 KB on a feature wave that the **full** dead-weight audit clears: 214 of 214 chunks
-reachable, **0** modules duplicated in the main graph, and a boot path that moved **1 KB**. The escape clause the rule
-names — _"a dead-weight audit that finds chunks nothing reaches"_ (`scripts/check-bundle-size.mjs:302-304`) — **cannot be
-satisfied by any production build**, because rollup only emits a chunk that something imports; and the two audit
-questions that _can_ find dead weight (duplication, source census) are precisely the two the reachability-only mode
-skips. **The defect is in the rule, not in the cap:** the rule demands evidence in a form the instrument cannot
-produce, so a feature wave whose user-facing cost was **1 KB of boot path** has no legal path to green.
-**The proposal:** the clause becomes _"a dead-weight audit **run in its full mode** (sourcemaps on) that finds
-nothing to delete — which makes the growth shipped product rather than weight — **or** the boot path coming down."_
-On that reading this wave takes the same **66 KB** margin the 2026-10-21 wave took, with the **2200 KB boot-path cap
-unchanged**: the ceiling becomes the with-sibling measurement plus 66 KB, which on the measured tree is
-**6020 + 66 = 6086 KB**, holding both builds (CI 6000 → 86 KB under; local 6020 → 66 KB under) by exactly the
-arithmetic of `scripts/check-bundle-size.mjs:327-334`. **The number must be re-measured at the moment the raise
-lands**, because the tree moves under a parallel wave. **The other legal path is the diet the file already names** (the
-App/commands eager anchors, the VSCO generated layer tables, `scripts/check-bundle-size.mjs:164-166`) — real work, in the
-wave's own lane, and not a measurement; this proposal is about what the rule is allowed to accept as evidence.
-**Needs:** the owner's approval of the clause's new form and of the number. **Rejected alternative:** raising the cap
-without the full audit — which is what the 2026-10-28 entry forbids and which would leave the guard unfalsifiable;
-and offsetting by deleting shipped features, which the 2026-10-21 entry already refused ("Bringing this line back
-under 5186 KB would mean deleting shipped features", `scripts/check-bundle-size.mjs:258`).
+**P-9 · The dead-weight audit must not be able to answer "no" by construction. — IN PLACE (2026-10-31); the cap change this originally proposed is WITHDRAWN.**
+This was first written as a proposal to rewrite the rule's escape clause, so that a full audit would count as
+evidence for a raise. **That half is WITHDRAWN, and it is withdrawn because it was wrong:** the wave did not need
+a rule change — it needed a **diet**, and the diet is what the rule itself names as its second clause ("or with
+the boot path coming down"). The peer session paid the wave back the right way: `src/intent/favorites.ts` left
+the boot closure, the boot path came down 21 KB, the seam was locked in `tests/boot-path-seams.test.ts`, and the
+ceiling went to 6071 = 6005 + the same 66 KB margin, with the 2200 KB boot-path cap unchanged. The audit
+re-measured all of it independently and agrees to the kilobyte (§10.16.13).
+**What survives is the instrument, not the rule.** The rule cites this audit as evidence that a growth is
+**weight** rather than headroom — and the audit's reachability question **cannot fail in a production build**:
+rollup only emits a chunk that something imports. So the answer the 2026-10-28 entry cited ("211 of 211 chunks
+reachable") was never _able_ to say "there is dead weight"; it could only ever say "no", and it printed that
+"no" next to a silently skipped duplication census. A reader who wanted to justify a raise could cite it, and a
+reader who wanted to deny one could cite the same line. **IN PLACE:** `scripts/audit-dead-weight.mjs` now prints
+**the scope of its own answer** on the same screen as the answer — the reachability-only run says so in the very
+line where it says "NONE", names the two questions it skipped, and closes with a `SCOPE` line stating in plain
+words that this answer _cannot_ establish that there is no dead weight. **The measurement is unchanged; only the
+misreading it invited is closed.** **Still open (a product decision, not a patch):** the debt the peer named —
+`src/intent/effect-words.ts` (~42 KB of word tables) is still eager through `src/ui/ContextMenu.tsx` →
+`src/intent/arrangeWords.ts`, and **both consumers parse at render time**, so a lazy seam would make the
+context-menu preview arrive a tick late. That is a latency question for the product, not a bundle one, and the
+audit did not take it.
 
 ---
 

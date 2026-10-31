@@ -1,0 +1,68 @@
+# THE DIET, MEASURED INDEPENDENTLY - the peer session paid the wave back
+#
+# The peer session raised the DAW-JS ceiling from 5998 to 6071 after moving
+# src/intent/favorites.ts off the studio boot path (its module-level import in
+# src/ui/DiceContext.tsx hoisted the dice/favorites shared chunk onto the boot
+# graph for every session). This file is the AUDIT'S OWN measurement of that
+# diet, taken from a separate detached worktree, so the peer's numbers are not
+# taken on trust.
+#
+# HOW: detached worktree at b507d264, the peer's uncommitted
+# src/ui/DiceContext.tsx diff applied on top, then npm run build in two shapes:
+#   CI-FAITHFUL  QVESTER_SIBLING_ROOT -> a directory with no sibling monorepo
+#                (the in-repo QMR stub; exactly what the runner builds)
+#   WITH-SIBLING  QVESTER_SIBLING_ROOT unset -> the real D:\QVESTER_LANDING_PAGE
+#                (the local developer shape)
+# The sibling was at aa8188347 with packages/ CLEAN for every measurement here.
+
+=== CI-FAITHFUL (what CI gates on) ===
+
+before the diet - ca8e7583:
+  [size-budget] DAW JS chunks: 6000 KB (budget 5998)   FAIL by 2 KB
+  [size-budget] studio boot path: 2164 KB across 20 chunks (budget 2200)
+
+after the diet  - b507d264 + the peer's DiceContext diff:
+  [size-budget] DAW JS chunks: 6005 KB (budget 5998)   FAIL (the ceiling moves to 6071)
+  [size-budget] studio boot path: 2143 KB across 20 chunks (budget 2200)
+  => boot path -21 KB, and the sum ticks +5 KB from lazy-chunk wrapper overhead
+     (this SUM metric counts every chunk and cannot see the seam; the boot-path
+      metric is the one that rewards it)
+
+=== WITH-SIBLING (the local developer shape) ===
+
+  [size-budget] DAW JS chunks: 6025 KB (budget 5998)
+  [size-budget] studio boot path: 2029 KB across 19 chunks (budget 2200)
+  => the ceiling 6071 = 6005 + 66 holds for BOTH shapes: 66 KB of headroom on
+     the CI-faithful build, 46 KB on the with-sibling one
+
+=== THE PEER'S NUMBERS vs THE AUDIT'S ===
+
+  subject                     peer reported   audit measured
+  CI-faithful DAW sum            6005 KB          6005 KB
+  boot path after the diet       2143 KB          2143 KB
+  CI-faithful DAW sum before     6000 KB          6000 KB
+  boot path before the diet      2164 KB          2164 KB
+  with-sibling DAW sum               -            6020 KB
+
+=== WHY THE BOOT-PATH FIGURE IS NOT ONE FIXED NUMBER ===
+
+The boot path measures 2143 KB / 20 chunks in the CI-faithful shape and
+2029 KB / 19 chunks with the sibling present - one chunk and 114 KB further
+out of the static closure. The sibling did not move (same commit, clean
+packages/), so this is the chunk graph itself, not drift. The only chunk
+that differs between the two shapes is qmr-mini-chip-mount (0.20 KB stub vs
+88.70 KB real); the with-sibling build carries 211 chunks against 207. The
+practical consequence is benign: the cap that bites is the stricter one,
+because CI measures the CI-faithful shape.
+
+=== THE DEAD-WEIGHT AUDIT, FULL MODE, ON THE DIET TREE ===
+
+  [dead-weight] js chunks: 217, reachable from the entry: 217
+  [dead-weight] unreachable chunks: NONE - every chunk is reachable.
+  [dead-weight] modules shipped in >1 chunk:
+    inside the MAIN graph (removable): 0
+    inside WORKER bundles (structural, a worker owns its copy): 15
+  [dead-weight] src files: 1376, not present in any built chunk: 301
+  [dead-weight] not built AND referenced nowhere in tests/scripts: worker
+    entries, .d.ts type declarations and dev-only tooling - 0 bundle bytes.
+
