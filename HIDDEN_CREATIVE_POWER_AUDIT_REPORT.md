@@ -4055,6 +4055,80 @@ because the **consent** gate refused — not because some other gate happened to
 
 **Evidence:** `docs/audits/2026-10-27-hidden-creative-power/mcp-web-host-relay-protocol.log` (the three probe answers and the fix's measurement); `tests/mcp-web-host.test.ts` — 9 of 9 passing on `main` at `9f340061`.
 
+#### 10.16.17 The realtime red belongs to nobody's wave — and the instrument's own floor drops a quantum
+
+The gates session closed its wave and handed over the one red that remained: **`Browser audio checks
+(Chromium)`**, the realtime budget. Its reading was that the red "is either `acbb9c3b`'s lane (the loop wrap
+
+- frozen tracks reading the live transport tick) or the rt budget gate's". **The first half is wrong, and the
+  git history says so with no interpretation.**
+
+**The attribution, measured.** The job read green at `3e05eaaa` and red at `ba56058d`. The window between them
+is **three commits** — `983438e5` (docs), `e87fef11` (docs), `ba56058d` (intent). **Not one of them touches the
+audio graph, the scheduler, the transport or a worklet** — `git show --name-only` over the window returns report
+files and intent files only. A red that appears across a window containing no audio code is not a regression of
+the audio graph; it is the criterion flipping. And `acbb9c3b` cannot be the cause either: the job was already
+red **three commits before it**.
+
+**The line, read from the job's error annotation** (check-run `124592121656`, `9f340061` — one API request; the
+job's logs are behind a login, the annotation is not):
+
+```text
+FAIL rt budget: 12 tracks × 4 effects realtime — OVER BUDGET — blocks=960 fit=1.00 xruns=2
+heartbeat avg=184.82ms max=188.60ms (expected≈185.76ms, 0.99×) quantum=2.902ms
+· device floor xruns=0 jitter=1.00× (1 track, no effects; cold 0/1.00× / warm 1/1.00×)
+· graph build=0 steady=2
+· ladder 8×2(16c) fit=1.00±0.00 jitter=3.21±4.41× ratio=1.04× xruns=0 · 12×2(24c) fit=0.83±0.33 …
+  8×4(32c) fit=0.72±0.43 … xruns=0 · 12×3(36c) fit=0.62±0.23 … xruns=0
+· 12×4(48c) fit=0.80±0.40 jitter=3.35±3.35× ratio=1.46× xruns=1 · 16×4(64c) fit=0.67±0.17 … xruns=1
+· 20×4(80c) fit=0.75±0.50 … xruns=1 · 24×4(96c) fit=0.62±0.10 … xruns=1
+```
+
+**What the numbers say, in the order the gate asks them.** The gated window ran at **fit = 1.00** — the device
+managed **100 % of real time** — and the heartbeat arrived at **0.99×** against the **1.5×** limit. The product's
+promise is holding with room to spare. The gate tripped on `graphDrops === 0` (`src/browser-checks.ts:766`):
+**two** dropped quanta out of **960**.
+
+**And the machine had already dropped a quantum with nothing to play.** The device floor — the same context, the
+same monitor, the same window, **one track with no effects** — reads `cold 0/1.00× / warm 1/1.00×`: the **warm**
+floor pass dropped **one** quantum on an **empty** graph. That is the machine's own behaviour, measured in the
+same run, by the same instrument.
+
+**But the gate cannot see it, and that is a statistic, not a measurement.** `deviceFloor =
+Math.min(floorColdDrops, floorWarmDrops)` (`src/browser-checks.ts:723`): the demotion fires only when **both**
+floor passes dropped (`if (floorKnown && deviceFloor > 0)`, `:772`). One clean pass is enough to make the floor
+read "clean" — so on a machine that drops quanta _occasionally_, the best-of-two statistic throws away exactly
+the evidence that it does. The rule's own comment states what it is for: _"A device that drops quanta on an EMPTY
+graph … cannot answer an absolute question about a heavy one. That verdict is informational"_ (`:767-770`).
+**The instrument already promises this demotion; the statistic it uses to trigger it cannot fire on the case it
+was written for.**
+
+**What each candidate criterion would have said, on this run's own numbers:**
+
+| form                                                      | verdict              | what it keeps                                |
+| --------------------------------------------------------- | -------------------- | -------------------------------------------- |
+| absolute zero drops (today)                               | **RED**              | everything — and the machine's noise with it |
+| graph drops ≤ the floor's **max** (1)                     | **RED** (2 > 1)      | the promise, unchanged                       |
+| graph drops ≤ the floor's **sum** (1)                     | **RED** (2 > 1)      | the promise, unchanged                       |
+| demotion on **any** floor drop (min → max in the trigger) | green, informational | nothing — the teeth are gone on CI           |
+| **heartbeat ≤ 1.5×** (the product's **cost** promise)     | **GREEN** (0.99×)    | the promise's cost, machine-relative         |
+
+**Only the last form goes green.** Every form that keeps "no dropped quantum" stays red on this run's numbers —
+the 48-chain graph dropped two while the machine's own empty graph dropped one. That is not an argument for
+picking the green one; it is **the arithmetic of the decision**: the red cannot be honestly removed without
+changing which promise the gate enforces, and that is the owner's call (P-8). **Not implemented here,
+deliberately** — a guard must not be weakened to turn a gate green.
+
+**The same instrument also says the verdict is position-dependent.** The ladder re-measures the _same_ 12×4
+scenario later in the run, on a warmed heap, and reads `jitter 3.35±3.35× ratio 1.46× fit 0.80±0.40` where the
+gated window read `0.99×` and `fit 1.00`. The spread — the difference between two passes of one scenario — is
+±0.23 to ±0.50 of real time, as large as the difference between two different scenarios. The code documents the
+cause (`src/browser-checks.ts:542-544`): the ladder is measured after the gated window, and "heaviest first" is
+not protection against a warm heap. **A verdict that depends on when the measurement was taken is measuring the
+moment, not the product.**
+
+**Evidence:** `docs/audits/2026-10-27-hidden-creative-power/realtime-gate-ci-line-9f340061.log`.
+
 ---
 
 ## 11. Strategic proposals requiring explicit approval
@@ -4109,7 +4183,7 @@ Every production call site passes `mode="devices"`; the legacy branch survives o
 the default. Deleting it is a real simplification — but it is a deletion, and the brief forbids removing
 features without approval.
 
-**P-8 · The realtime gate gets a baseline instead of a zero. — NEEDS THE OWNER'S DECISION (§10.16.12).**
+**P-8 · The realtime gate gets a baseline instead of a zero. — NEEDS THE OWNER'S DECISION (§10.16.12, §10.16.17).**
 The gate asks an absolute question ("did the audio thread drop a single quantum?") on a shared machine, and the
 measurement shows the verdict turns on **one quantum in ~1000**: the same scenario, the same criterion and the
 same machine read green in one run and red in the next, and on the runner the heartbeat sat at **1.00×** — exactly
@@ -4119,8 +4193,18 @@ what is wrong, not its number**: **the 1.5× limit should not be loosened.** Wha
 which of two promises the gate should enforce — _"48 chains hold the heartbeat budget"_ (true today, measured on
 both machines) or _"48 chains never drop a quantum"_ (not true today on the runner, and not distinguishable from
 a machine hiccup by the current instrument). **The owner's answer decides the criterion's shape; the audit's
-measurement is in §10.16.12 and the one measurement still missing — the adjacent floor's drop count next to each
-scenario's — is named there as the next instrument step.**
+measurement is in §10.16.12, and the instrument step it named — the adjacent floor's drop count next to each
+scenario's — is now IN THE INSTRUMENT and in the CI line itself (§10.16.17).
+**What that measurement settles (2026-10-31):** the attribution is no longer in question — the red appeared across
+a window that contains **no audio code at all** (§10.16.17), so it is not any wave's regression. And the
+arithmetic of the candidate criteria, on the runner's own numbers, is now on the table: **every form that keeps
+"no dropped quantum" stays red** (the 48-chain graph dropped 2 while the machine's own **empty** graph dropped 1),
+and **only the heartbeat form goes green** (0.99× against a 1.5× limit). **The instrument also cannot see the
+machine's own drops** — `deviceFloor` is the MINIMUM of the two floor passes (`src/browser-checks.ts:723`), so one
+clean pass hides the other pass's drop, and the demotion the instrument already documents (`:767-770`) cannot fire
+on the case it was written for. **So the owner's call is now narrow and arithmetic rather than a matter of taste:
+which promise the gate enforces, and what each costs. The audit did not take it** — a guard must not be weakened
+to turn a gate green.
 
 **P-9 · The dead-weight audit must not be able to answer "no" by construction. — IN PLACE (2026-10-31); the cap change this originally proposed is WITHDRAWN.**
 This was first written as a proposal to rewrite the rule's escape clause, so that a full audit would count as

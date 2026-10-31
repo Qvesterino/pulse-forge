@@ -1,0 +1,55 @@
+REALTIME GATE - THE CI LINE AND WHAT EACH CRITERION WOULD HAVE SAID
+====================================================================
+Commit:   9f340061 (the gates session's wave) - job: Browser audio checks (Chromium)
+Check-run: 124592121656 - conclusion: failure - read from the job's ERROR ANNOTATION
+           (one API request; the job logs are behind a login, the annotation is not)
+
+[1] THE LINE, VERBATIM
+FAIL rt budget: 12 tracks x 4 effects realtime - OVER BUDGET - blocks=960 fit=1.00 xruns=2
+heartbeat avg=184.82ms max=188.60ms (expected=185.76ms, 0.99x) quantum=2.902ms
+  device floor xruns=0 jitter=1.00x (1 track, no effects; cold 0/1.00x / warm 1/1.00x)
+  graph build=0 steady=2
+  ladder 8x2(16c) fit=1.00+-0.00 jitter=3.21+-4.41x ratio=1.04x xruns=0
+         12x2(24c) fit=0.83+-0.33 jitter=3.20+-4.39x ratio=1.06x xruns=0
+         8x4(32c) fit=0.72+-0.43 jitter=3.18+-4.19x ratio=1.11x xruns=0
+         12x3(36c) fit=0.62+-0.23 jitter=3.33+-4.04x ratio=1.29x xruns=0
+         12x4(48c) fit=0.80+-0.40 jitter=3.35+-3.35x ratio=1.46x xruns=1
+         16x4(64c) fit=0.67+-0.17 jitter=3.52+-2.75x ratio=1.52x xruns=1
+         20x4(80c) fit=0.75+-0.50 jitter=3.75+-1.72x ratio=1.65x xruns=1
+         24x4(96c) fit=0.62+-0.10 jitter=3.95+-0.56x ratio=1.72x xruns=1
+
+[2] THE GATE, IN CODE
+src/browser-checks.ts:766   const ok = graphDrops === 0 && jitterRatio < RT_JITTER_LIMIT;
+src/browser-checks.ts:723   const deviceFloor = Math.min(floorColdDrops, floorWarmDrops);
+src/browser-checks.ts:772   if (floorKnown && deviceFloor > 0) { ...demotion, informational... }
+src/browser-checks.ts:748   const gatedFit = floorWarmBlocks > 0 ? windowBlocks / floorWarmBlocks : 0;
+src/browser-checks.ts:767   "A device that drops quanta on an EMPTY graph ... cannot answer an
+                               absolute question about a heavy one. That verdict is informational."
+
+[3] THE ATTRIBUTION, FROM GIT
+green at 3e05eaaa -> red at ba56058d. The window holds THREE commits:
+  983438e5 docs(audit): P-9 is rescoped
+  e87fef11 docs(audit): the provenance was wrong
+  ba56058d fix(intent): the saved Producer Brief could not be generated
+`git show --name-only` over the window returns report files and intent files only -
+no audio graph, no scheduler, no transport, no worklet. acbb9c3b cannot be the
+cause either: the job was already red three commits before it.
+
+[4] WHAT EACH CRITERION WOULD HAVE SAID, ON THIS RUN'S OWN NUMBERS
+  absolute zero drops (today)                         -> RED      (2 > 0)
+  graph drops <= floor MAX (1)                        -> RED      (2 > 1)
+  graph drops <= floor SUM (1)                        -> RED      (2 > 1)
+  demotion on ANY floor drop (min -> max)             -> green, informational (no teeth)
+  heartbeat <= 1.5x (the product's COST promise)      -> GREEN    (0.99x)
+Only the last form goes green. Every form that keeps "no dropped quantum" stays
+red on this run's numbers: the 48-chain graph dropped 2 while the machine's own
+EMPTY graph dropped 1.
+
+[5] THE POSITION EFFECT, FROM THE SAME LINE
+The ladder re-measures the SAME 12x4 scenario later in the run, on a warmed heap:
+  jitter 3.35+-3.35x  ratio 1.46x  fit 0.80+-0.40
+where the gated window read jitter 0.99x and fit 1.00. The SPREAD between the two
+passes of one scenario (+-0.23 .. +-0.50 of real time) is as large as the
+difference between two different scenarios. src/browser-checks.ts:542-544 documents
+the cause: the ladder is measured after the gated window, and "heaviest first" is
+not protection against a warm heap.
