@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
 import { screen, fireEvent } from "@testing-library/react";
 import { Inspector } from "../../src/ui/Inspector";
+import { ServicesContext } from "../../src/ui/context";
 import { clearVariationShelf, shelfVariations } from "../../src/generative/variationShelf";
-import { renderWithContext } from "../helpers";
+import type { GenerativeVariation } from "../../src/generative/resample";
+import { renderWithContext, mockServices } from "../helpers";
+import type { Services } from "../../src/services";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { Track } from "../../src/project-model/types";
 
@@ -50,20 +54,26 @@ describe("Inspector", () => {
   });
 });
 
+const GENERATIVE_STATUS_SNAPSHOT = { state: "idle" as const };
+
 describe("Inspector — resample variations survive a track switch (CF-20)", () => {
   function generativeTrack(id: string, name: string): Track {
     const doc = createProjectFromTemplate("house");
     const base = doc.tracks.find((t) => t.kind === "instrument");
     if (!base) throw new Error("expected an instrument track");
+    const generativeShape = {
+      style: { kind: "text" as const, text: "loom ambient" },
+      macros: { energy: 0.5, density: 0.5, variation: 0.5, texture: 0.5 },
+      providerId: "mrt2",
+      modelId: "v30-q8",
+      latencyMode: "near-realtime" as const,
+    };
     return {
-      ...base,
+      ...(base as unknown as Record<string, unknown>),
       id,
       name,
       kind: "generative",
-      generative: {
-        ...base.generative,
-        style: { kind: "text", text: "loom ambient" },
-      },
+      generative: generativeShape,
     } as unknown as Track;
   }
 
@@ -86,7 +96,41 @@ describe("Inspector — resample variations survive a track switch (CF-20)", () 
   }
 
   function renderInspectorFor(track: Track) {
-    return renderWithContext(<Inspector track={track} selectedPadId="" />);
+    const base = mockServices();
+    const services = {
+      ...base,
+      generativeProviders: {
+        capabilities: vi.fn(() => null),
+        register: vi.fn(),
+        unregister: vi.fn(),
+      },
+      generativeRuntime: {
+        ...(base.generativeRuntime ?? {}),
+        subscribe: vi.fn(() => () => {}),
+        // useSyncExternalStore requires a CACHED snapshot — a fresh object
+        // per call loops React forever.
+        getStatus: vi.fn(() => GENERATIVE_STATUS_SNAPSHOT),
+        refreshAll: vi.fn(),
+        stopAll: vi.fn(async () => {}),
+      },
+      generativeLatency: { getSnapshot: () => null },
+    } as unknown as Services;
+    const utils = renderWithContext(<Inspector track={track} selectedPadId="" />, { services });
+    return { utils, services };
+  }
+
+  /** rerender must carry the SAME provider — a bare rerender drops it. */
+  function rerenderFor(
+    first: { utils: { rerender: (ui: React.ReactElement) => void }; services: Services },
+    track: Track,
+  ) {
+    first.utils.rerender(
+      createElement(
+        ServicesContext.Provider,
+        { value: first.services },
+        createElement(Inspector, { track, selectedPadId: "" }),
+      ),
+    );
   }
 
   afterEach(() => clearVariationShelf());
@@ -102,13 +146,14 @@ describe("Inspector — resample variations survive a track switch (CF-20)", () 
     const first = renderInspectorFor(trackA);
     // The track has NO shelf to restore on the first visit — the takes arrive
     // from a run, not from the shelf.
-    first.rerender(<Inspector track={trackB} selectedPadId="" />);
-    first.rerender(<Inspector track={trackA} selectedPadId="" />);
+    rerenderFor(first, trackB);
+    rerenderFor(first, trackA);
 
     // Back on track A: the takes returned, and the panel SAYS so.
     expect(screen.getByText(/Restored 2 uncommitted variations/)).toBeInTheDocument();
-    expect(screen.getByText("V1")).toBeInTheDocument();
-    expect(screen.getByText("V2")).toBeInTheDocument();
+    // The takes render as their PREVIEW buttons (label uppercase).
+    expect(screen.getByRole("button", { name: "PREVIEW V1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PREVIEW V2" })).toBeInTheDocument();
   });
 
   it("NEGATIVE: a track with no shelf returns to no takes and no notice", () => {
@@ -116,7 +161,7 @@ describe("Inspector — resample variations survive a track switch (CF-20)", () 
     const trackB = generativeTrack("gen-b2", "DRIFT");
     shelfVariations(trackA.id, [fakeVariation("v1")]);
     const view = renderInspectorFor(trackA);
-    view.rerender(<Inspector track={trackB} selectedPadId="" />);
+    rerenderFor(view, trackB);
     expect(screen.queryByText(/Restored/)).toBeNull();
   });
 });

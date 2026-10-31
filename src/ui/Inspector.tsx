@@ -190,7 +190,11 @@ export function Inspector({
       setGenerativeVariations(restored ?? []);
       setGenerativeShelfNotice(
         restored
-          ? "Restored " + restored.length + " uncommitted variation" + (restored.length === 1 ? "" : "s") + " from this track earlier session."
+          ? "Restored " +
+              restored.length +
+              " uncommitted variation" +
+              (restored.length === 1 ? "" : "s") +
+              " from this track earlier session."
           : null,
       );
     } else {

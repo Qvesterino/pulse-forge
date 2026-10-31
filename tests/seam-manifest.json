@@ -246,6 +246,15 @@
       "negativeSpec": "NEGATIVE: auditioning in Song mode shows no offer (the gate stays silent)"
     },
     {
+      "id": "generative-variation-shelf",
+      "status": "COVERED",
+      "entryPoint": "src/ui/Inspector.tsx per-track reset effect → variationShelf shelf/take ← generateResamples",
+      "note": "CF-20: the resample A/B/C/D takes used to be wiped by every TRACK SWITCH (the per-track reset effect cleared the component state). They now shelf per track for the session (the PCM is not serializable, so no localStorage), restore with a 'Restored N uncommitted variations' notice when the track is re-selected, and re-shelve on every new run; a same-track style edit still discards (the takes belong to the old style). Bounded to the eight most recent tracks.",
+      "spec": "tests/ui/Inspector.test.tsx",
+      "seamEvent": "Restored 2 uncommitted variations",
+      "negativeSpec": "NEGATIVE: a track with no shelf returns to no takes and no notice"
+    },
+    {
       "id": "automation-point-drag",
       "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
