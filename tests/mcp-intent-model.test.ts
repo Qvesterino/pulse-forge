@@ -131,6 +131,14 @@ describe("kyx_intent model fallback over MCP", () => {
 
     expect(preview.mutated).toBe(false);
     expect(preview.data).toMatchObject({ dryRun: true, status: "proposal", routeKind: "fader" });
+    const steps = (preview.data as { steps: Array<Record<string, unknown>> }).steps;
+    expect(steps[0]).toMatchObject({
+      kind: "number",
+      trackId: expect.any(String),
+      parameter: "fader.gain",
+      beforeValue: expect.any(Number),
+      nextValue: expect.any(Number),
+    });
     const planId = (preview.data as { planId?: string }).planId;
     expect(planId).toEqual(expect.any(String));
     expect(ctx.getDoc()).toBe(before);
@@ -142,6 +150,8 @@ describe("kyx_intent model fallback over MCP", () => {
     });
     expect(applied.mutated).toBe(true);
     expect(ctx.getDoc()).not.toBe(before);
+    expect(applied.data).toMatchObject({ status: "applied", verifiedAgainstPlan: true });
+    expect((applied.data as { readback: string[] }).readback.join("; ")).toContain("trackId=");
   });
 
   it("external model edits require a preview and stale plans are refused", async () => {

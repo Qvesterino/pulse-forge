@@ -225,6 +225,8 @@ describe("router priority", () => {
     expect(plan.mutates).toBe(true);
     expect(plan.steps.length).toBeGreaterThan(0);
     expect(formatPlan(plan)).toContain("marker");
+    expect(plan.command).toBeDefined();
+    expect(plan.command?.execute(doc)).toEqual(plan.after);
   });
 });
 
@@ -679,6 +681,9 @@ describe("intent plan — dry-run before execution", () => {
     const number = plan.steps.find((step) => step.kind === "number");
     expect(number?.kind).toBe("number");
     if (number?.kind !== "number") return;
+    expect(number.trackId).toBeTruthy();
+    expect(number.fxId).toBeTruthy();
+    expect(number.paramId).toBe("decay");
     expect(number.parameter).toBe("reverb.decay");
     expect(number.beforeLabel).toBe("1.80 s");
     expect(number.nextLabel).toBe("1.98 s");
@@ -693,20 +698,24 @@ describe("intent plan — dry-run before execution", () => {
     expect(number?.kind).toBe("number");
     if (number?.kind !== "number") return;
     expect(number.target).toBe("Chords");
+    expect(number.trackId).toBeTruthy();
+    expect(number.fxId).toBeTruthy();
+    expect(number.paramId).toBe("mix");
     expect(number.parameter).toBe("reverb.mix");
     expect(number.before).toBeCloseTo(0.3, 2);
     expect(number.next).toBeCloseTo(0.34, 2);
   });
 
   it("mute, tempo and compound are described without mutating", () => {
-    const mute = planFor("mute the drums").plan;
-    expect(mute.steps[0]).toMatchObject({
-      kind: "state",
-      target: "drums",
-      parameter: "mute",
-      beforeLabel: "off",
-      afterLabel: "on",
-    });
+    const muteDoc = testDoc();
+    const mute = planFor("mute the drums", muteDoc).plan;
+    const mutedTracks = muteDoc.tracks.filter((track) => track.kind === "drum");
+    expect(mute.steps).toHaveLength(mutedTracks.length);
+    expect(mute.steps.map((step) => step.trackId)).toEqual(
+      expect.arrayContaining(mutedTracks.map((track) => track.id)),
+    );
+    expect(mute.steps.every((step) => step.kind === "state" && step.parameter === "mute")).toBe(true);
+    expect(formatPlan(mute)).toContain("trackId=");
 
     const tempoDoc = testDoc();
     const tempo = planFor("zníž tempo", tempoDoc).plan;

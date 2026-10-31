@@ -41,6 +41,7 @@ export type RenderTrackFn = (doc: ProjectDocument, trackId: string) => Promise<A
 
 export interface ParamVerificationTarget {
   target: string;
+  trackId: string;
   /** Human metric name ("jas", "šírka", "hlasitosť"). */
   metric: string;
   before: number;
@@ -48,6 +49,7 @@ export interface ParamVerificationTarget {
   /** Relative change in percent (after-before)/before — 0 when before ~ 0. */
   deltaPct: number;
   passed: boolean;
+  matchesAsk: boolean;
 }
 
 export interface ParamVerification {
@@ -110,15 +112,12 @@ function monoOf(buffer: AudioBuffer): Float32Array | null {
 }
 
 /**
- * For SET asks: did the knob move UP on the first target's resolved track?
+ * For SET asks: did the knob move UP on this target's resolved track?
  * Reads the same instance path the knob readback uses; a missing instance
  * falls back to the effect default. Equal values count as up (the ask made
  * no downward move).
  */
-function setAskMovesUp(before: ProjectDocument, after: ProjectDocument, intent: ParamIntent): boolean {
-  const ids = trackIdsForMixTarget(before, intent.targets[0] ?? "");
-  if (ids.length === 0) return true;
-  const trackId = ids[0] as string;
+function setAskMovesUp(before: ProjectDocument, after: ProjectDocument, intent: ParamIntent, trackId: string): boolean {
   const read = (doc: ProjectDocument): number | undefined => {
     const track = doc.tracks.find((candidate) => candidate.id === trackId);
     if (!track || !("effects" in track)) return undefined;
@@ -155,11 +154,24 @@ export async function measureParamVerification(
   // an honest "not measured", not a failed render.
   const metric = capabilityFor(intent.role, intent.effectType)?.metric ?? null;
   const targets: ParamVerificationTarget[] = [];
-  for (const target of intent.targets) {
-    if (wetPathTone) break;
-    const ids = trackIdsForMixTarget(before, target);
-    if (ids.length === 0) continue;
-    const trackId = ids[0] as string;
+  const trackTargets = new Map<string, string>();
+  if (!wetPathTone) {
+    for (const target of intent.targets) {
+      for (const trackId of trackIdsForMixTarget(before, target)) {
+        const track = before.tracks.find((candidate) => candidate.id === trackId);
+        trackTargets.set(trackId, track?.name ?? target);
+      }
+    }
+    for (const trackId of intent.trackIds ?? []) {
+      const track = before.tracks.find((candidate) => candidate.id === trackId);
+      if (track) trackTargets.set(trackId, track.name);
+    }
+    if (intent.trackOrdinal != null) {
+      const track = before.tracks.filter((candidate) => candidate.kind !== "group")[intent.trackOrdinal];
+      if (track) trackTargets.set(track.id, track.name);
+    }
+  }
+  for (const [trackId, target] of trackTargets) {
     let beforeBuffer: AudioBuffer | null = null;
     let afterBuffer: AudioBuffer | null = null;
     try {
@@ -178,26 +190,29 @@ export async function measureParamVerification(
         : afterMetric.value > 1e-9
           ? 100
           : 0;
+    const askedUp =
+      intent.mode === "less" ? false : intent.mode === "more" ? true : setAskMovesUp(before, after, intent, trackId);
+    const passed = Math.abs(deltaPct) >= DELTA_THRESHOLD_PCT;
     targets.push({
       target,
+      trackId,
       metric: beforeMetric.name,
       before: beforeMetric.value,
       after: afterMetric.value,
       deltaPct: Math.round(deltaPct * 10) / 10,
-      passed: Math.abs(deltaPct) >= DELTA_THRESHOLD_PCT,
+      passed,
+      matchesAsk: passed && (askedUp ? deltaPct > 0 : deltaPct < 0),
     });
   }
 
   const measurable = targets.length > 0;
-  // Relative asks carry their direction; a SET ask's direction is where the
-  // KNOB moved — "set tone to 800 Hz" must verify as a darker landing, not
-  // be un-verifyable because set isn't literally "more".
-  const askedUp = intent.mode === "less" ? false : intent.mode === "more" ? true : setAskMovesUp(before, after, intent);
-  const verified =
-    measurable && targets.some((entry) => entry.passed && (askedUp ? entry.deltaPct > 0 : entry.deltaPct < 0));
+  const completeCoverage = targets.length === trackTargets.size;
+  const verified = measurable && completeCoverage && targets.every((entry) => entry.matchesAsk);
   const correction =
     measurable && !verified && intent.mode !== "set"
-      ? "meranie neukazuje počuteľnú zmenu — skúsiť ×1,5 alebo väčší stupeň?"
+      ? completeCoverage
+        ? "meranie neukazuje počuteľnú zmenu na všetkých cieľoch — skúsiť ×1,5 alebo väčší stupeň?"
+        : `meranie pokrylo iba ${targets.length} z ${trackTargets.size} cieľov — skontroluj nevyrenderované stopy`
       : null;
 
   let line: string;
@@ -228,11 +243,11 @@ export async function measureParamVerification(
               : entry.deltaPct > 0
                 ? "hlasnejší"
                 : "tichší";
-      return `${entry.target} ${what} o ${Math.abs(entry.deltaPct).toFixed(0)} % (${direction} ${entry.metric})`;
+      return `${entry.target} (trackId=${entry.trackId}) ${what} o ${Math.abs(entry.deltaPct).toFixed(0)} % (${direction} ${entry.metric})`;
     });
     line = `✓ ${parts.join(" · ")}`;
   } else {
-    line = `⚠ ${targets.map((entry) => `${entry.target}: ${entry.metric} ${entry.deltaPct >= 0 ? "+" : ""}${entry.deltaPct.toFixed(1)} %`).join(" · ")}`;
+    line = `⚠ ${targets.map((entry) => `${entry.target} (trackId=${entry.trackId}): ${entry.metric} ${entry.deltaPct >= 0 ? "+" : ""}${entry.deltaPct.toFixed(1)} %`).join(" · ")}${completeCoverage ? "" : ` · measured ${targets.length}/${trackTargets.size} tracks`}`;
   }
 
   return { role: intent.role, measurable, targets, verified, line, correction };

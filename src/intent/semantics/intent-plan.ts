@@ -20,6 +20,7 @@
  *   - clamps, added effects and unmatched targets are stated in the step.
  */
 import type { ProjectDocument } from "../../project-model/types";
+import type { Command } from "../../commands/types";
 import type { RoutedIntent } from "../route";
 import { buildIntentCommand } from "../command-for-route";
 import { paramPlan } from "../param-intent";
@@ -38,6 +39,11 @@ export interface NumberPlanStep {
   target: string;
   trackId?: string;
   fxId?: string;
+  returnId?: string;
+  padId?: string;
+  clipId?: string;
+  entityId?: string;
+  paramId?: string;
   parameter: string;
   before: number;
   proposed: number;
@@ -54,6 +60,11 @@ export interface NumberPlanStep {
 export interface StatePlanStep {
   kind: "state";
   target: string;
+  trackId?: string;
+  fxId?: string;
+  clipId?: string;
+  entityId?: string;
+  paramId?: string;
   parameter: string;
   beforeLabel: string;
   afterLabel: string;
@@ -63,6 +74,10 @@ export interface StatePlanStep {
 export interface CommandPlanStep {
   kind: "command";
   target: string;
+  trackId?: string;
+  fxId?: string;
+  clipId?: string;
+  entityId?: string;
   note: string;
 }
 
@@ -78,6 +93,8 @@ export interface IntentPlan {
   /** True when the route maps to a canonical command at all. */
   executable: boolean;
   commandLabel?: string;
+  /** The exact pure command projected by this plan, for apply-after-review flows. */
+  command?: Command;
   /** The dry-run result. NEVER passed to the store by this module. */
   after: ProjectDocument;
 }
@@ -129,10 +146,15 @@ function faderSteps(
   intent: Extract<RoutedIntent, { kind: "fader" }>["intent"],
 ): PlanStep[] {
   const steps: PlanStep[] = [];
-  const gain = (target: string, from: number | undefined, to: number | undefined): void => {
+  const gain = (
+    target: string,
+    from: number | undefined,
+    to: number | undefined,
+    ids: Pick<NumberPlanStep, "trackId" | "returnId"> = {},
+  ): void => {
     if (from == null || to == null || from === to) return;
-    steps.push(
-      numberStep(
+    steps.push({
+      ...numberStep(
         target,
         "fader.gain",
         from,
@@ -142,7 +164,8 @@ function faderSteps(
         "normalized",
         from > 0 ? `×${fmt(to / from, 3)}` : undefined,
       ),
-    );
+      ...ids,
+    });
   };
 
   for (const target of intent.targets) {
@@ -153,18 +176,18 @@ function faderSteps(
     for (const trackId of trackIdsForTarget(before, target)) {
       const oldTrack = before.tracks.find((track) => track.id === trackId);
       const newTrack = after.tracks.find((track) => track.id === trackId);
-      gain(oldTrack?.name ?? target, oldTrack?.gain, newTrack?.gain);
+      gain(oldTrack?.name ?? target, oldTrack?.gain, newTrack?.gain, { trackId });
     }
   }
   for (const trackId of intent.trackIds ?? []) {
     const oldTrack = before.tracks.find((track) => track.id === trackId);
     const newTrack = after.tracks.find((track) => track.id === trackId);
-    gain(oldTrack?.name ?? trackId, oldTrack?.gain, newTrack?.gain);
+    gain(oldTrack?.name ?? trackId, oldTrack?.gain, newTrack?.gain, { trackId });
   }
   for (const returnId of intent.returnIds ?? []) {
     const oldReturn = before.returns.find((item) => item.id === returnId);
     const newReturn = after.returns.find((item) => item.id === returnId);
-    gain(`return ${oldReturn?.name ?? returnId}`, oldReturn?.gain, newReturn?.gain);
+    gain(`return ${oldReturn?.name ?? returnId}`, oldReturn?.gain, newReturn?.gain, { returnId });
   }
   if ((intent.pads?.length ?? 0) > 0) {
     const oldDrum = before.tracks.find((track) => track.kind === "drum");
@@ -173,8 +196,8 @@ function faderSteps(
       for (const [index, pad] of oldDrum.pads.entries()) {
         const next = newDrum.pads[index];
         if (next && pad.gain !== next.gain) {
-          steps.push(
-            numberStep(
+          steps.push({
+            ...numberStep(
               `${oldDrum.name} · ${pad.name}`,
               "fader.gain",
               pad.gain,
@@ -184,7 +207,9 @@ function faderSteps(
               "normalized",
               pad.gain > 0 ? `×${fmt(next.gain / pad.gain, 3)}` : undefined,
             ),
-          );
+            trackId: oldDrum.id,
+            padId: pad.id,
+          });
         }
       }
     }
@@ -194,6 +219,7 @@ function faderSteps(
 
 function paramSteps(
   doc: ProjectDocument,
+  after: ProjectDocument,
   intent: Extract<RoutedIntent, { kind: "paramIntent" }>["intent"],
 ): PlanStep[] {
   const steps: PlanStep[] = [];
@@ -220,10 +246,18 @@ function paramSteps(
       domainOf(def),
       noteParts.join(" · ") || undefined,
     );
+    const plannedFxId =
+      line.fxId ??
+      (line.trackId
+        ? after.tracks
+            .find((track) => track.id === line.trackId)
+            ?.effects.find((effect) => effect.type === line.effectType)?.id
+        : undefined);
     steps.push({
       ...step,
       ...(line.trackId ? { trackId: line.trackId } : {}),
-      ...(line.fxId ? { fxId: line.fxId } : {}),
+      ...(plannedFxId ? { fxId: plannedFxId } : {}),
+      paramId: line.paramId,
     });
   }
   return steps;
@@ -246,6 +280,8 @@ function effectSteps(
       steps.push({
         kind: "state",
         target: oldTrack.name,
+        trackId,
+        fxId: oldFx.id,
         parameter: `${intent.effectType}`,
         beforeLabel: "on",
         afterLabel: "removed",
@@ -258,6 +294,8 @@ function effectSteps(
       steps.push({
         kind: "state",
         target: oldTrack.name,
+        trackId,
+        fxId: newFx.id,
         parameter: intent.effectType,
         beforeLabel: "off",
         afterLabel: "on",
@@ -281,15 +319,21 @@ function effectSteps(
         steps.push({
           kind: "state",
           target: oldTrack.name,
+          trackId,
+          fxId: (newFx ?? oldFx)!.id,
+          paramId,
           parameter: `${intent.effectType}.${paramId}`,
           beforeLabel: label(from),
           afterLabel: label(to),
           ...(note ? { note } : {}),
         });
       } else {
-        steps.push(
-          numberStep(oldTrack.name, `${intent.effectType}.${paramId}`, from, to, to, label, domainOf(def), note),
-        );
+        steps.push({
+          ...numberStep(oldTrack.name, `${intent.effectType}.${paramId}`, from, to, to, label, domainOf(def), note),
+          trackId,
+          fxId: (newFx ?? oldFx)!.id,
+          paramId,
+        });
       }
     }
   }
@@ -468,12 +512,30 @@ function describeValue(value: unknown): string {
 function genericDiffSteps(before: ProjectDocument, after: ProjectDocument): PlanStep[] {
   const steps: PlanStep[] = [];
   let omitted = 0;
+  const pathIds = (
+    path: string,
+  ): { trackId?: string; fxId?: string; clipId?: string; entityId?: string; paramId?: string } => {
+    const ids: Record<string, string> = {};
+    const trackId = /(?:^|\.)tracks\[([^\]]+)\]/.exec(path)?.[1];
+    const fxId = /\.effects\[([^\]]+)\]/.exec(path)?.[1];
+    const clipId = /\.(?:clips|audioClips|midiClips|automationClips)\[([^\]]+)\]/.exec(path)?.[1];
+    const entityId = /\.(?:patterns|scenes)\[([^\]]+)\]/.exec(path)?.[1];
+    const paramId = /\.params\.([^.[\]]+)/.exec(path)?.[1];
+    if (trackId) ids.trackId = trackId;
+    if (fxId) ids.fxId = fxId;
+    if (clipId) ids.clipId = clipId;
+    if (entityId) ids.entityId = entityId;
+    if (paramId) ids.paramId = paramId;
+    return ids;
+  };
   const add = (step: PlanStep): void => {
     if (steps.length >= MAX_GENERIC_PLAN_STEPS) {
       omitted += 1;
       return;
     }
-    steps.push(step);
+    const ids = pathIds(step.target);
+    if ("parameter" in step && step.target.includes(".params")) ids.paramId = step.parameter;
+    steps.push({ ...step, ...ids });
   };
   const visit = (left: unknown, right: unknown, path: string, depth = 0): void => {
     if (Object.is(left, right)) return;
@@ -551,11 +613,13 @@ function stepsFor(doc: ProjectDocument, after: ProjectDocument, route: RoutedInt
     case "fader":
       return faderSteps(doc, after, route.intent);
     case "paramIntent":
-      return paramSteps(doc, route.intent);
+      return paramSteps(doc, after, route.intent);
     case "effectIntent":
       return effectSteps(doc, after, route.intent);
-    case "exact":
-      return exactSteps(doc, after, route.plan);
+    case "exact": {
+      const steps = genericDiffSteps(doc, after);
+      return steps.length > 0 ? steps : exactSteps(doc, after, route.plan);
+    }
     case "tempo":
       return [
         numberStep("project", "tempo", doc.bpm, after.bpm, after.bpm, (value) => `${fmt(value, 1)} BPM`, "linear"),
@@ -633,20 +697,31 @@ export function planIntent(doc: ProjectDocument, route: RoutedIntent, sourceText
     mutates: after !== doc,
     executable: true,
     commandLabel: command.label,
+    command,
     after,
   };
 }
 
 function formatStep(step: PlanStep): string {
-  if (step.kind === "command") return `${step.target}: ${step.note}`;
+  const identity = [
+    "trackId" in step && step.trackId ? `trackId=${step.trackId}` : null,
+    "fxId" in step && step.fxId ? `fxId=${step.fxId}` : null,
+    "paramId" in step && step.paramId ? `paramId=${step.paramId}` : null,
+    "clipId" in step && step.clipId ? `clipId=${step.clipId}` : null,
+    "entityId" in step && step.entityId ? `entityId=${step.entityId}` : null,
+    "returnId" in step && step.returnId ? `returnId=${step.returnId}` : null,
+    "padId" in step && step.padId ? `padId=${step.padId}` : null,
+  ].filter((part): part is string => part != null);
+  const idSuffix = identity.length > 0 ? ` [${identity.join(", ")}]` : "";
+  if (step.kind === "command") return `${step.target}: ${step.note}${idSuffix}`;
   if (step.kind === "state") {
-    return `${step.target}: ${step.parameter} ${step.beforeLabel} → ${step.afterLabel}${step.note ? ` · ${step.note}` : ""}`;
+    return `${step.target}: ${step.parameter} ${step.beforeLabel} → ${step.afterLabel}${step.note ? ` · ${step.note}` : ""}${idSuffix}`;
   }
   const values =
     step.clamped && step.proposed !== step.next
       ? `${step.beforeLabel} → ${step.proposedLabel} (clamped to ${step.nextLabel})`
       : `${step.beforeLabel} → ${step.nextLabel}`;
-  return `${step.target}: ${step.parameter} ${values}${step.note ? ` · ${step.note}` : ""}`;
+  return `${step.target}: ${step.parameter} ${values}${step.note ? ` · ${step.note}` : ""}${idSuffix}`;
 }
 
 /** The single-line, human-readable plan used by the IntentPanel status area. */

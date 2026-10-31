@@ -1736,7 +1736,38 @@ const OUTPUT_STATE: McpOutputSchema = {
 };
 const OUTPUT_INTENT = receiptSchema({
   route: { type: "string" },
+  routeKind: { type: "string" },
   planId: { type: "string" },
+  dryRun: { type: "boolean" },
+  executable: { type: "boolean" },
+  mutates: { type: "boolean" },
+  warnings: { type: "array", items: { type: "string" }, maxItems: 64 },
+  steps: {
+    type: "array",
+    maxItems: 49,
+    items: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        kind: { type: "string", enum: ["number", "state", "command"] },
+        target: { type: "string" },
+        trackId: { type: "string" },
+        fxId: { type: "string" },
+        paramId: { type: "string" },
+        clipId: { type: "string" },
+        entityId: { type: "string" },
+        returnId: { type: "string" },
+        padId: { type: "string" },
+        parameter: { type: "string" },
+        before: { type: ["number", "string"] },
+        beforeValue: { type: "number" },
+        proposedValue: { type: "number" },
+        next: { type: ["number", "string"] },
+        nextValue: { type: "number" },
+        note: { type: "string" },
+      },
+    },
+  },
   moved: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
   added: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
   unchanged: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 128 },
@@ -15294,6 +15325,7 @@ interface StoredIntentProposal {
   docId: string;
   revision: number | null;
   route: RoutedIntent;
+  command: Command;
   expectedAfter: ProjectDocument;
   proposalSource?: string;
   createdAt: number;
@@ -15345,8 +15377,9 @@ function intentPlanProposalResult(
 ): McpToolResult {
   if (route.kind === "automationPlan") return automationPlanProposalResult(route);
   const plan = planIntent(doc, route, instruction);
-  const planId = storeProposal && plan.executable && plan.mutates ? uid("intent-plan") : undefined;
-  if (planId != null) {
+  const command = plan.command;
+  const planId = storeProposal && plan.executable && plan.mutates && command != null ? uid("intent-plan") : undefined;
+  if (planId != null && command != null) {
     pruneIntentProposals();
     intentProposals.set(planId, {
       id: planId,
@@ -15356,6 +15389,7 @@ function intentPlanProposalResult(
       docId: doc.id,
       revision: ctx.getRevision?.() ?? null,
       route,
+      command,
       expectedAfter: plan.after,
       ...(source ? { proposalSource: source } : {}),
       createdAt: Date.now(),
@@ -15382,8 +15416,17 @@ function intentPlanProposalResult(
         target: step.target,
         trackId: "trackId" in step ? step.trackId : undefined,
         fxId: "fxId" in step ? step.fxId : undefined,
+        paramId: "paramId" in step ? step.paramId : undefined,
+        clipId: "clipId" in step ? step.clipId : undefined,
+        entityId: "entityId" in step ? step.entityId : undefined,
+        returnId: "returnId" in step ? step.returnId : undefined,
+        padId: "padId" in step ? step.padId : undefined,
         parameter: "parameter" in step ? step.parameter : undefined,
-        next: "nextLabel" in step ? step.nextLabel : undefined,
+        before: "beforeLabel" in step ? step.beforeLabel : undefined,
+        beforeValue: step.kind === "number" ? step.before : undefined,
+        proposedValue: step.kind === "number" ? step.proposed : undefined,
+        next: "nextLabel" in step ? step.nextLabel : "afterLabel" in step ? step.afterLabel : undefined,
+        nextValue: step.kind === "number" ? step.next : undefined,
         note: step.note,
       })),
     },
@@ -15408,7 +15451,46 @@ function executeIntentProposal(ctx: McpToolContext, id: string, instruction: str
       "project, revision, caller, or instruction changed after preview; request a fresh dry_run",
     );
   }
-  const result = executeRoutedIntent(ctx, proposal.route, proposal.instruction);
+  if (routeIsDestructive(proposal.route) && !destructiveAllowedWithCheckpoint(ctx, "kyx_intent")) {
+    return destructiveRefusal();
+  }
+  let result: McpToolResult;
+  try {
+    ctx.execute(proposal.command);
+    const afterApply = ctx.getDoc();
+    const summary = summarizeDocumentChange(doc, afterApply);
+    result = {
+      text:
+        afterApply === doc
+          ? `${proposal.command.label} — nothing changed; no undo step`
+          : `${proposal.command.label} — read-back: ${summary.lines.join("; ") || "document changed"} — one undo step in KYX`,
+      mutated: afterApply !== doc,
+      stage: afterApply === doc ? "noop" : "applied",
+      data: {
+        status: afterApply === doc ? "noop" : "applied",
+        changed: afterApply !== doc,
+        command: proposal.command.label,
+        readback: summary.lines,
+      },
+    };
+  } catch (error) {
+    const afterFailure = ctx.getDoc();
+    const changed = afterFailure !== doc;
+    if (changed) intentProposals.delete(id);
+    return mcpError(
+      changed ? "PARTIAL_FAILURE" : "EXECUTION_FAILED",
+      `${error instanceof Error ? error.message : String(error)}${changed ? "; the project changed before failure was reported — inspect the read-back and undo if needed." : ""}`,
+      {
+        mutated: changed,
+        data: {
+          status: changed ? "failed-after-change" : "failed",
+          planId: id,
+          routeKind: proposal.route.kind,
+          readback: summarizeDocumentChange(doc, afterFailure).lines,
+        },
+      },
+    );
+  }
   const after = ctx.getDoc();
   const resultData =
     result.data != null && typeof result.data === "object" && !Array.isArray(result.data)
@@ -15444,7 +15526,7 @@ function executeIntentProposal(ctx: McpToolContext, id: string, instruction: str
           routeKind: proposal.route.kind,
           expectedDocId: proposal.docId,
           actualDocId: after.id,
-          readback: [summarizeDocumentChange(doc, after)],
+          readback: summarizeDocumentChange(doc, after).lines,
         },
       },
     );

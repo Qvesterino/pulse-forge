@@ -244,6 +244,8 @@ import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
 import type { Command } from "../commands/types";
+import { deepEqualRef } from "../commands/docDelta";
+import { summarizeDocumentChange } from "../mcp/intent-readback";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
@@ -531,6 +533,8 @@ const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
 interface PendingModelIntentProposal {
   source: string;
   route: RoutedIntent;
+  command: Command;
+  expectedAfter: ProjectDocument;
   doc: ProjectDocument;
   revision: number | null;
   selection: SelectionState;
@@ -4447,6 +4451,7 @@ export function IntentPanel() {
     const source = (override ?? text).trim();
     if (!source || routeBusy || busy || songBusy || theatreBusy || mutateBusy) return;
     const requestDoc = services.store.getDoc();
+    const doc = requestDoc;
     const requestRevision = intentStoreRevision(services.store);
     const requestSelection = copySelectionState(selection.getState());
     const requestSnapshotIsCurrent = () =>
@@ -4455,12 +4460,12 @@ export function IntentPanel() {
       sameSelectionState(selection.getState(), requestSelection);
     const reviewedProposal = reviewedModelProposalRef.current;
     const reviewedProposalIsCurrent = () =>
-      reviewedProposal == null ||
-      (source === reviewedProposal.source &&
-        services.store.getDoc() === reviewedProposal.doc &&
-        (reviewedProposal.revision == null || intentStoreRevision(services.store) === reviewedProposal.revision) &&
-        sameSelectionState(selection.getState(), reviewedProposal.selection) &&
-        requestSnapshotIsCurrent());
+      requestSnapshotIsCurrent() &&
+      (reviewedProposal == null ||
+        (source === reviewedProposal.source &&
+          services.store.getDoc() === reviewedProposal.doc &&
+          (reviewedProposal.revision == null || intentStoreRevision(services.store) === reviewedProposal.revision) &&
+          sameSelectionState(selection.getState(), reviewedProposal.selection)));
     if (!reviewedProposalIsCurrent()) {
       reviewedModelProposalRef.current = null;
       preRoutedRef.current = null;
@@ -4529,7 +4534,11 @@ export function IntentPanel() {
       preRoutedRef.current = null;
       executedRoute = route;
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
-      if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
+      if (
+        reviewedProposal == null &&
+        lastGeneration() &&
+        resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)
+      ) {
         const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
         const merged: IntentInput = {
           ...(lastGeneration()?.intent ?? {}),
@@ -4556,6 +4565,44 @@ export function IntentPanel() {
       if (!reviewedProposalIsCurrent()) {
         setPendingModelProposal(null);
         setStatus("Projekt alebo výber sa zmenil pred aplikovaním. Návrh nebol vykonaný; vytvor nový návrh.");
+        return;
+      }
+      if (reviewedProposal != null) {
+        stopAudition();
+        const before = services.store.getDoc();
+        services.store.execute(reviewedProposal.command);
+        const after = services.store.getDoc();
+        selection.retainTracks(after.tracks.map((track) => track.id));
+        const readback = summarizeDocumentChange(before, after).lines;
+        const matchesPlan = deepEqualRef(after, reviewedProposal.expectedAfter);
+        const landed = readback.length > 0 ? readback.join("; ") : "no project fields changed";
+        if (matchesPlan && after !== before) {
+          setStatus(
+            `✓ ${reviewedProposal.command.label} — verified against the reviewed plan: ${landed} (one undo step)${checkpointNote}`,
+          );
+        } else {
+          setError(
+            `The applied document ${matchesPlan ? "did not change" : "differs from the reviewed plan"}: ${landed}. Inspect the project and undo if needed.`,
+          );
+        }
+        if (reviewedProposal.route.kind === "paramIntent" && after !== before) {
+          const paramIntent = reviewedProposal.route.intent;
+          void measureParamVerification(before, after, paramIntent, async (renderDoc, trackId) => {
+            const { renderTrack } = await import("../rendering/track-renderer");
+            try {
+              return await renderTrack(renderDoc, trackId, services.bank, {
+                mode: "pattern",
+                sampleRate: services.engine.getLiveAudioContext()?.sampleRate ?? 48000,
+              });
+            } catch {
+              return null;
+            }
+          })
+            .then((verification) => {
+              if (verification.measurable) setStatus((prev) => `${prev} — audio measurement: ${verification.line}`);
+            })
+            .catch(() => undefined);
+        }
         return;
       }
       if (route.kind === "transport") {
@@ -5338,7 +5385,7 @@ export function IntentPanel() {
             return;
           }
           const modelPlan = planIntent(doc, gated, source);
-          if (!modelPlan.executable || !modelPlan.mutates) {
+          if (!modelPlan.executable || !modelPlan.mutates || modelPlan.command == null) {
             logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: "model-route-rejected" });
             setStatus("Modelový návrh nemá overiteľnú operáciu a nebude aplikovaný.");
             return;
@@ -5349,6 +5396,8 @@ export function IntentPanel() {
           setPendingModelProposal({
             source,
             route: gated,
+            command: modelPlan.command,
+            expectedAfter: modelPlan.after,
             doc,
             revision: requestRevision,
             selection: requestSelection,

@@ -81,6 +81,24 @@ describe("measureParamVerification (P3)", () => {
     expect(verification.correction).toBeNull();
   });
 
+  it("measures model-bound trackIds after family targets are pinned away", async () => {
+    const doc = testDoc();
+    const target = doc.tracks.find((track) => track.kind === "instrument" && track.name === "808");
+    expect(target).toBeDefined();
+    if (!target || target.kind !== "instrument") return;
+    const intent = { ...mustParse("jasnejsia saturacia na 808"), targets: [], trackIds: [target.id] };
+    const after = applyParamIntent(doc, intent).execute(doc);
+    const rendered: string[] = [];
+    const verification = await measureParamVerification(doc, after, intent, (renderDoc, trackId) => {
+      rendered.push(trackId);
+      return Promise.resolve(renderDoc === doc ? noiseBuffer(11, false) : noiseBuffer(11, true));
+    });
+
+    expect(rendered).toEqual([target.id, target.id]);
+    expect(verification.targets[0]).toMatchObject({ trackId: target.id, target: target.name });
+    expect(verification.line).toContain(`trackId=${target.id}`);
+  });
+
   it("a SET ask's direction follows the knob move (set down verifies darker)", async () => {
     // "set tone to 800 Hz" moves the knob DOWN — the measurement must expect
     // a darker landing, not grade it against a literal "more" (the verifier

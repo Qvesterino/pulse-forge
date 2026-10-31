@@ -8,6 +8,7 @@ import { normalizeIntent } from "../../src/intent/normalize";
 import { setIntentModelProvider } from "../../src/intent/model-resolver";
 import { lastGeneration, rememberGeneration } from "../../src/intent/session-context";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { snapshot } from "../../src/commands/core";
 import { BAR_TICKS, getActivePattern, getDrumTrack } from "../../src/project-model/types";
 import { classifyPads } from "../../src/assist/patternOps";
 import type { SongBuild } from "../../src/intent/song";
@@ -327,6 +328,38 @@ describe("IntentPanel", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /APPLY PLAN/i }));
       await waitFor(() => expect(services.store.execute).toHaveBeenCalledTimes(1));
+      expect(screen.getByText(/verified against the reviewed plan/i)).toBeInTheDocument();
+    } finally {
+      setIntentModelProvider(null);
+    }
+  });
+
+  it("refuses a model proposal after the project document changes", async () => {
+    const project = createProjectFromTemplate("house");
+    const services = mockServices(project);
+    const generate = vi.fn(async () =>
+      JSON.stringify({ kind: "fader", targets: ["bass"], pads: [], direction: "down", amount: "subtle" }),
+    );
+    setIntentModelProvider({ id: "test-action-model", version: "1", generate });
+    try {
+      renderWithContext(<IntentPanel />, { services });
+      fireEvent.change(screen.getByLabelText(/Intent description/i), {
+        target: { value: "make the low end feel like a warm blanket" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+      await screen.findByLabelText("Model intent proposal");
+
+      const current = services.store.getDoc();
+      act(() => {
+        services.store.execute(
+          snapshot("test-concurrent-edit", "concurrent edit", current, { ...current, name: "Changed" }),
+        );
+      });
+      const callsAfterConcurrentEdit = vi.mocked(services.store.execute).mock.calls.length;
+      const apply = screen.getByRole("button", { name: /APPLY PLAN/i });
+      await waitFor(() => expect(apply).toBeDisabled());
+      expect(screen.getByLabelText("Model intent proposal")).toHaveTextContent(/návrh už nie je aktuálny/i);
+      expect(vi.mocked(services.store.execute).mock.calls).toHaveLength(callsAfterConcurrentEdit);
     } finally {
       setIntentModelProvider(null);
     }
