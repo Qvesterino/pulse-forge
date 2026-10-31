@@ -43,6 +43,13 @@ export interface WarpManagerDeps {
   doc: () => ProjectDocument | null;
   bank: () => SampleBank | null;
   trackInput: (trackId: string) => AudioNode | null;
+  /**
+   * The transport's LIVE tick (audit 2026-10-31, scene-tempo fix). Optional:
+   * when absent, frozenPositionTickNow() falls back to extrapolating the
+   * restart anchor with doc.bpm — which drifts from the real playhead
+   * whenever the transport runs a scene-pinned BPM (Transport.bpm ≠ doc.bpm).
+   */
+  getTransportTick?: () => number;
 }
 
 export class WarpManager {
@@ -250,9 +257,18 @@ export class WarpManager {
     return this.frozenBuffers.has(trackId) && this.frozenBufferIds.get(trackId) === bufferId;
   }
 
-  /** Current transport tick estimate for frozen-loop alignment. */
+  /**
+   * Current transport tick for frozen-loop alignment. Reads the LIVE
+   * transport when the engine wired `getTransportTick` — the doc.bpm
+   * extrapolation below drifts from the real playhead under a scene-pinned
+   * BPM (Transport.bpm ≠ doc.bpm), which mis-placed a mid-play re-freeze.
+   * The extrapolation stays as the fallback for engines without a transport
+   * reader (tests, throwaway engines).
+   */
   frozenPositionTickNow(): number {
     if (!this.frozenAlign || !this.deps.ctx() || !this.deps.doc()) return 0;
+    const transportTick = this.deps.getTransportTick?.();
+    if (Number.isFinite(transportTick)) return Math.max(0, transportTick as number);
     const elapsed = Math.max(0, this.deps.ctx()!.currentTime - this.frozenAlign.ctxTime);
     return this.frozenAlign.tick + elapsed * (this.deps.doc()!.bpm / 60) * PPQ;
   }

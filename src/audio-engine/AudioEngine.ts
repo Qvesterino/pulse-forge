@@ -325,6 +325,10 @@ export class AudioEngine {
     doc: () => this.doc,
     bank: () => this.bank,
     trackInput: (trackId) => this.trackNodes.get(trackId)?.input ?? null,
+    // Late-bound: services wires this after construction. Reading through the
+    // field keeps the dep honest even before/without the wiring (undefined →
+    // the manager's doc.bpm extrapolation fallback).
+    getTransportTick: () => this.getTransportTick?.() ?? Number.NaN,
   });
   /**
    * Wave 4b (decomposition): master output chain owner — input gain, tape,

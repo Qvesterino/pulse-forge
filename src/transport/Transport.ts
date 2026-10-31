@@ -182,7 +182,7 @@ export class Transport {
     this.emitPlaybackGesture();
   }
 
-  seek(tick: number): void {
+  seek(tick: number, options: { anchorTime?: number } = {}): void {
     // Defensive guard: a NaN/Infinity/negative tick poisons tickAt() and the
     // scheduler's window endpoints forever. The diagnostics panel also
     // displays `transport.position`, so a stray bad value would surface to
@@ -193,7 +193,17 @@ export class Transport {
     }
     if (this.playing_) {
       this.anchorTick = tick;
-      this.anchorTime = this.clock.now();
+      // EXACT SEAM ANCHOR (audit 2026-10-31): a caller that pre-computed the
+      // seam's audio time (loop wrap, tempo boundary) anchors the NEW
+      // position at THAT instant instead of the detection instant. The
+      // anchor is retroactive — position(t) = tick + (t − anchorTime)·spt —
+      // so the grid stays sample-exact no matter how late the detection
+      // ran, and a loop iteration lasts exactly its musical length instead
+      // of length + detection overshoot. A future/invalid anchor falls
+      // back to the clock (plain seek semantics).
+      const anchor = options.anchorTime;
+      const now = this.clock.now();
+      this.anchorTime = typeof anchor === "number" && Number.isFinite(anchor) && anchor <= now ? anchor : now;
       // A seek is an explicit new playback location; it must not introduce
       // another count-in or pre-roll before the requested content.
       this.contentStartTick_ = tick;

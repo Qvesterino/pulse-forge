@@ -184,9 +184,15 @@ interface TickBoundarySubscription {
   fired: boolean;
 }
 
-/** Click dedup guard — fires only for future (not-yet-played) clicks like `audible`. */
-function audibleClick(when: number, now: number): boolean {
-  return when >= now - 0.002;
+/**
+ * Click dedup guard — fires only for future (not-yet-played) clicks like
+ * `audible`. `graceSec` widens the window for a window that legitimately
+ * contains already-due ticks: the loop-wrap sliver (audit 2026-10-31) covers
+ * the ticks the commit overshoot consumed, so the iteration's first clicks
+ * fire late instead of being dropped at the seam.
+ */
+function audibleClick(when: number, now: number, graceSec = 0.002): boolean {
+  return when >= now - graceSec;
 }
 
 /** Resolve only the canonical active pattern. Never silently play another one. */
@@ -270,6 +276,16 @@ export class Scheduler {
    */
   private songTimeAt: ((tick: number) => number) | null = null;
   private windowStartTick = 0;
+  /**
+   * Loop wrap ARMED before the boundary is crossed (audit 2026-10-31): the
+   * window planner sees `loopEnd` inside its ~120 ms horizon and pins the
+   * seam's exact audio time; the 5 ms seam committer (or the next tick)
+   * re-anchors the new iteration AT that instant — the retroactive exact
+   * anchor makes the loop period exactly its musical length instead of
+   * length + detection overshoot, which used to stretch the grid and
+   * desync the wall-clock-paced frozen sources iteration by iteration.
+   */
+  private pendingWrap: { loopStartTick: number; loopEndTick: number; boundaryTime: number } | null = null;
   /** One-window allowance for audio-clock quantization at a fresh play edge. */
   private allowLateStartEvents = false;
   /**
@@ -323,6 +339,7 @@ export class Scheduler {
     windows: 0,
     failedWindows: 0,
     flipFastCommits: 0,
+    wrapFastCommits: 0,
     // Wave 3 driver observability (populated from the driver each tick).
     driverKind: "none",
     driverTickerTicks: 0,
@@ -582,6 +599,8 @@ export class Scheduler {
     this.clickCursor = 0;
     this.leadInUntilTick = -1;
     this.leadInStartTick = -1;
+    // An armed wrap seam belongs to the stopped playback.
+    this.pendingWrap = null;
     this.stopped = true;
   }
 
@@ -589,8 +608,10 @@ export class Scheduler {
   resync(): void {
     this.cancelPendingLoopBoundary();
     // A seek invalidates a scheduled tempo flip — the boundary is re-detected
-    // against the new position on the next window.
+    // against the new position on the next window. Same for an ARMED loop
+    // wrap: its pinned boundaryTime belongs to the pre-seek map.
     this.pendingTempoFlip = null;
+    this.pendingWrap = null;
     // Boundaries already ARMED (fired to their listener with an audio time
     // from the OLD time map) are cancelled immediately, exactly like the
     // mismatch-cancel updateTickBoundaries runs one tick later — without
@@ -651,24 +672,99 @@ export class Scheduler {
     this.lastAppliedTempo = flip.bpm;
     this.deps.applyEngineTempo?.(flip.bpm);
     if (viaFastLoop) this.stats.flipFastCommits += 1;
-    this.disarmFlipCommitter();
+    // The committer may still be watching an ARMED loop wrap — only disarm
+    // when no seam is left.
+    if (!this.pendingWrap) this.disarmFlipCommitter();
     return true;
+  }
+
+  /**
+   * Commit an ARMED loop wrap whose boundary the playhead has crossed.
+   * Idempotent — the fast committer (5 ms) and the tick fallback race on
+   * who gets there first; the loser sees no pending wrap. Returns true
+   * when it committed.
+   */
+  private commitLoopWrap(viaFastLoop = false): boolean {
+    const wrap = this.pendingWrap;
+    if (!wrap) return false;
+    const transport = this.deps.getTransport();
+    if (!transport.playing || transport.position < wrap.loopEndTick) return false;
+    this.finishWrap(transport, wrap, viaFastLoop);
+    return true;
+  }
+
+  /**
+   * The shared wrap commit: re-anchor the new iteration EXACTLY on the
+   * boundary's pre-computed audio time, rebase the per-playback bookkeeping,
+   * and late-fire the sliver the commit overshoot consumed.
+   *
+   * Why the retroactive anchor: the old `seek(loopStart)` consumed the
+   * detection overshoot (up to one 25 ms tick, or 5 ms via the committer)
+   * as grid stretch — every post-wrap event landed late by the overshoot
+   * and the audible loop period was loopLength + overshoot, so the
+   * wall-clock-paced frozen sources (and the loop-recording seam) drifted
+   * from the transport iteration by iteration. Anchoring at the boundary's
+   * audio time makes position(t) continuous across the seam: the loop
+   * lasts exactly its musical length, forever.
+   */
+  private finishWrap(
+    transport: Transport,
+    wrap: { loopStartTick: number; loopEndTick: number; boundaryTime: number },
+    viaFastLoop: boolean,
+  ): void {
+    this.pendingWrap = null;
+    // The seam fired — the boundary published for loop recording is consumed
+    // (it was published ahead of time, with this exact audioTime).
+    this.pendingLoopBoundary = null;
+    transport.seek(wrap.loopStartTick, { anchorTime: wrap.boundaryTime });
+    // A wrap jumps position — a scheduled flip would fire at the wrong
+    // place. Boundary detection re-runs from the wrapped window.
+    this.pendingTempoFlip = null;
+    this.clickCursor = wrap.loopStartTick;
+    this.leadInUntilTick = -1;
+    this.leadInStartTick = -1;
+    if (viaFastLoop) this.stats.wrapFastCommits += 1;
+    // SLIVER LATE-FIRE: the commit overshoot consumed the first few ms of
+    // the new iteration. Schedule exactly that region now — one window with
+    // the start grace — so its events fire late (never dropped), while the
+    // next window continues sample-exact from the sliver's end. A suspended
+    // context skips the sliver: the resume path re-anchors the window
+    // origin to the live playhead anyway (Defect A02.D2).
+    const contextState = this.deps.getContextState?.() ?? "running";
+    const sliverEnd = Math.max(wrap.loopStartTick, transport.position);
+    if (contextState === "running" && sliverEnd > wrap.loopStartTick + 1e-6) {
+      try {
+        this.scheduleWindow(transport, this.deps.getAudioTime(), wrap.loopStartTick, sliverEnd, true);
+      } catch (err) {
+        this.stats.failedWindows += 1;
+        console.error("[scheduler] loop-wrap sliver scheduling failed:", err);
+      }
+    }
+    this.windowStartTick = sliverEnd;
+    this.stats.windows += 1;
+    // The committer may still be watching a scheduled tempo flip — only
+    // disarm when no seam is left.
+    if (!this.pendingTempoFlip) this.disarmFlipCommitter();
   }
 
   /**
    * Arm the 5 ms flip committer. Called when a flip is scheduled; the loop
    * self-disarms on commit, and on the next fire when the flip is gone
    * (seek/loop-wrap/stop), so it never outlives the seam it watches.
+   * The same 5 ms loop commits an ARMED loop wrap (audit 2026-10-31) —
+   * a 5 ms commit overshoot keeps the wrap's late-fired sliver inside the
+   * start grace, where the 25 ms tick cadence could drop its first event.
    */
   private armFlipCommitter(): void {
     if (this.flipTimer !== null) return;
     this.flipTimer = setInterval(() => {
-      if (!this.pendingTempoFlip) {
+      if (!this.pendingTempoFlip && !this.pendingWrap) {
         this.disarmFlipCommitter();
         return;
       }
       try {
         this.commitTempoFlip(true);
+        this.commitLoopWrap(true);
       } catch {
         this.disarmFlipCommitter();
       }
@@ -701,8 +797,11 @@ export class Scheduler {
     // Tempo-seam flip (roadmap 2.2): the playhead crossed the scheduled
     // boundary — re-anchor the transport now. The fast committer below
     // usually beats this tick to it (5 ms cadence); whoever commits first
-    // clears the flip so the second path is a no-op.
+    // clears the flip so the second path is a no-op. The loop wrap commits
+    // through the same seam committer (audit 2026-10-31); this inline call
+    // is its tick-cadence fallback.
     this.commitTempoFlip();
+    this.commitLoopWrap();
     // Defect A01.D2 (scheduler precision audit): windowEnd is declared
     // before the loop-wrap block so the post-wrap clamp can shorten it
     // to the loop boundary. If a seek fires inside the wrap block, the
@@ -742,21 +841,50 @@ export class Scheduler {
             this.pendingLoopBoundary = null;
           }
         }
-        transport.seek(loopStart);
+        // EXACT WRAP ANCHOR (audit 2026-10-31): anchor the new iteration at
+        // the boundary's PRE-COMPUTED audio time, not the detection instant.
+        // For a crossed boundary boundaryTime is in the past, so the
+        // retroactive anchor applies; for a jump BEFORE the loop (position <
+        // loopStart) it is in the future and seek() clamps it to now —
+        // plain seek semantics, same as before. The wrap's late-fired
+        // sliver is handled by finishWrap when this is a committer commit;
+        // this tick-cadence fallback grants the sliver the start grace for
+        // the window it schedules below (a stall longer than the grace
+        // drops its backlog — the documented blackout contract).
+        transport.seek(loopStart, { anchorTime: boundaryTime });
+        this.pendingWrap = null;
         // The wrap jumps position — a scheduled flip would fire at the wrong
         // place. Boundary detection re-runs from the wrapped window.
         this.pendingTempoFlip = null;
         this.clickCursor = loopStart;
         this.leadInUntilTick = -1;
+        this.leadInStartTick = -1;
         this.windowStartTick = loopStart;
+        this.allowLateStartEvents = true;
         // transport.seek re-anchored; windowEnd was computed against
         // the old anchor. Recompute against the post-seek anchor so
         // the clamp below sees the correct value.
         windowEnd = transport.tickAt(horizon);
       } else {
         if (pending && !pendingMatches) this.cancelPendingLoopBoundary();
-        if (loopEnd > loopStart && boundaryTime > now && boundaryTime <= horizon && !this.pendingLoopBoundary) {
+        const boundaryInHorizon = loopEnd > loopStart && boundaryTime > now && boundaryTime <= horizon;
+        if (boundaryInHorizon && !this.pendingLoopBoundary) {
           this.publishLoopBoundary({ loopStartTick: loopStart, loopEndTick: loopEnd, audioTime: boundaryTime });
+        }
+        // ARM the wrap seam (audit 2026-10-31): the boundary sits inside this
+        // window's horizon — pin its exact audio time and let the 5 ms seam
+        // committer re-anchor the new iteration the moment the playhead
+        // crosses. A stale pending (loop range edited mid-play, map
+        // re-anchored) is dropped and re-armed against the current values.
+        const wrapMatches =
+          this.pendingWrap !== null &&
+          this.pendingWrap.loopStartTick === loopStart &&
+          this.pendingWrap.loopEndTick === loopEnd &&
+          this.pendingWrap.boundaryTime === boundaryTime;
+        if (!wrapMatches) this.pendingWrap = null;
+        if (boundaryInHorizon && !this.pendingWrap) {
+          this.pendingWrap = { loopStartTick: loopStart, loopEndTick: loopEnd, boundaryTime };
+          this.armFlipCommitter();
         }
       }
       // Clamp windowEnd to loopEnd so we never schedule events past
@@ -865,7 +993,9 @@ export class Scheduler {
           const downbeat = inLeadIn
             ? Math.abs((((cursor - clickAnchor) % barTicks) + barTicks) % barTicks) < 1e-6
             : Math.abs(((cursor % barTicks) + barTicks) % barTicks) < 1e-6;
-          if (audibleClick(when, now)) this.deps.metronomeClick(when, downbeat);
+          if (audibleClick(when, now, allowLateStartEvents ? INITIAL_START_GRACE_SEC : 0.002)) {
+            this.deps.metronomeClick(when, downbeat);
+          }
         }
         cursor += beatTicks;
       }
